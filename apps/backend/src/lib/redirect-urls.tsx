@@ -1,9 +1,15 @@
 import { getEnvVariable, getProcessEnv } from "@hexclave/shared/dist/utils/env";
 import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@hexclave/shared/dist/utils/redirect-urls";
+import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Tenancy } from "./tenancies";
 
 export { isAcceptedNativeAppUrl };
+
+type RedirectTenancy = Pick<Tenancy, "deployedDomains"> & {
+  config: Pick<Tenancy["config"], "domains">,
+  project: Pick<Tenancy["project"], "id">,
+};
 
 export function getHostedHandlerTrustedDomain(projectId: string): string {
   return getHostedHandlerTrustedDomainFromConfig({
@@ -14,7 +20,7 @@ export function getHostedHandlerTrustedDomain(projectId: string): string {
   });
 }
 
-export function getTrustedDomainsForTenancy(tenancy: Tenancy): string[] {
+export function getTrustedDomainsForTenancy(tenancy: RedirectTenancy): string[] {
   return [
     ...Object.values(tenancy.config.domains.trustedDomains)
       .map(domain => domain.baseUrl)
@@ -24,7 +30,7 @@ export function getTrustedDomainsForTenancy(tenancy: Tenancy): string[] {
   ];
 }
 
-export function getOAuthRedirectUrisForTenancy(tenancy: Tenancy): string[] {
+export function getOAuthRedirectUrisForTenancy(tenancy: RedirectTenancy): string[] {
   return [
     ...Object.values(tenancy.config.domains.trustedDomains)
       .filter((domain) => domain.baseUrl)
@@ -34,28 +40,26 @@ export function getOAuthRedirectUrisForTenancy(tenancy: Tenancy): string[] {
   ];
 }
 
-function getDeployedOrigins(tenancy: Tenancy): string[] {
+function getDeployedOrigins(tenancy: RedirectTenancy): string[] {
   return tenancy.deployedDomains
     .map((domain) => {
-      try {
-        // Deployment URLs are public HTTPS origins even when Vercel returns a
-        // bare host or a stored value includes a scheme/path.
-        const url = new URL(domain.includes("://") ? domain : `https://${domain}`);
-        return `https://${url.host}`;
-      } catch (error) {
+      // Deployment URLs are public HTTPS origins even when Vercel returns a
+      // bare host or a stored value includes a scheme/path.
+      const url = createUrlIfValid(domain.includes("://") ? domain : `https://${domain}`);
+      if (url == null) {
         captureError("invalid-deployment-domain", new HexclaveAssertionError("A deployment domain could not be normalized for redirect validation.", {
           domain,
-          cause: error,
         }));
         return null;
       }
+      return `https://${url.host}`;
     })
     .filter((origin): origin is string => origin != null);
 }
 
 export function validateRedirectUrl(
   urlOrString: string | URL,
-  tenancy: Tenancy,
+  tenancy: RedirectTenancy,
 ): boolean {
   return validateRedirectUrlAgainstTrustedDomains(urlOrString, {
     allowLocalhost: tenancy.config.domains.allowLocalhost,
@@ -63,7 +67,7 @@ export function validateRedirectUrl(
   });
 }
 
-export function validateRedirectHostname(hostname: string, tenancy: Tenancy): boolean {
+export function validateRedirectHostname(hostname: string, tenancy: RedirectTenancy): boolean {
   return validateRedirectUrlAgainstTrustedDomains(`https://${hostname}`, {
     allowLocalhost: tenancy.config.domains.allowLocalhost,
     trustedDomains: getTrustedDomainsForTenancy(tenancy),

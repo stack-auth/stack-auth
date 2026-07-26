@@ -50,7 +50,8 @@ describe('validateRedirectUrl', () => {
     }
   };
 
-  const createMockTenancy = (config: Partial<Tenancy['config']>): Tenancy => {
+  const createMockTenancy = (config: Partial<Tenancy['config']>) => {
+    const deployedDomains: string[] = [];
     return {
       config: {
         domains: {
@@ -58,13 +59,12 @@ describe('validateRedirectUrl', () => {
           trustedDomains: {},
           ...config.domains,
         },
-        ...config,
       },
-      deployedDomains: [],
+      deployedDomains,
       project: {
         id: "12345678-1234-4234-8234-123456789abc",
       },
-    } as unknown as Tenancy;
+    };
   };
 
   describe('deployment domains', () => {
