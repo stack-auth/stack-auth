@@ -85,9 +85,13 @@ describe("StackClientApp sign-in cache warm-up", () => {
     });
 
     let onFirstPrefetchStarted!: () => void;
-    const firstPrefetchStarted = new Promise<void>((resolve) => { onFirstPrefetchStarted = resolve; });
+    const firstPrefetchStarted = new Promise<void>((resolve) => {
+      onFirstPrefetchStarted = resolve;
+    });
     let releaseFirstPrefetch!: () => void;
-    const firstPrefetchReleased = new Promise<void>((resolve) => { releaseFirstPrefetch = resolve; });
+    const firstPrefetchReleased = new Promise<void>((resolve) => {
+      releaseFirstPrefetch = resolve;
+    });
 
     const clientInterface = Reflect.get(clientApp, "_interface");
     let getClientUserByTokenCalls = 0;
