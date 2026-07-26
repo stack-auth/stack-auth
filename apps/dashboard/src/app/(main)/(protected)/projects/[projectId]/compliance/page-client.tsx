@@ -92,6 +92,13 @@ function getDefaultDateRange(): { from: string, to: string } {
   return { from: formatDateInput(from), to: formatDateInput(to) };
 }
 
+function isValidDateInput(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime())
+    && date.toISOString().slice(0, 10) === value;
+}
+
 function humanize(value: string | null): string {
   if (value == null || value.length === 0) return "—";
   return value
@@ -185,6 +192,8 @@ function ComplianceContent() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    if (!isValidDateInput(from) || !isValidDateInput(to) || from > to) return;
+
     let cancelled = false;
     runAsynchronously(async () => {
       setState({ status: "loading" });
