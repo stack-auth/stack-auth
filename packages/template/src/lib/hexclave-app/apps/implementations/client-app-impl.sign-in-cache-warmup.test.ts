@@ -73,4 +73,42 @@ describe("StackClientApp sign-in cache warm-up", () => {
     expect(getClientUserByTokenCalls).toBe(1);
     expect(cacheStatusesOnTokenStoreChange).toEqual(["ok"]);
   });
+
+  it("doesn't let a slow sign-in publish its tokens on top of a sign-in that started later", async () => {
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+    });
+
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    let getClientUserByTokenCalls = 0;
+    Reflect.set(clientInterface, "getClientUserByToken", async () => {
+      getClientUserByTokenCalls += 1;
+      // Only the first sign-in's pre-fetch is slow, so the second one gets to publish while the first is still waiting.
+      if (getClientUserByTokenCalls === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return { id: "user-id", is_anonymous: false, is_restricted: false };
+    });
+
+    const signIn = (refreshToken: string, refreshTokenId: string) => Reflect.get(clientApp, "_signInToAccountWithTokens").call(clientApp, {
+      accessToken: createAccessTokenString(refreshTokenId),
+      refreshToken,
+    });
+
+    const slowSignIn = signIn("old-refresh-token", "old-refresh-token-id");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await signIn("new-refresh-token", "new-refresh-token-id");
+    await slowSignIn;
+
+    const tokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore").call(
+      clientApp,
+      await Reflect.get(clientApp, "_createCookieHelper").call(clientApp),
+    );
+    expect(tokenStore.get().refreshToken).toBe("new-refresh-token");
+  });
 });

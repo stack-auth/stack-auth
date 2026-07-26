@@ -1578,6 +1578,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   private _sessionsByTokenStoreAndSessionKey = new WeakMap<Store<TokenObject>, Map<string, InternalSession>>();
   /**
+   * Monotonic IDs for `_signInToAccountWithTokens` calls, so that a sign-in which awaits longer than a sign-in that
+   * started after it doesn't publish its (by then outdated) tokens on top of the newer ones.
+   */
+  private _signInAttemptCounter = 0;
+  private _lastPublishedSignInAttemptId = 0;
+  /**
    * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet.
    *                         Used to create (and hence warm the caches of) the session of a sign-in before the token
    *                         store update makes it observable to the rest of the app.
@@ -1642,6 +1648,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
       throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
+    const signInAttemptId = ++this._signInAttemptCounter;
+
     // Fetch the user of the incoming tokens before publishing them, so the new session's cache is already warm when
     // the token store update below notifies its subscribers. Mounted `useUser()` hooks re-read the cache when the
     // session changes, so an empty cache entry for the new session makes them suspend — flashing their Suspense
@@ -1650,6 +1658,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const prefetchedUser = await this._prefetchCurrentUserForFreshTokens(tokens);
 
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
+
+    // We awaited above, so a sign-in that started after ours may have already taken effect (eg. the analytics anonymous
+    // sign-up racing against a real sign-in on the same page). Publishing our older tokens now would roll the app back
+    // to the session it just left, so drop this sign-in instead.
+    if (this._lastPublishedSignInAttemptId > signInAttemptId) {
+      return;
+    }
+    this._lastPublishedSignInAttemptId = signInAttemptId;
 
     // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
     // access token for the same access-only session), push the new token into it in place; constructing a new
