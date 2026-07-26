@@ -60,11 +60,43 @@ describe('validateRedirectUrl', () => {
         },
         ...config,
       },
+      deployedDomains: [],
       project: {
         id: "12345678-1234-4234-8234-123456789abc",
       },
-    } as Tenancy;
+    } as unknown as Tenancy;
   };
+
+  describe('deployment domains', () => {
+    it('trusts verified deployment domains', () => {
+      const tenancy = createMockTenancy({});
+      tenancy.deployedDomains = ['app.example.com'];
+
+      expect(validateRedirectUrl('https://app.example.com/sign-in', tenancy)).toBe(true);
+    });
+
+    it('does not trust an origin absent from the verified deployment origins', () => {
+      const tenancy = createMockTenancy({});
+
+      expect(validateRedirectUrl('https://pending.example.com/sign-in', tenancy)).toBe(false);
+    });
+
+    it('trusts the latest deployment URL', () => {
+      const tenancy = createMockTenancy({});
+      tenancy.deployedDomains = ['https://deployment-abc.vercel.app'];
+
+      expect(validateRedirectUrl('https://deployment-abc.vercel.app/sign-in', tenancy)).toBe(true);
+    });
+
+    it('includes deployed origins in OAuth redirect URIs', () => {
+      const tenancy = createMockTenancy({});
+      tenancy.deployedDomains = ['deployment-abc.vercel.app'];
+
+      expect(getOAuthRedirectUrisForTenancy(tenancy)).toContain(
+        'https://deployment-abc.vercel.app/handler/oauth-callback',
+      );
+    });
+  });
 
   describe('exact domain matching', () => {
     it('should implicitly validate hosted handler domains for the project', () => {

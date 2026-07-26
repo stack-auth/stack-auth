@@ -1,5 +1,6 @@
 import { getEnvVariable, getProcessEnv } from "@hexclave/shared/dist/utils/env";
 import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@hexclave/shared/dist/utils/redirect-urls";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Tenancy } from "./tenancies";
 
 export { isAcceptedNativeAppUrl };
@@ -18,6 +19,7 @@ export function getTrustedDomainsForTenancy(tenancy: Tenancy): string[] {
     ...Object.values(tenancy.config.domains.trustedDomains)
       .map(domain => domain.baseUrl)
       .filter((baseUrl): baseUrl is string => baseUrl != null),
+    ...getDeployedOrigins(tenancy),
     getHostedHandlerTrustedDomain(tenancy.project.id),
   ];
 }
@@ -27,8 +29,28 @@ export function getOAuthRedirectUrisForTenancy(tenancy: Tenancy): string[] {
     ...Object.values(tenancy.config.domains.trustedDomains)
       .filter((domain) => domain.baseUrl)
       .map((domain) => new URL(domain.handlerPath, domain.baseUrl).toString()),
+    ...getDeployedOrigins(tenancy).map((origin) => new URL("/handler/oauth-callback", origin).toString()),
     new URL("/handler/oauth-callback", getHostedHandlerTrustedDomain(tenancy.project.id)).toString(),
   ];
+}
+
+function getDeployedOrigins(tenancy: Tenancy): string[] {
+  return tenancy.deployedDomains
+    .map((domain) => {
+      try {
+        // Deployment URLs are public HTTPS origins even when Vercel returns a
+        // bare host or a stored value includes a scheme/path.
+        const url = new URL(domain.includes("://") ? domain : `https://${domain}`);
+        return `https://${url.host}`;
+      } catch (error) {
+        captureError("invalid-deployment-domain", new HexclaveAssertionError("A deployment domain could not be normalized for redirect validation.", {
+          domain,
+          cause: error,
+        }));
+        return null;
+      }
+    })
+    .filter((origin): origin is string => origin != null);
 }
 
 export function validateRedirectUrl(

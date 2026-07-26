@@ -32,15 +32,19 @@ async function tenancyPrismaToCrudUnused(prisma: Prisma.TenancyGetPayload<{}>) {
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
 
-  const config = await rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({
-    projectId: projectCrud.id,
-    branchId: prisma.branchId,
-    organizationId: prisma.organizationId,
-  }));
+  const [config, deployedDomains] = await Promise.all([
+    rawQuery(globalPrismaClient, getRenderedOrganizationConfigQuery({
+      projectId: projectCrud.id,
+      branchId: prisma.branchId,
+      organizationId: prisma.organizationId,
+    })),
+    rawQuery(globalPrismaClient, getDeployedDomainsQuery(Prisma.sql`"tenancyId" = ${prisma.id}::uuid`)),
+  ]);
 
   return {
     id: prisma.id,
     config,
+    deployedDomains,
     branchId: prisma.branchId,
     organization: prisma.organizationId === null ? null : {
       // TODO actual organization type
@@ -77,6 +81,47 @@ export async function getSoleTenancyFromProjectBranch(projectOrId: Omit<Projects
  */
 export function getSoleTenancyFromProjectBranchQuery(project: Omit<ProjectsCrud["Admin"]["Read"], "config"> | string, branchId: string, returnNullIfNotFound: true): RawQuery<Promise<Tenancy | null>> {
   return getTenancyFromProjectQuery(typeof project === 'string' ? project : project.id, branchId, null);
+}
+
+type DeployedDomainQueryRow = {
+  origin: unknown;
+};
+
+function getDeployedDomainsQuery(tenancySelector: Prisma.Sql): RawQuery<string[]> {
+  return {
+    supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
+    sql: Prisma.sql`
+      WITH latest_runs AS (
+        SELECT DISTINCT ON ("deploymentServiceId")
+          "vercelDeploymentUrl",
+          "createdAt"
+        FROM "DeploymentRun"
+        WHERE ${tenancySelector}
+          AND "status" = 'READY'
+          AND "vercelDeploymentUrl" IS NOT NULL
+        ORDER BY "deploymentServiceId", "createdAt" DESC
+      )
+      -- Pending custom domains are not trusted until Vercel confirms ownership
+      -- and DNS, otherwise adding an unclaimed hostname would widen redirects.
+      SELECT "hostname" AS "origin"
+      FROM "DeploymentServiceDomain"
+      WHERE ${tenancySelector}
+        AND "verified" = TRUE
+      UNION
+      -- Only the latest successful run's URL is exposed by the deployments
+      -- service URL, so older deployment aliases must not remain trusted.
+      SELECT "vercelDeploymentUrl" AS "origin"
+      FROM latest_runs
+      ORDER BY "origin"
+    `,
+    postProcess: (rows: DeployedDomainQueryRow[]) => rows.map((row) => {
+      if (typeof row.origin !== "string") {
+        throwErr("Expected deployment-domain query to return string origins.");
+      }
+      return row.origin;
+    }),
+  };
 }
 
 export async function getTenancy(tenancyId: string) {
@@ -130,8 +175,21 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
         branchId,
         organizationId,
       }),
+      getDeployedDomainsQuery(Prisma.sql`
+        "tenancyId" IN (
+          SELECT "id"
+          FROM "Tenancy"
+          WHERE "projectId" = ${projectId}
+            AND "branchId" = ${branchId}
+            AND ${
+              organizationId === null
+                ? Prisma.sql`"hasNoOrganization" = 'TRUE'`
+                : Prisma.sql`"organizationId" = ${organizationId}`
+            }
+        )
+      `),
     ] as const),
-    async ([tenancyResultPromise, projectResultPromise, configPromise]) => {
+    async ([tenancyResultPromise, projectResultPromise, configPromise, deployedDomains]) => {
       const tenancyResult = await tenancyResultPromise;
 
       if (!tenancyResult) return null;
@@ -162,6 +220,7 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
       return {
         id: tenancyResult.id,
         config,
+        deployedDomains,
         branchId: tenancyResult.branchId,
         organization: tenancyResult.organizationId === null ? null : {
           // TODO actual organization type
