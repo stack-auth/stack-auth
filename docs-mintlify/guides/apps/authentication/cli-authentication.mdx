@@ -36,12 +36,12 @@ if refresh_token is None:
 # you can also store the refresh token in a file, and only prompt the user to log in if the file doesn't exist
 
 # you can now use the REST API with the refresh token
-def stack_auth_request(method, endpoint, **kwargs):
+def hexclave_request(method, endpoint, **kwargs):
   # ... see the REST API overview for required Hexclave headers
   # https://docs.hexclave.com/api/overview
 
 def get_access_token(refresh_token):
-  access_token_response = stack_auth_request(
+  access_token_response = hexclave_request(
     'post',
     '/api/v1/auth/sessions/current/refresh',
     headers={
@@ -52,7 +52,7 @@ def get_access_token(refresh_token):
   return access_token_response['access_token']
 
 def get_user_object(access_token):
-  return stack_auth_request(
+  return hexclave_request(
     'get',
     '/api/v1/users/me',
     headers={

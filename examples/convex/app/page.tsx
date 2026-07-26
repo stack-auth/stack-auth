@@ -109,7 +109,7 @@ function Content() {
         <Link href="/action" className="underline hover:no-underline">
           /action route
         </Link>{" "}
-        for an example of using a convex action to update user data in stack auth
+        for an example of using a convex action to update user data in Hexclave
       </p>
       <div className="flex flex-col">
         <p className="text-lg font-bold">Useful resources:</p>
