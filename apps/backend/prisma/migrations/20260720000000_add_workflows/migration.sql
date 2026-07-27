@@ -110,6 +110,8 @@ CREATE TABLE "WorkflowEvent" (
     "payload" JSONB NOT NULL,
     "scheduledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "processedAt" TIMESTAMP(3),
+    "processingAttempts" INTEGER NOT NULL DEFAULT 0,
+    "retryAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "WorkflowEvent_pkey" PRIMARY KEY ("tenancyId","id")
@@ -143,7 +145,10 @@ CREATE INDEX "WorkflowRun_version_idx" ON "WorkflowRun"("tenancyId", "workflowId
 CREATE UNIQUE INDEX "WorkflowRun_active_run_key" ON "WorkflowRun"("tenancyId", "workflowId", "runKey", "isActive");
 
 -- CreateIndex
-CREATE INDEX "WorkflowEvent_outbox_idx" ON "WorkflowEvent"("processedAt", "scheduledAt");
+-- Outbox scan: unprocessed events, skipping those still in retry backoff, in
+-- scheduledAt order. processedAt leads so the scan stays cheap as processed
+-- events accumulate (IS NULL rows are contiguous in the index).
+CREATE INDEX "WorkflowEvent_outbox_idx" ON "WorkflowEvent"("processedAt", "retryAt", "scheduledAt");
 
 -- CreateIndex
 CREATE INDEX "WorkflowEvent_tenancy_created_idx" ON "WorkflowEvent"("tenancyId", "createdAt");
