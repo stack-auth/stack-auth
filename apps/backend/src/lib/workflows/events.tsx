@@ -121,16 +121,32 @@ export async function enqueueWorkflowLifecycleEvent(client: PrismaClientTransact
   type: WorkflowLifecycleEventType,
   run: WorkflowRunForLifecycleEvent,
 }): Promise<void> {
-  await enqueueWorkflowEvent(client, {
+  await enqueueWorkflowLifecycleEvents(client, {
     tenancy: options.tenancy,
     type: options.type,
-    eventId: deterministicWorkflowUuid(`lifecycle:${options.run.id}:${options.type}`),
-    payload: {
-      workflow_id: options.run.workflowId,
-      run_id: options.run.id,
-      run_key: options.run.runKey,
-      version: options.run.version,
-      trigger_type: options.run.triggerType,
-    },
+    runs: [options.run],
+  });
+}
+
+export async function enqueueWorkflowLifecycleEvents(client: PrismaClientTransaction, options: {
+  tenancy: { id: string, project: { id: string } },
+  type: WorkflowLifecycleEventType,
+  runs: WorkflowRunForLifecycleEvent[],
+}): Promise<void> {
+  if (options.runs.length === 0 || !areWorkflowsEnabled(options.tenancy.project.id)) return;
+  await client.workflowEvent.createMany({
+    data: options.runs.map((run) => ({
+      tenancyId: options.tenancy.id,
+      id: deterministicWorkflowUuid(`lifecycle:${run.id}:${options.type}`),
+      type: options.type,
+      payload: {
+        workflow_id: run.workflowId,
+        run_id: run.id,
+        run_key: run.runKey,
+        version: run.version,
+        trigger_type: run.triggerType,
+      },
+    })),
+    skipDuplicates: true,
   });
 }

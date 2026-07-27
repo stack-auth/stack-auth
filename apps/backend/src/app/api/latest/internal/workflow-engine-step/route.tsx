@@ -1,4 +1,4 @@
-import { runWorkflowEngineStep } from "@/lib/workflows/engine";
+import { runWorkflowEngineStep, WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS } from "@/lib/workflows/engine";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -13,11 +13,13 @@ export const fetchCache = "force-no-store";
 export const maxDuration = 800;
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
-// Stop starting new work well before maxDuration so an in-flight invocation
-// (up to 10min step cap + slack) can still finish inside the function budget
-// in the worst case. Ticks fire every minute, so leftover work never waits
-// long.
-const HARD_DEADLINE_MS = 780 * 1000;
+const FUNCTION_BUDGET_MS = maxDuration * 1000;
+const FUNCTION_SHUTDOWN_SLACK_MS = 20 * 1000;
+// This is a latest-start budget, not a latest-finish budget. A workflow
+// invocation started at the boundary may consume the full 10-minute step
+// timeout plus its engine backstop, so reserve that time inside Vercel's
+// function duration.
+const HARD_DEADLINE_MS = FUNCTION_BUDGET_MS - WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS - FUNCTION_SHUTDOWN_SLACK_MS;
 
 export const GET = createSmartRouteHandler({
   metadata: {

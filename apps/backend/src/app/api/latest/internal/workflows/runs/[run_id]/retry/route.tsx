@@ -14,7 +14,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      run_id: yupString().defined(),
+      run_id: yupString().uuid().defined(),
     }).defined(),
     body: yupMixed(),
   }),
@@ -27,9 +27,6 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     ensureWorkflowsEnabled(tenancy.project.id);
-    if (!/^[0-9a-f-]{36}$/.test(params.run_id)) {
-      throw new StatusError(404, "Workflow run not found");
-    }
     const retried = await retryFailedWorkflowRun(tenancy, params.run_id);
     if (!retried) {
       throw new StatusError(400, "This run cannot be retried: only failed runs can be retried, and only while no newer active run holds the same run key");

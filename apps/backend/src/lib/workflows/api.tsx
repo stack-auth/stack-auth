@@ -32,6 +32,28 @@ export function validateWorkflowId(workflowId: string): void {
   }
 }
 
+function getStoredScheduleKeys(manifest: Prisma.JsonValue): string[] {
+  if (manifest == null || typeof manifest !== "object" || Array.isArray(manifest)) {
+    return throwErr("Stored workflow manifest must be an object");
+  }
+  const triggers = manifest.triggers;
+  if (!Array.isArray(triggers)) {
+    return throwErr("Stored workflow manifest must contain a triggers array");
+  }
+  const scheduleKeys: string[] = [];
+  for (const trigger of triggers) {
+    if (trigger == null || typeof trigger !== "object" || Array.isArray(trigger)) {
+      return throwErr("Stored workflow trigger must be an object");
+    }
+    if (trigger.type !== "schedule") continue;
+    if (typeof trigger.cron !== "string" || typeof trigger.timezone !== "string") {
+      return throwErr("Stored workflow schedule trigger must contain cron and timezone strings");
+    }
+    scheduleKeys.push(`${trigger.cron}|${trigger.timezone}`);
+  }
+  return scheduleKeys;
+}
+
 // ─── Sync (create + save source; every save of changed source mints a version) ───
 
 export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId: string, source: string, displayName?: string, mustBeNew: boolean }): Promise<WorkflowSyncResultJson> {
@@ -54,10 +76,12 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
     throw new StatusError(400, compiled.error);
   }
 
+  let previousScheduleKeys: string[] = [];
   if (existing != null) {
     const latestVersion = await globalPrismaClient.workflowVersion.findUnique({
       where: { tenancyId_workflowId_version: { tenancyId: tenancy.id, workflowId: options.workflowId, version: existing.latestVersion } },
     }) ?? throwErr("WorkflowDefinition.latestVersion points at a missing version row");
+    previousScheduleKeys = getStoredScheduleKeys(latestVersion.manifest);
     if (latestVersion.sourceHash === compiled.data.sourceHash) {
       // Unchanged source (and runtime env): no version minted.
       return {
@@ -70,6 +94,11 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
   }
 
   const newVersionNumber = (existing?.latestVersion ?? 0) + 1;
+  const deployedAt = new Date();
+  const scheduleKeys = compiled.data.manifest.triggers
+    .filter((trigger) => trigger.type === "schedule")
+    .map((trigger) => `${trigger.cron}|${trigger.timezone}`);
+  const newlyActivatedScheduleKeys = scheduleKeys.filter((scheduleKey) => !previousScheduleKeys.includes(scheduleKey));
   try {
     await retryTransaction(globalPrismaClient, async (tx) => {
       await tx.workflowVersion.create({
@@ -97,6 +126,42 @@ export async function syncWorkflowSource(tenancy: Tenancy, options: { workflowId
           ...(options.displayName != null ? { displayName: options.displayName } : {}),
         },
       });
+      // A cursor starts when its schedule is deployed, not when an engine
+      // happens to see it. This preserves occurrences between deployment and
+      // the first tick. Removed/edited schedules lose their old cursor so
+      // re-adding one cannot backfill the interval in which it was inactive.
+      if (scheduleKeys.length === 0) {
+        await tx.workflowScheduleCursor.deleteMany({
+          where: { tenancyId: tenancy.id, workflowId: options.workflowId },
+        });
+      } else {
+        await tx.workflowScheduleCursor.deleteMany({
+          where: {
+            tenancyId: tenancy.id,
+            workflowId: options.workflowId,
+            scheduleKey: { notIn: scheduleKeys },
+          },
+        });
+        // Reset re-activated keys even if an obsolete pre-fix cursor was
+        // left behind from an earlier deployment that removed the schedule.
+        await tx.workflowScheduleCursor.updateMany({
+          where: {
+            tenancyId: tenancy.id,
+            workflowId: options.workflowId,
+            scheduleKey: { in: newlyActivatedScheduleKeys },
+          },
+          data: { lastMaterializedAt: deployedAt },
+        });
+        await tx.workflowScheduleCursor.createMany({
+          data: scheduleKeys.map((scheduleKey) => ({
+            tenancyId: tenancy.id,
+            workflowId: options.workflowId,
+            scheduleKey,
+            lastMaterializedAt: deployedAt,
+          })),
+          skipDuplicates: true,
+        });
+      }
     });
   } catch (error) {
     // Unique violation on the version pkey = a concurrent save raced us.
@@ -213,30 +278,28 @@ export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Prom
     throw new StatusError(404, `Workflow "${workflowId}" not found`);
   }
 
-  const activeRuns = await globalPrismaClient.workflowRun.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      workflowId,
-      state: { in: ["QUEUED", "RUNNING", "SLEEPING"] },
-    },
-    select: { id: true },
-  });
-
   await retryTransaction(globalPrismaClient, async (tx) => {
     // Remove the definition first so subsequent engine ticks stop matching
     // new events while the historical rows are being removed.
     await tx.workflowDefinition.delete({
       where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
     });
-    await tx.apiKeySet.deleteMany({
-      where: {
-        projectId: tenancy.project.id,
-        description: { in: activeRuns.map((run) => `workflow-run:${run.id}`) },
-      },
+    const runs = await tx.workflowRun.findMany({
+      where: { tenancyId: tenancy.id, workflowId },
+      select: { id: true },
     });
     await tx.workflowScheduleCursor.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
     // Step results and attempts cascade from WorkflowRun.
     await tx.workflowRun.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
+    // Deleting the run rows waits for any credential-minting row locks. Key
+    // revocation afterward therefore includes credentials from claims that
+    // were already in flight when deletion began.
+    await tx.apiKeySet.deleteMany({
+      where: {
+        projectId: tenancy.project.id,
+        description: { in: runs.map((run) => `workflow-run:${run.id}`) },
+      },
+    });
     await tx.workflowVersion.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
   });
 }

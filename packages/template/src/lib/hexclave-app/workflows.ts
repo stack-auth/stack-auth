@@ -94,6 +94,7 @@ export type AdminWorkflowRunDetails = AdminWorkflowRun & {
 export type AdminWorkflowVersion = {
   workflowId: string,
   version: number,
+  sourceHash: string,
   source: string,
   runtimeEnvVersion: string,
   isLatest: boolean,
@@ -124,6 +125,8 @@ export type AdminWorkflowRunsFilter = {
   runKey?: string,
   cursor?: string,
   limit?: number,
+  /** Include each run's memoized steps and attempt history. */
+  includeState?: boolean,
 };
 
 export function adminWorkflowFromCrud(crud: WorkflowSummaryJson): AdminWorkflow {
@@ -177,6 +180,14 @@ export function adminWorkflowRunFromCrud(crud: WorkflowRunJson): AdminWorkflowRu
   };
 }
 
+export function isWorkflowRunDetailsJson(crud: WorkflowRunJson): crud is WorkflowRunDetailsJson {
+  return "trigger_payload" in crud
+    && "steps" in crud
+    && Array.isArray(crud.steps)
+    && "step_attempts" in crud
+    && Array.isArray(crud.step_attempts);
+}
+
 export function adminWorkflowRunDetailsFromCrud(crud: WorkflowRunDetailsJson): AdminWorkflowRunDetails {
   return {
     ...adminWorkflowRunFromCrud(crud),
@@ -211,6 +222,7 @@ export function adminWorkflowVersionFromCrud(crud: WorkflowVersionJson): AdminWo
   return {
     workflowId: crud.workflow_id,
     version: crud.version,
+    sourceHash: crud.source_hash,
     source: crud.source,
     runtimeEnvVersion: crud.runtime_env_version,
     isLatest: crud.is_latest,

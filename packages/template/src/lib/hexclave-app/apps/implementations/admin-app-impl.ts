@@ -22,7 +22,7 @@ import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectP
 import type { PlanUsage } from "../../plan-usage";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-import { AdminWorkflow, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowRunsFilter, AdminWorkflowSyncResult, AdminWorkflowUpgradeResult, AdminWorkflowVersion, adminWorkflowFromCrud, adminWorkflowRunDetailsFromCrud, adminWorkflowRunFromCrud, adminWorkflowSyncResultFromCrud, adminWorkflowVersionFromCrud } from "../../workflows";
+import { AdminWorkflow, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowRunsFilter, AdminWorkflowSyncResult, AdminWorkflowUpgradeResult, AdminWorkflowVersion, adminWorkflowFromCrud, adminWorkflowRunDetailsFromCrud, adminWorkflowRunFromCrud, adminWorkflowSyncResultFromCrud, adminWorkflowVersionFromCrud, isWorkflowRunDetailsJson } from "../../workflows";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { _HexclaveServerAppImplIncomplete } from "./server-app-impl";
@@ -583,7 +583,27 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return (await this._interface.listWorkflowVersions(workflowId)).map(adminWorkflowVersionFromCrud);
   }
 
+  async listWorkflowRuns(workflowId: string, filter: AdminWorkflowRunsFilter & { includeState: true }): Promise<{ runs: AdminWorkflowRunDetails[], nextCursor: string | null }>;
+  async listWorkflowRuns(workflowId: string, filter?: AdminWorkflowRunsFilter): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }>;
   async listWorkflowRuns(workflowId: string, filter: AdminWorkflowRunsFilter = {}): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }> {
+    if (filter.includeState === true) {
+      const result = await this._interface.listWorkflowRuns(workflowId, {
+        state: filter.state,
+        version: filter.version,
+        run_key: filter.runKey,
+        cursor: filter.cursor,
+        limit: filter.limit,
+        include_state: true,
+      });
+      return {
+        runs: result.runs.map((run) => adminWorkflowRunDetailsFromCrud(
+          isWorkflowRunDetailsJson(run)
+            ? run
+            : throwErr("Workflow runs response omitted state after include_state=true"),
+        )),
+        nextCursor: result.next_cursor,
+      };
+    }
     const result = await this._interface.listWorkflowRuns(workflowId, {
       state: filter.state,
       version: filter.version,
@@ -638,6 +658,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async retryWorkflowRun(runId: string): Promise<void> {
     await this._interface.retryWorkflowRun(runId);
+    await this._adminWorkflowsCache.refresh([]);
   }
 
   async sendWorkflowEvent(name: string, data?: unknown): Promise<{ eventId: string }> {

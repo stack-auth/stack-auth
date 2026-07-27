@@ -9,6 +9,12 @@ import { Freestyle as FreestyleClient } from 'freestyle';
 export type ExecuteJavascriptOptions = {
   nodeModules?: Record<string, string>,
   /**
+   * Maximum time the caller allows the execution provider to remain alive.
+   * Vercel Sandbox enforces this as a whole-sandbox lifetime, so callers
+   * running long-lived code must set it explicitly.
+   */
+  executionTimeoutMs?: number,
+  /**
    * Skip the random cross-engine sanity comparison for this invocation.
    * REQUIRED for side-effectful code (e.g. workflow step execution): the
    * sanity test runs the code on BOTH engines, which would double-fire its
@@ -78,7 +84,7 @@ function createVercelSandboxEngine(): JsEngine {
 
       const sandbox = await Sandbox.create({
         resources: { vcpus: 2 },
-        timeout: 30000,
+        timeout: options.executionTimeoutMs ?? 30_000,
         runtime: 'node24' as const,
         teamId: teamId || undefined,
         projectId: projectId || undefined,

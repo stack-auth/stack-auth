@@ -146,7 +146,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updateWorkflowSource(workflowId: string, source: string): Promise<AdminWorkflowSyncResult>,
     deleteWorkflow(workflowId: string): Promise<void>,
     listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]>,
-    listWorkflowRuns(workflowId: string, filter?: AdminWorkflowRunsFilter): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }>,
+    listWorkflowRuns: {
+      (workflowId: string, filter: AdminWorkflowRunsFilter & { includeState: true }): Promise<{ runs: AdminWorkflowRunDetails[], nextCursor: string | null }>,
+      (workflowId: string, filter?: AdminWorkflowRunsFilter): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }>,
+    },
     getWorkflowRun(runId: string): Promise<AdminWorkflowRunDetails>,
     cancelWorkflowRuns(workflowId: string, filter?: { runKey?: string, runId?: string, state?: "queued" | "running" | "sleeping", version?: number }): Promise<{ canceledCount: number }>,
     upgradeWorkflowRuns(workflowId: string, options: { toVersion: number, runKey?: string, fromVersion?: number }): Promise<AdminWorkflowUpgradeResult>,

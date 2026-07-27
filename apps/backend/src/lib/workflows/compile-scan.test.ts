@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compileWorkflowBundle, getUsedStdlibPackages, scanWorkflowImports, validateWorkflowSource } from "./compile";
+import { compileWorkflowBundle, getUsedStdlibPackages, scanWorkflowImports, validateWorkflowManifest, validateWorkflowSource } from "./compile";
 import { getWorkflowsRuntimeEnv, WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION } from "./runtime-env";
 import { WORKFLOWS_RUNTIME_PACKAGE_SOURCE } from "./runtime-source";
 
@@ -55,6 +55,36 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
     expect(result.status).toBe("error");
   });
 
+  test("rejects minified static imports and re-exports without whitespace", () => {
+    for (const source of [
+      `import{readFileSync}from"node:fs";export default 1;`,
+      `export{readFileSync}from"node:fs";`,
+    ]) {
+      const result = validateWorkflowSource(source);
+      expect(result.status).toBe("error");
+      if (result.status === "error") expect(result.error).toContain('"node:fs"');
+    }
+  });
+
+  test("enforces the allowlist through esbuild module resolution", async () => {
+    // The quote is inside a comment and deliberately confuses the
+    // best-effort source scanner; esbuild still parses and canonicalizes it.
+    const result = await compileWorkflowBundle(`import/*"*/{HexclaveAdminApp}from"@hexclave/js";export default HexclaveAdminApp;`);
+    expect(result.status).toBe("error");
+    if (result.status === "error") expect(result.error).toContain("@hexclave/js");
+  });
+
+  test("rejects attempts to import or embed the trusted runtime module marker", async () => {
+    for (const source of [
+      `if (false) {} import/*"*/{ HexclaveAdminApp }from"@hexclave/workflows-internal-admin-runtime"; export default HexclaveAdminApp;`,
+      `export default "@hexclave/workflows-internal-admin-runtime";`,
+    ]) {
+      const result = await compileWorkflowBundle(source);
+      expect(result.status).toBe("error");
+      if (result.status === "error") expect(result.error).toContain("reserved internal module marker");
+    }
+  });
+
   test("rejects non-literal module loading that could bypass the import allowlist", () => {
     for (const source of [
       `const moduleName = "node:fs"; await import(moduleName);`,
@@ -106,5 +136,19 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
   test("constructs the inert manifest AdminApp with the reserved internal project ID", () => {
     expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).toContain('projectId: appCredentials?.projectId ?? "internal"');
     expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).not.toContain('projectId: appCredentials?.projectId ?? "workflow-manifest"');
+  });
+});
+
+describe("validateWorkflowManifest", () => {
+  test("rejects custom triggers the event sender can never emit", () => {
+    for (const eventType of ["custom.contains whitespace", `custom.${"x".repeat(201)}`]) {
+      const result = validateWorkflowManifest({
+        workflowId: "invalid-trigger",
+        triggers: [{ type: "event", eventType }],
+        hasRunKey: false,
+        onConflict: "skip",
+      }, "invalid-trigger");
+      expect(result.status).toBe("error");
+    }
   });
 });

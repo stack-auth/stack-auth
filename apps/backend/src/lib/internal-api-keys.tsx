@@ -1,7 +1,7 @@
 // TODO remove and replace with CRUD handler
 
 import { ApiKeySet, Prisma } from '@/generated/prisma/client';
-import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
+import { RawQuery, globalPrismaClient, rawQuery, type PrismaClientTransaction } from '@/prisma-client';
 import { InternalApiKeysCrud } from '@hexclave/shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@hexclave/shared/dist/schema-fields';
 import { typedIncludes } from '@hexclave/shared/dist/utils/arrays';
@@ -154,8 +154,8 @@ export const createApiKeySet = async (data: {
   has_publishable_client_key: boolean,
   has_secret_server_key: boolean,
   has_super_secret_admin_key: boolean,
-}) => {
-  const set = await globalPrismaClient.apiKeySet.create({
+}, client: PrismaClientTransaction = globalPrismaClient) => {
+  const set = await client.apiKeySet.create({
     data: {
       id: generateUuid(),
       projectId: data.projectId,

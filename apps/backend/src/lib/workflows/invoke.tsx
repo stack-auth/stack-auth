@@ -43,6 +43,10 @@ export async function invokeWorkflowSandbox(options: {
       executeResult = await Promise.race([
         executeJavascript(code, {
           nodeModules: options.nodeModules,
+          // Keep the provider sandbox alive slightly longer than our own
+          // backstop. Its lifetime also includes setup and package install,
+          // while the engine timer remains the authoritative cutoff.
+          executionTimeoutMs: options.timeoutMs + 30_000,
           // Step execution is side-effectful; running it twice for a
           // cross-engine comparison would double-fire the effects.
           disableSanityTest: true,

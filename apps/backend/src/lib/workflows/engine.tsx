@@ -1,18 +1,20 @@
 import { Prisma } from "@/generated/prisma/client";
 import { createApiKeySet } from "@/lib/internal-api-keys";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import {
   WORKFLOW_RUN_MEMO_MAX_BYTES,
   WORKFLOW_SCHEDULE_TRIGGER_TYPE,
   WORKFLOW_STEP_MAX_ATTEMPTS,
   WORKFLOW_STEP_RETRY_BACKOFF_MS,
   type WorkflowDivergenceDiagnosticJson,
+  type WorkflowLifecycleEventType,
   type WorkflowManifestJson,
 } from "@hexclave/shared/dist/interface/workflows";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { deterministicWorkflowUuid, enqueueWorkflowEvent, enqueueWorkflowLifecycleEvent } from "./events";
+import { deterministicWorkflowUuid, enqueueWorkflowEvent, enqueueWorkflowLifecycleEvent, enqueueWorkflowLifecycleEvents, type WorkflowRunForLifecycleEvent } from "./events";
+import { workflowDefinitionMatchesEvent, workflowEventRetryDelayMs } from "./event-processing";
 import { areWorkflowsEnabled } from "./gate";
 import { invokeWorkflowSandbox } from "./invoke";
 import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from "./cron";
@@ -54,7 +56,7 @@ const PER_WORKFLOW_CONCURRENCY = 10;
 const RUN_LEASE_MS = 12 * 60 * 1000;
 // See the credential-minting comment in executeClaimedRun.
 const WORKFLOW_RUN_CREDENTIAL_TTL_MS = 35 * 60 * 1000;
-const INVOCATION_BACKSTOP_TIMEOUT_MS = WORKFLOWS_DEFAULT_LIMITS.maxStepTimeoutMs + 30 * 1000;
+export const WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS = WORKFLOWS_DEFAULT_LIMITS.maxStepTimeoutMs + 30 * 1000;
 // How many steps a single claim may chain before handing the run back to
 // the queue, so a hot run cannot starve others for a whole tick.
 const MAX_CHAINED_STEPS_PER_CLAIM = 50;
@@ -134,12 +136,17 @@ function getStdlibNodeModules(versionRow: VersionRow): Record<string, string> {
   };
 }
 
-async function getEnabledTenancy(tenancyId: string, tenancyCache: Map<string, Tenancy | null>): Promise<Tenancy | null> {
+async function getCachedTenancy(tenancyId: string, tenancyCache: Map<string, Tenancy | null>): Promise<Tenancy | null> {
   let tenancy = tenancyCache.get(tenancyId);
   if (tenancy === undefined) {
     tenancy = await getTenancy(tenancyId);
     tenancyCache.set(tenancyId, tenancy);
   }
+  return tenancy;
+}
+
+async function getEnabledTenancy(tenancyId: string, tenancyCache: Map<string, Tenancy | null>): Promise<Tenancy | null> {
+  const tenancy = await getCachedTenancy(tenancyId, tenancyCache);
   if (tenancy == null) return null;
   // The rollout gate, enforced at dispatch: disabled projects must not
   // execute anything even if rows somehow exist for them.
@@ -154,21 +161,51 @@ type ScheduledDefinitionRow = {
   workflowId: string,
   latestVersion: number,
   manifest: WorkflowManifestJson,
+  deployedAt: Date,
 };
 
 async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>): Promise<boolean> {
-  const definitions = await globalPrismaClient.$replica().$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
-    SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest"
-    FROM "WorkflowDefinition" d
-    JOIN "WorkflowVersion" v
-      ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
-    WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
-  `);
+  const definitions = await retryTransaction(globalPrismaClient, async (tx) => {
+    return await tx.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
+      SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
+      FROM "WorkflowDefinition" d
+      JOIN "WorkflowVersion" v
+        ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
+      WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
+    `);
+  });
 
   let didWork = false;
   for (const definition of definitions) {
-    const tenancy = await getEnabledTenancy(definition.tenancyId, tenancyCache);
+    const tenancy = await getCachedTenancy(definition.tenancyId, tenancyCache);
     if (tenancy == null) continue;
+    const now = new Date();
+    const scheduleKeys = definition.manifest.triggers
+      .filter((trigger) => trigger.type === "schedule")
+      .map((trigger) => `${trigger.cron}|${trigger.timezone}`);
+
+    if (!areWorkflowsEnabled(tenancy.project.id)) {
+      // Disabled time is intentionally not catch-up time. Advance every
+      // active schedule to now so re-enabling starts from that point.
+      await globalPrismaClient.workflowScheduleCursor.createMany({
+        data: scheduleKeys.map((scheduleKey) => ({
+          tenancyId: definition.tenancyId,
+          workflowId: definition.workflowId,
+          scheduleKey,
+          lastMaterializedAt: now,
+        })),
+        skipDuplicates: true,
+      });
+      await globalPrismaClient.workflowScheduleCursor.updateMany({
+        where: {
+          tenancyId: definition.tenancyId,
+          workflowId: definition.workflowId,
+          scheduleKey: { in: scheduleKeys },
+        },
+        data: { lastMaterializedAt: now },
+      });
+      continue;
+    }
 
     for (const trigger of definition.manifest.triggers) {
       if (trigger.type !== "schedule") continue;
@@ -180,20 +217,20 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
         continue;
       }
 
-      const now = new Date();
       let cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
         where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
       });
       if (cursor == null) {
-        // First sighting of this schedule: start the cursor now. There is no
-        // retroactive materialization of occurrences from before the
-        // schedule existed (or from before an edit — a changed cron/timezone
-        // is a new scheduleKey and therefore a fresh cursor).
+        // Compatibility/self-healing path for schedules deployed before
+        // cursor-at-sync existed: begin at deployment time so the first
+        // occurrence is not silently lost.
         await globalPrismaClient.workflowScheduleCursor.createMany({
-          data: [{ tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey, lastMaterializedAt: now }],
+          data: [{ tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey, lastMaterializedAt: definition.deployedAt }],
           skipDuplicates: true,
         });
-        continue;
+        cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
+          where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
+        }) ?? throwErr("Workflow schedule cursor disappeared immediately after creation");
       }
 
       const windowStart = new Date(Math.max(cursor.lastMaterializedAt.getTime(), now.getTime() - MAX_CATCHUP_WINDOW_MS));
@@ -243,6 +280,7 @@ type WorkflowEventRow = {
   type: string,
   payload: unknown,
   scheduledAt: Date,
+  processingAttempts: number,
 };
 
 type DefinitionWithManifest = {
@@ -254,25 +292,19 @@ type DefinitionWithManifest = {
 async function listDefinitionsForTenancy(tenancyId: string, cache: Map<string, DefinitionWithManifest[]>): Promise<DefinitionWithManifest[]> {
   const cached = cache.get(tenancyId);
   if (cached != null) return cached;
-  const rows = await globalPrismaClient.$replica().$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
-    SELECT d."workflowId", d."latestVersion", v."manifest"
-    FROM "WorkflowDefinition" d
-    JOIN "WorkflowVersion" v
-      ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
-    WHERE d."tenancyId" = ${tenancyId}::uuid
-  `);
+  // This read controls the irreversible processedAt decision below, so it
+  // must observe the primary rather than a potentially stale replica.
+  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+    return await tx.$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
+      SELECT d."workflowId", d."latestVersion", v."manifest"
+      FROM "WorkflowDefinition" d
+      JOIN "WorkflowVersion" v
+        ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
+      WHERE d."tenancyId" = ${tenancyId}::uuid
+    `);
+  });
   cache.set(tenancyId, rows);
   return rows;
-}
-
-function definitionMatchesEvent(definition: DefinitionWithManifest, event: WorkflowEventRow): boolean {
-  if (event.type === WORKFLOW_SCHEDULE_TRIGGER_TYPE) {
-    // Schedule occurrences are addressed to their owning workflow — they
-    // must never fan out by type.
-    const payload = event.payload as { workflow_id?: string } | null;
-    return payload?.workflow_id === definition.workflowId && definition.manifest.triggers.some((t) => t.type === "schedule");
-  }
-  return definition.manifest.triggers.some((t) => t.type === "event" && t.event_type === event.type);
 }
 
 function eventToSandboxEvent(event: WorkflowEventRow): WorkflowSandboxEvent {
@@ -284,20 +316,72 @@ function eventToSandboxEvent(event: WorkflowEventRow): WorkflowSandboxEvent {
   };
 }
 
+function lifecycleEventTypeForRunState(state: "QUEUED" | "RUNNING" | "SLEEPING" | "COMPLETED" | "FAILED" | "CANCELED"): WorkflowLifecycleEventType {
+  switch (state) {
+    case "QUEUED":
+    case "RUNNING":
+    case "SLEEPING": {
+      return "workflow.run.started";
+    }
+    case "COMPLETED": {
+      return "workflow.run.completed";
+    }
+    case "FAILED": {
+      return "workflow.run.failed";
+    }
+    case "CANCELED": {
+      return "workflow.run.canceled";
+    }
+  }
+}
+
+async function createFailedRunWithLifecycleEvent(options: {
+  tenancy: Tenancy,
+  runId: string,
+  workflowId: string,
+  version: number,
+  runKey: string | null,
+  event: WorkflowEventRow,
+  triggerPayload: { ts_millis: number, data: unknown },
+  errorSummary: string,
+}): Promise<void> {
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "failureKind", "errorSummary", "completedAt", "updatedAt")
+      VALUES (${options.tenancy.id}::uuid, ${options.runId}::uuid, ${options.workflowId}, ${options.version}, ${options.runKey}, 'FAILED', ${options.event.id}::uuid, ${options.event.type}, ${JSON.stringify(options.triggerPayload)}::jsonb, 'USER', ${options.errorSummary}, NOW(), NOW())
+      ON CONFLICT ("tenancyId", "id") DO NOTHING
+    `);
+    const durableRun = await tx.workflowRun.findUnique({
+      where: { tenancyId_id: { tenancyId: options.tenancy.id, id: options.runId } },
+      select: { id: true, workflowId: true, runKey: true, version: true, state: true, triggerType: true },
+    }) ?? throwErr("Workflow run disappeared immediately after deterministic creation");
+    await enqueueWorkflowLifecycleEvent(tx, {
+      tenancy: options.tenancy,
+      type: lifecycleEventTypeForRunState(durableRun.state),
+      run: durableRun,
+    });
+  });
+}
+
 async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, definition: DefinitionWithManifest): Promise<void> {
   // Deterministic per (event, workflow): reprocessing after a crash (or a
   // concurrently overlapping tick) can never create a duplicate run.
   const runId = deterministicWorkflowUuid(`run:${tenancy.id}:${event.id}:${definition.workflowId}`);
   const existing = await globalPrismaClient.workflowRun.findUnique({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: runId } },
-    select: { id: true, runKey: true, version: true },
+    select: { id: true, workflowId: true, runKey: true, version: true, state: true, triggerType: true },
   });
   if (existing != null) {
     // This event was (at least partially) processed before — likely a crash
-    // between the run insert and marking the event processed. The lifecycle
-    // started event has a deterministic id, so re-enqueueing heals the case
-    // where the crash also swallowed it, and no-ops otherwise.
-    await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.started", run: { id: runId, workflowId: definition.workflowId, runKey: existing.runKey, version: existing.version, triggerType: event.type } });
+    // between the run transaction and marking the event processed. Derive
+    // the deterministic lifecycle event from the durable state so an
+    // immediately failed creation is never mislabeled as "started".
+    const currentLifecycleType = lifecycleEventTypeForRunState(existing.state);
+    await enqueueWorkflowLifecycleEvent(globalPrismaClient, {
+      tenancy,
+      type: currentLifecycleType,
+      run: existing,
+    });
     return;
   }
 
@@ -331,12 +415,16 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
     if (outcome.type === "handler-failed") {
       // The user's runKey function threw: record a FAILED run so the error
       // is visible in run history (user-error channel), and move on.
-      await globalPrismaClient.$executeRaw(Prisma.sql`
-        INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "failureKind", "errorSummary", "completedAt", "updatedAt")
-        VALUES (${tenancy.id}::uuid, ${runId}::uuid, ${definition.workflowId}, ${versionRow.version}, NULL, 'FAILED', ${event.id}::uuid, ${event.type}, ${JSON.stringify(triggerPayload)}::jsonb, 'USER', ${`runKey function failed: ${outcome.error.name}: ${outcome.error.message}`}, NOW(), NOW())
-        ON CONFLICT ("tenancyId", "id") DO NOTHING
-      `);
-      await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: { id: runId, workflowId: definition.workflowId, runKey: null, version: versionRow.version, triggerType: event.type } });
+      await createFailedRunWithLifecycleEvent({
+        tenancy,
+        runId,
+        workflowId: definition.workflowId,
+        version: versionRow.version,
+        runKey: null,
+        event,
+        triggerPayload,
+        errorSummary: `runKey function failed: ${outcome.error.name}: ${outcome.error.message}`,
+      });
       return;
     }
     if (outcome.type !== "run-key") {
@@ -348,19 +436,27 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
   // The initial wakeAt is the event's scheduledAt (not "now") so that
   // schedule catch-up backlogs execute in ascending scheduledAt order — the
   // claim query orders by wakeAt.
-  const insertRun = async (): Promise<boolean> => {
-    const rows = await globalPrismaClient.$queryRaw<{ id: string }[]>(Prisma.sql`
-      INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "wakeAt", "updatedAt")
-      VALUES (${tenancy.id}::uuid, ${runId}::uuid, ${definition.workflowId}, ${versionRow.version}, ${runKey}, 'QUEUED', ${event.id}::uuid, ${event.type}, ${JSON.stringify(triggerPayload)}::jsonb, ${event.scheduledAt}, NOW())
-      ON CONFLICT ("tenancyId", "workflowId", "runKey", "isActive") DO NOTHING
-      RETURNING "id"
-    `);
-    return rows.length > 0;
+  const insertRunWithStartedEvent = async (): Promise<boolean> => {
+    return await retryTransaction(globalPrismaClient, async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+        INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "wakeAt", "updatedAt")
+        VALUES (${tenancy.id}::uuid, ${runId}::uuid, ${definition.workflowId}, ${versionRow.version}, ${runKey}, 'QUEUED', ${event.id}::uuid, ${event.type}, ${JSON.stringify(triggerPayload)}::jsonb, ${event.scheduledAt}, NOW())
+        ON CONFLICT ("tenancyId", "workflowId", "runKey", "isActive") DO NOTHING
+        RETURNING "id"
+      `);
+      if (rows.length === 0) return false;
+      await enqueueWorkflowLifecycleEvent(tx, {
+        tenancy,
+        type: "workflow.run.started",
+        run: { id: runId, workflowId: definition.workflowId, runKey, version: versionRow.version, triggerType: event.type },
+      });
+      return true;
+    });
   };
 
   let inserted: boolean;
   try {
-    inserted = await insertRun();
+    inserted = await insertRunWithStartedEvent();
   } catch (error) {
     // A concurrent worker created the same deterministic run id between our
     // existence check and the insert — that's the pkey conflict (the
@@ -389,12 +485,16 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
       case "error": {
         // Record the conflict as a FAILED run for auditability; terminal
         // runs have isActive NULL, so the key index does not object.
-        await globalPrismaClient.$executeRaw(Prisma.sql`
-          INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "failureKind", "errorSummary", "completedAt", "updatedAt")
-          VALUES (${tenancy.id}::uuid, ${runId}::uuid, ${definition.workflowId}, ${versionRow.version}, ${runKey}, 'FAILED', ${event.id}::uuid, ${event.type}, ${JSON.stringify(triggerPayload)}::jsonb, 'USER', ${`runKey conflict: an active run already exists for key ${JSON.stringify(runKey)} (onConflict: "error")`}, NOW(), NOW())
-          ON CONFLICT ("tenancyId", "id") DO NOTHING
-        `);
-        await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: { id: runId, workflowId: definition.workflowId, runKey, version: versionRow.version, triggerType: event.type } });
+        await createFailedRunWithLifecycleEvent({
+          tenancy,
+          runId,
+          workflowId: definition.workflowId,
+          version: versionRow.version,
+          runKey,
+          event,
+          triggerPayload,
+          errorSummary: `runKey conflict: an active run already exists for key ${JSON.stringify(runKey)} (onConflict: "error")`,
+        });
         return;
       }
       case "cancel-existing": {
@@ -406,7 +506,7 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
           await cancelWorkflowRuns(tenancy, { workflowId: definition.workflowId, runKey: runKey ?? throwErr("cancel-existing conflict with null runKey should be impossible (null keys never conflict)") });
           let retryInserted: boolean;
           try {
-            retryInserted = await insertRun();
+            retryInserted = await insertRunWithStartedEvent();
           } catch (error) {
             // Same pkey race as the first insert: a concurrent worker owns
             // this deterministic run id, so the event is already handled.
@@ -414,7 +514,6 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
             throw error;
           }
           if (retryInserted) {
-            await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.started", run: { id: runId, workflowId: definition.workflowId, runKey, version: versionRow.version, triggerType: event.type } });
             return;
           }
         }
@@ -423,46 +522,66 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
       }
     }
   }
-
-  await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.started", run: { id: runId, workflowId: definition.workflowId, runKey, version: versionRow.version, triggerType: event.type } });
 }
 
-async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>): Promise<boolean> {
+async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
   // No claim marker on purpose: events are only marked processed AFTER all
   // their runs exist, and run creation is idempotent (deterministic ids), so
   // crash-replays and overlapping ticks are safe — at-least-once with
   // no duplicate runs. The cost is occasional duplicate work under overlap.
-  const events = await globalPrismaClient.$replica().$queryRaw<WorkflowEventRow[]>(Prisma.sql`
-    SELECT "tenancyId", "id", "type", "payload", "scheduledAt"
-    FROM "WorkflowEvent"
-    WHERE "processedAt" IS NULL
-    ORDER BY "scheduledAt" ASC
-    LIMIT ${EVENT_BATCH_SIZE}
-  `);
+  const events: WorkflowEventRow[] = await globalPrismaClient.workflowEvent.findMany({
+    where: { processedAt: null, retryAt: { lte: new Date() } },
+    orderBy: { scheduledAt: "asc" },
+    take: EVENT_BATCH_SIZE,
+    select: {
+      tenancyId: true,
+      id: true,
+      type: true,
+      payload: true,
+      scheduledAt: true,
+      processingAttempts: true,
+    },
+  });
   if (events.length === 0) return false;
 
   const definitionCache = new Map<string, DefinitionWithManifest[]>();
   for (const event of events) {
+    if (Date.now() >= deadlineMs) break;
     try {
       const tenancy = await getEnabledTenancy(event.tenancyId, tenancyCache);
       if (tenancy != null) {
         const definitions = await listDefinitionsForTenancy(event.tenancyId, definitionCache);
+        let processedEveryDefinition = true;
         for (const definition of definitions) {
-          if (definitionMatchesEvent(definition, event)) {
+          if (workflowDefinitionMatchesEvent(definition.workflowId, definition.manifest, event)) {
+            // runKey derivation is itself a sandbox invocation. Leave the
+            // event unprocessed once the latest-start deadline arrives;
+            // deterministic run ids make replay safe for definitions that
+            // were already handled in this partial pass.
+            if (Date.now() >= deadlineMs) {
+              processedEveryDefinition = false;
+              break;
+            }
             await createRunForEvent(tenancy, event, definition);
           }
         }
+        if (!processedEveryDefinition) break;
       }
       await globalPrismaClient.workflowEvent.update({
         where: { tenancyId_id: { tenancyId: event.tenancyId, id: event.id } },
         data: { processedAt: new Date() },
       });
     } catch (error) {
-      // Leave the event unprocessed; a later tick retries it. Head-of-line
-      // events that fail forever keep being retried and reported — that's
-      // deliberate (platform bugs must be fixed, not skipped), and they
-      // don't block other events beyond shrinking the effective batch.
       captureError("workflow-event-processing", error);
+      const nextAttempt = event.processingAttempts + 1;
+      const retryDelayMs = workflowEventRetryDelayMs(nextAttempt);
+      await globalPrismaClient.workflowEvent.updateMany({
+        where: { tenancyId: event.tenancyId, id: event.id, processedAt: null },
+        data: {
+          processingAttempts: { increment: 1 },
+          retryAt: new Date(Date.now() + retryDelayMs),
+        },
+      });
     }
   }
   return true;
@@ -534,37 +653,8 @@ async function loadStepBag(tenancyId: string, runId: string): Promise<Record<str
   }]));
 }
 
-// Returns the byte size of the sleeps in the list. NOTE: crash-replays can
-// re-count a sleep whose row already exists (skipDuplicates makes the insert
-// a no-op but we still return its bytes) — the drift is tiny, bounded, and
-// errs toward hitting the memo cap EARLIER, so it is deliberately accepted.
-async function recordCompletedSleeps(tenancyId: string, runId: string, executedAtVersion: number, sleeps: { stepKey: string, stepId: string, untilMillis: number }[]): Promise<number> {
-  if (sleeps.length === 0) return 0;
-  let bytes = 0;
-  await globalPrismaClient.workflowStepResult.createMany({
-    data: sleeps.map((sleep) => {
-      const result = { until: new Date(sleep.untilMillis).toISOString() };
-      bytes += Buffer.byteLength(JSON.stringify(result), "utf8");
-      return {
-        tenancyId,
-        runId,
-        stepKey: sleep.stepKey,
-        stepId: sleep.stepId,
-        kind: "SLEEP" as const,
-        result,
-        resultSizeBytes: Buffer.byteLength(JSON.stringify(result), "utf8"),
-        attempts: 1,
-        executedAtVersion,
-      };
-    }),
-    // Crash-replays may re-record the same sleep; facts never change, so
-    // keeping the first insert is correct.
-    skipDuplicates: true,
-  });
-  return bytes;
-}
-
 async function recordStepAttempt(options: {
+  client?: PrismaClientTransaction,
   tenancyId: string,
   runId: string,
   stepKey: string,
@@ -578,7 +668,8 @@ async function recordStepAttempt(options: {
   logs: string | null,
   startedAt: Date,
 }): Promise<void> {
-  await globalPrismaClient.workflowStepAttempt.createMany({
+  const client = options.client ?? globalPrismaClient;
+  await client.workflowStepAttempt.createMany({
     data: [{
       tenancyId: options.tenancyId,
       runId: options.runId,
@@ -605,8 +696,8 @@ async function recordStepAttempt(options: {
  * lease expired mid-invocation cannot clobber the new claimant's state).
  * Returns whether the transition applied.
  */
-async function transitionRunFromRunning(tenancyId: string, runId: string, leaseToken: string, set: Prisma.Sql): Promise<boolean> {
-  const rows = await globalPrismaClient.$queryRaw<{ id: string }[]>(Prisma.sql`
+async function transitionRunFromRunningWithClient(client: PrismaClientTransaction, tenancyId: string, runId: string, leaseToken: string, set: Prisma.Sql): Promise<boolean> {
+  const rows = await client.$queryRaw<{ id: string }[]>(Prisma.sql`
     UPDATE "WorkflowRun"
     SET ${set}, "updatedAt" = NOW()
     WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${runId}::uuid AND "state" = 'RUNNING' AND "leaseToken" = ${leaseToken}::uuid
@@ -615,11 +706,132 @@ async function transitionRunFromRunning(tenancyId: string, runId: string, leaseT
   return rows.length > 0;
 }
 
+async function transitionRunFromRunning(tenancyId: string, runId: string, leaseToken: string, set: Prisma.Sql): Promise<boolean> {
+  return await transitionRunFromRunningWithClient(globalPrismaClient, tenancyId, runId, leaseToken, set);
+}
+
+/**
+ * Terminal state and its lifecycle outbox row are one durable fact. If they
+ * were separate commits, a worker crash after the state update would leave a
+ * terminal run that is never reclaimed and therefore can never heal its
+ * missing completed/failed event.
+ */
+async function transitionRunFromRunningWithLifecycleEvent(options: {
+  tenancy: Tenancy,
+  leaseToken: string,
+  set: Prisma.Sql,
+  type: WorkflowLifecycleEventType,
+  run: WorkflowRunForLifecycleEvent,
+}): Promise<boolean> {
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const transitioned = await transitionRunFromRunningWithClient(tx, options.tenancy.id, options.run.id, options.leaseToken, options.set);
+    if (!transitioned) return false;
+    await enqueueWorkflowLifecycleEvent(tx, {
+      tenancy: options.tenancy,
+      type: options.type,
+      run: options.run,
+    });
+    return true;
+  });
+}
+
+async function recordCompletedSleepsAtomically(options: {
+  tenancy: Tenancy,
+  run: ClaimedRunRow,
+  version: number,
+  sleeps: { stepKey: string, stepId: string, untilMillis: number }[],
+}): Promise<{ continued: boolean, memoTotalBytes: number }> {
+  if (options.sleeps.length === 0) {
+    return { continued: true, memoTotalBytes: options.run.memoTotalBytes };
+  }
+
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const uniqueSleeps = new Map(options.sleeps.map((sleep) => [sleep.stepKey, sleep]));
+    const existing = await tx.workflowStepResult.findMany({
+      where: {
+        tenancyId: options.run.tenancyId,
+        runId: options.run.id,
+        stepKey: { in: [...uniqueSleeps.keys()] },
+      },
+      select: { stepKey: true },
+    });
+    const existingKeys = new Set(existing.map((row) => row.stepKey));
+    const pendingRows: {
+      tenancyId: string,
+      runId: string,
+      stepKey: string,
+      stepId: string,
+      kind: "SLEEP",
+      result: { until: string },
+      resultSizeBytes: number,
+      attempts: number,
+      executedAtVersion: number,
+    }[] = [...uniqueSleeps.values()]
+      .filter((sleep) => !existingKeys.has(sleep.stepKey))
+      .map((sleep) => {
+        const result = { until: new Date(sleep.untilMillis).toISOString() };
+        const resultSizeBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+        return {
+          tenancyId: options.run.tenancyId,
+          runId: options.run.id,
+          stepKey: sleep.stepKey,
+          stepId: sleep.stepId,
+          kind: "SLEEP",
+          result,
+          resultSizeBytes,
+          attempts: 1,
+          executedAtVersion: options.version,
+        };
+      });
+    if (pendingRows.length === 0) {
+      return { continued: true, memoTotalBytes: options.run.memoTotalBytes };
+    }
+
+    const insertedBytes = pendingRows.reduce((sum, row) => sum + row.resultSizeBytes, 0);
+    const memoTotalBytes = options.run.memoTotalBytes + insertedBytes;
+    if (memoTotalBytes > WORKFLOW_RUN_MEMO_MAX_BYTES) {
+      const summary = `Total memoized state would reach ${memoTotalBytes} bytes, exceeding the ${WORKFLOW_RUN_MEMO_MAX_BYTES}-byte (4 MiB) per-run limit. Store large payloads externally and keep step results small.`;
+      const failed = await transitionRunFromRunningWithClient(tx, options.run.tenancyId, options.run.id, options.run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}`);
+      if (failed) {
+        await enqueueWorkflowLifecycleEvent(tx, {
+          tenancy: options.tenancy,
+          type: "workflow.run.failed",
+          run: { id: options.run.id, workflowId: options.run.workflowId, runKey: options.run.runKey, version: options.version, triggerType: options.run.triggerType },
+        });
+      }
+      return { continued: false, memoTotalBytes: options.run.memoTotalBytes };
+    }
+
+    // Fence before inserting: cancellation or lease loss makes the update a
+    // no-op, and because the facts are written later in this same
+    // transaction they cannot survive without their memo accounting.
+    const transitioned = await transitionRunFromRunningWithClient(tx, options.run.tenancyId, options.run.id, options.run.leaseToken, Prisma.sql`"memoTotalBytes" = ${memoTotalBytes}, "leaseUntil" = NOW() + make_interval(secs => ${RUN_LEASE_MS / 1000})`);
+    if (!transitioned) {
+      return { continued: false, memoTotalBytes: options.run.memoTotalBytes };
+    }
+    await tx.workflowStepResult.createMany({
+      data: pendingRows,
+      skipDuplicates: true,
+    });
+    return { continued: true, memoTotalBytes };
+  });
+}
+
 async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineMs: number): Promise<void> {
+  if (Date.now() >= deadlineMs) {
+    await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW(), "leaseUntil" = NULL`);
+    return;
+  }
   const versionRowInitial = await loadWorkflowVersion(run.tenancyId, run.workflowId, run.version);
   if (versionRowInitial == null) {
     captureError("workflow-run-version-missing", new HexclaveAssertionError("Workflow run pinned to a nonexistent version", { run }));
-    await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}`);
+    await transitionRunFromRunningWithLifecycleEvent({
+      tenancy,
+      leaseToken: run.leaseToken,
+      set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}`,
+      type: "workflow.run.failed",
+      run: { id: run.id, workflowId: run.workflowId, runKey: run.runKey, version: run.version, triggerType: run.triggerType },
+    });
     return;
   }
 
@@ -630,14 +842,28 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
   // renewed at every step boundary, but the credential is not re-minted):
   // tick budget (~13min of chaining) + one full step timeout + slack.
   // Expired keys are pruned by the retention sweep.
-  const apiKey = await createApiKeySet({
-    projectId: tenancy.project.id,
-    description: `workflow-run:${run.id}`,
-    expires_at_millis: Date.now() + WORKFLOW_RUN_CREDENTIAL_TTL_MS,
-    has_publishable_client_key: false,
-    has_secret_server_key: true,
-    has_super_secret_admin_key: true,
+  const apiKey = await retryTransaction(globalPrismaClient, async (tx) => {
+    // Serialize credential minting with cancellation/deletion on the run
+    // row. Once this lock is released, a canceling transaction can revoke
+    // the newly committed key before it reports success.
+    const locked = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id"
+      FROM "WorkflowRun"
+      WHERE "tenancyId" = ${run.tenancyId}::uuid AND "id" = ${run.id}::uuid
+        AND "state" = 'RUNNING' AND "leaseToken" = ${run.leaseToken}::uuid
+      FOR UPDATE
+    `);
+    if (locked.length === 0) return null;
+    return await createApiKeySet({
+      projectId: tenancy.project.id,
+      description: `workflow-run:${run.id}`,
+      expires_at_millis: Date.now() + WORKFLOW_RUN_CREDENTIAL_TTL_MS,
+      has_publishable_client_key: false,
+      has_secret_server_key: true,
+      has_super_secret_admin_key: true,
+    }, tx);
   });
+  if (apiKey == null) return;
   const credentials = {
     apiUrl: getWorkflowsSandboxApiUrl(),
     projectId: tenancy.project.id,
@@ -663,12 +889,18 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     // from the CURRENT clock on every replay and re-arm forever.
     const sleepStepKey = run.currentStepKey ?? throwErr("SLEEPING run without currentStepKey — the sleeping transition always records the suspended step");
     const sleepUntil = run.preClaimWakeAt ?? throwErr("SLEEPING run without wakeAt — the sleeping transition always sets the timer");
-    const sleepBytes = await recordCompletedSleeps(run.tenancyId, run.id, run.version, [{
-      stepKey: sleepStepKey,
-      stepId: sleepStepKey.split("#")[0],
-      untilMillis: sleepUntil.getTime(),
-    }]);
-    run.memoTotalBytes += sleepBytes;
+    const recordedSleeps = await recordCompletedSleepsAtomically({
+      tenancy,
+      run,
+      version: run.version,
+      sleeps: [{
+        stepKey: sleepStepKey,
+        stepId: sleepStepKey.split("#")[0],
+        untilMillis: sleepUntil.getTime(),
+      }],
+    });
+    if (!recordedSleeps.continued) return;
+    run.memoTotalBytes = recordedSleeps.memoTotalBytes;
   }
 
   let currentStepAttempt = run.currentStepAttempt;
@@ -676,6 +908,13 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
   let versionRow = versionRowInitial;
 
   for (let chained = 0; chained < MAX_CHAINED_STEPS_PER_CLAIM; chained++) {
+    // The deadline is a latest-start boundary sized by the route so one full
+    // invocation still fits in the function lifetime. Check before every
+    // invocation, including the first, rather than only after it returns.
+    if (Date.now() >= deadlineMs) {
+      await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW(), "leaseUntil" = NULL`);
+      return;
+    }
     if (chained > 0) {
       // An upgrade may have landed between steps (upgrades apply at step
       // boundaries); re-read the pinned version each iteration.
@@ -708,7 +947,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
       compiledBundle: versionRow.compiledBundle,
       input,
       nodeModules: getStdlibNodeModules(versionRow),
-      timeoutMs: INVOCATION_BACKSTOP_TIMEOUT_MS,
+      timeoutMs: WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS,
     });
 
     const lifecycleRun = { id: run.id, workflowId: run.workflowId, runKey: run.runKey, version: currentVersion, triggerType: run.triggerType };
@@ -727,8 +966,13 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
         outcome: "FAILED", error: { name: "PlatformError", message: GENERIC_PLATFORM_ERROR_SUMMARY }, failureKind: "PLATFORM", logs: null, startedAt: attemptStartedAt,
       });
       if (attempt >= WORKFLOW_STEP_MAX_ATTEMPTS) {
-        const failed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}, "currentStepAttempt" = ${attempt}`);
-        if (failed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: lifecycleRun });
+        await transitionRunFromRunningWithLifecycleEvent({
+          tenancy,
+          leaseToken: run.leaseToken,
+          set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'PLATFORM', "errorSummary" = ${GENERIC_PLATFORM_ERROR_SUMMARY}, "currentStepAttempt" = ${attempt}`,
+          type: "workflow.run.failed",
+          run: lifecycleRun,
+        });
       } else {
         await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}`);
       }
@@ -738,48 +982,74 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     const outcome: WorkflowSandboxOutcome = invocationResult.data;
     switch (outcome.type) {
       case "step-completed": {
-        const sleepBytes = await recordCompletedSleeps(run.tenancyId, run.id, currentVersion, outcome.completedSleeps);
+        const recordedSleeps = await recordCompletedSleepsAtomically({
+          tenancy,
+          run,
+          version: currentVersion,
+          sleeps: outcome.completedSleeps,
+        });
+        if (!recordedSleeps.continued) return;
+        run.memoTotalBytes = recordedSleeps.memoTotalBytes;
         // Re-measure server-side rather than trusting the sandbox-reported
         // size: sandboxes run user code, and limits enforced off attacker-
         // controllable numbers are not limits.
         const measuredResultSizeBytes = Buffer.byteLength(JSON.stringify(outcome.result ?? null), "utf8");
-        const newMemoTotal = run.memoTotalBytes + sleepBytes + measuredResultSizeBytes;
+        const newMemoTotal = run.memoTotalBytes + measuredResultSizeBytes;
         if (measuredResultSizeBytes > WORKFLOWS_DEFAULT_LIMITS.stepResultMaxBytes) {
           const summary = `step "${outcome.stepId}" returned ${measuredResultSizeBytes} bytes, exceeding the ${WORKFLOWS_DEFAULT_LIMITS.stepResultMaxBytes}-byte step-result limit`;
-          const failed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`);
-          if (failed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: lifecycleRun });
+          await transitionRunFromRunningWithLifecycleEvent({
+            tenancy,
+            leaseToken: run.leaseToken,
+            set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
+            type: "workflow.run.failed",
+            run: lifecycleRun,
+          });
           return;
         }
         if (newMemoTotal > WORKFLOW_RUN_MEMO_MAX_BYTES) {
           const summary = `Total memoized state would reach ${newMemoTotal} bytes, exceeding the ${WORKFLOW_RUN_MEMO_MAX_BYTES}-byte (4 MiB) per-run limit. Store large payloads externally and keep step results small.`;
-          const failed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`);
-          if (failed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: lifecycleRun });
+          await transitionRunFromRunningWithLifecycleEvent({
+            tenancy,
+            leaseToken: run.leaseToken,
+            set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
+            type: "workflow.run.failed",
+            run: lifecycleRun,
+          });
           return;
         }
-        await globalPrismaClient.workflowStepResult.createMany({
-          data: [{
-            tenancyId: run.tenancyId,
-            runId: run.id,
-            stepKey: outcome.stepKey,
-            stepId: outcome.stepId,
-            kind: "RUN",
-            // `result` is JSON round-tripped by the runtime, so Prisma can
-            // store it directly. Nulls are fine: kind RUN results are
-            // whatever the step callback returned (undefined -> null).
-            result: outcome.result as any,
-            resultSizeBytes: measuredResultSizeBytes,
-            attempts: currentStepAttempt + 1,
-            executedAtVersion: currentVersion,
-            elapsedMs: outcome.elapsedMs,
-          }],
-          skipDuplicates: true,
+        const continued = await retryTransaction(globalPrismaClient, async (tx) => {
+          // The memo counter and the fact it accounts for must commit
+          // together. Transition first to enforce the lease fencing token;
+          // a concurrent cancellation then wins without leaving an orphaned
+          // result that the run's memoTotalBytes does not include.
+          const transitioned = await transitionRunFromRunningWithClient(tx, run.tenancyId, run.id, run.leaseToken, Prisma.sql`"memoTotalBytes" = ${newMemoTotal}, "currentStepAttempt" = 0, "currentStepKey" = NULL, "leaseUntil" = NOW() + make_interval(secs => ${RUN_LEASE_MS / 1000})`);
+          if (!transitioned) return false;
+          await tx.workflowStepResult.createMany({
+            data: [{
+              tenancyId: run.tenancyId,
+              runId: run.id,
+              stepKey: outcome.stepKey,
+              stepId: outcome.stepId,
+              kind: "RUN",
+              // `result` is JSON round-tripped by the runtime, so Prisma can
+              // store it directly. Nulls are fine: kind RUN results are
+              // whatever the step callback returned (undefined -> null).
+              result: outcome.result as any,
+              resultSizeBytes: measuredResultSizeBytes,
+              attempts: currentStepAttempt + 1,
+              executedAtVersion: currentVersion,
+              elapsedMs: outcome.elapsedMs,
+            }],
+            skipDuplicates: true,
+          });
+          await recordStepAttempt({
+            client: tx,
+            tenancyId: run.tenancyId, runId: run.id, stepKey: outcome.stepKey, stepId: outcome.stepId, retryEpoch: run.retryEpoch, attempt: currentStepAttempt + 1,
+            outcome: "SUCCEEDED", logs: outcome.logs, startedAt: attemptStartedAt,
+          });
+          return true;
         });
-        await recordStepAttempt({
-          tenancyId: run.tenancyId, runId: run.id, stepKey: outcome.stepKey, stepId: outcome.stepId, retryEpoch: run.retryEpoch, attempt: currentStepAttempt + 1,
-          outcome: "SUCCEEDED", logs: outcome.logs, startedAt: attemptStartedAt,
-        });
-        const continued = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"memoTotalBytes" = ${newMemoTotal}, "currentStepAttempt" = 0, "currentStepKey" = NULL, "leaseUntil" = NOW() + make_interval(secs => ${RUN_LEASE_MS / 1000})`);
-        if (!continued) return; // canceled mid-step; the recorded fact stays
+        if (!continued) return;
         run.memoTotalBytes = newMemoTotal;
         currentStepAttempt = 0;
         if (Date.now() >= deadlineMs) {
@@ -794,16 +1064,35 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
           // The runtime validates this, but the value crosses a trust
           // boundary; an unrepresentable Date would crash the transition.
           const summary = `sleep "${outcome.stepId}" has an invalid wake-up time`;
-          const failed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`);
-          if (failed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: lifecycleRun });
+          await transitionRunFromRunningWithLifecycleEvent({
+            tenancy,
+            leaseToken: run.leaseToken,
+            set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepKey" = ${outcome.stepKey}`,
+            type: "workflow.run.failed",
+            run: lifecycleRun,
+          });
           return;
         }
-        const sleepBytes = await recordCompletedSleeps(run.tenancyId, run.id, currentVersion, outcome.completedSleeps);
-        await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'SLEEPING', "wakeAt" = ${new Date(outcome.untilMillis)}, "leaseUntil" = NULL, "currentStepAttempt" = 0, "currentStepKey" = ${outcome.stepKey}, "memoTotalBytes" = ${run.memoTotalBytes + sleepBytes}`);
+        const recordedSleeps = await recordCompletedSleepsAtomically({
+          tenancy,
+          run,
+          version: currentVersion,
+          sleeps: outcome.completedSleeps,
+        });
+        if (!recordedSleeps.continued) return;
+        run.memoTotalBytes = recordedSleeps.memoTotalBytes;
+        await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'SLEEPING', "wakeAt" = ${new Date(outcome.untilMillis)}, "leaseUntil" = NULL, "currentStepAttempt" = 0, "currentStepKey" = ${outcome.stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`);
         return;
       }
       case "completed": {
-        const sleepBytes = await recordCompletedSleeps(run.tenancyId, run.id, currentVersion, outcome.completedSleeps);
+        const recordedSleeps = await recordCompletedSleepsAtomically({
+          tenancy,
+          run,
+          version: currentVersion,
+          sleeps: outcome.completedSleeps,
+        });
+        if (!recordedSleeps.continued) return;
+        run.memoTotalBytes = recordedSleeps.memoTotalBytes;
         if (outcome.logs != null) {
           // The completing invocation replays the whole handler, so its
           // console output is the run's full final trace — including logs
@@ -814,14 +1103,25 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
             outcome: "SUCCEEDED", logs: outcome.logs, startedAt: attemptStartedAt,
           });
         }
-        const completed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'COMPLETED', "completedAt" = NOW(), "leaseUntil" = NULL, "wakeAt" = NULL, "currentStepKey" = NULL, "memoTotalBytes" = ${run.memoTotalBytes + sleepBytes}`);
-        if (completed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.completed", run: lifecycleRun });
+        await transitionRunFromRunningWithLifecycleEvent({
+          tenancy,
+          leaseToken: run.leaseToken,
+          set: Prisma.sql`"state" = 'COMPLETED', "completedAt" = NOW(), "leaseUntil" = NULL, "wakeAt" = NULL, "currentStepKey" = NULL, "memoTotalBytes" = ${run.memoTotalBytes}`,
+          type: "workflow.run.completed",
+          run: lifecycleRun,
+        });
         return;
       }
       case "step-failed":
       case "handler-failed": {
-        const failSleepBytes = await recordCompletedSleeps(run.tenancyId, run.id, currentVersion, outcome.completedSleeps);
-        run.memoTotalBytes += failSleepBytes;
+        const recordedSleeps = await recordCompletedSleepsAtomically({
+          tenancy,
+          run,
+          version: currentVersion,
+          sleeps: outcome.completedSleeps,
+        });
+        if (!recordedSleeps.continued) return;
+        run.memoTotalBytes = recordedSleeps.memoTotalBytes;
         const stepKey = outcome.type === "step-failed" ? outcome.stepKey : HANDLER_STEP_KEY;
         const stepId = outcome.type === "step-failed" ? outcome.stepId : HANDLER_STEP_KEY;
         const maxAttempts = outcome.type === "step-failed" ? outcome.maxAttempts : WORKFLOW_STEP_MAX_ATTEMPTS;
@@ -832,8 +1132,13 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
         });
         if (outcome.nonRetriable || attempt >= maxAttempts) {
           const summary = `${outcome.error.name}: ${outcome.error.message}` + (outcome.nonRetriable ? "" : ` (${attempt}/${maxAttempts} attempts)`);
-          const failed = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`);
-          if (failed) await enqueueWorkflowLifecycleEvent(globalPrismaClient, { tenancy, type: "workflow.run.failed", run: lifecycleRun });
+          await transitionRunFromRunningWithLifecycleEvent({
+            tenancy,
+            leaseToken: run.leaseToken,
+            set: Prisma.sql`"state" = 'FAILED', "completedAt" = NOW(), "leaseUntil" = NULL, "failureKind" = 'USER', "errorSummary" = ${summary}, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`,
+            type: "workflow.run.failed",
+            run: lifecycleRun,
+          });
         } else {
           await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'QUEUED', "wakeAt" = NOW() + make_interval(secs => ${jitteredBackoffMs(attempt) / 1000}), "leaseUntil" = NULL, "currentStepAttempt" = ${attempt}, "currentStepKey" = ${stepKey}, "memoTotalBytes" = ${run.memoTotalBytes}`);
         }
@@ -852,15 +1157,26 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
 }
 
 async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+  if (Date.now() >= deadlineMs) return false;
   const claimed = await claimDueRuns();
   if (claimed.length === 0) return false;
   await Promise.all(claimed.map(async (run) => {
     try {
-      const tenancy = await getEnabledTenancy(run.tenancyId, tenancyCache);
+      const tenancy = await getCachedTenancy(run.tenancyId, tenancyCache);
       if (tenancy == null) {
-        // Disabled/deleted project: park the run as canceled (it should
-        // never have been created; the gate refuses new state).
+        // A deleted tenancy normally cascades the row before this can run;
+        // retain the guarded cleanup for an in-flight stale claim.
         await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"state" = 'CANCELED', "completedAt" = NOW(), "leaseUntil" = NULL`);
+        return;
+      }
+      if (!areWorkflowsEnabled(tenancy.project.id)) {
+        await transitionRunFromRunningWithLifecycleEvent({
+          tenancy,
+          leaseToken: run.leaseToken,
+          set: Prisma.sql`"state" = 'CANCELED', "completedAt" = NOW(), "leaseUntil" = NULL`,
+          type: "workflow.run.canceled",
+          run: { id: run.id, workflowId: run.workflowId, runKey: run.runKey, version: run.version, triggerType: run.triggerType },
+        });
         return;
       }
       await executeClaimedRun(run, tenancy, deadlineMs);
@@ -877,32 +1193,40 @@ async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlin
 // ─── Cancel / upgrade / retry (used by the API routes too) ─────────────────
 
 export async function cancelWorkflowRuns(tenancy: Tenancy, filter: { workflowId: string, runKey?: string, runId?: string, state?: "queued" | "running" | "sleeping", version?: number }): Promise<{ canceledCount: number }> {
-  // Single transactional UPDATE = atomic query-cancel, race-safe against
-  // concurrently waking runs (the engine's post-invocation transitions are
-  // guarded on state = 'RUNNING' and will see the cancellation).
+  // Query-cancel and lifecycle outbox writes share one transaction. The
+  // engine's post-invocation transitions are guarded on state = 'RUNNING',
+  // so they see the cancellation, while a crash can never commit CANCELED
+  // without its deterministic workflow.run.canceled event.
   const stateFilter = filter.state != null ? Prisma.sql`AND "state" = ${filter.state.toUpperCase()}::"WorkflowRunState"` : Prisma.empty;
   const runKeyFilter = filter.runKey != null ? Prisma.sql`AND "runKey" = ${filter.runKey}` : Prisma.empty;
   const runIdFilter = filter.runId != null ? Prisma.sql`AND "id" = ${filter.runId}::uuid` : Prisma.empty;
   const versionFilter = filter.version != null ? Prisma.sql`AND "version" = ${filter.version}` : Prisma.empty;
-  const rows = await globalPrismaClient.$queryRaw<{ id: string, runKey: string | null, version: number, triggerType: string }[]>(Prisma.sql`
-    UPDATE "WorkflowRun"
-    SET "state" = 'CANCELED', "completedAt" = NOW(), "wakeAt" = NULL, "leaseUntil" = NULL, "updatedAt" = NOW()
-    WHERE "tenancyId" = ${tenancy.id}::uuid
-      AND "workflowId" = ${filter.workflowId}
-      AND "state" IN ('QUEUED', 'RUNNING', 'SLEEPING')
-      ${stateFilter}
-      ${runKeyFilter}
-      ${runIdFilter}
-      ${versionFilter}
-    RETURNING "id", "runKey", "version", "triggerType"
-  `);
-  for (const row of rows) {
-    await enqueueWorkflowLifecycleEvent(globalPrismaClient, {
+  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+    const canceled = await tx.$queryRaw<{ id: string, runKey: string | null, version: number, triggerType: string }[]>(Prisma.sql`
+      UPDATE "WorkflowRun"
+      SET "state" = 'CANCELED', "completedAt" = NOW(), "wakeAt" = NULL, "leaseUntil" = NULL, "updatedAt" = NOW()
+      WHERE "tenancyId" = ${tenancy.id}::uuid
+        AND "workflowId" = ${filter.workflowId}
+        AND "state" IN ('QUEUED', 'RUNNING', 'SLEEPING')
+        ${stateFilter}
+        ${runKeyFilter}
+        ${runIdFilter}
+        ${versionFilter}
+      RETURNING "id", "runKey", "version", "triggerType"
+    `);
+    await tx.apiKeySet.deleteMany({
+      where: {
+        projectId: tenancy.project.id,
+        description: { in: canceled.map((row) => `workflow-run:${row.id}`) },
+      },
+    });
+    await enqueueWorkflowLifecycleEvents(tx, {
       tenancy,
       type: "workflow.run.canceled",
-      run: { id: row.id, workflowId: filter.workflowId, runKey: row.runKey, version: row.version, triggerType: row.triggerType },
+      runs: canceled.map((row) => ({ id: row.id, workflowId: filter.workflowId, runKey: row.runKey, version: row.version, triggerType: row.triggerType })),
     });
-  }
+    return canceled;
+  });
   return { canceledCount: rows.length };
 }
 
@@ -1167,7 +1491,7 @@ export async function runWorkflowEngineStep(options: { deadlineMs: number }): Pr
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
   didWork = await materializeScheduleOccurrences(tenancyCache) || didWork;
-  didWork = await processWorkflowEvents(tenancyCache) || didWork;
+  didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs) || didWork;
   didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
   // Retention pruning is cheap but pointless to run every second.
   if (stepCounter++ % 60 === 0) {

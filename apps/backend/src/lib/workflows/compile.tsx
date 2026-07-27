@@ -1,8 +1,10 @@
 import { WORKFLOW_SOURCE_MAX_BYTES, workflowPlatformEventTypes, workflowLifecycleEventTypes, WORKFLOW_CUSTOM_EVENT_PREFIX, type WorkflowManifestJson } from "@hexclave/shared/dist/interface/workflows";
 import { bundleJavaScript } from "@hexclave/shared/dist/utils/esbuild";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { createHash } from "node:crypto";
 import { isValidTimezone, parseCronExpression } from "./cron";
+import { customEventNameToWireType } from "./events";
 import { invokeWorkflowSandbox } from "./invoke";
 import { WORKFLOWS_DEFAULT_LIMITS, WORKFLOWS_PROTOCOL_VERSION, type WorkflowSandboxManifest } from "./protocol";
 import { getWorkflowsRuntimeEnv, WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION } from "./runtime-env";
@@ -20,6 +22,11 @@ import { WORKFLOWS_ENTRY_JS, WORKFLOWS_RUNTIME_PACKAGE_SOURCE } from "./runtime-
  */
 const IMPORT_ALLOWLIST_EXACT = ["@hexclave/workflows"];
 const STDLIB_PACKAGES = ["date-fns"];
+// The workflow runtime itself needs the real Admin SDK, while user source
+// must not import it. Bundle the trusted runtime through a private external
+// sentinel and rewrite that one canonical import afterward; a user-authored
+// "@hexclave/js" import is therefore rejected by esbuild resolution.
+const WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL = "@hexclave/workflows-internal-admin-runtime";
 
 // Written for module specifiers in static imports, re-exports, dynamic
 // imports, and requires. Comments/strings can theoretically fool a regex
@@ -27,9 +34,9 @@ const STDLIB_PACKAGES = ["date-fns"];
 // import fails the build); this scan exists to produce a NICE error message
 // and to detect stdlib usage.
 const IMPORT_SPECIFIER_REGEXES = [
-  /(?:^|[\n;])\s*import\s+(?:type\s+)?[^'"]*?from\s*['"]([^'"]+)['"]/g,
+  /(?:^|[\n;])\s*import\s*(?:type\s+)?[^'"]*?from\s*['"]([^'"]+)['"]/g,
   /(?:^|[\n;])\s*import\s*['"]([^'"]+)['"]/g,
-  /(?:^|[\n;])\s*export\s+[^'"]*?from\s*['"]([^'"]+)['"]/g,
+  /(?:^|[\n;])\s*export\s*[^'"]*?from\s*['"]([^'"]+)['"]/g,
   /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
   /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
 ];
@@ -62,6 +69,9 @@ export function validateWorkflowSource(source: string): Result<null, string> {
   if (sizeBytes > WORKFLOW_SOURCE_MAX_BYTES) {
     return Result.error(`Workflow source is ${sizeBytes} bytes, exceeding the ${WORKFLOW_SOURCE_MAX_BYTES}-byte (128 KiB) limit`);
   }
+  if (source.includes(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)) {
+    return Result.error(`Workflow source contains the reserved internal module marker ${JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)}`);
+  }
   // Non-literal imports can evade an allowlist scanner and resolve arbitrary
   // packages or Node built-ins at runtime. Workflows do not need dynamic
   // module loading, so reject import()/require() entirely instead of trying
@@ -90,33 +100,56 @@ export async function compileWorkflowBundle(source: string): Promise<Result<{ co
   const validation = validateWorkflowSource(source);
   if (validation.status === "error") return Result.error(validation.error);
 
+  const runtimePackageSource = WORKFLOWS_RUNTIME_PACKAGE_SOURCE.replace(
+    '"@hexclave/js"',
+    JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL),
+  );
+  if (runtimePackageSource === WORKFLOWS_RUNTIME_PACKAGE_SOURCE) {
+    throw new HexclaveAssertionError("Workflow runtime no longer contains the expected Admin SDK import");
+  }
   const bundleResult = await bundleJavaScript({
     "/workflow.ts": source,
     "/entry.js": WORKFLOWS_ENTRY_JS,
   }, {
     externalPackages: {
-      "@hexclave/workflows": WORKFLOWS_RUNTIME_PACKAGE_SOURCE,
+      "@hexclave/workflows": runtimePackageSource,
     },
     // The stdlib stays a real import, resolved against the sandbox's
     // nodeModules at the exact pinned version.
-    keepAsImports: [...STDLIB_PACKAGES, "@hexclave/js"],
+    keepAsImports: [...STDLIB_PACKAGES, WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL],
     format: "esm",
     sourcemap: false,
   });
   if (bundleResult.status === "error") {
     return Result.error(`Workflow source failed to compile: ${bundleResult.error}`);
   }
-  return Result.ok({ compiledBundle: bundleResult.data, usesStdlib: getUsedStdlibPackages(source) });
+  if (!bundleResult.data.includes(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL)) {
+    throw new HexclaveAssertionError("Workflow bundle omitted the trusted runtime Admin SDK import");
+  }
+  const sentinelSpecifier = JSON.stringify(WORKFLOW_RUNTIME_ADMIN_IMPORT_SENTINEL);
+  if (bundleResult.data.split(sentinelSpecifier).length !== 2) {
+    throw new HexclaveAssertionError("Workflow bundle contains an unexpected number of trusted runtime Admin SDK imports");
+  }
+  // Replace only the canonical module specifier. The marker is rejected
+  // from author source above, so user strings can never be rewritten.
+  const compiledBundle = bundleResult.data.replace(sentinelSpecifier, JSON.stringify("@hexclave/js"));
+  return Result.ok({ compiledBundle, usesStdlib: getUsedStdlibPackages(source) });
 }
 
-function validateManifest(manifest: WorkflowSandboxManifest, expectedWorkflowId: string): Result<null, string> {
+export function validateWorkflowManifest(manifest: WorkflowSandboxManifest, expectedWorkflowId: string): Result<null, string> {
   if (manifest.workflowId !== expectedWorkflowId) {
     return Result.error(`The workflow file defines workflow "${manifest.workflowId}", but this workflow is "${expectedWorkflowId}". The id in workflow(...) must match.`);
   }
   const knownUnprefixedEventTypes = new Set<string>([...workflowPlatformEventTypes, ...workflowLifecycleEventTypes]);
   for (const trigger of manifest.triggers) {
     if (trigger.type === "event") {
-      if (!trigger.eventType.startsWith(WORKFLOW_CUSTOM_EVENT_PREFIX) && !knownUnprefixedEventTypes.has(trigger.eventType)) {
+      if (trigger.eventType.startsWith(WORKFLOW_CUSTOM_EVENT_PREFIX)) {
+        const customName = trigger.eventType.slice(WORKFLOW_CUSTOM_EVENT_PREFIX.length);
+        const customNameValidation = customEventNameToWireType(customName);
+        if ("error" in customNameValidation) {
+          return Result.error(customNameValidation.error);
+        }
+      } else if (!knownUnprefixedEventTypes.has(trigger.eventType)) {
         return Result.error(
           `Unknown platform event type "${trigger.eventType}". ` +
           `Platform events: ${[...knownUnprefixedEventTypes].join(", ")}. ` +
@@ -180,7 +213,7 @@ export async function compileAndExtractWorkflowManifest(source: string, expected
     return Result.error(`Unexpected manifest extraction outcome "${outcome.type}"`);
   }
 
-  const manifestValidation = validateManifest(outcome.manifest, expectedWorkflowId);
+  const manifestValidation = validateWorkflowManifest(outcome.manifest, expectedWorkflowId);
   if (manifestValidation.status === "error") return Result.error(manifestValidation.error);
 
   const manifestJson: WorkflowManifestJson = {

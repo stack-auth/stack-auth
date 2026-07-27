@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
+import { createWorkflowTestTenancy } from "../test-helpers";
 
 export const preMigration = async (sql: Sql) => {
   // All workflow tables are new in this migration, so nothing to seed.
@@ -50,7 +51,7 @@ export const postMigration = async (sql: Sql) => {
     ]
   `);
 
-  const tenancyId = randomUUID();
+  const { tenancyId } = await createWorkflowTestTenancy(sql, "Workflow Active Key Test");
 
   // isActive is a stored generated column: TRUE for active states, NULL for
   // terminal states. It cannot be written directly.

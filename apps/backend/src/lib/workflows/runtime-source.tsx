@@ -104,8 +104,11 @@ class WorkflowContractViolationError extends Error {
 }
 
 export function customEvent<T = unknown>(name: string): CustomEventTrigger<T> {
-  if (typeof name !== "string" || name.length === 0) throw new Error("customEvent() requires a non-empty event name");
+  if (typeof name !== "string" || name.length === 0 || name.length > 200) throw new Error("customEvent() requires a non-empty event name of at most 200 characters");
   if (name.startsWith("custom.")) throw new Error('customEvent() names are automatically prefixed with "custom." — pass "' + name.slice("custom.".length) + '" instead of "' + name + '"');
+  // This source is embedded in a template literal, so the regexp backslash
+  // must be escaped here to remain \s in the generated runtime module.
+  if (/\\s/.test(name)) throw new Error("customEvent() names must not contain whitespace");
   return { __hexclaveWorkflowTrigger: "custom-event", name: name };
 }
 

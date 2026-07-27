@@ -3,8 +3,19 @@ import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { type WorkflowRunStateJson } from "@hexclave/shared/dist/interface/workflows";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const RUN_STATES = ["queued", "running", "sleeping", "completed", "failed", "canceled"] as const satisfies readonly WorkflowRunStateJson[];
+const POSITIVE_INTEGER_PATTERN = /^[1-9]\d*$/;
+
+function parsePositiveIntegerQuery(name: string, value: string | undefined): number | undefined {
+  if (value == null) return undefined;
+  const parsed = Number(value);
+  if (!POSITIVE_INTEGER_PATTERN.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new StatusError(400, `${name} must be a positive integer`);
+  }
+  return parsed;
+}
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -20,11 +31,11 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       state: yupString().oneOf(RUN_STATES).optional(),
-      version: yupString().optional(),
+      version: yupString().matches(POSITIVE_INTEGER_PATTERN).optional(),
       run_key: yupString().optional(),
       only_active: yupString().oneOf(["true", "false"]).optional(),
       cursor: yupString().optional(),
-      limit: yupString().optional(),
+      limit: yupString().matches(POSITIVE_INTEGER_PATTERN).optional(),
       include_state: yupString().oneOf(["true", "false"]).optional(),
     }).defined(),
   }),
@@ -40,11 +51,11 @@ export const GET = createSmartRouteHandler({
     ensureWorkflowsEnabled(tenancy.project.id);
     const { runs, nextCursor } = await listWorkflowRuns(tenancy, params.workflow_id, {
       state: query.state,
-      version: query.version != null ? Number(query.version) : undefined,
+      version: parsePositiveIntegerQuery("version", query.version),
       runKey: query.run_key,
       onlyActive: query.only_active === "true",
       cursor: query.cursor,
-      limit: query.limit != null ? Number(query.limit) : undefined,
+      limit: parsePositiveIntegerQuery("limit", query.limit),
     });
     // include_state (spec: "listRuns exposes memoized state bags") is
     // served by joining each run's details; runs-with-state requests are

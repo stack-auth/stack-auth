@@ -178,6 +178,11 @@ model Tenancy {
   conversationMessages ConversationMessage[]
   deploymentServices  DeploymentService[]
   deploymentSourceUploads DeploymentSourceUpload[]
+  workflowDefinitions WorkflowDefinition[]
+  workflowVersions WorkflowVersion[]
+  workflowRuns WorkflowRun[]
+  workflowEvents WorkflowEvent[]
+  workflowScheduleCursors WorkflowScheduleCursor[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1767,6 +1772,7 @@ model DeploymentSourceUpload {
 
 model WorkflowDefinition {
   tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   // User-chosen slug (e.g. "welcome-drip"). Deliberately not a uuid: it is
   // the stable business identity of the workflow across versions, and the
@@ -1788,6 +1794,7 @@ model WorkflowDefinition {
 
 model WorkflowVersion {
   tenancyId  String @db.Uuid
+  tenancy    Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   workflowId String
   // Platform-assigned, monotonically increasing per workflow per tenancy
   // (v1, v2, ...). Never author-declared.
@@ -1843,6 +1850,7 @@ enum WorkflowRunFailureKind {
 
 model WorkflowRun {
   tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   // Platform UUID for history: runKeys recur over time, UUIDs never.
   id String @default(uuid()) @db.Uuid
 
@@ -2028,6 +2036,7 @@ model WorkflowStepAttempt {
 // on run state transitions.
 model WorkflowEvent {
   tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   id        String @default(uuid()) @db.Uuid
 
   // Wire type: platform events are unprefixed ("user.created"), custom
@@ -2042,6 +2051,10 @@ model WorkflowEvent {
   // what guarantees delayed-never-skipped schedule catch-up.
   scheduledAt DateTime  @default(now())
   processedAt DateTime?
+  // Failed dispatches back off so one poison event cannot monopolize the
+  // oldest outbox batch and starve unrelated tenants forever.
+  processingAttempts Int      @default(0)
+  retryAt            DateTime @default(now())
 
   createdAt DateTime @default(now())
 
@@ -2049,7 +2062,7 @@ model WorkflowEvent {
   // Outbox scan: unprocessed events in scheduledAt order. processedAt is the
   // leading column so the scan stays cheap as processed events accumulate
   // (IS NULL rows are contiguous in the index).
-  @@index([processedAt, scheduledAt], map: "WorkflowEvent_outbox_idx")
+  @@index([processedAt, retryAt, scheduledAt], map: "WorkflowEvent_outbox_idx")
   // Retention pruning + per-tenancy event views.
   @@index([tenancyId, createdAt], map: "WorkflowEvent_tenancy_created_idx")
 }
@@ -2060,6 +2073,7 @@ model WorkflowEvent {
 // expression).
 model WorkflowScheduleCursor {
   tenancyId   String @db.Uuid
+  tenancy     Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   workflowId  String
   scheduleKey String
 

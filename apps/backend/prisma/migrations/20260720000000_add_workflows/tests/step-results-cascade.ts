@@ -1,13 +1,14 @@
 import { randomUUID } from "crypto";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
+import { createWorkflowTestTenancy } from "../test-helpers";
 
 export const preMigration = async (sql: Sql) => {
   return {};
 };
 
 export const postMigration = async (sql: Sql) => {
-  const tenancyId = randomUUID();
+  const { tenancyId } = await createWorkflowTestTenancy(sql, "Workflow Step Cascade Test");
   const runId = randomUUID();
 
   await sql`

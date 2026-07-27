@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
+import { createWorkflowTestTenancy } from "../test-helpers";
 
 export const preMigration = async (sql: Sql) => {
   // All workflow tables are new in this migration, so nothing to seed.
@@ -15,7 +16,7 @@ export const preMigration = async (sql: Sql) => {
  * failure even after the retry succeeded.
  */
 export const postMigration = async (sql: Sql) => {
-  const tenancyId = randomUUID();
+  const { tenancyId } = await createWorkflowTestTenancy(sql, "Workflow Retry History Test");
   const runId = randomUUID();
 
   await sql`

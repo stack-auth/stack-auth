@@ -149,8 +149,22 @@ CREATE INDEX "WorkflowEvent_outbox_idx" ON "WorkflowEvent"("processedAt", "sched
 CREATE INDEX "WorkflowEvent_tenancy_created_idx" ON "WorkflowEvent"("tenancyId", "createdAt");
 
 -- AddForeignKey
+ALTER TABLE "WorkflowDefinition" ADD CONSTRAINT "WorkflowDefinition_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowVersion" ADD CONSTRAINT "WorkflowVersion_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowRun" ADD CONSTRAINT "WorkflowRun_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowEvent" ADD CONSTRAINT "WorkflowEvent_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowScheduleCursor" ADD CONSTRAINT "WorkflowScheduleCursor_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "WorkflowStepResult" ADD CONSTRAINT "WorkflowStepResult_tenancyId_runId_fkey" FOREIGN KEY ("tenancyId", "runId") REFERENCES "WorkflowRun"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "WorkflowStepAttempt" ADD CONSTRAINT "WorkflowStepAttempt_tenancyId_runId_fkey" FOREIGN KEY ("tenancyId", "runId") REFERENCES "WorkflowRun"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
-

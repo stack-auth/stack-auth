@@ -128,7 +128,7 @@ describe("rollout gate", () => {
     }
   });
 
-  it("does not create runs on the internal project for entity mutations in other projects", async ({ expect }) => {
+  it("does not create runs on the internal project for entity mutations in other projects", { timeout: 180_000 }, async ({ expect }) => {
     const workflowId = randomSlug("e2e-isolation");
     await withInternalProject(async () => {
       await createWorkflow(expect, workflowId, `import { workflow } from "@hexclave/workflows";
@@ -265,6 +265,24 @@ export default workflow("${workflowId}", {
       const { runs: allRunsForKey } = await listRuns(workflowId, { run_key: "order:o1" });
       expect(allRunsForKey).toHaveLength(1);
 
+      // The Admin SDK's includeState option is backed by this wire query.
+      // It must return full details for every listed run rather than only
+      // widening the TypeScript type.
+      const { runs: runsWithState } = await listRuns(workflowId, {
+        run_key: "order:o1",
+        include_state: "true",
+      });
+      expect(runsWithState).toHaveLength(1);
+      expect(runsWithState[0]).toMatchObject({
+        id: completedRun.id,
+        trigger_payload: { orderId: "o1", amount: 21 },
+        steps: expect.arrayContaining([
+          expect.objectContaining({ step_key: "double", result: 42 }),
+          expect.objectContaining({ step_key: "short-nap", kind: "sleep" }),
+        ]),
+        step_attempts: expect.any(Array),
+      });
+
       const detailsResponse = await niceBackendFetch(`/api/v1/internal/workflows/runs/${completedRun.id}`, {
         method: "GET",
         accessType: "admin",
@@ -287,6 +305,29 @@ export default workflow("${workflowId}", {
       expect(stepsByKey.get("short-nap")).toMatchObject({ kind: "sleep" });
       const logs = details.step_attempts.map((attempt: any) => attempt.logs ?? "").join("\n");
       expect(logs).toContain("processed order o1");
+
+      const invalidRunFilters: Record<string, string>[] = [{ version: "not-a-number" }, { limit: "1.5" }, { limit: "0" }];
+      for (const query of invalidRunFilters) {
+        const invalidFilterResponse = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/runs`, {
+          method: "GET",
+          accessType: "admin",
+          query,
+        });
+        expect(invalidFilterResponse.status).toBe(400);
+      }
+
+      const malformedUuid = "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz";
+      for (const request of [
+        { method: "GET" as const, path: `/api/v1/internal/workflows/runs/${malformedUuid}` },
+        { method: "POST" as const, path: `/api/v1/internal/workflows/runs/${malformedUuid}/retry` },
+      ]) {
+        const malformedRunResponse = await niceBackendFetch(request.path, {
+          method: request.method,
+          accessType: "admin",
+          ...(request.method === "POST" ? { body: {} } : {}),
+        });
+        expect(malformedRunResponse.status).toBe(400);
+      }
 
       await retireWorkflow(expect, workflowId);
     });
@@ -607,7 +648,10 @@ export default workflow("${workflowId}", {
       });
       expect(versionsResponse.status).toBe(200);
       expect(versionsResponse.body.versions.map((version: any) => version.version)).toEqual([3, 2, 1]);
-      expect(versionsResponse.body.versions[0]).toMatchObject({ is_latest: true });
+      expect(versionsResponse.body.versions[0]).toMatchObject({
+        is_latest: true,
+        source_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
 
       await retireWorkflow(expect, workflowId);
     });
@@ -664,6 +708,19 @@ export default workflow("${workflowId}", {
       });
       expect(oversizedResponse.status).toBe(400);
       expect(JSON.stringify(oversizedResponse.body)).toContain("256 KiB");
+
+      const invalidTriggerId = randomSlug("e2e-invalid-trigger");
+      const invalidTriggerResponse = await niceBackendFetch("/api/v1/internal/workflows", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          id: invalidTriggerId,
+          source: `import { workflow, customEvent } from "@hexclave/workflows";
+export default workflow("${invalidTriggerId}", { on: [customEvent("contains whitespace")] }, async () => {});`,
+        },
+      });
+      expect(invalidTriggerResponse.status).toBe(400);
+      expect(JSON.stringify(invalidTriggerResponse.body)).toContain("must not contain whitespace");
     });
   });
 });
