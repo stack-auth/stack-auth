@@ -1,4 +1,4 @@
-import { buildStackAuthHeaders, CurrentUser } from "@/lib/api-headers";
+import { buildHexclaveHeaders, CurrentUser } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
@@ -29,7 +29,7 @@ async function apiFetch(
   path: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const headers = await buildStackAuthHeaders(currentUser);
+  const headers = await buildHexclaveHeaders(currentUser);
   const response = await fetch(`${getBaseUrl()}/api/latest/internal/ai-conversations${path}`, {
     ...options,
     headers: {

@@ -1,6 +1,6 @@
 import { createUnifiedAiChatAdapter, type WireMessage } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
-import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import { buildHexclaveHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { AppId } from "@/lib/apps-frontend";
 import {
   type ChatModelAdapter,
@@ -254,7 +254,7 @@ Please update the source code to change "${oldText}" to "${newText}" at the spec
 `;
 
   const { currentUser } = options;
-  const authHeaders = await buildStackAuthHeaders(currentUser);
+  const authHeaders = await buildHexclaveHeaders(currentUser);
 
   const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
     method: "POST",

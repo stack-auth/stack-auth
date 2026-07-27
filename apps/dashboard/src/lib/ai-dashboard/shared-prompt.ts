@@ -1,6 +1,6 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
 import { ALL_APPS_FRONTEND, type AppId, getItemPath, hasNavigationItems } from "@/lib/apps-frontend";
-import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import { buildHexclaveHeaders, type CurrentUser } from "@/lib/api-headers";
 
 /**
  * Builds a formatted list of available dashboard routes based on enabled apps.
@@ -61,7 +61,7 @@ Respond with ONLY a JSON object: { "selectedFiles": ["file1.ts", "file2.ts"] }
 No markdown, no explanation — just the JSON.`;
 
   try {
-    const authHeaders = await buildStackAuthHeaders(currentUser);
+    const authHeaders = await buildHexclaveHeaders(currentUser);
     const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders },

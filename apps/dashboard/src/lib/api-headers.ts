@@ -6,7 +6,7 @@ export type CurrentUser = { getAccessToken: () => Promise<string | null> };
  * Builds Hexclave API headers with authentication when available.
  * Automatically includes access token if user is provided.
  */
-export async function buildStackAuthHeaders(
+export async function buildHexclaveHeaders(
   currentUser?: CurrentUser | null,
 ): Promise<Record<string, string>> {
   const accessToken = currentUser ? await currentUser.getAccessToken() : null;
