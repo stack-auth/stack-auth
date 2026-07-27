@@ -14,6 +14,7 @@ import { SeparatorWithText } from '../components/elements/separator-with-text';
 import { StyledLink } from '../components/link';
 import { KnownErrorMessageCard } from '../components/message-cards/known-error-message-card';
 import { MessageCard } from '../components/message-cards/message-card';
+import { NoAuthMethodsMessageCard } from '../components/message-cards/no-auth-methods-message-card';
 import { MagicLinkSignIn } from '../components/magic-link-sign-in';
 import { PredefinedMessageCard } from '../components/message-cards/predefined-message-card';
 import { OAuthButtonGroup } from '../components/oauth-button-group';
@@ -132,6 +133,18 @@ function Inner(props: Props) {
   const hasPasskey = (project.config.passkeyEnabled === true && props.type === "sign-in");
   const enableSeparator = (project.config.credentialEnabled || project.config.magicLinkEnabled) && (hasOAuthProviders || hasPasskey);
 
+  // Note that we check passkeys regardless of `props.type` here (unlike `hasPasskey`); a project with only
+  // passkeys enabled can't sign up with them, but it is configured correctly, so the sign-up page should
+  // keep pointing at the sign-in page instead of claiming that the project is misconfigured.
+  const hasAnyAuthMethod = hasOAuthProviders
+    || project.config.passkeyEnabled === true
+    || project.config.credentialEnabled
+    || project.config.magicLinkEnabled;
+
+  if (!hasAnyAuthMethod) {
+    return <NoAuthMethodsMessageCard fullPage={props.fullPage} projectDisplayName={'displayName' in project ? project.displayName : undefined} />;
+  }
+
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
       <div className='stack-scope flex flex-col items-stretch' style={{ maxWidth: '380px', flexBasis: '380px', padding: props.fullPage ? '1rem' : 0 }}>
@@ -186,7 +199,11 @@ function Inner(props: Props) {
           props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />
         ) : project.config.magicLinkEnabled ? (
           <MagicLinkSignIn />
-        ) : !(hasOAuthProviders || hasPasskey) ? <Typography variant={"destructive"} className="text-center">{t("No authentication method enabled.")}</Typography> : null}
+        ) : !(hasOAuthProviders || hasPasskey) ? (
+          // Only reachable on the sign-up page of a passkey-only project: the project is configured
+          // correctly, there is just no way to create an account with a passkey alone.
+          <Typography variant="secondary" className="text-center">{t("New accounts can't be created with the sign-in methods enabled for this app. Sign in instead.")}</Typography>
+        ) : null}
         {props.extraInfo && (
           <div className={cn('flex flex-col items-center text-center text-sm text-gray-500', {
             'mt-2': project.config.credentialEnabled || project.config.magicLinkEnabled,
