@@ -32,6 +32,7 @@ import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineP
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
+import { scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
@@ -935,7 +936,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         return providers.find((p) => p.id === id) ?? null;
       },
       async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
-        // TODO remove duplicated code between this and the function in client-app-impl.ts
         const hostname = options?.hostname || (await app._getCurrentUrl())?.hostname;
         if (!hostname) {
           throw new HexclaveAssertionError("hostname must be provided if the Stack App does not have a redirect method");
@@ -950,12 +950,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
+        scopePasskeyRegistrationToHostname(options_json, hostname);
 
         let attResp;
         try {

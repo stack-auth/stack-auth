@@ -4,8 +4,8 @@ import { Typography } from "~/components/ui";
 
 import { HostedAuthShell } from "./layout";
 
-// The hosted components are only ever served by Hexclave Cloud (<projectId>.built-with-hexclave.com),
-// so we can hardcode the cloud dashboard here; self-hosters use the SDK components instead.
+// The hosted components are only ever served by Hexclave Cloud (on the current or legacy hosted
+// subdomain), so we can hardcode the cloud dashboard here; self-hosters use the SDK components instead.
 const HOSTED_DASHBOARD_URL = "https://app.hexclave.com";
 
 const configSnippet = `auth: {

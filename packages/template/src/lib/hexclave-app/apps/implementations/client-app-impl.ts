@@ -59,6 +59,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
+import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -2513,12 +2514,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
+        // Passkeys intentionally stay scoped to the hostname where they were
+        // registered. In particular, passkeys created on the legacy hosted
+        // components domain continue to work there but are not carried over to
+        // a replacement hosted domain.
+        scopePasskeyRegistrationToHostname(options_json, hostname);
 
         let attResp;
         try {
@@ -3882,11 +3882,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
-        }
-        options_json.rpId = window.location.hostname;
+        // Keep authentication scoped to the current hostname. This deliberately
+        // does not add cross-domain compatibility for passkeys created on a
+        // previous hosted components domain.
+        scopePasskeyAuthenticationToHostname(options_json, window.location.hostname);
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
         return await this._interface.signInWithPasskey({ authentication_response, code }, session);

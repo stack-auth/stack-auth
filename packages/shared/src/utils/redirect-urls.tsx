@@ -6,7 +6,7 @@ type TrustedDomainConfig = {
   trustedDomains: readonly (string | null | undefined)[],
 };
 
-const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
+const defaultHostedHandlerDomainSuffix = ".built-with-hexclave.com";
 const hostedHandlerProjectIdPlaceholder = "{projectId}";
 const hostedHandlerPathPlaceholder = "{hostedPath}";
 const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']]);
@@ -30,7 +30,7 @@ function assertHostedHandlerTemplateHasProjectOrigin(template: string): void {
   if (projectUrlA.origin === projectUrlB.origin || !projectUrlA.hostname.includes(hostedHandlerTemplateProjectIdA)) {
     throw new HexclaveAssertionError("The hosted handler URL template must put {projectId} in the hostname.", {
       hostedHandlerUrlTemplate: template,
-      hint: "Use a project-specific origin like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}', not a shared-origin path like 'https://example.com/{projectId}/{hostedPath}'.",
+      hint: "Use a project-specific origin like 'https://{projectId}.built-with-hexclave.com/{hostedPath}', not a shared-origin path like 'https://example.com/{projectId}/{hostedPath}'.",
     });
   }
 }
@@ -61,7 +61,7 @@ export function getHostedHandlerUrlFromConfig(options: {
       if (!domainSuffix.startsWith(".")) {
         throw new HexclaveAssertionError("The hosted handler domain suffix must start with a dot.", {
           domainSuffix,
-          hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-stack-auth.com'.",
+          hint: "Set NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-hexclave.com'.",
         });
       }
       return `https://${options.projectId}${domainSuffix}/${options.hostedPath}`;
@@ -70,7 +70,7 @@ export function getHostedHandlerUrlFromConfig(options: {
       if (!configuredTemplate.includes(hostedHandlerProjectIdPlaceholder) || !configuredTemplate.includes(hostedHandlerPathPlaceholder)) {
         throw new HexclaveAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
           hostedHandlerUrlTemplate: configuredTemplate,
-          hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}'.",
+          hint: "Set NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-hexclave.com/{hostedPath}'.",
         });
       }
       assertHostedHandlerTemplateHasProjectOrigin(configuredTemplate);
@@ -220,11 +220,11 @@ import.meta.vitest?.test("validateRedirectUrl matches exact and wildcard trusted
 
 import.meta.vitest?.test("validateRedirectUrl trusts implicit hosted handler domains", ({ expect }) => {
   const projectId = "12345678-1234-4234-8234-123456789abc";
-  expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/anything`, {
+  expect(validateRedirectUrl(`https://${projectId}.built-with-hexclave.com/anything`, {
     allowLocalhost: false,
     trustedDomains: getImplicitlyTrustedDomainsForProject({ projectId }),
   })).toBe(true);
-  expect(validateRedirectUrl("https://other-project.built-with-stack-auth.com/anything", {
+  expect(validateRedirectUrl("https://other-project.built-with-hexclave.com/anything", {
     allowLocalhost: false,
     trustedDomains: getImplicitlyTrustedDomainsForProject({ projectId }),
   })).toBe(false);

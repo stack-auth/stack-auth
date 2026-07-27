@@ -531,7 +531,7 @@ describe("StackClientApp cross-domain auth", () => {
     }
 
     const errorUrl = new URL(redirectedUrl);
-    expect(errorUrl.origin).toBe(`https://${projectId}.built-with-stack-auth.com`);
+    expect(errorUrl.origin).toBe(`https://${projectId}.built-with-hexclave.com`);
     expect(errorUrl.pathname).toBe("/handler/error");
     expect(errorUrl.searchParams.get("errorCode")).toBe("SIGN_UP_REJECTED");
     expect(errorUrl.searchParams.get("message")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
@@ -711,7 +711,7 @@ describe("StackClientApp cross-domain auth", () => {
     redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
     redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
 
-    const arrivalUrl = new URL(`https://${projectId}.built-with-stack-auth.com/handler/sign-in`);
+    const arrivalUrl = new URL(`https://${projectId}.built-with-hexclave.com/handler/sign-in`);
     arrivalUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
     arrivalUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
     arrivalUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
@@ -750,7 +750,7 @@ describe("StackClientApp cross-domain auth", () => {
         .mockResolvedValue(crossDomainAuthorizeRedirect);
 
       // All redirect-back query params were dropped before the after-sign-in redirect.
-      windowMock.location.href = `https://${projectId}.built-with-stack-auth.com/handler/sign-in`;
+      windowMock.location.href = `https://${projectId}.built-with-hexclave.com/handler/sign-in`;
 
       const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("afterSignIn");
 

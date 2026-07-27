@@ -19,7 +19,8 @@ import '../styles.css';
 
 
 export function getProjectId(): string | null {
-  // Extract from subdomain: <projectId>.built-with-hexclave.com
+  // Extract from either cloud subdomain:
+  // <projectId>.built-with-hexclave.com or the legacy <projectId>.built-with-stack-auth.com.
   // Also works with <projectId>.localhost for local dev
   const hostname = window.location.hostname;
   const parts = hostname.split('.');

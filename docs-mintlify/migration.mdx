@@ -47,7 +47,7 @@ All legacy names keep working — rename only if you want your code to match the
 - **Environment variables**: `STACK_*` → `HEXCLAVE_*`.
 - **Bearer prefix**: `stackauth_*` tokens remain valid.
 - **CLI binary**: both `stack` and `hexclave` ship with `@hexclave/cli`.
-- **Hosted-handler subdomain**: `.built-with-stack-auth.com` still works.
+- **Hosted-handler subdomain**: current SDKs use `.built-with-hexclave.com`. The legacy `.built-with-stack-auth.com` domain remains available for SDK versions that already generated those URLs. Passkeys are scoped to the domain where they were registered and are not transferred between the two domains.
 
 ## Other
 
