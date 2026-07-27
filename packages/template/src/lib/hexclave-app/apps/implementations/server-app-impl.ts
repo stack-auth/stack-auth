@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import { McpAuthInfo, McpTokenVerifier, createMcpTokenVerifier, getOAuthIssuerUrl } from "../../../../mcp";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
@@ -1214,6 +1215,26 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return await this.getServerUserById(apiKeyObject.userId);
   }
 
+  /**
+   * Resolves the `AuthInfo` an MCP framework produced into a `ServerUser`.
+   *
+   * The token has already been cryptographically verified by `createMcpTokenVerifier` — that is what
+   * produced this `AuthInfo` — so this is a lookup, not a second auth check. We read the user ID out
+   * of `extra`, which is where our verifier puts it.
+   *
+   * The scopes are *not* re-applied here. Narrowing happens on the backend, which resolves the
+   * user's live permissions and intersects them with the token's granted scopes; doing it again in
+   * the SDK would be a second implementation of the same rule, and two implementations of an
+   * authorization rule eventually disagree.
+   */
+  protected async _getUserByMcpAuthInfo(authInfo: McpAuthInfo): Promise<ServerUser | null> {
+    const userId = authInfo.extra?.userId;
+    if (typeof userId !== "string") {
+      throw new Error("The AuthInfo passed to getUser({ from: 'mcp' }) has no Hexclave user ID. Make sure it came from a verifier created by createMcpTokenVerifier — AuthInfo from another auth provider cannot be resolved to a Hexclave user.");
+    }
+    return await this.getServerUserById(userId);
+  }
+
   protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
     const identity = await ctx.auth.getUserIdentity();
     if (identity === null) {
@@ -1271,6 +1292,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return this._serverUserFromCrud(crud);
   }
 
+  createMcpTokenVerifier(options?: { resource?: string }): McpTokenVerifier {
+    // Sugar over the standalone export: same verifier, with the project and base URL this app was
+    // already configured with. An MCP server in its own process imports `createMcpTokenVerifier`
+    // from `@hexclave/js/mcp` directly and passes a project ID — no server app, no secret key.
+    return createMcpTokenVerifier({
+      projectId: this.projectId,
+      baseUrl: this._interface.options.getBaseUrl(),
+      resource: options?.resource,
+    });
+  }
+
+  getOAuthIssuerUrl(): string {
+    return getOAuthIssuerUrl({
+      projectId: this.projectId,
+      baseUrl: this._interface.options.getBaseUrl(),
+    });
+  }
+
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentServerUser<ProjectId>>;
   async getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentServerUser<ProjectId>>;
@@ -1278,13 +1317,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   async getUser(id: string): Promise<ServerUser | null>;
   async getUser(options: { apiKey: string }): Promise<ServerUser | null>;
   async getUser(options: { from: "convex", ctx: ConvexCtx, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>;
-  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
+  async getUser(options: { from: "mcp", authInfo: McpAuthInfo, or?: "return-null" }): Promise<ServerUser | null>;
+  async getUser(options?: string | GetCurrentUserOptions<HasTokenStore> | { apiKey: string } | { from: "convex", ctx: ConvexCtx } | { from: "mcp", authInfo: McpAuthInfo }): Promise<ProjectCurrentServerUser<ProjectId> | ServerUser | null> {
     if (typeof options === "string") {
       return await this.getServerUserById(options);
     } else if (typeof options === "object" && "apiKey" in options) {
       return await this._getUserByApiKey(options.apiKey);
     } else if (typeof options === "object" && "from" in options && options.from as string === "convex") {
-      return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
+      return await this._getUserByConvex((options as { ctx: ConvexCtx }).ctx, "or" in options && options.or === "anonymous");
+    } else if (typeof options === "object" && "from" in options && options.from as string === "mcp") {
+      return await this._getUserByMcpAuthInfo((options as { authInfo: McpAuthInfo }).authInfo);
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
 

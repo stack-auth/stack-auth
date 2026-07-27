@@ -7,7 +7,7 @@ import { sha512 } from '@hexclave/shared/dist/utils/hashes';
 import { getPrivateJwks, getPublicJwkSet } from '@hexclave/shared/dist/utils/jwt';
 import { deindent } from '@hexclave/shared/dist/utils/strings';
 import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
-import Provider, { Adapter, AdapterConstructor, AdapterPayload } from 'oidc-provider';
+import Provider, { Adapter, AdapterConstructor, AdapterPayload, Configuration } from 'oidc-provider';
 
 type AdapterData = {
   payload: AdapterPayload,
@@ -20,6 +20,16 @@ function createAdapter(options: {
     idOrWhere: string | { propertyKey: keyof AdapterPayload, propertyValue: string },
     updater: (old: AdapterData | undefined) => AdapterData | undefined
   ) => Promise<AdapterData | undefined>,
+  /**
+   * Consulted when `find` misses in storage. This is how clients that were never persisted —
+   * resolved live from a client ID metadata document — become visible to the provider.
+   *
+   * Deliberately routed through the adapter rather than a separate lookup: `oidc-provider` funnels
+   * every client resolution through `adapter('Client').find(id)`, so anything resolved here is
+   * indistinguishable from a stored client to the rest of the provider. A second code path would
+   * be a second place for the two to disagree about what a client may do.
+   */
+  onFindMiss?: (model: string, id: string) => Promise<AdapterPayload | undefined>,
 }): AdapterConstructor {
   const niceUpdate = async (
     model: string,
@@ -58,7 +68,9 @@ function createAdapter(options: {
     }
 
     async find(id: string): Promise<AdapterPayload | undefined> {
-      return await niceUpdate(this.model, id);
+      const stored = await niceUpdate(this.model, id);
+      if (stored) return stored;
+      return await options.onFindMiss?.(this.model, id);
     }
 
     async findByUserCode(userCode: string): Promise<AdapterPayload | undefined> {
@@ -83,8 +95,9 @@ function createAdapter(options: {
   };
 }
 
-function createPrismaAdapter(idpId: string) {
+function createPrismaAdapter(idpId: string, onFindMiss?: (model: string, id: string) => Promise<AdapterPayload | undefined>) {
   return createAdapter({
+    onFindMiss,
     async onUpdateUnique(model, idOrWhere, updater) {
       return await retryTransaction(globalPrismaClient, async (tx) => {
         const oldAll = await tx.idPAdapterData.findMany({
@@ -162,7 +175,63 @@ function createPrismaAdapter(idpId: string) {
   });
 }
 
-export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
+/**
+ * The parts of an OIDC provider that differ between the two things we run one for:
+ *
+ *  - the **integration IdPs** (Neon, custom) — singletons with a static, env-configured client list,
+ *    no scopes, and an interaction flow that trades a Hexclave-issued wrapper code for an account;
+ *  - a **customer project acting as its own OAuth provider** — one per tenancy, with clients from
+ *    config (or self-registered), a scope vocabulary projected from the project's RBAC, and
+ *    resource servers for RFC 8707 audience binding.
+ *
+ * Everything else — the Prisma adapter, the per-instance JWKS derivation, cookie keys, error
+ * rendering, the JWKS endpoint — is identical, which is why it lives in one factory.
+ */
+export type OidcProviderOptions = {
+  /**
+   * Identifies this provider instance. Used as the `idpId` partition key in `IdPAdapterData` and as
+   * the salt for this instance's signing keys, so it must be stable forever and unique across all
+   * providers we run. Integration IdPs use a fixed string; project providers use
+   * `project:<projectId>:<branchId>`.
+   */
+  id: string,
+  baseUrl: string,
+  /** Statically known clients. Project providers pass their config-declared ones. */
+  clients?: Configuration['clients'],
+  /**
+   * Looked up when a `client_id` isn't in `clients` — dynamic client registration and client ID
+   * metadata documents both land here. Returning `undefined` makes it an unknown client.
+   */
+  findClient?: (clientId: string) => Promise<AdapterPayload | undefined>,
+  /** The scope vocabulary this provider advertises and accepts. */
+  scopes?: string[],
+  /**
+   * Resource servers for RFC 8707 `resource=`. Maps a resource URI to its audience and the scopes
+   * valid there. MCP servers are resource servers.
+   */
+  resourceServers?: Map<string, { audience: string, scopes: string[] }>,
+  /** Resolves the subject to an account and its claims. Defaults to an opaque `sub`-only account. */
+  findAccount?: Configuration['findAccount'],
+  /** Extra claims to stamp into issued access tokens (e.g. the granted scope list). */
+  extraTokenClaims?: Configuration['extraTokenClaims'],
+  features?: {
+    /** RFC 7591 dynamic client registration. */
+    registration?: boolean,
+    /** RFC 7009 token revocation. Required for a usable "disconnect this app" button. */
+    revocation?: boolean,
+  },
+  /**
+   * Require PKCE on every authorization request. Mandatory under OAuth 2.1 and the MCP spec, but
+   * off by default here so the pre-existing integration IdPs keep behaving exactly as they did.
+   */
+  requirePkce?: boolean,
+  /** Installed after the built-in middleware. Where integration-specific interaction flows go. */
+  middleware?: (provider: Provider) => void,
+  /** Where to send the user to log in / consent. */
+  interactionUrl?: (interactionUid: string) => string,
+};
+
+export async function createOidcProviderInternal(options: OidcProviderOptions) {
   // NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
   // SHA-256 that produces the per-audience signing secret + kid in
   // `getPrivateJwks` (see packages/shared/src/utils/jwt.tsx:114-115). It is
@@ -178,9 +247,18 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
   };
   const publicJwkSet = await getPublicJwkSet(privateJwks);
 
+  const adapter = createPrismaAdapter(
+    options.id,
+    options.findClient
+      // Only the `Client` model gets a fallback. Every other model (codes, grants, sessions) is
+      // storage-backed by definition, and a miss there means the thing genuinely doesn't exist.
+      ? async (model, id) => model === 'Client' ? await options.findClient!(id) : undefined
+      : undefined,
+  );
+
   const oidc = new Provider(options.baseUrl, {
-    adapter: createPrismaAdapter(options.id),
-    clients: JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
+    adapter,
+    clients: options.clients ?? JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
     ttl: {},
     cookies: {
       keys: [
@@ -192,14 +270,61 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
       devInteractions: {
         enabled: false,
       },
+      registration: {
+        enabled: options.features?.registration ?? false,
+      },
+      revocation: {
+        enabled: options.features?.revocation ?? false,
+      },
+      resourceIndicators: options.resourceServers ? {
+        enabled: true,
+        // Which resource a token is for, when the client didn't pass `resource=`.
+        //
+        // We only supply a default when the project has exactly one resource server, where there is
+        // no ambiguity — that is the DX win for the common "I have one MCP server" case. With zero
+        // or several we omit the helper entirely and let oidc-provider's own default apply, which
+        // resolves nothing and fails the request. Silently picking one of several would mint a token
+        // for a resource server the client never named, i.e. exactly the confused-deputy problem
+        // RFC 8707 exists to prevent.
+        //
+        // (Omitting rather than returning `undefined` is also what keeps this type-safe: the
+        // published `@types/oidc-provider` types declare the return as `string | string[]` even
+        // though the runtime accepts `undefined` to mean "no default".)
+        ...options.resourceServers.size === 1 ? {
+          defaultResource: async () => [...options.resourceServers!.keys()][0],
+        } : {},
+        getResourceServerInfo: async (ctx, resourceIndicator, client) => {
+          const resourceServer = options.resourceServers!.get(resourceIndicator);
+          if (!resourceServer) {
+            // oidc-provider validates the indicator against `defaultResource`/the request before
+            // reaching us, so an unknown one here means our map and the provider disagree.
+            throw new HexclaveAssertionError(`Unknown resource indicator ${JSON.stringify(resourceIndicator)}.`, { resourceIndicator });
+          }
+          return {
+            // The audience is what binds the token to this resource server, and — because
+            // `getPrivateJwks` derives keys per audience — what makes it cryptographically unusable
+            // anywhere else. See `getResourceAudience` in `lib/tokens.tsx`.
+            audience: resourceServer.audience,
+            scope: resourceServer.scopes.join(" "),
+            accessTokenFormat: 'jwt' as const,
+          };
+        },
+      } : { enabled: false },
     },
-    scopes: [],
+    scopes: options.scopes ?? [],
     responseTypes: [
       "code",
     ],
+    // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally, so project
+    // providers turn this on. It is NOT on by default: the Neon/custom integration IdPs predate
+    // this factory being generalized, and forcing PKCE on them would break already-shipped clients.
+    ...options.requirePkce ? { pkce: { required: () => true } } : {},
+    extraTokenClaims: options.extraTokenClaims,
 
     interactions: {
-      url: (ctx, interaction) => `${options.baseUrl}/interaction/${encodeURIComponent(interaction.uid)}`,
+      url: (ctx, interaction) => options.interactionUrl
+        ? options.interactionUrl(interaction.uid)
+        : `${options.baseUrl}/interaction/${encodeURIComponent(interaction.uid)}`,
     },
 
     async renderError(ctx, out, error) {
@@ -209,14 +334,14 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
       ctx.body = JSON.stringify(out);
     },
 
-    async findAccount(ctx, sub, token) {
+    findAccount: options.findAccount ?? (async (ctx, sub, token) => {
       return {
         accountId: sub,
         async claims(use, scope, claims, rejected) {
           return { sub };
         },
       };
-    },
+    }),
   });
 
   oidc.on('server_error', (ctx, err) => {
@@ -253,6 +378,41 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
     }
     await next();
   });
+
+  options.middleware?.(oidc);
+
+  return oidc;
+}
+
+/**
+ * The integration IdP (Neon, custom) — a singleton provider whose login flow is driven by a
+ * Hexclave-issued wrapper code rather than by a user session.
+ *
+ * Kept as its own function so that generalizing the factory above didn't change any behaviour for
+ * the two integrations that already depend on it.
+ */
+export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
+  return await createOidcProviderInternal({
+    id: options.id,
+    baseUrl: options.baseUrl,
+    middleware: (oidc) => installIntegrationInteractionMiddleware(oidc, options),
+  });
+}
+
+function installIntegrationInteractionMiddleware(
+  oidc: Provider,
+  options: { id: string, baseUrl: string, clientInteractionUrl: string },
+) {
+  function middleware(mw: Parameters<typeof oidc.use>[0]) {
+    oidc.use((ctx, next) => {
+      try {
+        return mw(ctx, next);
+      } catch (err) {
+        captureError('idp-oidc-provider-middleware-error', err);
+        throw err;
+      }
+    });
+  }
 
   // Interactions
   middleware(async (ctx, next) => {
@@ -396,7 +556,5 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
     }
     await next();
   });
-
-  return oidc;
 }
 

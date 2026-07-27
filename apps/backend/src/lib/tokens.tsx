@@ -92,6 +92,13 @@ const issuerHostAliases = new Map<string, string>(
 // `NEXT_PUBLIC_STACK_API_URL` so existing single-host self-hosters keep working)
 // and its alias host, so a token minted under one cloud brand validates against
 // either backend host.
+//
+// LOAD-BEARING OMISSION: the project's OIDC provider issuer (`.../projects/{id}/oidc`) is
+// deliberately NOT in this list. Tokens minted by a project acting as an OAuth provider are for
+// that project's own resource servers, not for the Hexclave API, and this omission is one of the
+// two independent mechanisms that keeps them out (the other being that a resource audience derives
+// a different signing key — see `getResourceAudience`). Do not "helpfully" unify the two issuer
+// helpers.
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   const aliasHost = issuerHostAliases.get(new URL(issuer).host);
@@ -100,10 +107,158 @@ const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   aliasedUrl.host = aliasHost;
   return [issuer, aliasedUrl.toString()];
 };
+// The `aud` claim is not just an identifier — it selects the signing key. `getPrivateJwks({ audience })`
+// derives a distinct keypair per audience string (see `packages/shared/src/utils/jwt.tsx`), so two
+// tokens with different audiences are signed by different keys and are structurally unable to
+// validate against each other. That is what makes resource-scoped tokens (see `parseAudience`'s
+// `resource` variant) safe: an MCP token cannot be replayed as a session token even if some future
+// caller forgets to check the issuer.
+//
+// Because of that, the audience string format is a wire format we can never change without rotating
+// every signing key. Parsing therefore lives in exactly one place — `parseAudience` — and every
+// producer goes through `getAudience`/`getResourceAudience`.
+
+const ANONYMOUS_AUDIENCE_SUFFIX = 'anon';
+const RESTRICTED_AUDIENCE_SUFFIX = 'restricted';
+const RESOURCE_AUDIENCE_MARKER = 'resource';
+
+// Project IDs are UUIDs or the literal `internal` (see `projectIdSchema`), and resource IDs are
+// user-specified IDs (see `USER_SPECIFIED_ID_PATTERN`). Neither can contain a colon, which is what
+// makes the audience format unambiguously parseable. We re-assert it here rather than trusting the
+// callers, because `parseAudience` also runs on attacker-controlled JWTs.
+const AUDIENCE_SEGMENT_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+export type ParsedAudience =
+  /** A token representing a signed-in user of the project — what the main API accepts. */
+  | { type: 'user', projectId: string, userType: UserType }
+  /**
+   * A token minted by the project's OAuth/OIDC provider for a specific registered resource server
+   * (e.g. a customer's MCP server). Deliberately *not* accepted by the main API: it has a different
+   * issuer and a different signing key.
+   */
+  | { type: 'resource', projectId: string, resourceId: string };
+
 const getAudience = (projectId: string, userType: UserType) => {
   // TODO: make the audience a URL, and encode the user type in a better way
-  return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
+  return userType === 'anonymous' ? `${projectId}:${ANONYMOUS_AUDIENCE_SUFFIX}` : userType === 'restricted' ? `${projectId}:${RESTRICTED_AUDIENCE_SUFFIX}` : projectId;
 };
+
+/**
+ * The audience for a token scoped to a single resource server registered on the project's OAuth
+ * provider. Distinct from every user audience, so it derives its own signing keypair.
+ */
+export const getResourceAudience = (projectId: string, resourceId: string) => {
+  if (!AUDIENCE_SEGMENT_PATTERN.test(projectId)) {
+    throw new HexclaveAssertionError("Project ID is not a valid audience segment; it must not contain a colon.", { projectId });
+  }
+  if (!AUDIENCE_SEGMENT_PATTERN.test(resourceId)) {
+    throw new HexclaveAssertionError("Resource ID is not a valid audience segment; it must not contain a colon.", { resourceId });
+  }
+  return `${projectId}:${RESOURCE_AUDIENCE_MARKER}:${resourceId}`;
+};
+
+/**
+ * Parses an `aud` claim, or returns `null` if it is not a shape we mint.
+ *
+ * Use this on untrusted input (a JWT presented by a caller). Use `parseAudience` where the audience
+ * is ours by construction and an unknown shape is a bug.
+ */
+export function tryParseAudience(aud: string): ParsedAudience | null {
+  const segments = aud.split(":");
+  if (!segments.every(segment => AUDIENCE_SEGMENT_PATTERN.test(segment))) return null;
+
+  switch (segments.length) {
+    case 1: {
+      return { type: 'user', projectId: segments[0], userType: 'normal' };
+    }
+    case 2: {
+      switch (segments[1]) {
+        case ANONYMOUS_AUDIENCE_SUFFIX: {
+          return { type: 'user', projectId: segments[0], userType: 'anonymous' };
+        }
+        case RESTRICTED_AUDIENCE_SUFFIX: {
+          return { type: 'user', projectId: segments[0], userType: 'restricted' };
+        }
+        default: {
+          return null;
+        }
+      }
+    }
+    case 3: {
+      if (segments[1] !== RESOURCE_AUDIENCE_MARKER) return null;
+      return { type: 'resource', projectId: segments[0], resourceId: segments[2] };
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+/**
+ * Parses an `aud` claim, throwing if it is not a shape we mint.
+ *
+ * Only for audiences we produced ourselves. For a JWT that came in over the wire, use
+ * `tryParseAudience` and turn `null` into a 4xx — an unparsable token is a caller error, not ours.
+ */
+export function parseAudience(aud: string): ParsedAudience {
+  return tryParseAudience(aud) ?? throwErr("Audience is not in any format Hexclave mints. Either it was not minted by us, or the audience format changed without updating `tryParseAudience`.", { aud });
+}
+
+import.meta.vitest?.describe("audience parsing", (test) => {
+  const projectId = "e0b52f4d-dece-408c-af49-d23061bb0f8d";
+
+  test("round-trips every user audience", ({ expect }) => {
+    for (const userType of ['normal', 'restricted', 'anonymous'] as const) {
+      expect(parseAudience(getAudience(projectId, userType))).toEqual({ type: 'user', projectId, userType });
+    }
+  });
+
+  test("round-trips a resource audience", ({ expect }) => {
+    expect(parseAudience(getResourceAudience(projectId, "my_mcp-server"))).toEqual({
+      type: 'resource',
+      projectId,
+      resourceId: "my_mcp-server",
+    });
+  });
+
+  test("parses the `internal` project", ({ expect }) => {
+    expect(parseAudience("internal")).toEqual({ type: 'user', projectId: "internal", userType: 'normal' });
+  });
+
+  test("user and resource audiences never collide", ({ expect }) => {
+    const userAudiences = (['normal', 'restricted', 'anonymous'] as const).map(t => getAudience(projectId, t));
+    const resourceAudience = getResourceAudience(projectId, "anon");
+    expect(userAudiences).not.toContain(resourceAudience);
+  });
+
+  test("rejects unknown shapes rather than guessing", ({ expect }) => {
+    const rejected = [
+      "",
+      ":",
+      `${projectId}:`,
+      `:${projectId}`,
+      `${projectId}:unknown-suffix`,
+      // `resource` must be in the marker position, not the suffix position
+      `${projectId}:resource`,
+      // colons cannot be smuggled into a segment
+      `${projectId}:resource:a:b`,
+      `${projectId}:anon:extra`,
+      // not a marker we mint
+      `${projectId}:audience:foo`,
+      "a b",
+      "https://example.com",
+    ];
+    for (const aud of rejected) {
+      expect(tryParseAudience(aud), `expected ${JSON.stringify(aud)} to be rejected`).toBeNull();
+      expect(() => parseAudience(aud)).toThrow();
+    }
+  });
+
+  test("refuses to mint a resource audience with a colon in it", ({ expect }) => {
+    expect(() => getResourceAudience(projectId, "a:b")).toThrow();
+    expect(() => getResourceAudience("a:b", "resource")).toThrow();
+  });
+});
 
 const getUserType = (isAnonymous: boolean, isRestricted: boolean): UserType => {
   if (isAnonymous) return 'anonymous';
@@ -129,14 +284,32 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
 
     let payload: jose.JWTPayload;
     let decoded: jose.JWTPayload | undefined;
-    let aud;
+    let parsedAud: ParsedAudience;
 
     try {
       decoded = jose.decodeJwt(accessToken);
-      aud = decoded.aud?.toString() ?? "";
+      const aud = decoded.aud?.toString() ?? "";
+
+      // The audience is attacker-controlled at this point (the signature hasn't been checked yet),
+      // so an unrecognized shape is a caller error, not an assertion failure.
+      const maybeParsedAud = tryParseAudience(aud);
+      if (!maybeParsedAud) {
+        console.warn("Access token has an audience Hexclave never mints. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, aud });
+        return Result.error(new KnownErrors.UnparsableAccessToken());
+      }
+      // A resource-scoped token belongs to a customer's own resource server (e.g. their MCP server)
+      // and must never authenticate a request to the main API. `getAllowedIssuers` below would
+      // already reject it — the OIDC issuer path is deliberately absent from that list — but
+      // rejecting here means the refusal doesn't silently depend on that omission surviving a
+      // future refactor. See `parseAudience` for the second, independent layer (distinct signing key).
+      if (maybeParsedAud.type !== 'user') {
+        console.warn("Resource-scoped access token presented to the main API. These are only valid at the resource server they were minted for.", { accessToken, aud });
+        return Result.error(new KnownErrors.UnparsableAccessToken());
+      }
+      parsedAud = maybeParsedAud;
 
       // Determine allowed issuers based on what types of tokens we accept
-      const projectId = aud.split(":")[0];
+      const projectId = parsedAud.projectId;
       const allowedIssuers = [
         ...getAllowedIssuers(projectId, 'normal'),
         ...(allowRestricted ? getAllowedIssuers(projectId, 'restricted') : []),
@@ -149,13 +322,17 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
+        // Best-effort only: an expired token's audience is still untrusted, and it may be a shape we
+        // don't recognize. The project ID here is diagnostic (it goes into the error for the SDK to
+        // report), never an authorization input.
+        const expiredProjectId = tryParseAudience(decoded?.aud?.toString() ?? "")?.projectId;
         const error = new KnownErrors.AccessTokenExpired(
           decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
-          decoded?.aud?.toString().split(":")[0],
+          expiredProjectId,
           decoded?.sub ?? undefined,
           (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
         );
-        console.log(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        console.log(`[Token decode] Access token expired for project ${expiredProjectId}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
         return Result.error(error);
       } else if (error instanceof JOSEError) {
         console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
@@ -185,16 +362,16 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
-    // Validate audience matches the user type
-    if (aud.endsWith(":anon") && !isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
-    } else if (!aud.endsWith(":anon") && isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
+    // Validate audience matches the user type. The audience selects the signing key, so a mismatch
+    // here means we signed a token with the wrong key — a bug on our side, not a caller error.
+    const audUserType = parsedAud.userType;
+    if ((audUserType === 'anonymous') !== isAnonymous) {
+      throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_anonymous claim.", { accessToken, payload, audUserType, isAnonymous });
     }
-    if (aud.endsWith(":restricted") && !isRestricted) {
-      throw new HexclaveAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
-    } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
-      throw new HexclaveAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
+    // Anonymous audiences are implicitly restricted (an anonymous user is always restricted), so
+    // they satisfy the restricted check without carrying the `:restricted` suffix.
+    if ((audUserType === 'restricted' || audUserType === 'anonymous') !== isRestricted) {
+      throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_restricted claim.", { accessToken, payload, audUserType, isRestricted });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
@@ -204,7 +381,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
     }
 
     const result = await accessTokenSchema.validate({
-      projectId: aud.split(":")[0],
+      projectId: parsedAud.projectId,
       userId: payload.sub,
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,

@@ -9,6 +9,7 @@ import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _HexclaveServerAppImpl } from "../implementations";
+import type { McpAuthInfo, McpTokenVerifier } from "../../../../mcp";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
@@ -55,6 +56,48 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(id: string): Promise<ServerUser | null>,
     getUser(options: { apiKey: string, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>,
     getUser(options: { from: "convex", ctx: GenericQueryCtx<any>, or?: "return-null" | "anonymous" }): Promise<ServerUser | null>,
+    /**
+     * Resolves the `AuthInfo` an MCP framework handed you into a Hexclave user.
+     *
+     * ```ts
+     * const user = await hexclaveServerApp.getUser({ from: "mcp", authInfo: extra.authInfo });
+     * ```
+     *
+     * The returned user is already narrowed to the scopes the token was granted, so
+     * `user.hasPermission(...)` simply tells the truth — a developer who never thinks about scopes
+     * still gets correct authorization.
+     */
+    getUser(options: { from: "mcp", authInfo: McpAuthInfo, or?: "return-null" }): Promise<ServerUser | null>,
+
+    /**
+     * Creates a token verifier for an MCP server, with this app's project and base URL filled in.
+     *
+     * The result drops straight into `mcp-handler`'s `withMcpAuth` and the MCP SDK's
+     * `requireBearerAuth` alike:
+     *
+     * ```ts
+     * export const { GET, POST } = withMcpAuth(
+     *   handler,
+     *   hexclaveServerApp.createMcpTokenVerifier({ resource: "https://mcp.acme.com/mcp" }),
+     *   { required: true },
+     * );
+     * ```
+     *
+     * For an MCP server running as its own service, import `createMcpTokenVerifier` from
+     * `@hexclave/js/mcp` instead — it needs only a project ID and no secret key.
+     */
+    createMcpTokenVerifier(options?: { resource?: string }): McpTokenVerifier,
+
+    /**
+     * This project's OAuth issuer URL — what RFC 9728 protected-resource metadata must advertise.
+     *
+     * ```ts
+     * export const GET = protectedResourceHandler({
+     *   authServerUrls: [hexclaveServerApp.getOAuthIssuerUrl()],
+     * });
+     * ```
+     */
+    getOAuthIssuerUrl(): string,
 
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,

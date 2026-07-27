@@ -89,6 +89,10 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
           permissionId: query.permission_id,
           userId: query.user_id,
           recursive: query.recursive === 'true',
+          // Full authority: this is the main API, which only accepts session tokens and API keys.
+          // Tokens minted by a project's own OAuth provider are rejected before they get here (see
+          // `decodeAccessToken`), so there are no granted scopes to narrow by.
+          grantedScopes: null,
         }),
         is_paginated: false,
       };

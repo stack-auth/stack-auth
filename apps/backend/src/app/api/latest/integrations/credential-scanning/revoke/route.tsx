@@ -129,6 +129,9 @@ export const POST = createSmartRouteHandler({
           teamId: updatedApiKey.teamId,
           permissionId: '$manage_api_keys',
           recursive: true,
+          // Full authority: this resolves who to *notify* about a leaked credential, on behalf of
+          // the system rather than any signed-in caller. There is no token here to scope by.
+          grantedScopes: null,
         });
 
         return permissions.map(p => p.user_id);

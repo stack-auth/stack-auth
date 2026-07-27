@@ -8,6 +8,7 @@ import { getOrUndefined, has, typedEntries, typedFromEntries } from "@hexclave/s
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { overrideEnvironmentConfigOverride } from "./config";
 import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "./external-db-sync";
+import { ScopeDefinition, deriveScopes, narrowPermissionsByScopes } from "./scopes";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -34,6 +35,18 @@ export async function listPermissions<S extends "team" | "project">(
     permissionId?: string,
     recursive: boolean,
     scope: S,
+    /**
+     * The OAuth scopes the caller's token was granted, or `null` for full authority.
+     *
+     * Required — not optional — on purpose. Every call site has to state which of the two it is,
+     * because the two are indistinguishable at a glance and getting it wrong silently over-grants.
+     * An ordinary session token, a server-key request, or any internal caller passes `null`; only a
+     * request authenticated by an OAuth-provider-issued token passes a list.
+     *
+     * The result is the *intersection* of these scopes with the user's live permissions, so a scope
+     * can only ever remove a permission, never add one. See `lib/scopes.tsx`.
+     */
+    grantedScopes: string[] | null,
   } & (S extends "team" ? {
     scope: "team",
     teamId?: string,
@@ -90,7 +103,14 @@ export async function listPermissions<S extends "team" | "project">(
     })));
   }
 
-  return finalResults
+  // Narrow by the token's granted scopes *last*, after containment has been resolved. Order matters:
+  // if a user holds `admin` which contains `read_docs`, and the token was granted only
+  // `perm:read_docs`, narrowing first would drop `admin` and take `read_docs` with it. Resolving
+  // containment first and narrowing after gives the right answer — the token can exercise
+  // `read_docs` but not `admin` itself.
+  const scopedResults = narrowPermissionsByScopes(finalResults, options.grantedScopes, options.scope);
+
+  return scopedResults
     .sort((a, b) => (options.scope === 'team' ? stringCompare((a as any).team_id, (b as any).team_id) : 0) || stringCompare(a.user_id, b.user_id) || stringCompare(a.id, b.id))
     .filter(p => options.permissionId ? p.id === options.permissionId : true) as any;
 }
@@ -209,6 +229,21 @@ export async function listPermissionDefinitions(
   return listPermissionDefinitionsFromConfig({
     config: options.tenancy.config,
     scope: options.scope,
+  });
+}
+
+/**
+ * The full OAuth scope vocabulary of a project — every permission projected into a scope, plus the
+ * customer's own custom scopes and the OIDC standard ones.
+ *
+ * Lives here rather than in `scopes.tsx` because it needs the permission definitions, and
+ * `scopes.tsx` is deliberately the lower layer of the two (see `PermissionDefinitionLike` there).
+ */
+export function deriveScopesFromConfig(config: CompleteConfig): ScopeDefinition[] {
+  return deriveScopes({
+    config,
+    projectPermissions: listPermissionDefinitionsFromConfig({ config, scope: "project" }),
+    teamPermissions: listPermissionDefinitionsFromConfig({ config, scope: "team" }),
   });
 }
 

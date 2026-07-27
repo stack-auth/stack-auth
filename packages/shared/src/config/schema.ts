@@ -79,6 +79,184 @@ const branchRbacSchema = yupObject({
 });
 // --- END NEW RBAC Schema ---
 
+// --- OAuth Provider Schema ---
+/**
+ * Configuration for a project acting as an OAuth 2.1 / OIDC *provider* — i.e. other applications
+ * ("clients") sign users in against this project, and receive tokens scoped to what the user
+ * consented to. MCP servers are the motivating case: an MCP server is just a resource server whose
+ * clients happen to be AI agents.
+ *
+ * Note what is deliberately absent: a list of scopes mirroring the project's permissions. Every
+ * permission in `rbac.permissions` is automatically also a scope (`perm:` / `team_perm:` prefixed) —
+ * see `apps/backend/src/lib/scopes.tsx`. `scopes` below is only for *additional* scopes that have
+ * meaning to a customer's own resource server but no corresponding Hexclave permission.
+ */
+// A custom scope may contain colons and dots (`files:read`, `files.read` are both idiomatic OAuth),
+// so this is looser than `userSpecifiedIdSchema`. Reserved prefixes (`perm:`, `team_perm:`, and the
+// OIDC standard scopes) are rejected at write time by `assertCustomScopeIdsAreValid` rather than by
+// this regex, so the error message can explain *why* the name is taken.
+//
+// Because of the dots and colons, a scope name can never be a config *key* — config overrides use
+// dot-path notation, so `scopes.files.read` would parse as three path segments. Every record below
+// that needs to name a scope is therefore keyed by an opaque ID with the scope as a value.
+const oauthProviderScopeIdRegex = /^[a-z0-9_:.-]+$/;
+
+const branchOAuthProviderSchema = yupObject({
+  scopes: yupRecord(
+    userSpecifiedIdSchema("scopeConfigId"),
+    yupObject({
+      /** The actual scope string clients request, e.g. `files:read`. */
+      scope: yupString().matches(oauthProviderScopeIdRegex).optional(),
+      displayName: yupString().optional(),
+      description: yupString().optional(),
+    }).optional(),
+  ),
+
+  /**
+   * Resource servers (RFC 8707) that tokens can be minted for. Each entry's `uri` is the canonical
+   * resource identifier a client passes as `resource=` at the authorize endpoint, and which the
+   * resource server checks the token's audience against.
+   */
+  resources: yupRecord(
+    userSpecifiedIdSchema("resourceId"),
+    yupObject({
+      displayName: yupString().optional(),
+      uri: schemaFields.urlSchema.optional(),
+      /**
+       * Scopes a token for this resource may carry. Empty means "any scope the project defines".
+       *
+       * Keyed by an opaque ID with the scope as a value: scope IDs may contain dots (`files.read`),
+       * and a dot in a config key is a path separator. See the note on `redirectUris` below.
+       */
+      scopes: yupRecord(
+        userSpecifiedIdSchema("resourceScopeId"),
+        yupObject({
+          scope: yupString().matches(oauthProviderScopeIdRegex).optional(),
+        }).optional(),
+      ).optional(),
+    }).optional(),
+  ),
+
+  clients: yupRecord(
+    userSpecifiedIdSchema("clientId"),
+    yupObject({
+      displayName: yupString().optional(),
+      // Keyed by an opaque ID with the URL as a *value*, not by the URL itself. Config overrides are
+      // written in dot-path notation (`oauthProvider.clients.x.redirectUris.y.url`), so a key
+      // containing a dot — which every URL does — would be parsed as a path separator. Same reason
+      // `domains.trustedDomains` is shaped this way.
+      redirectUris: yupRecord(
+        userSpecifiedIdSchema("redirectUriId"),
+        yupObject({
+          url: yupString().optional(),
+        }).optional(),
+      ).optional(),
+      type: yupString().oneOf(['public', 'confidential']).optional(),
+      /**
+       * First-party clients skip the consent *prompt*. They never skip the authority check — a
+       * trusted client's token is still narrowed by the intersection rule, so this only removes a
+       * click, never a boundary.
+       *
+       * Settable from config only. A client that registered itself (via dynamic client registration
+       * or a client ID metadata document) must not be able to declare itself first-party, so the
+       * registration paths never write this field.
+       */
+      trusted: yupBoolean().optional(),
+    }).optional(),
+  ),
+
+  /** RFC 7591 dynamic client registration. Required by some MCP clients. */
+  dynamicClientRegistration: yupObject({
+    enabled: yupBoolean(),
+  }),
+
+  /**
+   * OAuth Client ID Metadata Documents — the `client_id` is an HTTPS URL that serves the client's
+   * own metadata. This is the direction the MCP spec is moving, replacing dynamic registration.
+   */
+  clientIdMetadataDocuments: yupObject({
+    enabled: yupBoolean(),
+    /**
+     * When non-empty, only these hosts may serve a metadata document.
+     *
+     * Keyed by an opaque ID with the hostname as a value — see the note on `redirectUris` above for
+     * why a hostname can't be the key.
+     */
+    allowedDomains: yupRecord(
+      userSpecifiedIdSchema("allowedDomainId"),
+      yupObject({
+        domain: yupString().optional(),
+      }).optional(),
+    ).optional(),
+  }),
+
+  consent: yupObject({
+    required: yupBoolean(),
+    /** Whether the consent screen lets the user uncheck individual optional scopes. */
+    allowUserToDeselectOptionalScopes: yupBoolean(),
+  }),
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts a minimal MCP-server setup", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "my-mcp-server": { displayName: "My MCP Server", uri: "https://mcp.example.com/mcp" },
+    },
+    dynamicClientRegistration: { enabled: true },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts colon- and dot-namespaced custom scopes", async ({ expect }) => {
+  // `files:read` and `files.read` are both idiomatic OAuth, so the scope regex must be looser than
+  // `userSpecifiedIdSchema`. Reserved prefixes are rejected separately, at write time.
+  await expect(branchOAuthProviderSchema.validate({
+    scopes: {
+      "read-files": { scope: "files:read", displayName: "Read files" },
+      "write-files": { scope: "files.write" },
+    },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts loopback redirect URIs, which native MCP clients need", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: {
+      "some-client": {
+        type: "public",
+        redirectUris: {
+          "loopback-v4": { url: "http://127.0.0.1:5173/callback" },
+          "loopback-name": { url: "http://localhost:5173/callback" },
+        },
+      },
+    },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects a malformed scope", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    scopes: { "some-id": { scope: "Has Space" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema keys nothing by a URL or scope name", async ({ expect }) => {
+  // Config overrides are written in dot-path notation, so a key containing a dot would be parsed as
+  // a path separator. URLs and scope names both contain dots, which is why every record that names
+  // one is keyed by an opaque ID with the value inside. The fuzzer enforces this globally; this test
+  // pins the specific mistake so it fails with a legible message rather than a fuzzer trace.
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { redirectUris: { "https://example.com/callback": {} } } },
+  }, { abortEarly: false })).rejects.toThrow();
+  await expect(branchOAuthProviderSchema.validate({
+    clientIdMetadataDocuments: { allowedDomains: { "example.com": {} } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects an unknown client type", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { type: "implicit" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+// --- END OAuth Provider Schema ---
+
 // --- NEW API Keys Schema ---
 const branchApiKeysSchema = yupObject({
   enabled: yupObject({
@@ -440,6 +618,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   auth: branchAuthSchema,
 
+  oauthProvider: branchOAuthProviderSchema,
+
   emails: yupObject({
     selectedThemeId: schemaFields.emailThemeSchema,
     themes: schemaFields.emailThemeListSchema,
@@ -709,6 +889,28 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // return the result
   return res;
 };
+
+import.meta.vitest?.test("migrateConfigOverride leaves oauthProvider overrides untouched", ({ expect }) => {
+  // `oauthProvider` is a purely additive section — it never existed under another name, so there is
+  // deliberately no migration entry for it. This test exists to catch the case where someone later
+  // renames a field inside it and forgets to add one: the round trip below would start failing.
+  const oauthProvider = {
+    scopes: { "read-files": { scope: "files:read", displayName: "Read files" } },
+    resources: { "my-mcp-server": { uri: "https://mcp.example.com/mcp" } },
+    clients: { "some-client": { type: "public", trusted: false } },
+    dynamicClientRegistration: { enabled: true },
+    clientIdMetadataDocuments: { enabled: true },
+    consent: { required: true, allowUserToDeselectOptionalScopes: true },
+  };
+
+  expect(migrateConfigOverride("branch", { oauthProvider })).toEqual({ oauthProvider });
+  expect(migrateConfigOverride("environment", { oauthProvider })).toEqual({ oauthProvider });
+  expect(migrateConfigOverride("organization", { oauthProvider })).toEqual({ oauthProvider });
+  // ...including in dot-path notation, which is how config updates are actually written.
+  expect(migrateConfigOverride("branch", {
+    "oauthProvider.consent.required": false,
+  })).toEqual({ "oauthProvider.consent.required": false });
+});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {
@@ -983,6 +1185,43 @@ const organizationConfigDefaults = {
       },
     }),
     signUpRulesDefaultAction: 'allow',
+  },
+
+  oauthProvider: {
+    scopes: (key: string) => ({
+      scope: undefined,
+      displayName: undefined,
+      description: undefined,
+    }),
+    resources: (key: string) => ({
+      displayName: undefined,
+      uri: undefined,
+      scopes: (scopeKey: string) => ({
+        scope: undefined,
+      }),
+    }),
+    clients: (key: string) => ({
+      displayName: undefined,
+      redirectUris: (redirectUriKey: string) => ({
+        url: undefined,
+      }),
+      type: 'public',
+      // Defaults to false: a client is only first-party if someone explicitly said so.
+      trusted: false,
+    } as const),
+    dynamicClientRegistration: {
+      enabled: false,
+    },
+    clientIdMetadataDocuments: {
+      enabled: false,
+      allowedDomains: (key: string) => ({
+        domain: undefined,
+      }),
+    },
+    consent: {
+      required: true,
+      allowUserToDeselectOptionalScopes: true,
+    },
   },
 
   emails: {

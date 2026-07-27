@@ -7,6 +7,17 @@ import { listPermissions } from "./permissions";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
+// Every check in this file passes `grantedScopes: null` (full authority) to `listPermissions`.
+//
+// That is correct because these helpers all run on the main Hexclave API, which only ever
+// authenticates session tokens, API keys, and server keys. Tokens minted by a project acting as its
+// own OAuth provider carry a different issuer and a different signing key, and `decodeAccessToken`
+// rejects them outright — so a scoped token can never reach this code.
+//
+// If that ever changes (i.e. the main API starts accepting OAuth-provider tokens), these helpers
+// must start threading the token's scopes through instead. Doing so is why `grantedScopes` is a
+// required parameter rather than an optional one: the change would be impossible to make silently.
+
 
 async function _getTeamMembership(
   tx: PrismaTransaction,
@@ -103,6 +114,8 @@ export async function ensureUserTeamPermissionExists(
     userId: options.userId,
     permissionId: options.permissionId,
     recursive: options.recursive,
+    // See the note on `grantedScopes` at the top of this file.
+    grantedScopes: null,
   });
 
   if (result.length === 0) {
@@ -135,6 +148,8 @@ export async function ensureProjectPermissionExists(
     userId: options.userId,
     permissionId: options.permissionId,
     recursive: options.recursive,
+    // See the note on `grantedScopes` at the top of this file.
+    grantedScopes: null,
   });
 
   if (result.length === 0) {

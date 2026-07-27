@@ -145,6 +145,9 @@ async function getPaymentRecipients(options: {
       teamId: options.customerId,
       permissionId: "team_admin",
       recursive: true,
+      // Full authority: this runs on a Stripe webhook to work out who to email about a payment
+      // event. There is no user token in the request at all, so nothing to scope by.
+      grantedScopes: null,
     });
     const userIds = [...new Set(permissions.map((permission) => permission.user_id))];
     return userIds.map((userId) => ({ type: "user-primary-email", userId }));
