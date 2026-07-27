@@ -61,7 +61,7 @@ export const deploymentsSkillSection = deindent`
   2. **Authenticate for cloud deploys** (pick the first that works):
      - If \`HEXCLAVE_SECRET_SERVER_KEY\` (or \`STACK_SECRET_SERVER_KEY\`) **and** \`HEXCLAVE_PROJECT_ID\` (or \`STACK_PROJECT_ID\`) are already in the environment, use them. No login step.
      - Else if \`npx @hexclave/cli@latest whoami\` succeeds, you already have a CLI login session — proceed.
-     - Else ask the user to run \`npx @hexclave/cli@latest login\` (or run it for them). That command opens a **one-time browser login page for the human**. Do **not** use the browser yourself to open the Deployments dashboard, click Deploy, or configure the service in the UI. After login returns successfully, continue immediately with the CLI.
+     - Else confirm with the user first, then run \`npx @hexclave/cli@latest login\` yourself. It does not open a browser — it prints a one-time confirmation URL (\`https://app.hexclave.com/handler/cli-auth-confirm?login_code=...\`) and waits. Either open that URL in the user's browser or hand it to them to open, but either way tell them to complete the login themselves; you can't do it for them. Once the command returns successfully, continue immediately with the CLI. Do **not** use the browser yourself to open the Deployments dashboard, click Deploy, or configure the service in the UI.
   3. **Write/update \`hexclave.config.ts\`**, then deploy with \`npx @hexclave/cli@latest deploy <service> ...\` (see below). Pass every \`type: "secret"\` env via \`--secret\`.
   4. **Poll status/logs with \`hexclave exec\`** (snippets below). Do not tell the user to "watch the dashboard" as the primary path.
 

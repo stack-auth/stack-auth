@@ -276,7 +276,8 @@ function ProjectsListPage() {
 
   useEffect(() => {
     if (rawProjects.length === 0 && !isRemoteDevelopmentEnvironment) {
-      router.push('/new-project');
+      // Replace instead of push, so that the back button doesn't bounce between the two pages.
+      router.replace('/new-project');
     }
   }, [isRemoteDevelopmentEnvironment, router, rawProjects]);
 
