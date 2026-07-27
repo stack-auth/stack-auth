@@ -16,6 +16,7 @@ import { createProjectInteractively } from "../lib/create-project.js";
 import { AuthError, CliError } from "../lib/errors.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
+import { withProgress } from "../lib/progress.js";
 
 const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
 type InitMode = typeof VALID_INIT_MODES[number];
@@ -223,12 +224,14 @@ async function writeProjectKeysToEnv(
   project: { id: string, app: { createInternalApiKey: (opts: { description: string, expiresAt: Date, hasPublishableClientKey: boolean, hasSecretServerKey: boolean, hasSuperSecretAdminKey: boolean }) => Promise<{ publishableClientKey?: string | null, secretServerKey?: string | null }> } },
   outputDir: string,
 ) {
-  const apiKey = await project.app.createInternalApiKey({
-    description: "Created by CLI init script",
-    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200), // 200 years
-    hasPublishableClientKey: true,
-    hasSecretServerKey: true,
-    hasSuperSecretAdminKey: false,
+  const apiKey = await withProgress("Creating project keys", async () => {
+    return await project.app.createInternalApiKey({
+      description: "Created by CLI init script",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200), // 200 years
+      hasPublishableClientKey: true,
+      hasSecretServerKey: true,
+      hasSuperSecretAdminKey: false,
+    });
   });
 
   const publishableClientKey = apiKey.publishableClientKey ?? throwErr("createInternalApiKey returned no publishableClientKey despite hasPublishableClientKey=true");
@@ -272,7 +275,7 @@ async function writeProjectKeysToEnv(
 
 async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession();
-  const user = await getInternalUser(sessionAuth);
+  const user = await withProgress("Loading account", async () => await getInternalUser(sessionAuth));
 
   const { dashboardUrl } = resolveLoginConfig();
   const newProject = await createProjectInteractively(user, {
@@ -288,8 +291,12 @@ async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOpti
 
 async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession();
-  const user = await getInternalUser(sessionAuth);
-  let projects = await user.listOwnedProjects();
+  const { user, ownedProjects } = await withProgress("Loading projects", async () => {
+    const user = await getInternalUser(sessionAuth);
+    const ownedProjects = await user.listOwnedProjects();
+    return { user, ownedProjects };
+  });
+  let projects = ownedProjects;
   let autoCreatedProjectId: string | null = null;
 
   if (projects.length === 0) {

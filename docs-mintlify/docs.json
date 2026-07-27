@@ -18,7 +18,7 @@
     }
   },
   "contextual": {
-   "options": [
+    "options": [
       "copy",
       "view",
       "assistant",
@@ -182,6 +182,7 @@
             "pages": [
               "guides/other/self-host",
               "guides/other/known-errors",
+              "guides/other/dev-tool",
               "migration",
               {
                 "group": "Tutorials",
@@ -201,7 +202,9 @@
           "sdk/overview",
           {
             "group": "Objects",
-            "pages": ["sdk/objects/hexclave-app"]
+            "pages": [
+              "sdk/objects/hexclave-app"
+            ]
           },
           {
             "group": "Types",
@@ -222,7 +225,10 @@
           },
           {
             "group": "Hooks",
-            "pages": ["sdk/hooks/use-hexclave-app", "sdk/hooks/use-user"]
+            "pages": [
+              "sdk/hooks/use-hexclave-app",
+              "sdk/hooks/use-user"
+            ]
           }
         ]
       },
@@ -274,7 +280,10 @@
     "indexing": "all"
   },
   "settings": {
-    "customScripts": ["/apps-sidebar-filter.js", "/code-language-labels.js"]
+    "customScripts": [
+      "/apps-sidebar-filter.js",
+      "/code-language-labels.js"
+    ]
   },
   "redirects": [
     {

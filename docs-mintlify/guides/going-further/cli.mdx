@@ -104,6 +104,8 @@ stack --project-id <project-id> config push --config-file ./stack.config.ts
 
 `config pull` requires `stack login`. `config push` supports either `stack login` or `STACK_SECRET_SERVER_KEY`.
 
+Important: Always make sure to pull the latest config before pushing your changes when you're pushing to a Cloud project, as the existing config may not be what you expected it to be.
+
 When running in GitHub Actions, `config push` records `GITHUB_REPOSITORY`, `GITHUB_REF_NAME`, `GITHUB_SHA`, and the config file path as the config source when those environment variables are available.
 
 ## Execute admin JavaScript
