@@ -567,14 +567,23 @@ function RunDetailsBody({ details }: { details: AdminWorkflowRunDetails }) {
         )}
       </div>
 
-      {details.stepAttempts.some((attempt) => attempt.outcome === "failed" || attempt.logs != null) && (
+      {/* Hidden for clean runs, where every attempt succeeded and the list would
+          just restate STEPS. Retried runs always show it: some runs fail before
+          any attempt row is written (e.g. the memo-size guards), so a recovering
+          retry can leave a single succeeded, log-less attempt that the first two
+          conditions would hide — exactly the run an operator came to inspect. */}
+      {details.stepAttempts.some((attempt) => attempt.outcome === "failed" || attempt.logs != null || attempt.retryEpoch > 0) && (
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attempts</h3>
           <div className="flex flex-col gap-2">
             {details.stepAttempts.map((attempt) => (
-              <div key={`${attempt.stepKey}#${attempt.attempt}`} className="rounded-lg border border-border/60 p-3 text-xs">
+              <div key={`${attempt.stepKey}#${attempt.retryEpoch}#${attempt.attempt}`} className="rounded-lg border border-border/60 p-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono">{attempt.stepKey} · attempt {attempt.attempt}</span>
+                  {/* Attempt numbering restarts at 1 on each manual retry, so the
+                      epoch has to be shown or the list reads as duplicates. */}
+                  <span className="font-mono">
+                    {attempt.stepKey} · {attempt.retryEpoch > 0 ? `retry ${attempt.retryEpoch} · ` : ""}attempt {attempt.attempt}
+                  </span>
                   <DesignBadge
                     label={attempt.outcome === "succeeded" ? "succeeded" : attempt.failureKind === "platform" ? "platform error" : "failed"}
                     color={attempt.outcome === "succeeded" ? "green" : "red"}

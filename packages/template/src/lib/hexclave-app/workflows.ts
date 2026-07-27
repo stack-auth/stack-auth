@@ -74,6 +74,8 @@ export type AdminWorkflowStep = {
 export type AdminWorkflowStepAttempt = {
   stepKey: string,
   stepId: string,
+  /** 0 for the original execution; incremented by each manual retry of the run. */
+  retryEpoch: number,
   attempt: number,
   outcome: "succeeded" | "failed",
   error: { name: string, message: string, stack?: string } | null,
@@ -193,6 +195,7 @@ export function adminWorkflowRunDetailsFromCrud(crud: WorkflowRunDetailsJson): A
     stepAttempts: crud.step_attempts.map((attempt) => ({
       stepKey: attempt.step_key,
       stepId: attempt.step_id,
+      retryEpoch: attempt.retry_epoch,
       attempt: attempt.attempt,
       outcome: attempt.outcome,
       error: attempt.error,

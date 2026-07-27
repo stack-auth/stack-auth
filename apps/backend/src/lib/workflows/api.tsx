@@ -383,7 +383,14 @@ export async function getWorkflowRunDetails(tenancy: Tenancy, runId: string): Pr
   });
   const attempts = await globalPrismaClient.workflowStepAttempt.findMany({
     where: { tenancyId: tenancy.id, runId },
-    orderBy: [{ startedAt: "asc" }],
+    // Epoch first because startedAt is stamped on the app server, not the DB:
+    // with several backend instances and skewed clocks a later epoch could
+    // otherwise sort ahead of an earlier one. Ordering by epoch makes the
+    // grouping structural rather than clock-dependent. stepKey/attempt are a
+    // deterministic tiebreaker — Postgres sorts are not stable, and
+    // recordStepAttempt is not lease-fenced, so identical timestamps from a
+    // stale worker are possible in principle.
+    orderBy: [{ retryEpoch: "asc" }, { startedAt: "asc" }, { stepKey: "asc" }, { attempt: "asc" }],
   });
 
   const stepsJson: WorkflowStepResultJson[] = steps.map((step) => ({
@@ -400,6 +407,7 @@ export async function getWorkflowRunDetails(tenancy: Tenancy, runId: string): Pr
   const attemptsJson: WorkflowStepAttemptJson[] = attempts.map((attempt) => ({
     step_key: attempt.stepKey,
     step_id: attempt.stepId,
+    retry_epoch: attempt.retryEpoch,
     attempt: attempt.attempt,
     outcome: attempt.outcome === "SUCCEEDED" ? "succeeded" : "failed",
     error: attempt.error as WorkflowStepAttemptJson["error"],

@@ -180,6 +180,8 @@ export type WorkflowStepResultJson = {
 export type WorkflowStepAttemptJson = {
   step_key: string,
   step_id: string,
+  /** 0 for the original execution; incremented by each manual retry of the run. */
+  retry_epoch: number,
   attempt: number,
   outcome: "succeeded" | "failed",
   error: { name: string, message: string, stack?: string } | null,

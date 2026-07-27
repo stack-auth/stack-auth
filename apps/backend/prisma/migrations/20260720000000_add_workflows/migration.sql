@@ -54,6 +54,7 @@ CREATE TABLE "WorkflowRun" (
     "leaseUntil" TIMESTAMP(3),
     "leaseToken" UUID,
     "currentStepAttempt" INTEGER NOT NULL DEFAULT 0,
+    "retryEpoch" INTEGER NOT NULL DEFAULT 0,
     "memoTotalBytes" INTEGER NOT NULL DEFAULT 0,
     "failureKind" "WorkflowRunFailureKind",
     "errorSummary" TEXT,
@@ -87,6 +88,7 @@ CREATE TABLE "WorkflowStepAttempt" (
     "tenancyId" UUID NOT NULL,
     "runId" UUID NOT NULL,
     "stepKey" TEXT NOT NULL,
+    "retryEpoch" INTEGER NOT NULL DEFAULT 0,
     "attempt" INTEGER NOT NULL,
     "stepId" TEXT NOT NULL,
     "outcome" "WorkflowStepAttemptOutcome" NOT NULL,
@@ -97,7 +99,7 @@ CREATE TABLE "WorkflowStepAttempt" (
     "finishedAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "WorkflowStepAttempt_pkey" PRIMARY KEY ("tenancyId","runId","stepKey","attempt")
+    CONSTRAINT "WorkflowStepAttempt_pkey" PRIMARY KEY ("tenancyId","runId","stepKey","retryEpoch","attempt")
 );
 
 -- CreateTable

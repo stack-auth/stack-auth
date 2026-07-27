@@ -408,6 +408,15 @@ export default workflow("${workflowId}", {
         return runs.find((run) => run.id === failedRun.id && run.state === "failed") ?? null;
       }, { timeoutMs: 120_000 });
 
+      // The retry re-executed, so its attempt must be recorded as history
+      // rather than swallowed. Both executions use attempt 1 (retry grants a
+      // fresh budget), so they are only distinguishable by retry_epoch.
+      const afterRetryResponse = await niceBackendFetch(`/api/v1/internal/workflows/runs/${failedRun.id}`, { method: "GET", accessType: "admin" });
+      expect(afterRetryResponse.body.step_attempts).toMatchObject([
+        { step_key: "always-fails", retry_epoch: 0, attempt: 1, outcome: "failed" },
+        { step_key: "always-fails", retry_epoch: 1, attempt: 1, outcome: "failed" },
+      ]);
+
       // Retrying a non-failed (already re-failed, so pick a bogus state):
       // canceling the failed run is rejected too (only active runs cancel).
       const cancelResponse = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/runs/cancel`, {
@@ -416,6 +425,85 @@ export default workflow("${workflowId}", {
         body: { run_key: "boom:b1" },
       });
       expect(cancelResponse).toMatchObject({ status: 200, body: { canceled_count: 0 } });
+
+      await retireWorkflow(expect, workflowId);
+    });
+  });
+
+  it("records the successful attempt when a manual retry recovers a failed run", { timeout: 180_000 }, async ({ expect }) => {
+    await withInternalProject(async () => {
+      const workflowId = randomSlug("e2e-retry-ok");
+      const eventName = randomSlug("e2e-gate");
+      const email = `${randomSlug("wf-gate")}@example.com`;
+
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: { primary_email: email },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id as string;
+
+      // The same pinned code must fail the original execution and recover on
+      // retry. The gate is durable platform state this test flips, NOT a
+      // deadline: a wall-clock gate would race the sandbox's cold start, and
+      // when it lost, the first execution would SUCCEED and the "failed" poll
+      // would burn its full timeout — a slower machine making the test fail,
+      // with a diagnostic pointing nowhere near the cause.
+      // retries:0 keeps each execution to a single attempt (no backoff waits).
+      await createWorkflow(expect, workflowId, `import { workflow, customEvent, hexclaveApp } from "@hexclave/workflows";
+export default workflow("${workflowId}", {
+  on: [customEvent("${eventName}")],
+}, async (event, step) => {
+  await step.run("gated", async () => {
+    const user = await hexclaveApp.getUser(event.data.userId);
+    if (user?.serverMetadata?.gateOpen !== true) {
+      throw new Error("too early");
+    }
+    return "recovered";
+  }, { retries: 0 });
+});
+`);
+      await sendCustomEvent(expect, eventName, { userId });
+
+      const failedRun = await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(workflowId);
+        return runs.find((run) => run.state === "failed") ?? null;
+      }, { timeoutMs: 120_000 });
+      expect(failedRun).toMatchObject({ state: "failed", error_summary: "Error: too early (1/1 attempts)" });
+
+      // Open the gate so the retried execution takes the success branch.
+      const openGateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: { server_metadata: { gateOpen: true } },
+      });
+      expect(openGateResponse.status).toBe(200);
+
+      const retryResponse = await niceBackendFetch(`/api/v1/internal/workflows/runs/${failedRun.id}/retry`, {
+        method: "POST",
+        accessType: "admin",
+        body: {},
+      });
+      expect(retryResponse).toMatchObject({ status: 200, body: { run_id: failedRun.id } });
+
+      await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(workflowId);
+        return runs.find((run) => run.id === failedRun.id && run.state === "completed") ?? null;
+      }, { timeoutMs: 120_000 });
+
+      // The regression this guards: the successful attempt reused attempt 1 of
+      // the same step, so before retry_epoch existed it collided with the
+      // original failure and was silently dropped by the skipDuplicates
+      // insert — leaving a completed run whose history showed only a failure.
+      const detailsResponse = await niceBackendFetch(`/api/v1/internal/workflows/runs/${failedRun.id}`, { method: "GET", accessType: "admin" });
+      expect(detailsResponse.body.step_attempts).toMatchObject([
+        { step_key: "gated", retry_epoch: 0, attempt: 1, outcome: "failed" },
+        { step_key: "gated", retry_epoch: 1, attempt: 1, outcome: "succeeded" },
+      ]);
+      expect(detailsResponse.body.steps).toMatchObject([
+        { step_id: "gated", result: "recovered" },
+      ]);
 
       await retireWorkflow(expect, workflowId);
     });

@@ -481,6 +481,7 @@ type ClaimedRunRow = {
   triggerPayload: unknown,
   currentStepAttempt: number,
   currentStepKey: string | null,
+  retryEpoch: number,
   memoTotalBytes: number,
   leaseToken: string,
   /** The state the run was claimed OUT OF — a SLEEPING claim means its durable timer just fired. */
@@ -518,7 +519,7 @@ async function claimDueRuns(): Promise<ClaimedRunRow[]> {
     SET "state" = 'RUNNING', "leaseUntil" = NOW() + make_interval(secs => ${RUN_LEASE_MS / 1000}), "leaseToken" = gen_random_uuid(), "wakeAt" = NULL, "updatedAt" = NOW()
     FROM selected
     WHERE r."tenancyId" = selected."tenancyId" AND r."id" = selected."id"
-    RETURNING r."tenancyId", r."id", r."workflowId", r."version", r."runKey", r."triggerEventId", r."triggerType", r."triggerPayload", r."currentStepAttempt", r."currentStepKey", r."memoTotalBytes", r."leaseToken", selected."preClaimState"::text AS "preClaimState", selected."preClaimWakeAt"
+    RETURNING r."tenancyId", r."id", r."workflowId", r."version", r."runKey", r."triggerEventId", r."triggerType", r."triggerPayload", r."currentStepAttempt", r."currentStepKey", r."retryEpoch", r."memoTotalBytes", r."leaseToken", selected."preClaimState"::text AS "preClaimState", selected."preClaimWakeAt"
   `);
 }
 
@@ -568,6 +569,8 @@ async function recordStepAttempt(options: {
   runId: string,
   stepKey: string,
   stepId: string,
+  /** WorkflowRun.retryEpoch; part of the key so a manual retry's attempts don't collide with the original execution's. */
+  retryEpoch: number,
   attempt: number,
   outcome: "SUCCEEDED" | "FAILED",
   error?: { name: string, message: string, stack?: string },
@@ -581,6 +584,7 @@ async function recordStepAttempt(options: {
       runId: options.runId,
       stepKey: options.stepKey,
       stepId: options.stepId,
+      retryEpoch: options.retryEpoch,
       attempt: options.attempt,
       outcome: options.outcome,
       error: options.error,
@@ -719,7 +723,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
       ));
       const attempt = currentStepAttempt + 1;
       await recordStepAttempt({
-        tenancyId: run.tenancyId, runId: run.id, stepKey: HANDLER_STEP_KEY, stepId: HANDLER_STEP_KEY, attempt,
+        tenancyId: run.tenancyId, runId: run.id, stepKey: HANDLER_STEP_KEY, stepId: HANDLER_STEP_KEY, retryEpoch: run.retryEpoch, attempt,
         outcome: "FAILED", error: { name: "PlatformError", message: GENERIC_PLATFORM_ERROR_SUMMARY }, failureKind: "PLATFORM", logs: null, startedAt: attemptStartedAt,
       });
       if (attempt >= WORKFLOW_STEP_MAX_ATTEMPTS) {
@@ -771,7 +775,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
           skipDuplicates: true,
         });
         await recordStepAttempt({
-          tenancyId: run.tenancyId, runId: run.id, stepKey: outcome.stepKey, stepId: outcome.stepId, attempt: currentStepAttempt + 1,
+          tenancyId: run.tenancyId, runId: run.id, stepKey: outcome.stepKey, stepId: outcome.stepId, retryEpoch: run.retryEpoch, attempt: currentStepAttempt + 1,
           outcome: "SUCCEEDED", logs: outcome.logs, startedAt: attemptStartedAt,
         });
         const continued = await transitionRunFromRunning(run.tenancyId, run.id, run.leaseToken, Prisma.sql`"memoTotalBytes" = ${newMemoTotal}, "currentStepAttempt" = 0, "currentStepKey" = NULL, "leaseUntil" = NOW() + make_interval(secs => ${RUN_LEASE_MS / 1000})`);
@@ -806,7 +810,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
           // printed between the last step and the return, which no
           // step-attempt row would otherwise capture.
           await recordStepAttempt({
-            tenancyId: run.tenancyId, runId: run.id, stepKey: COMPLETION_STEP_KEY, stepId: COMPLETION_STEP_KEY, attempt: currentStepAttempt + 1,
+            tenancyId: run.tenancyId, runId: run.id, stepKey: COMPLETION_STEP_KEY, stepId: COMPLETION_STEP_KEY, retryEpoch: run.retryEpoch, attempt: currentStepAttempt + 1,
             outcome: "SUCCEEDED", logs: outcome.logs, startedAt: attemptStartedAt,
           });
         }
@@ -823,7 +827,7 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
         const maxAttempts = outcome.type === "step-failed" ? outcome.maxAttempts : WORKFLOW_STEP_MAX_ATTEMPTS;
         const attempt = currentStepAttempt + 1;
         await recordStepAttempt({
-          tenancyId: run.tenancyId, runId: run.id, stepKey, stepId, attempt,
+          tenancyId: run.tenancyId, runId: run.id, stepKey, stepId, retryEpoch: run.retryEpoch, attempt,
           outcome: "FAILED", error: outcome.error, failureKind: "USER", logs: outcome.logs, startedAt: attemptStartedAt,
         });
         if (outcome.nonRetriable || attempt >= maxAttempts) {
@@ -1080,13 +1084,18 @@ export async function retryFailedWorkflowRun(tenancy: Tenancy, runId: string): P
   // Manual re-run from the failed step with a fresh attempt budget. The
   // memoized bag is intact, so the replay resumes exactly where it failed;
   // the run stays pinned to its version.
+  // The attempt budget resets to 0, so the re-executed attempts reuse attempt
+  // numbers that already exist for this step. Bumping retryEpoch (part of
+  // WorkflowStepAttempt's key) keeps them distinct rows — otherwise the
+  // skipDuplicates insert silently drops them and the run's attempt history
+  // still shows only the original failure, even after a successful retry.
   // The NOT EXISTS guard prevents reviving a keyed run whose key has since
   // been taken by a NEWER active run — flipping to QUEUED would set the
   // generated isActive column and violate the active-run uniqueness index
   // with an unhandled 500 instead of a clean error.
   const rows = await globalPrismaClient.$queryRaw<{ id: string }[]>(Prisma.sql`
     UPDATE "WorkflowRun" r
-    SET "state" = 'QUEUED', "wakeAt" = NOW(), "currentStepAttempt" = 0, "failureKind" = NULL, "errorSummary" = NULL, "completedAt" = NULL, "updatedAt" = NOW()
+    SET "state" = 'QUEUED', "wakeAt" = NOW(), "currentStepAttempt" = 0, "retryEpoch" = r."retryEpoch" + 1, "failureKind" = NULL, "errorSummary" = NULL, "completedAt" = NULL, "updatedAt" = NOW()
     WHERE r."tenancyId" = ${tenancy.id}::uuid AND r."id" = ${runId}::uuid AND r."state" = 'FAILED'
       AND NOT EXISTS (
         SELECT 1 FROM "WorkflowRun" other

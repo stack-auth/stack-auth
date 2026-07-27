@@ -1904,6 +1904,16 @@ model WorkflowRun {
   // whenever a step result is recorded. 4 attempts max (1 + 3 retries).
   currentStepAttempt Int @default(0)
 
+  // How many times an operator has manually retried this run from its failed
+  // step. Manual retry grants a fresh attempt budget (currentStepAttempt goes
+  // back to 0), so without this the re-executed attempts would reuse attempt
+  // numbers that already exist for the same step and collide with the
+  // WorkflowStepAttempt primary key — silently discarding the new history via
+  // its skipDuplicates insert. Bumping the epoch keeps every execution's
+  // attempts as distinct rows, so a retried run shows what actually happened
+  // rather than only its original failure.
+  retryEpoch Int @default(0)
+
   // Running total of recorded step result sizes, to enforce the 4 MiB
   // total-memoized-state-per-run limit without summing on every step.
   memoTotalBytes Int @default(0)
@@ -1987,7 +1997,10 @@ model WorkflowStepAttempt {
   tenancyId String @db.Uuid
   runId     String @db.Uuid
   stepKey   String
-  attempt   Int
+  // WorkflowRun.retryEpoch at the time of this attempt. Part of the key
+  // because a manual retry restarts attempt numbering at 1 for the same step.
+  retryEpoch Int @default(0)
+  attempt    Int
 
   stepId  String
   outcome WorkflowStepAttemptOutcome
@@ -2005,7 +2018,7 @@ model WorkflowStepAttempt {
 
   run WorkflowRun @relation(fields: [tenancyId, runId], references: [tenancyId, id], onDelete: Cascade)
 
-  @@id([tenancyId, runId, stepKey, attempt])
+  @@id([tenancyId, runId, stepKey, retryEpoch, attempt])
 }
 
 // The workflow event outbox. Platform events are inserted transactionally
