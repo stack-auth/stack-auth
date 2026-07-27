@@ -106,7 +106,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
   }, [app, loginCode, user]);
 
   useEffect(() => {
-    if (!confirmed || !user || autoCompleteRef.current) {
+    if (!confirmed || !user || user.isRestricted || autoCompleteRef.current) {
       return;
     }
     autoCompleteRef.current = true;
@@ -139,6 +139,16 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
       setError(null);
       setStatus("authorizing");
       if (user) {
+        if (user.isRestricted) {
+          markConfirmed(loginCode);
+          setStatus("redirecting");
+          await (
+            user.isAnonymous
+              ? app.redirectToSignUp({ replace: true })
+              : app.redirectToOnboarding({ replace: true })
+          );
+          return;
+        }
         await completeWithCurrentUser();
         clearConfirmed();
         setStatus("success");
