@@ -21,6 +21,7 @@ import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-envir
 import { WrongAddressScreen } from "./wrong-address-screen";
 
 const DEV_ENVIRONMENT_HEALTHCHECK_INTERVAL_MS = 2_000;
+const TV_PRESENTATION_PATH = /^\/projects\/[^/]+\/tv-mode\/present\/[^/]+\/?$/;
 
 type DevEnvironmentHealthSnapshot =
   | { status: "checking" | "healthy" }
@@ -188,6 +189,7 @@ export function LayoutClient(props: {
 }) {
   const pathname = usePathname();
   const isBrowserSecretAuthorizationPage = pathname === "/development-environment/browser-secret";
+  const isTvPresentationPage = TV_PRESENTATION_PATH.test(pathname);
 
   return (
     <>
@@ -199,10 +201,10 @@ export function LayoutClient(props: {
               <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
                 <RouterProvider>
                   <UserIdentity />
-                  <VersionAlerter />
-                  <BackgroundShine />
+                  {isTvPresentationPage ? null : <VersionAlerter />}
+                  {isTvPresentationPage ? null : <BackgroundShine />}
                   {props.children}
-                  <DevelopmentPortDisplay />
+                  {isTvPresentationPage ? null : <DevelopmentPortDisplay />}
                 </RouterProvider>
               </RemoteDevelopmentEnvironmentAuthGate>
             </DevEnvironmentHealthGate>

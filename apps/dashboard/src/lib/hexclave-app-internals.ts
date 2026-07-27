@@ -5,6 +5,10 @@ import {
   type MetricsUserCounts,
   type UserActivityResponse,
 } from "@hexclave/shared/dist/interface/admin-metrics";
+import {
+  TvSnapshotSchema,
+  type TvSnapshot,
+} from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const hexclaveAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
@@ -162,4 +166,14 @@ export async function fetchMetricsOrThrow(
 
 export async function fetchMetricsUserCountsOrThrow(adminApp: object): Promise<MetricsUserCounts> {
   return await MetricsUserCountsSchema.validate(await fetchJsonOrThrow(adminApp, "/internal/metrics/user-counts"));
+}
+
+export function getTvSnapshotPath(profileId: string): string {
+  return `/internal/tv-mode/profiles/${encodeURIComponent(profileId)}/snapshot`;
+}
+
+export async function fetchTvSnapshotOrThrow(adminApp: object, profileId: string): Promise<TvSnapshot> {
+  return await TvSnapshotSchema.validate(await fetchJsonOrThrow(adminApp, getTvSnapshotPath(profileId)), {
+    strict: true,
+  });
 }

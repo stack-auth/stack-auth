@@ -1084,6 +1084,7 @@ model EmailOutbox {
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
+  @@index([tenancyId, createdAt], name: "EmailOutbox_tenancyId_createdAt_idx")
   @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
   @@index([tenancyId, startedSendingAt], name: "EmailOutbox_tenancyId_startedSendingAt_idx")
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
@@ -1339,6 +1340,7 @@ model Subscription {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
+  @@index([tenancyId, createdAt], name: "Subscription_tenancyId_createdAt_idx")
 }
 
 model ProductVersion {
@@ -1428,6 +1430,7 @@ model SubscriptionInvoice {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
+  @@index([tenancyId, createdAt], name: "SubscriptionInvoice_tenancyId_createdAt_idx")
 }
 
 model OutgoingRequest {
