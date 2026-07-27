@@ -91,6 +91,7 @@ const docsJson = {
                 "icon": "/images/app-icons/authentication.svg",
                 "pages": [
                   "guides/apps/authentication/overview",
+                  "guides/apps/authentication/guide",
                   "guides/apps/authentication/user-onboarding",
                   "guides/apps/authentication/restricted-users",
                   "guides/apps/authentication/connected-accounts",

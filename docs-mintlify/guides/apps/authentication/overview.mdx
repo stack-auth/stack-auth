@@ -6,7 +6,7 @@ sidebarTitle: "Overview"
 
 <Visibility for="agents">
 <Note>
-  **For agents/LLMs:** This is a high-level *marketing* overview of the Authentication app, not an implementation reference. To actually build auth, use [Setup](/guides/getting-started/setup), [Hosted vs. Handler](/guides/going-further/hosted-vs-handler), [Auth providers](./auth-providers), [JWTs & session verification](./jwts), [Sign-up rules](./sign-up-rules), and [Connected accounts](./connected-accounts).
+  **For agents/LLMs:** This is a high-level *marketing* overview of the Authentication app, not an implementation reference. To actually build auth, use [Setup](/guides/getting-started/setup) and the [Authentication guide](./guide) (sign-in methods, auth pages, session reads, and route protection), then the deeper pages: [Hosted vs. Handler](/guides/going-further/hosted-vs-handler), [Auth providers](./auth-providers), [JWTs & session verification](./jwts), [Sign-up rules](./sign-up-rules), and [Connected accounts](./connected-accounts).
 </Note>
 </Visibility>
 
@@ -89,3 +89,5 @@ Yes. Hexclave is open source (MIT client, AGPLv3 server). Run it fully self-host
 3. Use `useUser()` / `getUser()` to read the session and protect routes.
 
 Everything else - [teams](../teams/overview), [payments](../payments/overview), [emails](../emails/overview), [analytics](../analytics/overview) - keys off this same user directory.
+
+Ready for a start-to-finish walkthrough — sign-in methods, auth pages, reading the user, and protecting routes? Read the [Authentication guide](./guide).
