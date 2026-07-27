@@ -1,5 +1,5 @@
 import { it } from "../../../../../../helpers";
-import { Auth, Team, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, Team, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should set the refresh token for a CLI auth attempt and return success when polling", async ({ expect }) => {
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
@@ -74,6 +74,59 @@ it("should set the refresh token for a CLI auth attempt and return success when 
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("should allow a restricted user's refresh token so clients can choose their own onboarding policy", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      credential_enabled: true,
+    },
+  });
+  await Project.updateConfig({
+    "onboarding.requireEmailVerification": true,
+  });
+
+  const restrictedUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
+    method: "POST",
+    accessType: "server",
+    body: {},
+  });
+
+  const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      login_code: createResponse.body.login_code,
+      mode: "complete",
+      refresh_token: restrictedUser.signUpResponse.body.refresh_token,
+    },
+  });
+
+  expect(completeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "server",
+    body: { polling_code: createResponse.body.polling_code },
+  });
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "refresh_token": <stripped field 'refresh_token'>,
+        "status": "success",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  expect(pollResponse.body.refresh_token).toBe(restrictedUser.signUpResponse.body.refresh_token);
 });
 
 it("should return anonymous CLI session details when the CLI started from an anonymous user", async ({ expect }) => {
