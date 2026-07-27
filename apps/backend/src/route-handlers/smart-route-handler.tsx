@@ -118,11 +118,21 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             "/api/latest/internal/external-db-sync/sync-engine",
             "/api/latest/internal/workflow-engine-step",
           ];
+          // Prefix entries for routes with dynamic path segments (which exact
+          // matching can't express): deploys upload many files to Vercel and
+          // the run-log stream follows a build until it finishes.
+          const allowedLongRequestPathPrefixes = [
+            "/api/latest/deployments/",
+          ];
           const allAllowedLongRequestPaths = [
             ...allowedLongRequestPaths,
             ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
           ];
-          const warnAfterSeconds = allAllowedLongRequestPaths.includes(req.nextUrl.pathname) ? 240 : 12;
+          const allAllowedLongRequestPathPrefixes = [
+            ...allowedLongRequestPathPrefixes,
+            ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+          ];
+          const warnAfterSeconds = allAllowedLongRequestPaths.includes(req.nextUrl.pathname) || allAllowedLongRequestPathPrefixes.some(prefix => req.nextUrl.pathname.startsWith(prefix)) ? 240 : 12;
           runAsynchronously(async () => {
             await wait(warnAfterSeconds * 1000);
             if (!hasRequestFinished) {

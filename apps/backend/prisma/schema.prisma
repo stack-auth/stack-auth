@@ -48,8 +48,111 @@ model Project {
   environmentConfigOverrides EnvironmentConfigOverride[]
   configAgentRuns            ConfigAgentRun[]
   aiConversations            AiConversation[]
+  gtmInsights                GtmInsight[]
+  gtmActions                 GtmAction[]
+  gtmNotes                   GtmNote[]
+  gtmOnboardings             GtmOnboarding[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
+}
+
+// Manually curated records for the internal GTM dashboard. These are inert
+// dashboard content; they do not run an agent or perform external actions.
+model GtmInsight {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain      String
+  title       String
+  body        String @db.Text
+  impactScore Int    @default(0)
+  timesSeen   Int    @default(1)
+  lastSeenAt DateTime @default(now())
+
+  // A curated, ordered list of free-text timeline entries that replaces the timeline the dashboard otherwise
+  // generates from the fields above. NULL means "nobody has curated this one", which keeps every pre-existing
+  // suggestion rendering exactly as before. Stored as JSON rather than rows because entries are only ever read
+  // and written as a whole ordered list together with their suggestion, and are never queried on their own.
+  timelineEntries Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model GtmAction {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain            String
+  type              String
+  status            String @default("proposed")
+  title             String
+  summary           String @db.Text
+  verdict           String?
+  retrospectiveText String? @db.Text
+  expiresAt         DateTime
+  executedAt        DateTime?
+
+  // See GtmInsight.timelineEntries — same curated-timeline override, same NULL-means-generated semantics.
+  timelineEntries Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model GtmNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain          String
+  category        String
+  title           String? @db.VarChar(120)
+  body            String @db.VarChar(500)
+  source          String @default("user")
+  lastConfirmedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// A single intake is kept for each GTM project branch. It is deliberately
+// separate from editorial notes because it contains contact information that
+// the GTM team uses to start the engagement.
+model GtmOnboarding {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  domain String? @db.VarChar(253)
+  phone  String @db.VarChar(50)
+  notes  String @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId])
 }
 
 model Tenancy {
@@ -73,6 +176,8 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  deploymentServices  DeploymentService[]
+  deploymentSourceUploads DeploymentSourceUpload[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1527,6 +1632,126 @@ model DeletedRow {
   // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
   @@index([tenancyId, tableName, sequenceId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
+}
+
+// ================== Deployments ==================
+// Operational state for the Deployments app. The service DEFINITIONS
+// (type, framework, build config, env vars) live in the environment config
+// under `deployments.services.<serviceId>` so they follow the project's config
+// source (dashboard / config file / GitHub); these tables only hold what the
+// config cannot: the lazily-provisioned Vercel project id, custom domains and
+// their verification state as reported by Vercel, and the deployment runs
+// themselves. Note that env vars are NOT stored here: their definitions live
+// in the config, and secret values only ever pass through at deploy time.
+
+model DeploymentService {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The user-facing service id — the key under `deployments.services` in the
+  // environment config (e.g. "api").
+  serviceId String
+
+  // Set when the Vercel project is lazily provisioned on first deploy.
+  vercelProjectId String?
+
+  // Build configuration as last sent to Vercel (operational cache — the
+  // authoritative definition lives in the environment config).
+  framework       String?
+  installCommand  String?
+  buildCommand    String?
+  outputDirectory String?
+  rootDirectory   String?
+
+  tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  domains DeploymentServiceDomain[]
+  runs    DeploymentRun[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, serviceId])
+}
+
+model DeploymentServiceDomain {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  hostname  String
+  isPrimary Boolean @default(false)
+  // Vercel-reported verification state, refreshed whenever the domain is read.
+  verified Boolean @default(false)
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deploymentServiceId, hostname])
+}
+
+enum DeploymentRunStatus {
+  QUEUED
+  BUILDING
+  READY
+  ERROR
+  CANCELED
+}
+
+model DeploymentRun {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  vercelDeploymentId  String?
+  vercelDeploymentUrl String?
+
+  status DeploymentRunStatus @default(QUEUED)
+  // "production" | "preview" (kept a string to match Vercel's target values)
+  target String
+  // Free-form descriptor of what triggered the run (e.g. "cli").
+  triggeredBy String
+
+  error      String?
+  finishedAt DateTime?
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
+}
+
+// Short-lived private-object references for `hexclave deploy`: the CLI
+// requests a presigned S3/R2 PUT URL, uploads directly to object storage, then
+// references this row in the deploy request. Rows and successfully-consumed
+// objects are deleted after use; a bucket lifecycle rule cleans up abandoned
+// objects whose clients never finish the deploy flow.
+model DeploymentSourceUpload {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  objectKey String
+  expiresAt DateTime
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([expiresAt])
 }
 
 // ─── Workflows ──────────────────────────────────────────────────────────────

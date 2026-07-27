@@ -79,6 +79,10 @@ const nextConfig = {
 
   poweredByHeader: false,
 
+  experimental: {
+    turbopackFileSystemCacheForDev: true,
+  },
+
   typescript: {
     ignoreBuildErrors: process.env.STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT === "true",
   },

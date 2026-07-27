@@ -21,6 +21,7 @@ function getOverride(): boolean | null {
 }
 
 let activeDevToolOption: true | "auto" | undefined = undefined;
+let activeProjectIsDevelopmentEnvironment = false;
 
 function shouldShow(): boolean {
   const override = getOverride();
@@ -29,6 +30,10 @@ function shouldShow(): boolean {
 
   // If devTool was explicitly set to true, always show
   if (activeDevToolOption === true) return true;
+
+  // Development environment projects should expose the tool even when the
+  // consuming app itself was built or hosted as production.
+  if (activeProjectIsDevelopmentEnvironment) return true;
 
   // "auto" behavior (the default):
   const nodeEnv = envVars.NODE_ENV;
@@ -100,7 +105,27 @@ function tryMount() {
 export function mountDevTool(app: StackClientApp<true>, devToolOption?: boolean | "auto"): () => void {
   activeApp = app;
   activeDevToolOption = devToolOption === false ? undefined : devToolOption ?? undefined;
+  activeProjectIsDevelopmentEnvironment = false;
   tryMount();
+
+  // The project endpoint is also the source of config warnings, so this uses
+  // the backend's development-environment flag instead of inferring it from
+  // the SDK's build or the current page's origin.
+  queueMicrotask(() => {
+    runAsynchronously(async () => {
+      const project = await app.getProject();
+      if (activeApp !== app) return;
+      activeProjectIsDevelopmentEnvironment = project.isDevelopmentEnvironment;
+      if (activeProjectIsDevelopmentEnvironment && activeCleanup === null) {
+        tryMount();
+      }
+    }, {
+      noErrorLogging: true,
+      onError: (error) => {
+        captureError("dev-tool-project-detection", error);
+      },
+    });
+  });
 
   // Capture the cleanup created by THIS specific mount call so that React
   // StrictMode's double-invoke doesn't let the first effect's cleanup tear
@@ -109,6 +134,7 @@ export function mountDevTool(app: StackClientApp<true>, devToolOption?: boolean 
 
   return () => {
     activeApp = null;
+    activeProjectIsDevelopmentEnvironment = false;
     if (activeCleanup === myCleanup && myCleanup != null) {
       activeCleanup = null;
       myCleanup();
@@ -147,7 +173,7 @@ if (typeof window !== 'undefined') {
         activeCleanup();
         activeCleanup = null;
       }
-      console.log('[Stack DevTool] Reset to default (auto-detect based on NODE_ENV or localhost/file: origin).');
+      console.log('[Stack DevTool] Reset to default (auto-detect based on project, NODE_ENV, or localhost/file: origin).');
     },
   };
 }
