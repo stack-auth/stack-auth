@@ -1726,6 +1726,24 @@ export class HexclaveClientInterface {
     );
   }
 
+  async removeUserFromTeam(
+    teamId: string,
+    userId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      urlString`/team-memberships/${teamId}/${userId}`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+  }
+
   async updateTeamMemberProfile(
     options: {
       teamId: string,
