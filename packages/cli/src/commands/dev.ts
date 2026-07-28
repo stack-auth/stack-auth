@@ -70,6 +70,13 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   DASHBOARD_PORT_ENV_VAR,
 ]);
 
+export function dashboardEnvWithStatePath(env: NodeJS.ProcessEnv, statePath: string): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    STACK_DEV_ENVS_PATH: env.STACK_DEV_ENVS_PATH ?? statePath,
+  };
+}
+
 type DashboardSessionState = {
   session: DashboardSessionResponse,
   dashboardReachableSinceMs: number,
@@ -436,7 +443,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
 
   const progress = startProgress(`Hexclave dashboard not found on port ${options.port}. Starting now`, { prefix: LOG_PREFIX });
   const dashboardEnv = {
-    ...process.env,
+    ...dashboardEnvWithStatePath(process.env, devEnvStatePath()),
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
     PORT: String(options.port),
     HOSTNAME: "0.0.0.0",

@@ -41,12 +41,24 @@ afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
   }
+  vi.restoreAllMocks();
   // Reset process-global browser-secret state so tests don't leak into each other.
   delete (globalThis as Record<string, unknown>).__stackRemoteDevelopmentEnvironmentBrowserSecret;
   vi.resetModules();
 });
 
 describe("remote development environment security", () => {
+  it("does not enforce POSIX state file permissions on Windows", async () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    useTempStateFile();
+    const { readRemoteDevelopmentEnvironmentState } = await import("./state");
+
+    expect(readRemoteDevelopmentEnvironmentState()).toMatchObject({
+      version: 1,
+      projectsByConfigPath: {},
+    });
+  });
+
   it("is inactive unless explicitly enabled", async () => {
     useTempStateFile();
     delete process.env[remoteDevelopmentEnvironmentEnabledEnv];

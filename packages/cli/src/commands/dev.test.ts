@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -85,6 +85,21 @@ describe("devDashboardCommandFromEnv", () => {
   it("ignores missing and blank custom dashboard commands", () => {
     expect(devDashboardCommandFromEnv({})).toBeUndefined();
     expect(devDashboardCommandFromEnv({ HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "   " })).toBeUndefined();
+  });
+});
+
+describe("dashboardEnvWithStatePath", () => {
+  it("passes the resolved state path to the dashboard child", () => {
+    expect(dashboardEnvWithStatePath({ NODE_ENV: "production" }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json")).toEqual({
+      NODE_ENV: "production",
+      STACK_DEV_ENVS_PATH: "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json",
+    });
+  });
+
+  it("preserves an explicit state path override", () => {
+    expect(dashboardEnvWithStatePath({
+      STACK_DEV_ENVS_PATH: "C:\\custom\\dev-envs.json",
+    }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json").STACK_DEV_ENVS_PATH).toBe("C:\\custom\\dev-envs.json");
   });
 });
 
