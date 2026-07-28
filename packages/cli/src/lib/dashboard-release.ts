@@ -172,8 +172,12 @@ export function dashboardVersionDir(version: string, cacheSuffix?: DashboardPlat
   return join(dashboardCacheRoot(), cacheSuffix == null ? version : `${version}--${cacheSuffix}`);
 }
 
-export function isDashboardCached(version: string, cacheSuffix?: DashboardPlatformKey): boolean {
-  const dir = dashboardVersionDir(version, cacheSuffix);
+export function isDashboardCached(
+  version: string,
+  cacheSuffix?: DashboardPlatformKey,
+  cacheRoot: string = dashboardCacheRoot(),
+): boolean {
+  const dir = join(cacheRoot, cacheSuffix == null ? version : `${version}--${cacheSuffix}`);
   return existsSync(join(dir, DASHBOARD_COMPLETE_MARKER)) && existsSync(join(dir, DASHBOARD_SERVER_RELATIVE_PATH));
 }
 
@@ -220,10 +224,9 @@ export function latestCachedDashboard(
   platformKey?: DashboardPlatformKey,
   cacheRoot: string = dashboardCacheRoot(),
 ): { version: string, root: string } | undefined {
-  const root = cacheRoot;
-  if (!existsSync(root)) return undefined;
+  if (!existsSync(cacheRoot)) return undefined;
   const suffix = platformKey == null ? "" : `--${platformKey}`;
-  const cached = readdirSync(root, { withFileTypes: true })
+  const cached = readdirSync(cacheRoot, { withFileTypes: true })
     .filter((entry) => (
       entry.isDirectory()
       && (platformKey == null
@@ -232,10 +235,9 @@ export function latestCachedDashboard(
     ))
     .map((entry) => {
       const version = suffix.length === 0 ? entry.name : entry.name.slice(0, -suffix.length);
-      const cachedRoot = join(root, platformKey == null ? version : `${version}--${platformKey}`);
-      return existsSync(join(cachedRoot, DASHBOARD_COMPLETE_MARKER))
-        && existsSync(join(cachedRoot, DASHBOARD_SERVER_RELATIVE_PATH))
-        ? { version, root: cachedRoot }
+      const root = join(cacheRoot, platformKey == null ? version : `${version}--${platformKey}`);
+      return isDashboardCached(version, platformKey, cacheRoot)
+        ? { version, root }
         : undefined;
     })
     .filter((entry): entry is { version: string, root: string } => entry != null);
