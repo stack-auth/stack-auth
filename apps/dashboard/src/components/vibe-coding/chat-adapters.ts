@@ -132,7 +132,7 @@ async function sendAiRequest(
   },
   abortSignal?: AbortSignal,
 ): Promise<ChatContent> {
-  const authHeaders = await buildStackAuthHeaders(currentUser);
+  const authHeaders = await buildHexclaveHeaders(currentUser);
 
   const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
     method: "POST",
@@ -166,7 +166,7 @@ async function sendAiStreamRequest(
   },
   abortSignal?: AbortSignal,
 ): Promise<ReadableStream<UIMessageChunk>> {
-  const authHeaders = await buildStackAuthHeaders(currentUser);
+  const authHeaders = await buildHexclaveHeaders(currentUser);
 
   const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/stream`, {
     method: "POST",
