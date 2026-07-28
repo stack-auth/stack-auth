@@ -73,4 +73,39 @@ describe("after-auth redirect planning", () => {
       }
     `);
   });
+
+  it("preserves a cross-domain handoff when its same-origin target matches the current path", async () => {
+    const currentUrl = new URL("https://hosted.example.test/handler/oauth-callback");
+    const redirectBackTarget = new URL("https://hosted.example.test/handler/oauth-callback");
+    redirectBackTarget.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackTarget.searchParams.set("hexclave_cross_domain_state", "state");
+    redirectBackTarget.searchParams.set("hexclave_cross_domain_code_challenge", "code-challenge");
+    redirectBackTarget.searchParams.set(
+      "hexclave_cross_domain_after_callback_redirect_url",
+      "https://app.example.test/callback",
+    );
+    currentUrl.searchParams.set("after_auth_return_to", redirectBackTarget.pathname + redirectBackTarget.search);
+
+    await expect(
+      planRedirectToHandler({
+        handlerName: "afterSignIn",
+        rawHandlerUrl: defaultAfterAuthUrl,
+        noRedirectBack: false,
+        currentUrl,
+        localOAuthCallbackUrl,
+        getCrossDomainHandoffParams: async () => ({
+          state: "state",
+          codeChallenge: "code-challenge",
+        }),
+      }),
+    ).resolves.toMatchInlineSnapshot(`
+      {
+        "afterCallbackRedirectUrl": "https://app.example.test/callback",
+        "codeChallenge": "code-challenge",
+        "redirectUri": "https://app.example.test/handler/oauth-callback?hexclave_cross_domain_auth=1&hexclave_cross_domain_state=state&hexclave_cross_domain_code_challenge=code-challenge&hexclave_cross_domain_after_callback_redirect_url=https%3A%2F%2Fapp.example.test%2Fcallback",
+        "state": "state",
+        "type": "cross-domain-authorize",
+      }
+    `);
+  });
 });
