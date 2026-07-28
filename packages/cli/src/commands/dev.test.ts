@@ -113,8 +113,8 @@ describe("resolveWindowsCommand", () => {
 
     expect(resolveWindowsCommand("npm", {
       PATH: commandDir,
-      PATHEXT: ".COM;.EXE;.BAT;.CMD",
-    }).toLowerCase()).toBe(commandPath.toLowerCase());
+      PATHEXT: ".com;.exe;.bat;.cmd",
+    })).toBe(commandPath);
 
     rmSync(commandDir, { recursive: true, force: true });
   });
