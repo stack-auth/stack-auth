@@ -19,7 +19,7 @@ function HandlerPage() {
 
   return (
     <>
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", paddingBottom: "var(--hexclave-development-page-note-height, 0px)", fontFamily: "system-ui, sans-serif" }}>
         <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
           <HostedUserButton />
         </div>

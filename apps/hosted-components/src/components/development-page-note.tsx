@@ -1,7 +1,7 @@
 import { useStackApp } from "@hexclave/react";
 import { getCustomPagePrompts } from "@hexclave/shared/dist/interface/handler-urls";
 import { Code2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge, Button, CopyButton } from "~/components/ui";
 
@@ -32,6 +32,7 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
   const project = useStackApp().useProject();
   const [dismissed, setDismissed] = useState<boolean | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  const noteRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let wasDismissed = false;
@@ -45,6 +46,38 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
     }
     setDismissed(wasDismissed);
   }, []);
+
+  useEffect(() => {
+    const note = noteRef.current;
+    if (note == null) {
+      return;
+    }
+
+    const root = document.documentElement;
+    const updateNoteHeight = () => {
+      root.style.setProperty(
+        "--hexclave-development-page-note-height",
+        `${note.getBoundingClientRect().height}px`,
+      );
+      root.dataset.hexclaveDevelopmentPageNoteVisible = "true";
+    };
+
+    updateNoteHeight();
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        root.style.removeProperty("--hexclave-development-page-note-height");
+        delete root.dataset.hexclaveDevelopmentPageNoteVisible;
+      };
+    }
+
+    const observer = new ResizeObserver(updateNoteHeight);
+    observer.observe(note);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--hexclave-development-page-note-height");
+      delete root.dataset.hexclaveDevelopmentPageNoteVisible;
+    };
+  }, [dismissed, showPrompt]);
 
   if (!project.isDevelopmentEnvironment || dismissed !== false) {
     return null;
@@ -60,6 +93,7 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
       <section
+        ref={noteRef}
         aria-label="Development information"
         className="pointer-events-auto max-h-[60vh] w-full max-w-[640px] overflow-hidden rounded-2xl border border-black/[0.09] bg-white/90 p-4 text-foreground shadow-xl shadow-black/[0.08] backdrop-blur-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200 dark:border-white/[0.12] dark:bg-zinc-950/90 dark:shadow-black/30 sm:p-5"
       >
