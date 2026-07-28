@@ -227,19 +227,19 @@ export async function planRedirectToHandler(options: {
       return { type: "redirect", url: options.rawHandlerUrl };
     }
     const redirectBackTarget = new URL(redirectBackUrl, options.currentUrl);
-    // A return target pointing back to the current auth page can never complete authentication;
-    // use the configured post-auth destination instead of feeding automaticRedirect a self-loop.
-    if (
-      getComparableRedirectLocation(redirectBackTarget)
-      === getComparableRedirectLocation(options.currentUrl)
-    ) {
-      return { type: "redirect", url: options.rawHandlerUrl };
-    }
     const crossDomainHandoff = getCrossDomainHandoffForRedirect({
       currentUrl: options.currentUrl,
       redirectBackTarget,
     });
     if (crossDomainHandoff == null) {
+      // A return target pointing back to the current auth page can never complete authentication;
+      // cross-domain handoffs are excluded because their query parameters carry the next auth hop.
+      if (
+        getComparableRedirectLocation(redirectBackTarget)
+        === getComparableRedirectLocation(options.currentUrl)
+      ) {
+        return { type: "redirect", url: options.rawHandlerUrl };
+      }
       return { type: "redirect", url: redirectBackUrl };
     }
     let state = crossDomainHandoff.handoffParams.state;
