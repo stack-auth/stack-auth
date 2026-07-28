@@ -8,7 +8,6 @@ import { projectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { yupObject } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
-import Stripe from "stripe";
 
 export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectsCrud, {
   paramsSchema: yupObject({}),
@@ -56,32 +55,29 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     };
   },
   onDelete: async ({ auth }) => {
-    const project = await globalPrismaClient.project.findUnique({
-      where: { id: auth.project.id },
+    // We read the Stripe account off the deleted row itself (instead of a separate query beforehand) so
+    // that we never delete a Stripe account of a project that still exists — eg. if the delete fails, or
+    // if payments onboarding attached a new account in between the two queries.
+    const deletedProject = await globalPrismaClient.project.delete({
+      where: {
+        id: auth.project.id
+      },
       select: { stripeAccountId: true },
     });
-    if (project?.stripeAccountId) {
+    if (deletedProject.stripeAccountId !== null) {
       // The connected accounts we create are fully platform-controlled (no Stripe dashboard), so we're
       // allowed to delete them; otherwise they'd linger in the Stripe platform account forever.
-      // Stripe refuses deletion while the account still holds a balance or has pending payouts. We don't
-      // want that to block the project deletion (the user can't do anything about it), so we only report
-      // the orphaned account instead of failing the request.
+      // Stripe refuses deletion while the account still holds a balance or has pending payouts, and it
+      // may also just be unreachable. The project is already gone at this point and the user can't do
+      // anything about it either way, so we only report the orphaned account instead of failing.
       try {
-        await getHexclaveStripe().accounts.del(project.stripeAccountId);
+        await getHexclaveStripe().accounts.del(deletedProject.stripeAccountId);
       } catch (error) {
-        if (!(error instanceof Stripe.errors.StripeError)) {
-          throw error;
-        }
         captureError("delete-project-stripe-account", new HexclaveAssertionError(
           "Failed to delete the Stripe connected account of a deleted project; it is now orphaned and needs to be cleaned up manually",
-          { projectId: auth.project.id, stripeAccountId: project.stripeAccountId, cause: error },
+          { projectId: auth.project.id, stripeAccountId: deletedProject.stripeAccountId, cause: error },
         ));
       }
     }
-    await globalPrismaClient.project.delete({
-      where: {
-        id: auth.project.id
-      }
-    });
   }
 }));
