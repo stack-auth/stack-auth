@@ -3,6 +3,10 @@ import { planRedirectToHandler } from "./redirect-page-urls";
 
 const defaultAfterAuthUrl = "/";
 const localOAuthCallbackUrl = "/handler/oauth-callback";
+const afterAuthHandlers: readonly ("afterSignIn" | "afterSignUp")[] = [
+  "afterSignIn",
+  "afterSignUp",
+];
 
 async function planAfterAuthRedirect(
   handlerName: "afterSignIn" | "afterSignUp",
@@ -22,20 +26,25 @@ async function planAfterAuthRedirect(
 }
 
 describe("after-auth redirect planning", () => {
-  it.each(["afterSignIn", "afterSignUp"] as const)(
-    "falls back to the default when %s_auth_return_to points to the current page",
-    async (handlerName) => {
-      await expect(
-        planAfterAuthRedirect(
-          handlerName,
-          "https://hosted.example.test/handler/sign-in?after_auth_return_to=%2Fhandler%2Fsign-in",
-        ),
-      ).resolves.toEqual({
-        type: "redirect",
-        url: defaultAfterAuthUrl,
-      });
-    },
-  );
+  it("falls back to the default when after_auth_return_to points to the current page", async () => {
+    await expect(
+      Promise.all(afterAuthHandlers.map((handlerName) => planAfterAuthRedirect(
+        handlerName,
+        "https://hosted.example.test/handler/sign-in?after_auth_return_to=%2Fhandler%2Fsign-in",
+      ))),
+    ).resolves.toMatchInlineSnapshot(`
+      [
+        {
+          "type": "redirect",
+          "url": "/",
+        },
+        {
+          "type": "redirect",
+          "url": "/",
+        },
+      ]
+    `);
+  });
 
   it("honors a different after_auth_return_to path", async () => {
     await expect(
@@ -43,10 +52,12 @@ describe("after-auth redirect planning", () => {
         "afterSignIn",
         "https://hosted.example.test/handler/sign-in?after_auth_return_to=%2Fdashboard",
       ),
-    ).resolves.toEqual({
-      type: "redirect",
-      url: "/dashboard",
-    });
+    ).resolves.toMatchInlineSnapshot(`
+      {
+        "type": "redirect",
+        "url": "/dashboard",
+      }
+    `);
   });
 
   it("treats query and hash differences on the current path as self-referential", async () => {
@@ -55,9 +66,11 @@ describe("after-auth redirect planning", () => {
         "afterSignUp",
         "https://hosted.example.test/handler/sign-in?after_auth_return_to=%2Fhandler%2Fsign-in%3Ftab%3Dpassword%23details",
       ),
-    ).resolves.toEqual({
-      type: "redirect",
-      url: defaultAfterAuthUrl,
-    });
+    ).resolves.toMatchInlineSnapshot(`
+      {
+        "type": "redirect",
+        "url": "/",
+      }
+    `);
   });
 });
