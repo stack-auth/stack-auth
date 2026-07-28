@@ -32,6 +32,10 @@ async function logComplianceEvent(label: string, message: string, callback: () =
   }
 }
 
+function logComplianceEventRegistrationError(label: string, message: string, error: unknown): void {
+  captureError(label, new HexclaveAssertionError(message, { cause: error }));
+}
+
 async function logSignInAttempt(tenancy: Tenancy, options: SignInAttemptOptions): Promise<void> {
   await logComplianceEvent(
     "compliance-sign-in-attempt-log-error",
@@ -97,13 +101,37 @@ async function logUserRestricted(tenancy: Tenancy, options: UserRestrictedOption
 }
 
 export function logSignInAttemptInBackground(tenancy: Tenancy, options: SignInAttemptOptions): void {
-  runAsynchronouslyAndWaitUntil(logSignInAttempt(tenancy, options));
+  try {
+    runAsynchronouslyAndWaitUntil(logSignInAttempt(tenancy, options));
+  } catch (error) {
+    logComplianceEventRegistrationError(
+      "compliance-sign-in-attempt-registration-error",
+      "Failed to register sign-in attempt compliance event",
+      error,
+    );
+  }
 }
 
 export function logPermissionDeniedInBackground(tenancy: Tenancy, options: PermissionDeniedOptions): void {
-  runAsynchronouslyAndWaitUntil(logPermissionDenied(tenancy, options));
+  try {
+    runAsynchronouslyAndWaitUntil(logPermissionDenied(tenancy, options));
+  } catch (error) {
+    logComplianceEventRegistrationError(
+      "compliance-permission-denied-registration-error",
+      "Failed to register permission denial compliance event",
+      error,
+    );
+  }
 }
 
 export function logUserRestrictedInBackground(tenancy: Tenancy, options: UserRestrictedOptions): void {
-  runAsynchronouslyAndWaitUntil(logUserRestricted(tenancy, options));
+  try {
+    runAsynchronouslyAndWaitUntil(logUserRestricted(tenancy, options));
+  } catch (error) {
+    logComplianceEventRegistrationError(
+      "compliance-user-restricted-registration-error",
+      "Failed to register restricted-user compliance event",
+      error,
+    );
+  }
 }

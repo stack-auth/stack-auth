@@ -95,9 +95,29 @@ export const GET = createSmartRouteHandler({
         ? new Date(`${req.query.to}T23:59:59.999Z`)
         : new Date(req.query.to)
       : now;
-    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) {
+    const fromDateOnly = req.query.from != null && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from);
+    const toDateOnly = req.query.to != null && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to);
+    if (
+      !Number.isFinite(from.getTime())
+      || !Number.isFinite(to.getTime())
+      || (fromDateOnly && from.toISOString().slice(0, 10) !== req.query.from)
+      || (toDateOnly && to.toISOString().slice(0, 10) !== req.query.to)
+      || from > to
+    ) {
       throw new StatusError(StatusError.BadRequest, "Invalid compliance event date range.");
     }
+    const sharedWhere = `
+          WHERE project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND event_at >= {from:DateTime}
+            AND event_at <= {to:DateTime}
+            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))`;
+    const sharedParams = {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      from: from.toISOString().slice(0, 19),
+      to: to.toISOString().slice(0, 19),
+    };
 
     const client = getClickhouseAdminClient();
     try {
@@ -123,20 +143,13 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ip_info.city_name, 'Nullable(String)'), '') AS city_name,
             NULLIF(user_id, '') AS user_id
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+          ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
-            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           ORDER BY event_at DESC
           LIMIT ${MAX_EVENT_ROWS + 1}
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
-          from: from.toISOString().slice(0, 19),
-          to: to.toISOString().slice(0, 19),
+          ...sharedParams,
         },
         format: "JSONEachRow",
       });
@@ -152,20 +165,13 @@ export const GET = createSmartRouteHandler({
             countIf(event_type IN ('$permission-check', '$user-restricted')
               OR (event_type = '$sign-up-rule-trigger' AND CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))) AS denials
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+          ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
-            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           GROUP BY day
           ORDER BY day ASC
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
-          from: from.toISOString().slice(0, 19),
-          to: to.toISOString().slice(0, 19),
+          ...sharedParams,
         },
         format: "JSONEachRow",
       });
@@ -190,12 +196,8 @@ export const GET = createSmartRouteHandler({
             ) AS bucket,
             count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+          ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
-            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           GROUP BY bucket
           UNION ALL
           SELECT
@@ -215,38 +217,27 @@ export const GET = createSmartRouteHandler({
             ) AS bucket,
             count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+          ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
-            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           GROUP BY bucket
           UNION ALL
           SELECT
             'reason' AS kind,
-            multiIf(
-              event_type = '$sign-in-attempt', NULLIF(CAST(data.failure_reason, 'Nullable(String)'), ''),
-              event_type = '$permission-check', NULLIF(CAST(data.permission_id, 'Nullable(String)'), ''),
-              event_type = '$user-restricted', NULLIF(CAST(data.restricted_reason, 'Nullable(String)'), ''),
-              NULLIF(CAST(data.action, 'Nullable(String)'), '')
-            ) AS bucket,
+              multiIf(
+                event_type = '$sign-in-attempt', concat('sign_in_attempt.', NULLIF(CAST(data.failure_reason, 'Nullable(String)'), '')),
+                event_type = '$permission-check', concat('permission_check.', NULLIF(CAST(data.permission_id, 'Nullable(String)'), '')),
+                event_type = '$user-restricted', concat('user_restricted.', NULLIF(CAST(data.restricted_reason, 'Nullable(String)'), '')),
+                concat('sign_up_rule.', NULLIF(CAST(data.action, 'Nullable(String)'), ''))
+              ) AS bucket,
             count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+          ${sharedWhere}
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
-            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           GROUP BY bucket
           HAVING bucket IS NOT NULL
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
-          from: from.toISOString().slice(0, 19),
-          to: to.toISOString().slice(0, 19),
+          ...sharedParams,
         },
         format: "JSONEachRow",
       });
@@ -259,10 +250,7 @@ export const GET = createSmartRouteHandler({
         query: `
           SELECT 'email' AS kind, NULLIF(CAST(data.email, 'Nullable(String)'), '') AS value, count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
+          ${sharedWhere}
             AND (
               (event_type = '$sign-in-attempt' AND CAST(data.outcome, 'Nullable(String)') = 'failed')
               OR event_type IN ('$permission-check', '$user-restricted')
@@ -275,10 +263,7 @@ export const GET = createSmartRouteHandler({
           UNION ALL
           SELECT 'ip' AS kind, NULLIF(CAST(data.ip_info.ip, 'Nullable(String)'), '') AS value, count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
+          ${sharedWhere}
             AND (
               (event_type = '$sign-in-attempt' AND CAST(data.outcome, 'Nullable(String)') = 'failed')
               OR event_type IN ('$permission-check', '$user-restricted')
@@ -291,10 +276,7 @@ export const GET = createSmartRouteHandler({
           UNION ALL
           SELECT 'country' AS kind, NULLIF(CAST(data.ip_info.country_code, 'Nullable(String)'), '') AS value, count() AS count
           FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_at >= {from:DateTime}
-            AND event_at <= {to:DateTime}
+          ${sharedWhere}
             AND (
               (event_type = '$sign-in-attempt' AND CAST(data.outcome, 'Nullable(String)') = 'failed')
               OR event_type IN ('$permission-check', '$user-restricted')
@@ -306,10 +288,7 @@ export const GET = createSmartRouteHandler({
           LIMIT 10
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
-          from: from.toISOString().slice(0, 19),
-          to: to.toISOString().slice(0, 19),
+          ...sharedParams,
         },
         format: "JSONEachRow",
       });

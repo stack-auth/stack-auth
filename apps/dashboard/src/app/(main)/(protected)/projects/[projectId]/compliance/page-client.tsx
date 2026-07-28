@@ -98,7 +98,7 @@ type PostureControl = {
 type ComplianceData = {
   securityEvents: SecurityEventsData,
   accessReview: { users: AccessReviewUser[], capped: boolean, limit: number },
-  restrictedUsers: { users: RestrictedUser[] },
+  restrictedUsers: { users: RestrictedUser[], capped: boolean, limit: number },
   posture: { controls: PostureControl[] },
 };
 
@@ -234,22 +234,19 @@ function ComplianceContent() {
     };
   }, [from, internals, reloadKey, to]);
 
-  if (state.status === "loading") return <ComplianceLoading />;
-  if (state.status === "invalid") {
-    return <Card><CardContent className="py-8 text-center"><Typography variant="secondary">{state.message}</Typography></CardContent></Card>;
-  }
-  if (state.status === "error") {
-    return <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center"><Typography variant="secondary">Could not load compliance data. Please try again.</Typography><DesignButton size="sm" variant="secondary" onClick={() => setReloadKey(value => value + 1)}>Retry</DesignButton></CardContent></Card>;
-  }
   return (
-    <ComplianceDashboard
-      data={state.data}
-      from={from}
-      to={to}
-      onFromChange={setFrom}
-      onToChange={setTo}
-      onExport={() => downloadEvidence(state.data)}
-    />
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div className="flex flex-wrap items-end gap-3">
+          <DateField label="From" value={from} onChange={setFrom} />
+          <DateField label="To" value={to} onChange={setTo} />
+        </div>
+      </div>
+      {state.status === "loading" && <ComplianceLoading />}
+      {state.status === "invalid" && <Card><CardContent className="py-8 text-center"><Typography variant="secondary">{state.message}</Typography></CardContent></Card>}
+      {state.status === "error" && <Card><CardContent className="flex flex-col items-center gap-3 py-10 text-center"><Typography variant="secondary">Could not load compliance data. Please try again.</Typography><DesignButton size="sm" variant="secondary" onClick={() => setReloadKey(value => value + 1)}>Retry</DesignButton></CardContent></Card>}
+      {state.status === "ok" && <ComplianceDashboard data={state.data} onExport={() => downloadEvidence(state.data)} />}
+    </div>
   );
 }
 
@@ -257,19 +254,13 @@ function ComplianceLoading() {
   return <div className="flex flex-col gap-4"><div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-20 rounded-xl" />)}</div><Skeleton className="h-72 rounded-xl" /><Skeleton className="h-96 rounded-xl" /></div>;
 }
 
-function ComplianceDashboard({ data, from, to, onFromChange, onToChange, onExport }: { data: ComplianceData, from: string, to: string, onFromChange: (value: string) => void, onToChange: (value: string) => void, onExport: () => void }) {
+function ComplianceDashboard({ data, onExport }: { data: ComplianceData, onExport: () => void }) {
   const [tab, setTab] = useState<"overview" | "events" | "access" | "restricted" | "posture">("overview");
   const controlsEnabled = data.posture.controls.filter(control => control.enabled).length;
   const summary = data.securityEvents.summary;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div className="flex flex-wrap items-end gap-3">
-          <DateField label="From" value={from} onChange={onFromChange} />
-          <DateField label="To" value={to} onChange={onToChange} />
-        </div>
-        <DesignButton size="sm" variant="secondary" onClick={async () => onExport()}><DownloadSimpleIcon className="h-4 w-4" />Export evidence bundle</DesignButton>
-      </div>
+      <div className="flex justify-end"><DesignButton size="sm" variant="secondary" onClick={async () => onExport()}><DownloadSimpleIcon className="h-4 w-4" />Export evidence bundle</DesignButton></div>
       {data.securityEvents.capped && <div role="alert" className="rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm text-orange-700 dark:text-orange-300">The security event detail list is truncated to 5000 rows; summaries cover the full selected range.</div>}
       <div role="tablist" aria-label="Compliance sections" className="flex flex-wrap gap-1 border-b border-border/50">
         {([["overview", "Overview"], ["events", "Sign-in & denials"], ["access", "Access review"], ["restricted", "Restricted users"], ["posture", "Security posture"]] as const).map(([id, label]) => <button key={id} id={`tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`panel-${id}`} type="button" className={`px-3 py-2 text-sm transition-colors hover:transition-none ${tab === id ? "border-b-2 border-foreground font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setTab(id)}>{label}</button>)}
@@ -307,7 +298,7 @@ function Events({ data }: { data: SecurityEventsData }) {
   const pageSize = 50;
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice(page * pageSize, (page + 1) * pageSize);
-  return <div className="flex flex-col gap-4"><DesignCard title="Security events" subtitle={`${filtered.length} matching event${filtered.length === 1 ? "" : "s"}`} icon={ShieldWarningIcon} gradient="orange" glassmorphic><div className="mb-3 flex items-center justify-between gap-3"><div className="flex gap-1">{(["all", "failed", "denials"] as const).map(value => <button key={value} type="button" className={`rounded-md px-2 py-1 text-xs transition-colors hover:transition-none ${filter === value ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setEventFilter(value)}>{humanize(value)}</button>)}</div><CsvButton label="Export events" onClick={async () => downloadCsv("compliance-security-events.csv", ["event_at", "category", "outcome", "method", "email", "oauth_provider", "ip", "country_code", "region_code", "city_name", "user_id"], data.events.map(event => [event.event_at, event.category, event.outcome, event.method, event.email, event.oauth_provider, event.ip, event.country_code, event.region_code, event.city_name, event.user_id]))} /></div><EventTable events={visible} /><div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>Page {page + 1} of {pages}</span><div className="flex gap-1"><button type="button" aria-label="Previous events page" disabled={page === 0} onClick={() => setPage(value => value - 1)}><ArrowLeftIcon /></button><button type="button" aria-label="Next events page" disabled={page + 1 >= pages} onClick={() => setPage(value => value + 1)}><ArrowRightIcon /></button></div></div></DesignCard><div className="grid gap-4 md:grid-cols-3"><OffenderList title="Top emails" values={data.top_offenders.emails} /><OffenderList title="Top IPs" values={data.top_offenders.ips} /><OffenderList title="Top countries" values={data.top_offenders.countries} /></div></div>;
+  return <div className="flex flex-col gap-4"><DesignCard title="Security events" subtitle={`${filtered.length} matching event${filtered.length === 1 ? "" : "s"}`} icon={ShieldWarningIcon} gradient="orange" glassmorphic><div className="mb-3 flex items-center justify-between gap-3"><div className="flex gap-1">{(["all", "failed", "denials"] as const).map(value => <button key={value} type="button" className={`rounded-md px-2 py-1 text-xs transition-colors hover:transition-none ${filter === value ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setEventFilter(value)}>{humanize(value)}</button>)}</div><CsvButton label="Export events" onClick={async () => downloadCsv("compliance-security-events.csv", ["event_at", "category", "outcome", "method", "email", "oauth_provider", "ip", "country_code", "region_code", "city_name", "user_id"], filtered.map(event => [event.event_at, event.category, event.outcome, event.method, event.email, event.oauth_provider, event.ip, event.country_code, event.region_code, event.city_name, event.user_id]))} /></div><EventTable events={visible} /><div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>Page {page + 1} of {pages}</span><div className="flex gap-1"><button type="button" aria-label="Previous events page" disabled={page === 0} onClick={() => setPage(value => value - 1)}><ArrowLeftIcon /></button><button type="button" aria-label="Next events page" disabled={page + 1 >= pages} onClick={() => setPage(value => value + 1)}><ArrowRightIcon /></button></div></div></DesignCard><div className="grid gap-4 md:grid-cols-3"><OffenderList title="Top emails" values={data.top_offenders.emails} /><OffenderList title="Top IPs" values={data.top_offenders.ips} /><OffenderList title="Top countries" values={data.top_offenders.countries} /></div></div>;
 }
 
 function EventTable({ events }: { events: SecurityEvent[] }) {
@@ -320,7 +311,7 @@ function AccessReview({ data }: { data: ComplianceData["accessReview"] }) {
 }
 
 function RestrictedUsers({ data }: { data: ComplianceData["restrictedUsers"] }) {
-  return <DesignCard title="Restricted users" subtitle={`${data.users.length} users in the current snapshot`} icon={UsersThreeIcon} gradient="orange" glassmorphic><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="border-b border-border/50 text-[11px] uppercase tracking-wide text-muted-foreground"><tr>{["Email", "Display name", "Reason", "Signed up"].map(label => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead><tbody className="divide-y divide-border/40">{data.users.map(user => <tr key={user.id}><td className="px-3 py-3">{user.primary_email ?? "—"}</td><td className="px-3 py-3">{user.display_name ?? "—"}</td><td className="px-3 py-3"><DesignBadge label={humanize(user.restricted_reason)} color="orange" size="sm" /></td><td className="px-3 py-3 text-muted-foreground">{formatTimestamp(user.signed_up_at)}</td></tr>)}</tbody></table></div><CsvButton label="Export restricted users" onClick={async () => downloadCsv("compliance-restricted-users.csv", ["id", "primary_email", "display_name", "restricted_reason", "signed_up_at"], data.users.map(user => [user.id, user.primary_email, user.display_name, user.restricted_reason, user.signed_up_at]))} /></DesignCard>;
+  return <DesignCard title="Restricted users" subtitle={`${data.users.length} users in the current snapshot`} icon={UsersThreeIcon} gradient="orange" glassmorphic>{data.capped && <Typography variant="secondary" className="mb-3 text-xs">Showing the first {data.limit} users. Export is capped at this limit.</Typography>}<div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="border-b border-border/50 text-[11px] uppercase tracking-wide text-muted-foreground"><tr>{["Email", "Display name", "Reason", "Signed up"].map(label => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead><tbody className="divide-y divide-border/40">{data.users.map(user => <tr key={user.id}><td className="px-3 py-3">{user.primary_email ?? "—"}</td><td className="px-3 py-3">{user.display_name ?? "—"}</td><td className="px-3 py-3"><DesignBadge label={humanize(user.restricted_reason)} color="orange" size="sm" /></td><td className="px-3 py-3 text-muted-foreground">{formatTimestamp(user.signed_up_at)}</td></tr>)}</tbody></table></div><CsvButton label="Export restricted users" onClick={async () => downloadCsv("compliance-restricted-users.csv", ["id", "primary_email", "display_name", "restricted_reason", "signed_up_at"], data.users.map(user => [user.id, user.primary_email, user.display_name, user.restricted_reason, user.signed_up_at]))} /></DesignCard>;
 }
 
 function Posture({ data }: { data: ComplianceData["posture"] }) {

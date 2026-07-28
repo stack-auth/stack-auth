@@ -510,6 +510,10 @@ export async function logEvent<T extends EventType[]>(
         ?? (matchingEventType.id === "$token-refresh" && typeof (clickhouseEventData as any).refresh_token_id === "string"
           ? (clickhouseEventData as any).refresh_token_id as string
           : null);
+      // Resolve team_id from the event data for $permission-check events.
+      const resolvedTeamId = matchingEventType.id === "$permission-check" && typeof (clickhouseEventData as any).team_id === "string"
+        ? (clickhouseEventData as any).team_id as string
+        : null;
 
       await clickhouseClient.insert({
         table: "analytics_internal.events",
@@ -520,7 +524,7 @@ export async function logEvent<T extends EventType[]>(
           project_id: projectId,
           branch_id: branchId,
           user_id: userId || null,
-          team_id: null,
+          team_id: resolvedTeamId ?? null,
           refresh_token_id: resolvedRefreshTokenId ?? null,
           session_replay_id: options.sessionReplayId ?? null,
           session_replay_segment_id: options.sessionReplaySegmentId ?? null,

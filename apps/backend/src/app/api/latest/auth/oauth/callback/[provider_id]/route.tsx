@@ -446,6 +446,22 @@ const handler = createSmartRouteHandler({
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
+                    if (type !== "link") {
+                      const failureReason = KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
+                        ? "contact_channel_already_used"
+                        : KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
+                          ? "already_connected_to_another_user"
+                          : null;
+                      if (failureReason != null) {
+                        logSignInAttemptInBackground(tenancy, {
+                          outcome: "failed",
+                          method: "oauth",
+                          failureReason,
+                          oauthProvider: params.provider_id,
+                          userId: projectUserId ?? null,
+                        });
+                      }
+                    }
                     redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
                   }
                   throw error;

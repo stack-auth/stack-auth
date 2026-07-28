@@ -49,7 +49,7 @@ describe("Compliance Center security events", () => {
         email,
       }),
     ]));
-    expect(response?.body.summary.invalid_password).toBe(1);
+    expect(response?.body.summary["sign_in_attempt.invalid_password"]).toBe(1);
     expect(response?.body.summary["sign_in_attempt.failed"]).toBe(1);
     expect(response?.body.summary.sign_in_attempt).toBeGreaterThanOrEqual(2);
     expect(response?.body.summary.sign_in_attempt).toBeGreaterThanOrEqual(

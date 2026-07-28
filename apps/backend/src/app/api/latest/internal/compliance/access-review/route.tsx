@@ -111,8 +111,10 @@ export const GET = createSmartRouteHandler({
             ].includes("team_admin"),
             teams: user.teamMembers.map((member) => member.team.displayName),
             permissions: [
-              ...user.directPermissions.map((permission) => permission.permissionId),
-              ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
+              ...new Set([
+                ...user.directPermissions.map((permission) => permission.permissionId),
+                ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
+              ]),
             ],
             // This only reflects sign-ins since $sign-in-attempt logging began.
             last_sign_in_at: lastSignInByUser.get(user.projectUserId) ?? null,
