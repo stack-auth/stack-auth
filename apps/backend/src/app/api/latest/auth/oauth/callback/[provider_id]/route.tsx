@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
@@ -206,6 +207,15 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
+          if (KnownErrors.OAuthProviderAccessDenied.isInstance(error)) {
+            logSignInAttemptInBackground(tenancy, {
+              outcome: "failed",
+              method: "oauth",
+              failureReason: "provider_denied",
+              oauthProvider: params.provider_id,
+              userId: projectUserId ?? null,
+            });
+          }
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
         }
         throw error;
