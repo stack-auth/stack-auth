@@ -75,10 +75,20 @@ const DEFAULT_BASE_URL = "https://api.hexclave.com";
  * because "invalid token" is the least actionable error an MCP developer can receive.
  */
 export class McpTokenVerificationError extends Error {
-  constructor(message: string, public readonly reason: "invalid_token" | "wrong_resource" | "wrong_issuer") {
-    super(message);
+  constructor(message: string, public readonly reason: "invalid_token" | "wrong_resource" | "wrong_issuer", cause?: unknown) {
+    super(message, { cause });
     this.name = "McpTokenVerificationError";
   }
+}
+
+function canonicalResource(resource: string): string {
+  const url = new URL(resource);
+  url.hash = "";
+  url.search = "";
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
 }
 
 /**
@@ -112,7 +122,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
   let jwkSet: ReturnType<typeof jose.createRemoteJWKSet> | undefined;
   const getJwkSet = () => {
     if (!jwkSet) {
-      const jwksUrl = new URL(`/api/v1/projects/${encodeURIComponent(options.projectId)}/.well-known/jwks.json`, baseUrl);
+      const jwksUrl = getOAuthJwksUrl(issuer);
       jwkSet = jose.createRemoteJWKSet(jwksUrl);
     }
     return jwkSet;
@@ -130,31 +140,20 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
       // mismatch almost always means the wrong `projectId` or `baseUrl`, which is a one-line fix
       // the developer can only make if we say so.
       if (error instanceof jose.errors.JWTClaimValidationFailed && error.claim === "iss") {
-        throw new McpTokenVerificationError(
-          `This token was not issued by Hexclave project ${options.projectId}. Expected issuer ${issuer}. Check the projectId and baseUrl passed to createMcpTokenVerifier.`,
-          "wrong_issuer",
-        );
+        throw new McpTokenVerificationError(`The access token was not issued by the expected authorization server (${issuer}). Check the projectId and baseUrl configuration.`, "wrong_issuer", error);
       }
-      throw new McpTokenVerificationError(
-        `The access token could not be verified: ${error instanceof Error ? error.message : String(error)}`,
-        "invalid_token",
-      );
+      throw new McpTokenVerificationError("The access token could not be verified.", "invalid_token", error);
     }
 
-    // RFC 8707 audience binding. Hexclave mints a token whose audience is derived per resource
-    // server, so a token for another MCP server is signed by a different key and would already have
-    // failed above. This check is the second, independent layer: it catches the case where two
-    // resource servers share a project *and* something upstream got the key selection wrong, and it
-    // produces a legible error instead of a confusing signature failure.
+    // RFC 8707 resource binding. Resource servers in one project intentionally share signing keys;
+    // the resource claim is therefore the mandatory application-level boundary.
     if (expectedResource !== undefined) {
-      const audiences = payload.aud === undefined ? [] : (Array.isArray(payload.aud) ? payload.aud : [payload.aud]);
       const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
-      const matches = tokenResource === expectedResource
-        || audiences.includes(expectedResource);
+      const matches = tokenResource !== undefined
+        && canonicalResource(tokenResource) === canonicalResource(expectedResource);
       if (!matches) {
-        const actual = tokenResource ?? (audiences.length > 0 ? audiences.join(", ") : "an unknown resource");
         throw new McpTokenVerificationError(
-          `This token was issued for a different resource. This server's resource identifier is ${expectedResource}, but the token is for ${actual}.`,
+          "The access token was issued for a different resource.",
           "wrong_resource",
         );
       }
@@ -182,18 +181,18 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
     };
   };
 
-  const verifier = (async (request: Request, bearerToken?: string) => {
+  const verifyRequest = async (request: Request, bearerToken?: string) => {
     const token = bearerToken ?? extractBearerToken(request);
     if (token === undefined) return undefined;
     // With no explicitly configured resource, the request URL *is* the resource identifier — which
     // is correct whenever the server isn't behind a URL-rewriting proxy, and is what lets the
     // zero-config case work.
     return await verifyAccessToken(token, options.resource ?? request.url);
-  }) as McpTokenVerifier;
+  };
 
-  verifier.verifyAccessToken = (token: string) => verifyAccessToken(token);
-
-  return verifier;
+  return Object.assign(verifyRequest, {
+    verifyAccessToken: (token: string) => verifyAccessToken(token),
+  });
 }
 
 function extractBearerToken(request: Request): string | undefined {
@@ -221,6 +220,10 @@ export function getOAuthIssuerUrl(options: { projectId: string, baseUrl?: string
   return new URL(`/api/v1/projects/${encodeURIComponent(options.projectId)}/oidc`, baseUrl).toString();
 }
 
+function getOAuthJwksUrl(issuer: string): URL {
+  return new URL(".well-known/jwks.json", issuer.endsWith("/") ? issuer : `${issuer}/`);
+}
+
 if (import.meta.vitest) {
   const { test, expect, describe } = import.meta.vitest;
 
@@ -237,7 +240,92 @@ if (import.meta.vitest) {
     });
   });
 
+  test("derives the JWKS endpoint from the issuer", () => {
+    expect(getOAuthJwksUrl("https://api.example.com/api/v1/projects/project/oidc").toString())
+      .toBe("https://api.example.com/api/v1/projects/project/oidc/.well-known/jwks.json");
+  });
+
+  describe("canonicalResource", () => {
+    test("ignores query and fragment and normalizes host and trailing slash", () => {
+      expect(canonicalResource("HTTPS://MCP.Example.com/mcp/?page=1#tools"))
+        .toBe("https://mcp.example.com/mcp");
+    });
+
+    test("does not equate different resource paths", () => {
+      expect(canonicalResource("https://mcp.example.com/other"))
+        .not.toBe(canonicalResource("https://mcp.example.com/mcp"));
+    });
+  });
+
   describe("createMcpTokenVerifier", () => {
+    async function signedToken(options: { resource?: string, scope?: string, subject?: string }) {
+      const { publicKey, privateKey } = await jose.generateKeyPair("RS256");
+      const jwk = await jose.exportJWK(publicKey);
+      jwk.kid = "mcp-test";
+      const issuer = getOAuthIssuerUrl({ projectId, baseUrl: "https://api.example.com" });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => new Response(JSON.stringify({ keys: [jwk] }), {
+        headers: { "content-type": "application/json" },
+      });
+      const token = await new jose.SignJWT({
+        scope: options.scope ?? "perm:read",
+        ...(options.resource === undefined ? {} : { resource: options.resource }),
+      })
+        .setProtectedHeader({ alg: "RS256", kid: "mcp-test" })
+        .setIssuer(issuer)
+        .setSubject(options.subject ?? "user-1")
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(privateKey);
+      return { token, issuer, originalFetch };
+    }
+
+    test("verifies a signed token and returns its resource, scopes, and user ID", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+          scopes: ["perm:read"],
+          resource: new URL(resource),
+          extra: { userId: "user-1" },
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a token for a different resource", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "https://other.example.com/mcp" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("matches a configured resource despite a request query string", async () => {
+      const resource = "https://mcp.example.com/mcp";
+      const { token, originalFetch } = await signedToken({ resource });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource });
+        await expect(verifier(new Request(`${resource}?session=1`), token)).resolves.toMatchObject({ extra: { userId: "user-1" } });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects a signed token without a resource claim", async () => {
+      const { token, originalFetch } = await signedToken({});
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     // The DX contract: one export that both ecosystems accept. If either of these shapes stops
     // holding, every documented snippet breaks, so assert them directly rather than trusting the
     // type annotation to have been kept honest.

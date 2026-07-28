@@ -1,9 +1,10 @@
 import { createOidcProviderInternal } from "@/app/api/latest/integrations/idp";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import type { AdapterPayload, ClientMetadata } from "oidc-provider";
-import { assertSafeOAuthUrlWithoutDns } from "./ssrf-protection/oauth";
+import { assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument } from "./ssrf-protection/oauth";
 import { deriveScopesFromConfig } from "./permissions";
 import { getResourceAudience } from "./tokens";
 import { Tenancy } from "./tenancies";
@@ -51,9 +52,9 @@ export function getProjectOAuthIssuer(projectId: string, apiUrl?: string): strin
  * Resource servers registered on this project, keyed by the resource URI a client passes as
  * `resource=`.
  *
- * The audience is derived, not stored: it comes from `getResourceAudience`, which is also what makes
- * the token cryptographically unusable at any other resource server (distinct audience ⇒ distinct
- * signing key). Deriving rather than storing means the two can never drift apart.
+ * The audience is derived, not stored, so the resource map and audience cannot drift apart. Resource
+ * authorization is enforced by the issuer and mandatory resource claim checks; signing keys are
+ * shared by providers within a project.
  */
 export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audience: string, scopes: string[] }> {
   const allScopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
@@ -64,18 +65,16 @@ export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audie
     Object.entries(tenancy.config.oauthProvider.resources).flatMap(([resourceId, resource]) => {
       // A resource with no URI has been half-configured in the dashboard — it can't be targeted by
       // `resource=`, so it simply isn't a resource server yet. Skipping is right; throwing would
-      // take down the whole provider over one incomplete row.
+      // take down the whole provider over one incomplete row. (The record itself always exists:
+      // `CompleteConfig` has already applied the schema defaults.)
       if (resource.uri === undefined) return [];
-
-      const declaredScopes = resource.scopes === undefined
-        ? undefined
-        : Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
+      const declaredScopes = Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
       return [[resource.uri, {
         audience: getResourceAudience(tenancy.project.id, resourceId),
         // An empty scope list means "every scope this project defines" rather than "no scopes":
         // the common case is a customer who registered an MCP server and never narrowed it, and
         // handing that server a token with no scopes at all would be useless.
-        scopes: declaredScopes && declaredScopes.length > 0 ? declaredScopes : allScopes,
+        scopes: declaredScopes.length > 0 ? declaredScopes : allScopes,
       }]] as const;
     }),
   );
@@ -94,10 +93,12 @@ export function getProjectStaticClients(tenancy: Tenancy): ClientMetadata[] {
     client_name: client.displayName,
     // Keyed by opaque ID in config with the URL as a value — see the schema comment on
     // `redirectUris` for why a URL can't be a config key.
-    redirect_uris: Object.values(client.redirectUris ?? {}).flatMap(uri => uri.url === undefined ? [] : [uri.url]),
+    // CompleteConfig supplies an empty redirect-URI record when none was configured. A row may
+    // still be half-filled while it is being edited in the dashboard, so skip that row.
+    redirect_uris: Object.values(client.redirectUris).flatMap(uri => uri.url === undefined ? [] : [uri.url]),
     // Public clients (native apps, CLIs, most MCP clients) can't hold a secret, so they authenticate
     // with PKCE alone.
-    token_endpoint_auth_method: client.type === "confidential" ? "client_secret_basic" : "none",
+    token_endpoint_auth_method: "none",
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     // MCP clients are overwhelmingly native/CLI apps that listen on a loopback port.
@@ -134,8 +135,8 @@ export function isTrustedClient(tenancy: Tenancy, clientId: string): boolean {
  *
  * Security notes, in order of importance:
  *  - This runs on an **unauthenticated** request, so it is a remote-fetch primitive an attacker can
- *    aim. Every URL goes through `assertSafeOAuthUrlWithoutDns` (HTTPS only, no private/reserved
- *    addresses) before we touch the network.
+ *    aim. The request uses a DNS-guarded connection, so the address checked by the resolver is the
+ *    address actually connected to.
  *  - The document's own `client_id` must equal the URL exactly. Without that check, any host could
  *    serve a document claiming to be some other client.
  *  - `trusted` is never read from the document. A client cannot promote itself to first-party.
@@ -150,21 +151,21 @@ export async function resolveClientIdMetadataDocument(
 
   const url = assertSafeOAuthUrlWithoutDns(clientId);
 
-  const allowedDomains = config.allowedDomains === undefined
-    ? undefined
-    : Object.values(config.allowedDomains).flatMap(d => d.domain === undefined ? [] : [d.domain]);
-  if (allowedDomains !== undefined && allowedDomains.length > 0 && !allowedDomains.includes(url.hostname)) {
+  const allowedDomains = Object.values(config.allowedDomains).flatMap(d => d.domain === undefined ? [] : [d.domain]);
+  if (allowedDomains.length > 0 && !allowedDomains.includes(url.hostname)) {
     return undefined;
   }
 
-  const response = await fetch(url, {
-    headers: { accept: "application/json" },
-    redirect: "error",
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok) return undefined;
-
-  const document: unknown = await response.json();
+  let document: unknown;
+  try {
+    document = await fetchOAuthJsonDocument(url);
+  } catch (error) {
+    // Client metadata lookup is an unauthenticated convenience path; all request and parse failures
+    // must fail closed without exposing network or parser details to the caller.
+    captureError("oauth-client-metadata-fetch-failed", error);
+    console.warn("OAuth client metadata could not be fetched.");
+    return undefined;
+  }
   if (typeof document !== "object" || document === null) return undefined;
   const doc = document as Record<string, unknown>;
 
@@ -197,6 +198,8 @@ export async function resolveClientIdMetadataDocument(
 export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { apiUrl?: string }) {
   const scopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
   const providerConfig = tenancy.config.oauthProvider;
+  const resourceServers = getProjectResourceServers(tenancy);
+  const resourceUrisByAudience = new Map([...resourceServers].map(([uri, resource]) => [resource.audience, uri]));
 
   return await createOidcProviderInternal({
     id: getProjectIdpId(tenancy),
@@ -206,7 +209,12 @@ export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { a
       ? async (clientId) => await resolveClientIdMetadataDocument(tenancy, clientId)
       : undefined,
     scopes,
-    resourceServers: getProjectResourceServers(tenancy),
+    resourceServers,
+    extraTokenClaims: async (_ctx, token) => {
+      const audience = token.resourceServer?.audience;
+      const resource = audience === undefined ? undefined : resourceUrisByAudience.get(audience);
+      return resource === undefined ? undefined : { resource };
+    },
     features: {
       registration: providerConfig.dynamicClientRegistration.enabled,
       // Always on: without it there is no way for a user to disconnect an app they granted access to,

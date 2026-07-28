@@ -203,7 +203,7 @@ const branchSchemaFuzzerConfig = [{
             url: ["https://example.com/callback", "http://127.0.0.1:5173/callback"],
           }],
         }],
-        type: ["public", "confidential"] as const,
+        type: ["public"] as const,
         trusted: [true, false],
       }],
     }],

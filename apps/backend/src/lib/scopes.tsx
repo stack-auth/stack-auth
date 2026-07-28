@@ -1,4 +1,5 @@
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { getProjectPermissionScope, getTeamPermissionScope, isValidCustomScopeId, isValidPermissionId, narrowPermissionsByScopes, OIDC_STANDARD_SCOPES, PROJECT_PERMISSION_SCOPE_PREFIX, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon, TEAM_PERMISSION_SCOPE_PREFIX } from "@hexclave/shared/dist/config/scopes";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
@@ -26,16 +27,7 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
  * Scope name prefixes we own. A custom scope may not use these, because a customer scope named
  * `perm:foo` would silently shadow the permission projection and read as authority it doesn't grant.
  */
-export const PROJECT_PERMISSION_SCOPE_PREFIX = "perm";
-export const TEAM_PERMISSION_SCOPE_PREFIX = "team_perm";
-
-/**
- * Standard OIDC scopes. These don't map to permissions — they control which claims appear in the
- * ID token and UserInfo response, which is the OIDC spec's business, not ours.
- */
-export const OIDC_STANDARD_SCOPES = ["openid", "profile", "email", "offline_access"] as const;
-
-export const RESERVED_SCOPE_PREFIXES = [PROJECT_PERMISSION_SCOPE_PREFIX, TEAM_PERMISSION_SCOPE_PREFIX] as const;
+export { getProjectPermissionScope, getTeamPermissionScope, narrowPermissionsByScopes, PROJECT_PERMISSION_SCOPE_PREFIX, TEAM_PERMISSION_SCOPE_PREFIX };
 
 export type ParsedScope =
   /** Authority to exercise a project-scoped permission. */
@@ -46,20 +38,6 @@ export type ParsedScope =
   | { type: "oidc", scope: typeof OIDC_STANDARD_SCOPES[number] }
   /** A customer-defined scope with meaning only to their own resource server. */
   | { type: "custom", scopeId: string };
-
-/**
- * Splits a scope on its **first** colon only.
- *
- * This is load-bearing. Permission IDs may themselves contain colons (`customPermissionRegex` is
- * `/^[a-z0-9_:]+$/`), so `perm:billing:read` is the single permission `billing:read`, not a
- * three-part path. Splitting on every colon would silently mangle any customer using colons as a
- * namespace separator in their permission IDs — which is exactly what a colon invites.
- */
-function splitOnFirstColon(scope: string): { prefix: string, rest: string } | null {
-  const colonIndex = scope.indexOf(":");
-  if (colonIndex === -1) return null;
-  return { prefix: scope.slice(0, colonIndex), rest: scope.slice(colonIndex + 1) };
-}
 
 /**
  * Parses a scope string, or returns `null` if it is malformed.
@@ -74,7 +52,7 @@ export function tryParseScope(scope: string): ParsedScope | null {
     return { type: "oidc", scope: scope as typeof OIDC_STANDARD_SCOPES[number] };
   }
 
-  const split = splitOnFirstColon(scope);
+  const split = splitScopeOnFirstColon(scope);
   if (split) {
     switch (split.prefix) {
       case PROJECT_PERMISSION_SCOPE_PREFIX: {
@@ -104,22 +82,6 @@ export function parseScope(scope: string): ParsedScope {
  * alphanumeric with underscores and colons, optionally `$`-prefixed for the built-in team system
  * permissions (`$delete_team` etc.).
  */
-function isValidPermissionId(permissionId: string): boolean {
-  return /^\$?[a-z0-9_:]+$/.test(permissionId);
-}
-
-function isValidCustomScopeId(scopeId: string): boolean {
-  return /^[a-z0-9_:.-]+$/.test(scopeId);
-}
-
-export function getProjectPermissionScope(permissionId: string): string {
-  return `${PROJECT_PERMISSION_SCOPE_PREFIX}:${permissionId}`;
-}
-
-export function getTeamPermissionScope(permissionId: string): string {
-  return `${TEAM_PERMISSION_SCOPE_PREFIX}:${permissionId}`;
-}
-
 /**
  * A scope as presented to a human on the consent screen.
  */
@@ -229,49 +191,6 @@ export function validateScopes(availableScopes: ScopeDefinition[], requestedScop
 }
 
 /**
- * A permission as returned by `listPermissions`. Structural rather than imported so this module
- * stays usable from both the team and project permission shapes.
- */
-export type PermissionLike = { id: string, team_id?: string, user_id: string };
-
-/**
- * Narrows a list of the user's effective permissions to those the token was granted authority over.
- *
- * `grantedScopes === null` means "full authority" — an ordinary session token, which is every token
- * Hexclave issued before OAuth scopes existed. `null` and `[]` are meaningfully different: `[]` is a
- * token that consented to nothing and therefore has no permission-backed authority at all.
- *
- * This is where the intersection rule is actually applied. Note the asymmetry: we filter the *live*
- * permission list, so a scope naming a permission the user doesn't hold contributes nothing. There
- * is no code path here that can add a permission.
- */
-export function narrowPermissionsByScopes<P extends PermissionLike>(
-  permissions: P[],
-  grantedScopes: string[] | null,
-  scope: "team" | "project",
-): P[] {
-  if (grantedScopes === null) return permissions;
-
-  // Team and project permissions live in separate namespaces and must not cross over: a
-  // `team_perm:admin` grant says nothing about a project permission that happens to also be called
-  // `admin`.
-  const wantedType = scope === "team" ? "team_permission" : "project_permission";
-  const grantedPermissionIds = new Set<string>();
-  for (const grantedScope of grantedScopes) {
-    const parsed = tryParseScope(grantedScope);
-    // An unparsable scope in an already-issued token grants nothing. It can't be an assertion
-    // failure, because a token minted before a scope was renamed is a legitimate state — and the
-    // fail-safe direction is to grant less.
-    if (!parsed) continue;
-    if (parsed.type === wantedType) {
-      grantedPermissionIds.add(parsed.permissionId);
-    }
-  }
-
-  return permissions.filter(p => grantedPermissionIds.has(p.id));
-}
-
-/**
  * Asserts that a set of scopes may be written into a project's config as *custom* scopes.
  *
  * Called at config-write time rather than at authorize time, so a customer finds out they picked a
@@ -279,7 +198,7 @@ export function narrowPermissionsByScopes<P extends PermissionLike>(
  */
 export function assertCustomScopeIdsAreValid(scopeIds: string[]): void {
   for (const scopeId of scopeIds) {
-    const split = splitOnFirstColon(scopeId);
+    const split = splitScopeOnFirstColon(scopeId);
     if (split && (RESERVED_SCOPE_PREFIXES as readonly string[]).includes(split.prefix)) {
       throw new HexclaveAssertionError(
         `Custom scope ${JSON.stringify(scopeId)} uses the reserved prefix ${JSON.stringify(split.prefix)}. That prefix is generated automatically from your RBAC permissions.`,

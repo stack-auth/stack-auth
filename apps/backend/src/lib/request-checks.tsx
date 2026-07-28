@@ -11,7 +11,7 @@ import { PrismaTransaction } from "./types";
 //
 // That is correct because these helpers all run on the main Hexclave API, which only ever
 // authenticates session tokens, API keys, and server keys. Tokens minted by a project acting as its
-// own OAuth provider carry a different issuer and a different signing key, and `decodeAccessToken`
+// own OAuth provider carry a different issuer and a resource audience, and `decodeAccessToken`
 // rejects them outright — so a scoped token can never reach this code.
 //
 // If that ever changes (i.e. the main API starts accepting OAuth-provider tokens), these helpers

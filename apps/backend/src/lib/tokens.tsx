@@ -96,9 +96,8 @@ const issuerHostAliases = new Map<string, string>(
 // LOAD-BEARING OMISSION: the project's OIDC provider issuer (`.../projects/{id}/oidc`) is
 // deliberately NOT in this list. Tokens minted by a project acting as an OAuth provider are for
 // that project's own resource servers, not for the Hexclave API, and this omission is one of the
-// two independent mechanisms that keeps them out (the other being that a resource audience derives
-// a different signing key — see `getResourceAudience`). Do not "helpfully" unify the two issuer
-// helpers.
+// two independent mechanisms that keeps them out (the other being that the main API rejects
+// resource audiences). Do not "helpfully" unify the two issuer helpers.
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   const aliasHost = issuerHostAliases.get(new URL(issuer).host);
@@ -107,12 +106,8 @@ const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   aliasedUrl.host = aliasHost;
   return [issuer, aliasedUrl.toString()];
 };
-// The `aud` claim is not just an identifier — it selects the signing key. `getPrivateJwks({ audience })`
-// derives a distinct keypair per audience string (see `packages/shared/src/utils/jwt.tsx`), so two
-// tokens with different audiences are signed by different keys and are structurally unable to
-// validate against each other. That is what makes resource-scoped tokens (see `parseAudience`'s
-// `resource` variant) safe: an MCP token cannot be replayed as a session token even if some future
-// caller forgets to check the issuer.
+// The `aud` claim identifies the token's intended audience. Resource-scoped tokens are safe because
+// the main API rejects resource audiences and resource servers enforce issuer/resource validation.
 //
 // Because of that, the audience string format is a wire format we can never change without rotating
 // every signing key. Parsing therefore lives in exactly one place — `parseAudience` — and every
@@ -134,7 +129,7 @@ export type ParsedAudience =
   /**
    * A token minted by the project's OAuth/OIDC provider for a specific registered resource server
    * (e.g. a customer's MCP server). Deliberately *not* accepted by the main API: it has a different
-   * issuer and a different signing key.
+   * issuer and a resource audience.
    */
   | { type: 'resource', projectId: string, resourceId: string };
 
@@ -145,7 +140,7 @@ const getAudience = (projectId: string, userType: UserType) => {
 
 /**
  * The audience for a token scoped to a single resource server registered on the project's OAuth
- * provider. Distinct from every user audience, so it derives its own signing keypair.
+ * provider. Distinct from every user audience, so the main API can reject it.
  */
 export const getResourceAudience = (projectId: string, resourceId: string) => {
   if (!AUDIENCE_SEGMENT_PATTERN.test(projectId)) {
@@ -260,6 +255,19 @@ import.meta.vitest?.describe("audience parsing", (test) => {
   });
 });
 
+import.meta.vitest?.test("decodeAccessToken warning payloads never include the raw bearer token", async ({ expect }) => {
+  const vi = import.meta.vitest?.vi;
+  if (vi === undefined) throw new Error("Vitest is required for this test");
+  const token = "raw-bearer-token-that-must-not-be-logged";
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    await decodeAccessToken(token, { allowAnonymous: false, allowRestricted: false });
+    expect(warn.mock.calls.flat()).not.toContain(token);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 const getUserType = (isAnonymous: boolean, isRestricted: boolean): UserType => {
   if (isAnonymous) return 'anonymous';
   if (isRestricted) return 'restricted';
@@ -294,16 +302,16 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       // so an unrecognized shape is a caller error, not an assertion failure.
       const maybeParsedAud = tryParseAudience(aud);
       if (!maybeParsedAud) {
-        console.warn("Access token has an audience Hexclave never mints. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, aud });
+        console.warn("Access token has an audience Hexclave never mints. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { aud });
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
       // A resource-scoped token belongs to a customer's own resource server (e.g. their MCP server)
       // and must never authenticate a request to the main API. `getAllowedIssuers` below would
       // already reject it — the OIDC issuer path is deliberately absent from that list — but
       // rejecting here means the refusal doesn't silently depend on that omission surviving a
-      // future refactor. See `parseAudience` for the second, independent layer (distinct signing key).
+      // future refactor. This audience check is the replay defence for resource-scoped tokens.
       if (maybeParsedAud.type !== 'user') {
-        console.warn("Resource-scoped access token presented to the main API. These are only valid at the resource server they were minted for.", { accessToken, aud });
+        console.warn("Resource-scoped access token presented to the main API. These are only valid at the resource server they were minted for.", { aud });
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
       parsedAud = maybeParsedAud;
@@ -335,7 +343,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
         console.log(`[Token decode] Access token expired for project ${expiredProjectId}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
         return Result.error(error);
       } else if (error instanceof JOSEError) {
-        console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
+        console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { error });
         return Result.error(new KnownErrors.UnparsableAccessToken());
       }
       throw error;
@@ -362,8 +370,8 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
-    // Validate audience matches the user type. The audience selects the signing key, so a mismatch
-    // here means we signed a token with the wrong key — a bug on our side, not a caller error.
+    // Validate audience matches the user type. A mismatch means the token claims do not match the
+    // user category encoded in the token.
     const audUserType = parsedAud.userType;
     if ((audUserType === 'anonymous') !== isAnonymous) {
       throw new HexclaveAssertionError("Unparsable access token. The audience's user type disagrees with the token's is_anonymous claim.", { accessToken, payload, audUserType, isAnonymous });

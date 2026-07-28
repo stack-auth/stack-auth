@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import { narrowPermissionsByScopes } from "@hexclave/shared/dist/config/scopes";
 import { McpAuthInfo, McpTokenVerifier, createMcpTokenVerifier, getOAuthIssuerUrl } from "../../../../mcp";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
@@ -542,7 +543,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     };
   }
 
-  protected _serverUserFromCrud(crud: UsersCrud['Server']['Read']): ServerUser {
+  protected _serverUserFromCrud(crud: UsersCrud['Server']['Read'], grantedScopes: string[] | null = null): ServerUser {
     const app = this;
 
     /** @deprecated The string-based overloads are deprecated. Use `getConnectedAccount({ provider, providerAccountId })` for existence check. */
@@ -723,7 +724,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         throw new HexclaveAssertionError("useOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
       },
       // END_PLATFORM
-      selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
+      selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team, grantedScopes) : null,
       // Unlike the app-level getTeam/useTeam (which fetch any team by id),
       // the user-scoped variants search the user's own team list on purpose:
       // they must return null for teams the user is not a member of, and some
@@ -742,7 +743,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       // END_PLATFORM
       async listTeams(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }> {
         const result = Result.orThrow(await app._serverTeamsCache.getOrWait([crud.id, options?.orderBy, options?.desc, options?.cursor, options?.limit, options?.query] as const, "write-only"));
-        const teams: any = result.items.map((t) => app._serverTeamFromCrud(t));
+        const teams: any = result.items.map((t) => app._serverTeamFromCrud(t, grantedScopes));
         teams.nextCursor = result.pagination?.next_cursor ?? null;
         return teams as any;
       },
@@ -750,7 +751,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       useTeams(options?: ServerListTeamsOptions): ServerTeam[] & { nextCursor: string | null } {
         const result = useAsyncCache(app._serverTeamsCache, [crud.id, options?.orderBy, options?.desc, options?.cursor, options?.limit, options?.query] as const, "user.useTeams()");
         return useMemo(() => {
-          const teams: any = result.items.map((t) => app._serverTeamFromCrud(t));
+          const teams: any = result.items.map((t) => app._serverTeamFromCrud(t, grantedScopes));
           teams.nextCursor = result.pagination?.next_cursor ?? null;
           return teams as any;
         }, [result]);
@@ -784,12 +785,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           const scope = scopeOrOptions;
           const recursive = options?.recursive ?? true;
           const permissions = Result.orThrow(await app._serverTeamUserPermissionsCache.getOrWait([scope.id, crud.id, recursive], "write-only"));
-          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+          return narrowPermissionsByScopes(permissions, grantedScopes, "team").map((crud) => app._serverPermissionFromCrud(crud));
         } else {
           const opts = scopeOrOptions;
           const recursive = opts?.recursive ?? true;
           const permissions = Result.orThrow(await app._serverUserProjectPermissionsCache.getOrWait([crud.id, recursive], "write-only"));
-          return permissions.map((crud) => app._serverPermissionFromCrud(crud));
+          return narrowPermissionsByScopes(permissions, grantedScopes, "project").map((crud) => app._serverPermissionFromCrud(crud));
         }
       },
       // IF_PLATFORM react-like
@@ -798,12 +799,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           const scope = scopeOrOptions;
           const recursive = options?.recursive ?? true;
           const permissions = useAsyncCache(app._serverTeamUserPermissionsCache, [scope.id, crud.id, recursive] as const, "user.usePermissions()");
-          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+          return useMemo(() => narrowPermissionsByScopes(permissions, grantedScopes, "team").map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
         } else {
           const opts = scopeOrOptions;
           const recursive = opts?.recursive ?? true;
           const permissions = useAsyncCache(app._serverUserProjectPermissionsCache, [crud.id, recursive] as const, "user.usePermissions()");
-          return useMemo(() => permissions.map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
+          return useMemo(() => narrowPermissionsByScopes(permissions, grantedScopes, "project").map((crud) => app._serverPermissionFromCrud(crud)), [permissions]);
         }
       },
       // END_PLATFORM
@@ -992,9 +993,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return serverUser;
   }
 
-  protected _serverTeamUserFromCrud(crud: TeamMemberProfilesCrud["Server"]["Read"]): ServerTeamUser {
+  protected _serverTeamUserFromCrud(crud: TeamMemberProfilesCrud["Server"]["Read"], grantedScopes: string[] | null = null): ServerTeamUser {
     const teamUser = withUserDestructureGuard({
-      ...this._serverUserFromCrud(crud.user),
+      ...this._serverUserFromCrud(crud.user, grantedScopes),
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
@@ -1045,7 +1046,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return currentUser as ProjectCurrentServerUser<ProjectId>;
   }
 
-  protected _serverTeamFromCrud(crud: TeamsCrud['Server']['Read']): ServerTeam {
+  protected _serverTeamFromCrud(crud: TeamsCrud['Server']['Read'], grantedScopes: string[] | null = null): ServerTeam {
     const app = this;
     return {
       id: crud.id,
@@ -1073,12 +1074,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       async listUsers() {
         const result = Result.orThrow(await app._serverTeamMemberProfilesCache.getOrWait([crud.id], "write-only"));
-        return result.map(u => app._serverTeamUserFromCrud(u));
+        return result.map(u => app._serverTeamUserFromCrud(u, grantedScopes));
       },
       // IF_PLATFORM react-like
       useUsers() {
         const result = useAsyncCache(app._serverTeamMemberProfilesCache, [crud.id] as const, "team.useUsers()");
-        return useMemo(() => result.map(u => app._serverTeamUserFromCrud(u)), [result]);
+        return useMemo(() => result.map(u => app._serverTeamUserFromCrud(u, grantedScopes)), [result]);
       },
       // END_PLATFORM
       async addUser(userId) {
@@ -1222,17 +1223,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * produced this `AuthInfo` — so this is a lookup, not a second auth check. We read the user ID out
    * of `extra`, which is where our verifier puts it.
    *
-   * The scopes are *not* re-applied here. Narrowing happens on the backend, which resolves the
-   * user's live permissions and intersects them with the token's granted scopes; doing it again in
-   * the SDK would be a second implementation of the same rule, and two implementations of an
-   * authorization rule eventually disagree.
+   * The main API cannot authenticate resource-scoped tokens, so the SDK applies the intersection
+   * rule here using the shared `narrowPermissionsByScopes` implementation before exposing the user.
+   * This narrows authority reads (`listPermissions`, `getPermission`, `hasPermission`, and
+   * `usePermissions`). Mutating methods still use the server key because the caller is the app
+   * itself; this is delegation narrowing, not a sandbox for app code.
    */
   protected async _getUserByMcpAuthInfo(authInfo: McpAuthInfo): Promise<ServerUser | null> {
     const userId = authInfo.extra?.userId;
     if (typeof userId !== "string") {
       throw new Error("The AuthInfo passed to getUser({ from: 'mcp' }) has no Hexclave user ID. Make sure it came from a verifier created by createMcpTokenVerifier — AuthInfo from another auth provider cannot be resolved to a Hexclave user.");
     }
-    return await this.getServerUserById(userId);
+    // AuthInfo can come from a foreign framework at runtime, even though our TypeScript type says
+    // scopes are present. Missing or malformed scopes must mean no delegated authority, never the
+    // full-authority `null` sentinel used for ordinary server users.
+    const grantedScopes = Array.isArray(authInfo.scopes) && authInfo.scopes.every(scope => typeof scope === "string")
+      ? authInfo.scopes
+      : [];
+    return await this._getServerUserByIdWithScopes(userId, grantedScopes);
   }
 
   protected async _getUserByConvex(ctx: ConvexCtx, includeAnonymous: boolean): Promise<ServerUser | null> {
@@ -1378,8 +1386,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   async getServerUserById(userId: string): Promise<ServerUser | null> {
+    return await this._getServerUserByIdWithScopes(userId);
+  }
+
+  private async _getServerUserByIdWithScopes(userId: string, grantedScopes: string[] | null = null): Promise<ServerUser | null> {
     const crud = Result.orThrow(await this._serverUserCache.getOrWait([userId], "write-only"));
-    return crud && this._serverUserFromCrud(crud);
+    return crud === null ? null : this._serverUserFromCrud(crud, grantedScopes);
   }
 
   // IF_PLATFORM react-like

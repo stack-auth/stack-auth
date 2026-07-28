@@ -231,6 +231,17 @@ export type OidcProviderOptions = {
   interactionUrl?: (interactionUid: string) => string,
 };
 
+function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]): void {
+  oidc.use((ctx, next) => {
+    try {
+      return mw(ctx, next);
+    } catch (err) {
+      captureError('idp-oidc-provider-middleware-error', err);
+      throw err;
+    }
+  });
+}
+
 export async function createOidcProviderInternal(options: OidcProviderOptions) {
   // NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
   // SHA-256 that produces the per-audience signing secret + kid in
@@ -301,9 +312,8 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
             throw new HexclaveAssertionError(`Unknown resource indicator ${JSON.stringify(resourceIndicator)}.`, { resourceIndicator });
           }
           return {
-            // The audience is what binds the token to this resource server, and — because
-            // `getPrivateJwks` derives keys per audience — what makes it cryptographically unusable
-            // anywhere else. See `getResourceAudience` in `lib/tokens.tsx`.
+            // The audience identifies the resource server. Providers in one project share signing
+            // keys, so resource validation is enforced by the resource claim and issuer checks.
             audience: resourceServer.audience,
             scope: resourceServer.scopes.join(" "),
             accessTokenFormat: 'jwt' as const,
@@ -348,19 +358,8 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
     captureError('idp-oidc-provider-server-error', err);
   });
 
-  function middleware(mw: Parameters<typeof oidc.use>[0]) {
-    oidc.use((ctx, next) => {
-      try {
-        return mw(ctx, next);
-      } catch (err) {
-        captureError('idp-oidc-provider-middleware-error', err);
-        throw err;
-      }
-    });
-  }
-
   // Log all errors
-  middleware(async (ctx, next) => {
+  wrapOidcMiddleware(oidc, async (ctx, next) => {
     try {
       return await next();
     } catch (e) {
@@ -370,7 +369,7 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
   });
 
   // .well-known/jwks.json
-  middleware(async (ctx, next) => {
+  wrapOidcMiddleware(oidc, async (ctx, next) => {
     if (ctx.path === '/.well-known/jwks.json') {
       ctx.body = publicJwkSet;
       ctx.type = 'application/json';
@@ -404,14 +403,7 @@ function installIntegrationInteractionMiddleware(
   options: { id: string, baseUrl: string, clientInteractionUrl: string },
 ) {
   function middleware(mw: Parameters<typeof oidc.use>[0]) {
-    oidc.use((ctx, next) => {
-      try {
-        return mw(ctx, next);
-      } catch (err) {
-        captureError('idp-oidc-provider-middleware-error', err);
-        throw err;
-      }
-    });
+    wrapOidcMiddleware(oidc, mw);
   }
 
   // Interactions
@@ -557,4 +549,3 @@ function installIntegrationInteractionMiddleware(
     await next();
   });
 }
-

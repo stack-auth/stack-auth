@@ -18,12 +18,14 @@ import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
+import { customScopeIdRegex, isValidCustomScopeId, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
 const providerIdRegex = /^[a-z0-9_-]+$/;
+export { customScopeIdRegex, isValidCustomScopeId, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -93,20 +95,21 @@ const branchRbacSchema = yupObject({
  */
 // A custom scope may contain colons and dots (`files:read`, `files.read` are both idiomatic OAuth),
 // so this is looser than `userSpecifiedIdSchema`. Reserved prefixes (`perm:`, `team_perm:`, and the
-// OIDC standard scopes) are rejected at write time by `assertCustomScopeIdsAreValid` rather than by
-// this regex, so the error message can explain *why* the name is taken.
+// OIDC standard scopes) are rejected by the schema test rather than by this regex, so the error
+// message can explain *why* the name is taken.
 //
 // Because of the dots and colons, a scope name can never be a config *key* — config overrides use
 // dot-path notation, so `scopes.files.read` would parse as three path segments. Every record below
 // that needs to name a scope is therefore keyed by an opaque ID with the scope as a value.
-const oauthProviderScopeIdRegex = /^[a-z0-9_:.-]+$/;
+const oauthProviderScopeIdRegex = customScopeIdRegex;
+const customScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("custom-scope-name", "Scope name is reserved or invalid.", value => value === undefined || isValidCustomScopeId(value)).optional();
 
 const branchOAuthProviderSchema = yupObject({
   scopes: yupRecord(
     userSpecifiedIdSchema("scopeConfigId"),
     yupObject({
       /** The actual scope string clients request, e.g. `files:read`. */
-      scope: yupString().matches(oauthProviderScopeIdRegex).optional(),
+      scope: customScopeSchema,
       displayName: yupString().optional(),
       description: yupString().optional(),
     }).optional(),
@@ -131,7 +134,7 @@ const branchOAuthProviderSchema = yupObject({
       scopes: yupRecord(
         userSpecifiedIdSchema("resourceScopeId"),
         yupObject({
-          scope: yupString().matches(oauthProviderScopeIdRegex).optional(),
+          scope: customScopeSchema,
         }).optional(),
       ).optional(),
     }).optional(),
@@ -148,10 +151,11 @@ const branchOAuthProviderSchema = yupObject({
       redirectUris: yupRecord(
         userSpecifiedIdSchema("redirectUriId"),
         yupObject({
-          url: yupString().optional(),
+          url: schemaFields.urlSchema.optional(),
         }).optional(),
       ).optional(),
-      type: yupString().oneOf(['public', 'confidential']).optional(),
+      // Confidential clients need a secret store; until then only public PKCE clients are supported.
+      type: yupString().oneOf(['public']).optional(),
       /**
        * First-party clients skip the consent *prompt*. They never skip the authority check — a
        * trusted client's token is still narrowed by the intersection rule, so this only removes a
@@ -234,6 +238,18 @@ import.meta.vitest?.test("branchOAuthProviderSchema accepts loopback redirect UR
 import.meta.vitest?.test("branchOAuthProviderSchema rejects a malformed scope", async ({ expect }) => {
   await expect(branchOAuthProviderSchema.validate({
     scopes: { "some-id": { scope: "Has Space" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects reserved custom scopes", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    scopes: { "some-id": { scope: "perm:read" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed redirect URLs", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clients: { "some-client": { redirectUris: { callback: { url: "not a URL" } } } },
   }, { abortEarly: false })).rejects.toThrow();
 });
 
