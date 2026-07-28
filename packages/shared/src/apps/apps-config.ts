@@ -186,6 +186,12 @@ export const ALL_APPS = {
     stage: "stable",
     parentAppId: "analytics",
   },
+  "gtm": {
+    displayName: "GTM",
+    subtitle: "Internal go-to-market workspace",
+    tags: ["gtm", "operations"],
+    stage: "alpha",
+  },
   "cli-auth": {
     displayName: "CLI Auth",
     subtitle: "Monitor CLI authentication sessions and active tokens",
