@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as oauthSsrf from "./ssrf-protection/oauth";
-import { getProjectStaticClients, resolveClientIdMetadataDocument } from "./project-oauth-provider";
+import { getProjectResourceServers, getProjectStaticClients, resolveClientIdMetadataDocument } from "./project-oauth-provider";
 import { Tenancy } from "./tenancies";
 
 const clientId = "https://clients.example.com/client.json";
@@ -13,8 +13,10 @@ function createMockTenancy(): Tenancy {
           enabled: true,
           allowedDomains: {},
         },
+        scopes: {},
         clients: {},
       },
+      rbac: { permissions: {} },
     },
     project: { id: "12345678-1234-4234-8234-123456789abc" },
   // Tenancy is an inferred Prisma payload with a large config surface; this test intentionally
@@ -92,5 +94,21 @@ describe("resolveClientIdMetadataDocument", () => {
       },
     };
     expect(getProjectStaticClients(tenancy)).toMatchInlineSnapshot(`[]`);
+  });
+
+  it("canonicalizes resource URI trailing slashes before issuing resource metadata", () => {
+    const tenancy = createMockTenancy();
+    tenancy.config.oauthProvider.resources = {
+      mcp: {
+        displayName: "MCP",
+        uri: "https://mcp.example.com/mcp/",
+        scopes: {},
+      },
+    };
+    expect([...getProjectResourceServers(tenancy).keys()]).toMatchInlineSnapshot(`
+      [
+        "https://mcp.example.com/mcp",
+      ]
+    `);
   });
 });

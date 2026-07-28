@@ -105,6 +105,7 @@ const branchRbacSchema = yupObject({
 const oauthProviderScopeIdRegex = customScopeIdRegex;
 const customScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("custom-scope-name", "Scope name is reserved or invalid.", value => value === undefined || isValidCustomScopeId(value)).optional();
 const resourceScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("resource-scope-name", "Scope name is invalid.", value => value === undefined || isValidCustomScopeId(value) || isValidPermissionScope(value)).optional();
+const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => value === undefined || (new URL(value).search === "" && new URL(value).hash === ""));
 
 const branchOAuthProviderSchema = yupObject({
   scopes: yupRecord(
@@ -126,7 +127,7 @@ const branchOAuthProviderSchema = yupObject({
     userSpecifiedIdSchema("resourceId"),
     yupObject({
       displayName: yupString().optional(),
-      uri: schemaFields.urlSchema.optional(),
+      uri: resourceUriSchema.optional(),
       /**
        * Scopes a token for this resource may carry. Empty means "any scope the project defines".
        *
@@ -284,6 +285,15 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed client met
 import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed redirect URLs", async ({ expect }) => {
   await expect(branchOAuthProviderSchema.validate({
     clients: { "some-client": { redirectUris: { callback: { url: "not a URL" } } } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects resource URIs with query strings or fragments", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: { "mcp": { uri: "https://mcp.example.com/mcp?tenant=a" } },
+  }, { abortEarly: false })).rejects.toThrow();
+  await expect(branchOAuthProviderSchema.validate({
+    resources: { "mcp": { uri: "https://mcp.example.com/mcp#tools" } },
   }, { abortEarly: false })).rejects.toThrow();
 });
 

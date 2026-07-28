@@ -62,11 +62,12 @@ export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audie
   for (const [resourceId, resource] of Object.entries(tenancy.config.oauthProvider.resources)) {
     // A resource with no URI has been half-configured in the dashboard, so it is not targetable yet.
     if (resource.uri === undefined) continue;
-    if (resourceServers.has(resource.uri)) {
+    const canonicalUri = canonicalResourceUri(resource.uri);
+    if (resourceServers.has(canonicalUri)) {
       captureError("duplicate-oauth-resource-uri", new Error(`Duplicate OAuth resource URI ${JSON.stringify(resource.uri)}; keeping the first configured resource ${JSON.stringify(resourceId)}.`));
       continue;
     }
-    resourceServers.set(resource.uri, {
+    resourceServers.set(canonicalUri, {
       audience: getResourceAudience(tenancy.project.id, resourceId),
       scopes: (() => {
         const declaredScopes = Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
@@ -76,6 +77,14 @@ export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audie
     });
   }
   return resourceServers;
+}
+
+function canonicalResourceUri(uri: string): string {
+  const url = new URL(uri);
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
 }
 
 /**
