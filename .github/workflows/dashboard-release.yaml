@@ -150,6 +150,7 @@ jobs:
         run: |
           set -euo pipefail
           # Advertise the live asset's sha, which may differ from the rebuild's.
+          expected_platform_keys="$(jq -c '.platformArchives // {} | keys' "$MANIFEST")"
           tmp="$(mktemp)"
           jq --arg s "$LIVE_SHA" --argjson platform_shas "$PLATFORM_LIVE_SHAS" '
             .sha256 = $s
@@ -158,12 +159,24 @@ jobs:
                  .platformArchives[$entry.key].sha256 = $entry.value)
           ' "$MANIFEST" > "$tmp"
           mv "$tmp" "$MANIFEST"
-          MANIFEST_PATH="$MANIFEST" pnpm exec tsx --eval '
+          # The patch above must survive the CLI's own validation: a manifest the
+          # parser rejects makes every CLI fall back to the previous release, and a
+          # platformArchives block it silently drops downgrades everyone to the zip.
+          MANIFEST_PATH="$MANIFEST" EXPECTED_PLATFORM_KEYS="$expected_platform_keys" pnpm exec tsx --eval '
             import { readFileSync } from "fs";
             import { parseDashboardManifest } from "./packages/cli/src/lib/dashboard-release.ts";
             const path = process.env.MANIFEST_PATH;
-            if (path == null || parseDashboardManifest(JSON.parse(readFileSync(path, "utf8"))) == null) {
+            const expectedKeys = process.env.EXPECTED_PLATFORM_KEYS;
+            if (path == null || expectedKeys == null) {
+              throw new Error("Manifest validation is missing MANIFEST_PATH or EXPECTED_PLATFORM_KEYS.");
+            }
+            const manifest = parseDashboardManifest(JSON.parse(readFileSync(path, "utf8")));
+            if (manifest == null) {
               throw new Error("Patched dashboard manifest failed CLI parser validation.");
+            }
+            const keys = JSON.stringify(Object.keys(manifest.platformArchives ?? {}).sort());
+            if (keys !== JSON.stringify(JSON.parse(expectedKeys).sort())) {
+              throw new Error(`Patched dashboard manifest advertises platform archives ${keys}, expected ${expectedKeys}.`);
             }
           '
           # dashboard-latest is only ever a plain X.Y.Z release. Refuse to advance
