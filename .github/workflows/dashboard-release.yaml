@@ -16,6 +16,9 @@ on:
       - 'apps/dashboard/**'
       - 'packages/cli/scripts/package-dashboard-release.mjs'
       - 'packages/cli/scripts/copy-runtime-assets.mjs'
+      - 'packages/cli/src/lib/dashboard-release.ts'
+      - 'packages/cli/package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/dashboard-release.yaml'
 
 permissions:
@@ -63,10 +66,13 @@ jobs:
           TAG: ${{ steps.package.outputs.tag }}
           ZIP: ${{ steps.package.outputs.zip }}
           ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          PLATFORM_ARCHIVES_DIR: ${{ steps.package.outputs.platform_archives_dir }}
           VERSION: ${{ steps.package.outputs.version }}
           EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
         run: |
           set -euo pipefail
+          assets=("$ZIP")
+          while IFS= read -r asset; do assets+=("$asset"); done < <(find "$PLATFORM_ARCHIVES_DIR" -maxdepth 1 -type f -name '*.tar.zst' -print)
           # A published dashboard-v<version> asset is immutable, so never replace
           # it; advertise the sha of whatever asset is live. (The rebuild isn't
           # byte-reproducible — staged files get fresh mtimes — so we can't just
@@ -86,8 +92,16 @@ jobs:
               echo "$TAG exists without its asset; uploading."
               gh release upload "$TAG" "$ZIP" --clobber
             fi
+            existing_assets="$(gh release view "$TAG" --json assets -q '.assets[].name')"
+            for asset in "${assets[@]:1}"; do
+              asset_name="$(basename "$asset")"
+              if ! grep -qx "$asset_name" <<<"$existing_assets"; then
+                echo "$TAG is missing $asset_name; uploading."
+                gh release upload "$TAG" "$asset"
+              fi
+            done
           else
-            gh release create "$TAG" "$ZIP" \
+            gh release create "$TAG" "${assets[@]}" \
               --title "RDE dashboard $VERSION" \
               --notes "Standalone RDE dashboard build for \`hexclave dev\` (version $VERSION)."
           fi
