@@ -105,7 +105,11 @@ const branchRbacSchema = yupObject({
 const oauthProviderScopeIdRegex = customScopeIdRegex;
 const customScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("custom-scope-name", "Scope name is reserved or invalid.", value => value === undefined || isValidCustomScopeId(value)).optional();
 const resourceScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("resource-scope-name", "Scope name is invalid.", value => value === undefined || isValidCustomScopeId(value) || isValidPermissionScope(value)).optional();
-const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => value === undefined || (new URL(value).search === "" && new URL(value).hash === ""));
+const resourceUriSchema = schemaFields.urlSchema.test("resource-uri-components", "Resource URIs cannot contain a query or fragment.", value => {
+  if (value === undefined) return true;
+  const url = new URL(value);
+  return url.search === "" && url.hash === "";
+});
 
 const branchOAuthProviderSchema = yupObject({
   scopes: yupRecord(
