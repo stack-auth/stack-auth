@@ -1,5 +1,4 @@
 import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
-import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch, getTenancy, Tenancy } from "@/lib/tenancies";
@@ -92,7 +91,6 @@ export function createVerificationCodeHandler<
   requestBody?: yup.ObjectSchema<RequestBody>,
   detailsResponse?: yup.Schema<DetailsResponse>,
   response: yup.Schema<Response>,
-  accessDeniedReason?: "failed_otp",
   send?(
     codeObject: CodeObject<Data, Method, string | URL>,
     createOptions: CreateCodeOptions<Data, Method, string | URL>,
@@ -183,38 +181,10 @@ export function createVerificationCodeHandler<
         },
       });
 
-      const logAccessDenied = (method: unknown) => {
-        if (options.accessDeniedReason == null) {
-          return;
-        }
-        const email = typeof method === "object"
-          && method !== null
-          && "email" in method
-          && typeof method.email === "string"
-          ? method.email
-          : null;
-        logAccessDeniedInBackground(auth.tenancy, options.accessDeniedReason, {
-          email,
-          authMethod: "otp",
-        });
-      };
-
-      if (!verificationCode) {
-        logAccessDenied(undefined);
-        throw new KnownErrors.VerificationCodeNotFound();
-      }
-      if (verificationCode.expiresAt < new Date()) {
-        logAccessDenied(verificationCode.method);
-        throw new KnownErrors.VerificationCodeExpired();
-      }
-      if (verificationCode.usedAt) {
-        logAccessDenied(verificationCode.method);
-        throw new KnownErrors.VerificationCodeAlreadyUsed();
-      }
-      if (verificationCode.attemptCount >= MAX_ATTEMPTS_PER_CODE) {
-        logAccessDenied(verificationCode.method);
-        throw new KnownErrors.VerificationCodeMaxAttemptsReached;
-      }
+      if (!verificationCode) throw new KnownErrors.VerificationCodeNotFound();
+      if (verificationCode.expiresAt < new Date()) throw new KnownErrors.VerificationCodeExpired();
+      if (verificationCode.usedAt) throw new KnownErrors.VerificationCodeAlreadyUsed();
+      if (verificationCode.attemptCount >= MAX_ATTEMPTS_PER_CODE) throw new KnownErrors.VerificationCodeMaxAttemptsReached;
 
       const validatedMethod = await options.method.validate(verificationCode.method, {
         strict: true,
@@ -244,7 +214,6 @@ export function createVerificationCodeHandler<
             },
           });
           if (claimResult.count === 0) {
-            logAccessDenied(verificationCode.method);
             throw new KnownErrors.VerificationCodeAlreadyUsed();
           }
 

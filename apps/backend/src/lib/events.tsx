@@ -169,31 +169,6 @@ const SignUpRuleTriggerEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
-const AccessDeniedEventType = {
-  id: "$access-denied",
-  dataSchema: yupObject({
-    projectId: yupString().defined(),
-    branchId: yupString().defined(),
-    userId: yupString().nullable().defined(),
-    reason: yupString().oneOf([
-      'failed_password',
-      'failed_otp',
-      'failed_passkey',
-      'restricted_user',
-      'permission_denied',
-      'oauth_provider_denied',
-    ]).defined(),
-    email: yupString().nullable().defined(),
-    authMethod: yupString().nullable().defined(),
-    oauthProvider: yupString().nullable().defined(),
-    permissionId: yupString().nullable().defined(),
-    teamId: yupString().nullable().defined(),
-    restrictedReason: yupString().nullable().defined(),
-    ipInfo: endUserIpInfoSchema.nullable().defined(),
-  }),
-  inherits: [],
-} as const satisfies SystemEventTypeBase;
-
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -203,7 +178,6 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ApiRequestEventType,
   LegacyApiEventType,
   SignUpRuleTriggerEventType,
-  AccessDeniedEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
@@ -344,7 +318,7 @@ export async function logEvent<T extends EventType[]>(
     });
 
     // Log specific events to ClickHouse
-    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger', '$access-denied'];
+    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
     const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
     if (matchingEventType) {
       let clickhouseEventData: Record<string, unknown>;
@@ -393,49 +367,6 @@ export async function logEvent<T extends EventType[]>(
           email,
           auth_method: authMethod,
           oauth_provider: oauthProvider,
-        };
-      } else if (matchingEventType.id === "$access-denied") {
-        const reason =
-          typeof dataRecord === "object" && dataRecord && typeof dataRecord.reason === "string"
-            ? dataRecord.reason
-            : throwErr(new HexclaveAssertionError("reason is required for $access-denied ClickHouse event", { dataRecord }));
-        const email =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.email as string | null | undefined) ?? null
-            : null;
-        const authMethod =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.authMethod as string | null | undefined) ?? null
-            : null;
-        const oauthProvider =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.oauthProvider as string | null | undefined) ?? null
-            : null;
-        const permissionId =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.permissionId as string | null | undefined) ?? null
-            : null;
-        const teamId =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.teamId as string | null | undefined) ?? null
-            : null;
-        const restrictedReason =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.restrictedReason as string | null | undefined) ?? null
-            : null;
-        const ipInfo =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
-            : undefined;
-        clickhouseEventData = {
-          reason,
-          email,
-          auth_method: authMethod,
-          oauth_provider: oauthProvider,
-          permission_id: permissionId,
-          team_id: teamId,
-          restricted_reason: restrictedReason,
-          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
         };
       } else {
         throw new HexclaveAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
