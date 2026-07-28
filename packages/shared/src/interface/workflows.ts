@@ -37,26 +37,13 @@ export const workflowPlatformEvents = [
 
 export const workflowPlatformEventTypes = workflowPlatformEvents.map((event) => event.type);
 
-/**
- * Lifecycle events emitted by the platform on run state transitions,
- * reactable like any other event (cleanup/compensation/notification policies
- * are just workflows subscribed to these).
- */
-export const workflowLifecycleEventTypes = [
-  "workflow.run.started",
-  "workflow.run.completed",
-  "workflow.run.failed",
-  "workflow.run.canceled",
-] as const;
-export type WorkflowLifecycleEventType = typeof workflowLifecycleEventTypes[number];
-
-export type WorkflowLifecycleEventPayload = {
-  workflow_id: string,
-  run_id: string,
-  run_key: string | null,
-  version: number,
-  trigger_type: string,
-};
+// NOTE: there are deliberately no `workflow.run.*` lifecycle events. An earlier
+// draft emitted started/completed/failed/canceled and let workflows subscribe to
+// them, which made self-amplification trivial: a workflow triggered on
+// `workflow.run.completed` re-triggers itself on every completion, with no
+// chain-depth cap to stop it. Run state is already fully visible in the
+// dashboard and via the runs API, so the trigger bought little and cost a
+// footgun. If they ever come back, they need loop protection first.
 
 /**
  * The wire type of custom events is ALWAYS prefixed with this; send() only

@@ -1,5 +1,4 @@
 import { listWorkflowsWithStats, syncWorkflowSource } from "@/lib/workflows/api";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -19,7 +18,6 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     return {
       statusCode: 200,
       bodyType: "json",
@@ -49,7 +47,6 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   async handler({ auth: { tenancy }, body }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     const result = await syncWorkflowSource(tenancy, {
       workflowId: body.id,
       source: body.source,

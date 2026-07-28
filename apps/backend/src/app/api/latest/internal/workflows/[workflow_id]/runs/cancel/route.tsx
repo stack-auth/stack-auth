@@ -1,5 +1,4 @@
 import { cancelWorkflowRuns } from "@/lib/workflows/engine";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -28,7 +27,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params, body }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     // Atomic server-side query-cancel: a single transactional UPDATE, so it
     // is race-safe against concurrently waking runs. Cancellation lands at
     // step boundaries — a run mid-step finishes that step, then the engine's

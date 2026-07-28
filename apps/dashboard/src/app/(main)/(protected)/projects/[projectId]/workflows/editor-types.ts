@@ -43,14 +43,6 @@ declare module "@hexclave/workflows" {
     created_at_millis: number,
   };
 
-  export type WorkflowLifecycleEventData = {
-    workflow_id: string,
-    run_id: string,
-    run_key: string | null,
-    version: number,
-    trigger_type: string,
-  };
-
   export type WorkflowPlatformEventMap = {
     "user.created": UserEventData,
     "user.updated": UserEventData,
@@ -64,10 +56,6 @@ declare module "@hexclave/workflows" {
     "team_permission.deleted": { id: string, user_id: string, team_id: string },
     "project_permission.created": { id: string, user_id: string },
     "project_permission.deleted": { id: string, user_id: string },
-    "workflow.run.started": WorkflowLifecycleEventData,
-    "workflow.run.completed": WorkflowLifecycleEventData,
-    "workflow.run.failed": WorkflowLifecycleEventData,
-    "workflow.run.canceled": WorkflowLifecycleEventData,
   };
 
   export type WorkflowEvent<TType extends string = string, TData = unknown> = {

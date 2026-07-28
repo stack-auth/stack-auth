@@ -1,5 +1,4 @@
 import { customEventNameToWireType, enqueueWorkflowEvent } from "@/lib/workflows/events";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { globalPrismaClient } from "@/prisma-client";
 import { WORKFLOW_EVENT_PAYLOAD_MAX_BYTES } from "@hexclave/shared/dist/interface/workflows";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -28,7 +27,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
 
     const wireTypeResult = customEventNameToWireType(body.name);
     if ("error" in wireTypeResult) {

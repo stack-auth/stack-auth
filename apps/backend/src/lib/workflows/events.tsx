@@ -1,9 +1,9 @@
+import type { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction } from "@/prisma-client";
-import { WORKFLOW_CUSTOM_EVENT_PREFIX, WORKFLOW_EVENT_PAYLOAD_MAX_BYTES, WorkflowLifecycleEventType } from "@hexclave/shared/dist/interface/workflows";
+import { WORKFLOW_CUSTOM_EVENT_PREFIX, WORKFLOW_EVENT_PAYLOAD_MAX_BYTES } from "@hexclave/shared/dist/interface/workflows";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { createHash } from "node:crypto";
-import { areWorkflowsEnabled } from "./gate";
 
 // The workflow event outbox writer. Platform events are enqueued INSIDE the
 // same transaction as the entity mutation (at the webhook call sites), which
@@ -33,7 +33,7 @@ export function deterministicWorkflowUuid(name: string): string {
 }
 
 export type EnqueueWorkflowEventOptions = {
-  tenancy: { id: string, project: { id: string } },
+  tenancy: Pick<Tenancy, "id">,
   type: string,
   payload: unknown,
   /** For schedule occurrences: the nominal cron tick time. Defaults to now. */
@@ -43,15 +43,16 @@ export type EnqueueWorkflowEventOptions = {
 };
 
 /**
- * Inserts a workflow event row. No-ops (returning null) when workflows are
- * disabled for the project — disabled projects must not silently accumulate
- * event state. Oversized payloads are also a null no-op with a captured
- * error rather than a throw, because this runs inside entity-mutation
- * transactions that must never fail on account of workflows.
+ * Inserts a workflow event row, unconditionally: like every other app, Workflows
+ * does not check `apps.installed` on the write path, so a tenancy with no
+ * workflows still accrues outbox rows (the engine simply matches them against an
+ * empty definition list and marks them processed).
+ *
+ * An oversized payload is a null no-op with a captured error rather than a throw,
+ * because this runs inside entity-mutation transactions that must never fail on
+ * account of workflows.
  */
 export async function enqueueWorkflowEvent(client: PrismaClientTransaction, options: EnqueueWorkflowEventOptions): Promise<{ eventId: string } | null> {
-  if (!areWorkflowsEnabled(options.tenancy.project.id)) return null;
-
   const payloadJson = JSON.stringify(options.payload ?? null);
   const payloadBytes = Buffer.byteLength(payloadJson, "utf8");
   if (payloadBytes > WORKFLOW_EVENT_PAYLOAD_MAX_BYTES) {
@@ -95,58 +96,6 @@ export function customEventNameToWireType(name: string): { wireType: string } | 
   return { wireType: `${WORKFLOW_CUSTOM_EVENT_PREFIX}${name}` };
 }
 
-export type WorkflowRunForLifecycleEvent = {
-  id: string,
-  workflowId: string,
-  runKey: string | null,
-  version: number,
-  triggerType: string,
-};
-
-/**
- * Lifecycle events (workflow.run.started/completed/failed/canceled) are
- * platform-emitted on run state transitions and reactable like any event.
- * Ids are deterministic per (run, transition) so crash-replayed transitions
- * never double-emit.
- *
- * KNOWN v1 LIMITATIONS (deliberate): (1) a manually retried run that fails
- * AGAIN does not emit a second workflow.run.failed (same deterministic id
- * as the first failure) — fixing this needs a per-run generation counter;
- * (2) there is no self-trigger loop protection (chain-depth cap) — the spec
- * explicitly defers it because of the internal-only rollout, and it must be
- * revisited before opening workflows to external projects.
- */
-export async function enqueueWorkflowLifecycleEvent(client: PrismaClientTransaction, options: {
-  tenancy: { id: string, project: { id: string } },
-  type: WorkflowLifecycleEventType,
-  run: WorkflowRunForLifecycleEvent,
-}): Promise<void> {
-  await enqueueWorkflowLifecycleEvents(client, {
-    tenancy: options.tenancy,
-    type: options.type,
-    runs: [options.run],
-  });
-}
-
-export async function enqueueWorkflowLifecycleEvents(client: PrismaClientTransaction, options: {
-  tenancy: { id: string, project: { id: string } },
-  type: WorkflowLifecycleEventType,
-  runs: WorkflowRunForLifecycleEvent[],
-}): Promise<void> {
-  if (options.runs.length === 0 || !areWorkflowsEnabled(options.tenancy.project.id)) return;
-  await client.workflowEvent.createMany({
-    data: options.runs.map((run) => ({
-      tenancyId: options.tenancy.id,
-      id: deterministicWorkflowUuid(`lifecycle:${run.id}:${options.type}`),
-      type: options.type,
-      payload: {
-        workflow_id: run.workflowId,
-        run_id: run.id,
-        run_key: run.runKey,
-        version: run.version,
-        trigger_type: run.triggerType,
-      },
-    })),
-    skipDuplicates: true,
-  });
-}
+// There is deliberately no lifecycle-event emitter here — see the note in
+// packages/shared/src/interface/workflows.ts for why `workflow.run.*` events
+// were dropped rather than kept as an unsubscribable side channel.

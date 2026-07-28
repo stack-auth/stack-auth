@@ -1762,9 +1762,9 @@ model DeploymentSourceUpload {
 // ─── Workflows ──────────────────────────────────────────────────────────────
 //
 // Durable, event-triggered workflows (Hexclave Workflows v1). All tables are
-// fully multi-tenant even though v1 gates the feature to the internal
-// project — the internal-only restriction lives exclusively in the
-// ensureWorkflowsEnabled() gate helper, never in the schema.
+// fully multi-tenant and available to every project: the alpha-stage
+// `workflows-alpha` app controls dashboard visibility only, and — as with every
+// other app — the API is not gated on it being installed.
 //
 // The engine is tick-driven like the email queue: a cron route claims due
 // work with FOR UPDATE SKIP LOCKED, invokes sandboxes (js-execution), and

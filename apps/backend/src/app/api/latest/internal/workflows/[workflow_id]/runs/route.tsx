@@ -1,5 +1,4 @@
 import { getWorkflowRunDetails, listWorkflowRuns } from "@/lib/workflows/api";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { type WorkflowRunStateJson } from "@hexclave/shared/dist/interface/workflows";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -48,7 +47,6 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params, query }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     const { runs, nextCursor } = await listWorkflowRuns(tenancy, params.workflow_id, {
       state: query.state,
       version: parsePositiveIntegerQuery("version", query.version),

@@ -1,5 +1,4 @@
 import { upgradeWorkflowRuns } from "@/lib/workflows/engine";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -28,7 +27,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params, body }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     // upgradeWorkflowRuns throws StatusError(400) itself for unknown target
     // versions; anything else is a platform error.
     const result = await upgradeWorkflowRuns(tenancy, {

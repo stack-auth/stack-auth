@@ -1,4 +1,4 @@
-import { WORKFLOW_SOURCE_MAX_BYTES, workflowPlatformEventTypes, workflowLifecycleEventTypes, WORKFLOW_CUSTOM_EVENT_PREFIX, type WorkflowManifestJson } from "@hexclave/shared/dist/interface/workflows";
+import { WORKFLOW_SOURCE_MAX_BYTES, workflowPlatformEventTypes, WORKFLOW_CUSTOM_EVENT_PREFIX, type WorkflowManifestJson } from "@hexclave/shared/dist/interface/workflows";
 import { bundleJavaScript } from "@hexclave/shared/dist/utils/esbuild";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -140,7 +140,7 @@ export function validateWorkflowManifest(manifest: WorkflowSandboxManifest, expe
   if (manifest.workflowId !== expectedWorkflowId) {
     return Result.error(`The workflow file defines workflow "${manifest.workflowId}", but this workflow is "${expectedWorkflowId}". The id in workflow(...) must match.`);
   }
-  const knownUnprefixedEventTypes = new Set<string>([...workflowPlatformEventTypes, ...workflowLifecycleEventTypes]);
+  const knownUnprefixedEventTypes = new Set<string>(workflowPlatformEventTypes);
   for (const trigger of manifest.triggers) {
     if (trigger.type === "event") {
       if (trigger.eventType.startsWith(WORKFLOW_CUSTOM_EVENT_PREFIX)) {

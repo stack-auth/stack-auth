@@ -1,17 +1,17 @@
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../../backend-helpers";
+import { Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
-// E2E tests for Hexclave Workflows v1 (internal-only rollout). These
-// exercise the real engine end to end: sync -> version mint -> event ->
-// run creation (runKey/onConflict) -> sandbox step execution (freestyle
-// mock) -> memoization -> completion, plus cancel/upgrade/retry and the
-// rollout gate on both sides.
+// E2E tests for Hexclave Workflows v1. These exercise the real engine end to
+// end: sync -> version mint -> event -> run creation (runKey/onConflict) ->
+// sandbox step execution (freestyle mock) -> memoization -> completion, plus
+// cancel/upgrade/retry and the app-installation gate on both sides.
 //
-// Notes on test hygiene: the internal project is shared across the whole e2e
-// suite. Every workflow uses a unique id and is deleted so tests exercise
-// the same cleanup path as the dashboard.
+// Notes on test hygiene: workflows are gated on the alpha-stage
+// `workflows-alpha` app, so every test runs against its own freshly created
+// project that installs it. Each workflow still uses a unique id and is
+// deleted at the end so tests exercise the same cleanup path as the dashboard.
 //
 // Dynamic ids/emails make inline snapshots impractical here, so these tests
 // use toMatchObject assertions instead (deliberate deviation from the
@@ -21,6 +21,22 @@ const CRON_AUTH = { "Authorization": "Bearer mock_cron_secret" };
 
 function randomSlug(prefix: string): string {
   return `${prefix}-${generateSecureRandomString(8).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "x"}`;
+}
+
+/**
+ * Creates a project with the Workflows app installed and switches the backend
+ * context to it, returning its keys so a test can switch back later.
+ */
+async function createWorkflowsProject() {
+  await Project.createAndSwitch();
+  await Project.updateConfig({ "apps.installed.workflows-alpha.enabled": true });
+  return backendContext.value.projectKeys;
+}
+
+/** Runs `fn` against a fresh project that has the Workflows app installed. */
+async function inFreshWorkflowsProject<T>(fn: () => Promise<T>): Promise<T> {
+  await createWorkflowsProject();
+  return await fn();
 }
 
 async function tickWorkflowEngine(expect: any) {
@@ -97,41 +113,27 @@ async function listRuns(workflowId: string, query: Record<string, string> = {}) 
   return response.body as { runs: any[], next_cursor: string | null };
 }
 
-describe("rollout gate", () => {
-  it("returns 404 from every workflows route for a non-internal project", async ({ expect }) => {
-    await Auth.fastSignUp();
-    const { adminAccessToken, projectId } = await Project.createAndGetAdminToken();
-    backendContext.set({ projectKeys: { projectId, adminAccessToken } });
+describe("multi-tenancy", () => {
+  it("serves every workflows route for an ordinary project", async ({ expect }) => {
+    // Workflows are available to any project. Like every other app, the API is
+    // NOT gated on `apps.installed.workflows-alpha` — installing the app only
+    // decides whether the dashboard surfaces it.
+    await Project.createAndSwitch();
 
-    const someUuid = "12345678-1234-5234-9234-123456789012";
-    const routes: { method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: any }[] = [
-      { method: "GET", path: "/api/v1/internal/workflows" },
-      { method: "POST", path: "/api/v1/internal/workflows", body: { id: "gated", source: "x" } },
-      { method: "PATCH", path: "/api/v1/internal/workflows/gated/source", body: { source: "x" } },
-      { method: "DELETE", path: "/api/v1/internal/workflows/gated" },
-      { method: "GET", path: "/api/v1/internal/workflows/gated/versions" },
-      { method: "GET", path: "/api/v1/internal/workflows/gated/runs" },
-      { method: "POST", path: "/api/v1/internal/workflows/gated/runs/cancel", body: {} },
-      { method: "POST", path: "/api/v1/internal/workflows/gated/runs/upgrade", body: { to_version: 1 } },
-      { method: "GET", path: `/api/v1/internal/workflows/runs/${someUuid}` },
-      { method: "POST", path: `/api/v1/internal/workflows/runs/${someUuid}/retry`, body: {} },
-      { method: "POST", path: "/api/v1/internal/workflows/events", body: { name: "gated", data: {} } },
-    ];
-    for (const route of routes) {
-      const response = await niceBackendFetch(route.path, {
-        method: route.method,
-        accessType: "admin",
-        ...(route.body !== undefined ? { body: route.body } : {}),
-      });
-      expect(response.status, `expected 404 for ${route.method} ${route.path}`).toBe(404);
-      expect(JSON.stringify(response.body)).toContain("Workflows are not available for this project");
-    }
+    const listResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+    expect(listResponse).toMatchObject({ status: 200, body: { workflows: [] } });
+
+    const workflowId = randomSlug("e2e-uninstalled");
+    await createWorkflow(expect, workflowId, `import { workflow, customEvent } from "@hexclave/workflows";
+export default workflow("${workflowId}", { on: [customEvent("ping")] }, async () => {});
+`);
+    await retireWorkflow(expect, workflowId);
   });
 
-  it("does not create runs on the internal project for entity mutations in other projects", { timeout: 180_000 }, async ({ expect }) => {
+  it("does not create runs for entity mutations in other projects", { timeout: 180_000 }, async ({ expect }) => {
     const workflowId = randomSlug("e2e-isolation");
-    await withInternalProject(async () => {
-      await createWorkflow(expect, workflowId, `import { workflow } from "@hexclave/workflows";
+    const workflowsProjectKeys = await createWorkflowsProject();
+    await createWorkflow(expect, workflowId, `import { workflow } from "@hexclave/workflows";
 export default workflow("${workflowId}", {
   on: ["user.created"],
   runKey: (event) => "user:" + event.data.id,
@@ -139,12 +141,10 @@ export default workflow("${workflowId}", {
   await step.run("noop", () => event.data.primary_email);
 });
 `);
-    });
 
-    // A user created in a NON-internal project must never reach the internal
-    // project's workflows (events are tenancy-scoped and the gate refuses to
-    // even enqueue for disabled projects).
-    await Auth.fastSignUp();
+    // A user created in ANOTHER project must never reach this project's
+    // workflows: events and definitions are both tenancy-scoped, so the other
+    // project's event only ever matches the other project's (empty) definitions.
     const otherEmail = `${randomSlug("isolated")}@example.com`;
     await Project.createAndSwitch();
     const createUserResponse = await niceBackendFetch("/api/v1/users", {
@@ -154,7 +154,7 @@ export default workflow("${workflowId}", {
     });
     expect(createUserResponse.status).toBe(201);
 
-    await withInternalProject(async () => {
+    await backendContext.with({ projectKeys: workflowsProjectKeys, userAuth: null }, async () => {
       await tickWorkflowEngine(expect);
       await tickWorkflowEngine(expect);
       const { runs } = await listRuns(workflowId);
@@ -166,7 +166,7 @@ export default workflow("${workflowId}", {
 
 describe("workflow lifecycle", () => {
   it("orders by latest deployment and deletes active workflows", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const olderWorkflowId = randomSlug("e2e-order-older");
       const newerWorkflowId = randomSlug("e2e-order-newer");
       const eventName = randomSlug("e2e-delete-active");
@@ -208,7 +208,7 @@ export default workflow("${newerWorkflowId}", { on: ["user.created"] }, async ()
   });
 
   it("syncs, versions, runs steps durably, memoizes, and dedupes by runKey", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-lifecycle");
       const eventName = randomSlug("e2e-ping");
 
@@ -334,7 +334,7 @@ export default workflow("${workflowId}", {
   });
 
   it("rejects non-self-contained sources at sync time", async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const response = await niceBackendFetch("/api/v1/internal/workflows", {
         method: "POST",
         accessType: "admin",
@@ -349,7 +349,7 @@ export default workflow("${workflowId}", {
   });
 
   it("lets workflow code call back into the platform via hexclaveApp", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-callback");
       const eventName = randomSlug("e2e-fetch-user");
       const email = `${randomSlug("wf-user")}@example.com`;
@@ -405,7 +405,7 @@ export default workflow("${workflowId}", {
   });
 
   it("fails runs on NonRetriableError with the user-error channel, and supports manual retry", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-failure");
       const eventName = randomSlug("e2e-boom");
 
@@ -472,7 +472,7 @@ export default workflow("${workflowId}", {
   });
 
   it("records the successful attempt when a manual retry recovers a failed run", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-retry-ok");
       const eventName = randomSlug("e2e-gate");
       const email = `${randomSlug("wf-gate")}@example.com`;
@@ -551,7 +551,7 @@ export default workflow("${workflowId}", {
   });
 
   it("cancels sleeping runs atomically and upgrades runs with skip-on-divergence", { timeout: 240_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-upgrade");
       const eventName = randomSlug("e2e-sleepy");
 
@@ -658,7 +658,7 @@ export default workflow("${workflowId}", {
   });
 
   it("reacts to platform events (user.created) through the transactional outbox", { timeout: 180_000 }, async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const workflowId = randomSlug("e2e-platform");
       const email = `${randomSlug("wf-platform")}@example.com`;
 
@@ -692,7 +692,7 @@ export default workflow("${workflowId}", {
   });
 
   it("rejects malformed custom events", async ({ expect }) => {
-    await withInternalProject(async () => {
+    await inFreshWorkflowsProject(async () => {
       const prefixedResponse = await niceBackendFetch("/api/v1/internal/workflows/events", {
         method: "POST",
         accessType: "admin",

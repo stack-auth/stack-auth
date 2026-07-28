@@ -1,5 +1,4 @@
 import { retryFailedWorkflowRun } from "@/lib/workflows/engine";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -26,7 +25,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     const retried = await retryFailedWorkflowRun(tenancy, params.run_id);
     if (!retried) {
       throw new StatusError(400, "This run cannot be retried: only failed runs can be retried, and only while no newer active run holds the same run key");

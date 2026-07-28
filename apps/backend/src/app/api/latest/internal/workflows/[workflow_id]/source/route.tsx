@@ -1,5 +1,4 @@
 import { syncWorkflowSource } from "@/lib/workflows/api";
-import { ensureWorkflowsEnabled } from "@/lib/workflows/gate";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -23,7 +22,6 @@ export const PATCH = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   async handler({ auth: { tenancy }, params, body }) {
-    ensureWorkflowsEnabled(tenancy.project.id);
     // Every save of changed source mints a new version; unchanged source is
     // a no-op (created: false).
     const result = await syncWorkflowSource(tenancy, {

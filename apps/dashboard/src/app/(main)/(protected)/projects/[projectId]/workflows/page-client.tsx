@@ -1,23 +1,25 @@
 "use client";
 
-import { useUser } from "@hexclave/next";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { DesignBadge } from "@/components/design-components";
 import { useRouter } from "@/components/router";
+import { getAppStageLabel } from "@/lib/apps-utils";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { usePathname } from "next/navigation";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useProjectId } from "../use-admin-app";
 import { WorkflowDetail } from "./workflow-detail";
 
-// The Workflows page (v1, internal-only rollout). Deliberately NOT a
-// registered dashboard app: workflows is a standalone page pinned to the top
-// of the left sidebar, shown only for the internal project — which also
-// sidesteps the old workflows app id being blocked by a config migration.
-// The backend enforces the same gate (404) on every workflows route, so this
-// client-side check is UX, not security.
+// The Workflows app (alpha). Available to any project that installs
+// `workflows-alpha` — note that alpha apps are hidden from the app-store
+// listing outside development, so installing is currently a deliberate config
+// action rather than a click. The backend enforces the same gate (404 on every
+// workflows route), so the guard here is UX, not security.
+
+const stageLabel = getAppStageLabel("workflows-alpha");
 
 export default function PageClient() {
   const projectId = useProjectId();
-  useUser({ or: "redirect", projectIdMustMatch: "internal" });
   const pathname = usePathname();
   const router = useRouter();
   const workflowsMarker = "/workflows/";
@@ -26,18 +28,24 @@ export default function PageClient() {
     ? null
     : decodeURIComponent(pathname.slice(markerIndex + workflowsMarker.length).split("/")[0]);
 
-  if (projectId !== "internal") {
-    return null;
-  }
-
   return (
-    <PageLayout title="Workflows">
-      <WorkflowDetail
-        selectedWorkflowId={selectedWorkflowId}
-        onSelect={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}`)}
-        onCreateDraft={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}?tab=code&new=1`)}
-        onClose={() => router.push(urlString`/projects/${projectId}/workflows`)}
-      />
-    </PageLayout>
+    <AppEnabledGuard appId="workflows-alpha">
+      <PageLayout
+        title="Workflows"
+        description={
+          <span className="flex items-center gap-2">
+            Durable, code-defined automations that react to events in your project.
+            {stageLabel != null && <DesignBadge label={stageLabel} color="purple" size="sm" />}
+          </span>
+        }
+      >
+        <WorkflowDetail
+          selectedWorkflowId={selectedWorkflowId}
+          onSelect={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}`)}
+          onCreateDraft={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}?tab=code&new=1`)}
+          onClose={() => router.push(urlString`/projects/${projectId}/workflows`)}
+        />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
