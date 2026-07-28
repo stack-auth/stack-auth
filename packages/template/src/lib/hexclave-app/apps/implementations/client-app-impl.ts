@@ -2152,6 +2152,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       isAnonymous: crud.is_anonymous,
       isRestricted: crud.is_restricted,
       restrictedReason: crud.restricted_reason,
+      restrictedByAdmin: crud.restricted_by_admin,
+      restrictedByAdminReason: crud.restricted_by_admin_reason,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
