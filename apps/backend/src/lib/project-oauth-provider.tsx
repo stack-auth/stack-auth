@@ -58,26 +58,24 @@ export function getProjectOAuthIssuer(projectId: string, apiUrl?: string): strin
  */
 export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audience: string, scopes: string[] }> {
   const allScopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
-
-  return new Map(
-    // `Object.entries`, not `typedEntries`: on a record with an index signature the latter widens
-    // the key to `string | symbol`, and the resource ID has to be a string to go into an audience.
-    Object.entries(tenancy.config.oauthProvider.resources).flatMap(([resourceId, resource]) => {
-      // A resource with no URI has been half-configured in the dashboard — it can't be targeted by
-      // `resource=`, so it simply isn't a resource server yet. Skipping is right; throwing would
-      // take down the whole provider over one incomplete row. (The record itself always exists:
-      // `CompleteConfig` has already applied the schema defaults.)
-      if (resource.uri === undefined) return [];
-      const declaredScopes = Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
-      return [[resource.uri, {
-        audience: getResourceAudience(tenancy.project.id, resourceId),
-        // An empty scope list means "every scope this project defines" rather than "no scopes":
-        // the common case is a customer who registered an MCP server and never narrowed it, and
-        // handing that server a token with no scopes at all would be useless.
-        scopes: declaredScopes.length > 0 ? declaredScopes : allScopes,
-      }]] as const;
-    }),
-  );
+  const resourceServers = new Map<string, { audience: string, scopes: string[] }>();
+  for (const [resourceId, resource] of Object.entries(tenancy.config.oauthProvider.resources)) {
+    // A resource with no URI has been half-configured in the dashboard, so it is not targetable yet.
+    if (resource.uri === undefined) continue;
+    if (resourceServers.has(resource.uri)) {
+      captureError("duplicate-oauth-resource-uri", new Error(`Duplicate OAuth resource URI ${JSON.stringify(resource.uri)}; keeping the first configured resource ${JSON.stringify(resourceId)}.`));
+      continue;
+    }
+    resourceServers.set(resource.uri, {
+      audience: getResourceAudience(tenancy.project.id, resourceId),
+      scopes: (() => {
+        const declaredScopes = Object.values(resource.scopes).flatMap(s => s.scope === undefined ? [] : [s.scope]);
+        // An empty scope list means every scope the project defines.
+        return declaredScopes.length > 0 ? declaredScopes : allScopes;
+      })(),
+    });
+  }
+  return resourceServers;
 }
 
 /**

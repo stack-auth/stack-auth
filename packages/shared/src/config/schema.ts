@@ -15,10 +15,11 @@ import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
+import { isValidHostname } from "../utils/urls";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
-import { customScopeIdRegex, isValidCustomScopeId, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
+import { customScopeIdRegex, isValidCustomScopeId, isValidPermissionScope, OIDC_STANDARD_SCOPES, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon } from "./scopes";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -103,6 +104,7 @@ const branchRbacSchema = yupObject({
 // that needs to name a scope is therefore keyed by an opaque ID with the scope as a value.
 const oauthProviderScopeIdRegex = customScopeIdRegex;
 const customScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("custom-scope-name", "Scope name is reserved or invalid.", value => value === undefined || isValidCustomScopeId(value)).optional();
+const resourceScopeSchema = yupString().matches(oauthProviderScopeIdRegex).test("resource-scope-name", "Scope name is invalid.", value => value === undefined || isValidCustomScopeId(value) || isValidPermissionScope(value)).optional();
 
 const branchOAuthProviderSchema = yupObject({
   scopes: yupRecord(
@@ -134,11 +136,17 @@ const branchOAuthProviderSchema = yupObject({
       scopes: yupRecord(
         userSpecifiedIdSchema("resourceScopeId"),
         yupObject({
-          scope: customScopeSchema,
+          scope: resourceScopeSchema,
         }).optional(),
       ).optional(),
     }).optional(),
-  ),
+  ).test("unique-resource-uris", "Resource URIs must be unique.", (resources: unknown) => {
+    if (typeof resources !== "object" || resources === null) return true;
+    const uris = Object.values(resources)
+      .map(resource => resource.uri)
+      .filter((uri): uri is string => uri !== undefined);
+    return new Set(uris).size === uris.length;
+  }),
 
   clients: yupRecord(
     userSpecifiedIdSchema("clientId"),
@@ -189,7 +197,7 @@ const branchOAuthProviderSchema = yupObject({
     allowedDomains: yupRecord(
       userSpecifiedIdSchema("allowedDomainId"),
       yupObject({
-        domain: yupString().optional(),
+        domain: yupString().test("hostname", "Domain must be a valid hostname.", value => value === undefined || isValidHostname(value)).optional(),
       }).optional(),
     ).optional(),
   }),
@@ -244,6 +252,32 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects a malformed scope", 
 import.meta.vitest?.test("branchOAuthProviderSchema rejects reserved custom scopes", async ({ expect }) => {
   await expect(branchOAuthProviderSchema.validate({
     scopes: { "some-id": { scope: "perm:read" } },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema accepts RBAC scopes in a resource allowlist", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "mcp": {
+        uri: "https://mcp.example.com",
+        scopes: { "read": { scope: "perm:read_docs" } },
+      },
+    },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects duplicate resource URIs", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "first": { uri: "https://mcp.example.com" },
+      "second": { uri: "https://mcp.example.com" },
+    },
+  }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed client metadata domains", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    clientIdMetadataDocuments: { allowedDomains: { "domain": { domain: "not a hostname" } } },
   }, { abortEarly: false })).rejects.toThrow();
 });
 

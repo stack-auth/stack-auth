@@ -81,8 +81,11 @@ export class McpTokenVerificationError extends Error {
   }
 }
 
-function canonicalResource(resource: string): string {
+function canonicalResource(resource: string, allowQueryAndFragment = false): string {
   const url = new URL(resource);
+  if (!allowQueryAndFragment && (url.search !== "" || url.hash !== "")) {
+    throw new TypeError("RFC 8707 resource identifiers cannot contain a query or fragment.");
+  }
   url.hash = "";
   url.search = "";
   url.protocol = url.protocol.toLowerCase();
@@ -133,7 +136,14 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
   };
 
   const verifyAccessToken = async (token: string, resource?: string): Promise<McpAuthInfo> => {
-    const expectedResource = configuredResource ?? resource;
+    const expectedResource = configuredResource
+      ?? (resource === undefined ? undefined : canonicalResource(resource, true));
+    if (expectedResource === undefined) {
+      throw new McpTokenVerificationError(
+        "No resource is configured for this verifier. Pass resource to createMcpTokenVerifier when using verifyAccessToken(token).",
+        "wrong_resource",
+      );
+    }
 
     let payload: jose.JWTPayload;
     try {
@@ -151,24 +161,22 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
 
     // RFC 8707 resource binding. Resource servers in one project intentionally share signing keys;
     // the resource claim is therefore the mandatory application-level boundary.
-    if (expectedResource !== undefined) {
-      const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
-      let matches = false;
-      if (tokenResource !== undefined) {
-        try {
-          matches = canonicalResource(tokenResource) === canonicalResource(expectedResource);
-        } catch {
-          // A malformed resource claim is attacker-controlled token data; it must fail closed as a
-          // resource mismatch rather than escaping as a raw URL parser error.
-          matches = false;
-        }
+    const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
+    let matches = false;
+    if (tokenResource !== undefined) {
+      try {
+        matches = canonicalResource(tokenResource) === expectedResource;
+      } catch {
+        // A malformed resource claim is attacker-controlled token data; it must fail closed as a
+        // resource mismatch rather than escaping as a raw URL parser error.
+        matches = false;
       }
-      if (!matches) {
-        throw new McpTokenVerificationError(
-          "The access token was issued for a different resource.",
-          "wrong_resource",
-        );
-      }
+    }
+    if (!matches) {
+      throw new McpTokenVerificationError(
+        "The access token was issued for a different resource.",
+        "wrong_resource",
+      );
     }
 
     // Scopes are space-delimited in the OAuth spec, but be tolerant of an array: some providers, and
@@ -183,7 +191,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
       clientId: typeof payload.client_id === "string" ? payload.client_id : "",
       scopes,
       expiresAt: payload.exp,
-      resource: expectedResource === undefined ? undefined : new URL(expectedResource),
+      resource: new URL(expectedResource),
       extra: {
         // The Hexclave user ID. Pass the whole `AuthInfo` to
         // `hexclaveServerApp.getUser({ from: "mcp", authInfo })` to resolve it to a `ServerUser`.
@@ -199,7 +207,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
     // With no explicitly configured resource, the request URL *is* the resource identifier — which
     // is correct whenever the server isn't behind a URL-rewriting proxy, and is what lets the
     // zero-config case work.
-    return await verifyAccessToken(token, options.resource ?? request.url);
+    return await verifyAccessToken(token, options.resource ?? canonicalResource(request.url, true));
   };
 
   return Object.assign(verifyRequest, {
@@ -259,7 +267,7 @@ if (import.meta.vitest) {
 
   describe("canonicalResource", () => {
     test("ignores query and fragment and normalizes host and trailing slash", () => {
-      expect(canonicalResource("HTTPS://MCP.Example.com/mcp/?page=1#tools"))
+      expect(canonicalResource("HTTPS://MCP.Example.com/mcp/?page=1#tools", true))
         .toBe("https://mcp.example.com/mcp");
     });
 
@@ -328,6 +336,19 @@ if (import.meta.vitest) {
       }
     });
 
+    test("requires a resource for the SDK verifyAccessToken form", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "https://mcp.example.com/mcp" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({
+          reason: "wrong_resource",
+          message: expect.stringContaining("Pass resource"),
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     test("rejects a signed token without a resource claim", async () => {
       const { token, originalFetch } = await signedToken({});
       try {
@@ -350,6 +371,11 @@ if (import.meta.vitest) {
 
     test("rejects an unparsable configured resource during verifier construction", () => {
       expect(() => createMcpTokenVerifier({ projectId, resource: "not a URL" })).toThrow(TypeError);
+    });
+
+    test("rejects a configured resource with a query or fragment", () => {
+      expect(() => createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp?tenant=a" })).toThrow(TypeError);
+      expect(() => createMcpTokenVerifier({ projectId, resource: "https://mcp.example.com/mcp#tools" })).toThrow(TypeError);
     });
 
     // The DX contract: one export that both ecosystems accept. If either of these shapes stops

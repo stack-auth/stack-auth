@@ -7,7 +7,7 @@ import { sha512 } from '@hexclave/shared/dist/utils/hashes';
 import { getPrivateJwks, getPublicJwkSet } from '@hexclave/shared/dist/utils/jwt';
 import { deindent } from '@hexclave/shared/dist/utils/strings';
 import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
-import Provider, { Adapter, AdapterConstructor, AdapterPayload, Configuration } from 'oidc-provider';
+import Provider, { Adapter, AdapterConstructor, AdapterPayload, Configuration, errors } from 'oidc-provider';
 
 type AdapterData = {
   payload: AdapterPayload,
@@ -307,9 +307,7 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
         getResourceServerInfo: async (ctx, resourceIndicator, client) => {
           const resourceServer = options.resourceServers!.get(resourceIndicator);
           if (!resourceServer) {
-            // oidc-provider validates the indicator against `defaultResource`/the request before
-            // reaching us, so an unknown one here means our map and the provider disagree.
-            throw new HexclaveAssertionError(`Unknown resource indicator ${JSON.stringify(resourceIndicator)}.`, { resourceIndicator });
+            throw new errors.InvalidTarget();
           }
           return {
             // The audience identifies the resource server. Providers in one project share signing

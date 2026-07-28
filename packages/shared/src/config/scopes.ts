@@ -1,6 +1,6 @@
 export const PROJECT_PERMISSION_SCOPE_PREFIX = "perm";
 export const TEAM_PERMISSION_SCOPE_PREFIX = "team_perm";
-export const OIDC_STANDARD_SCOPES = ["openid", "profile", "email", "offline_access"] as const;
+export const OIDC_STANDARD_SCOPES = ["openid", "profile", "email", "offline_access", "address", "phone"] as const;
 export const RESERVED_SCOPE_PREFIXES = [PROJECT_PERMISSION_SCOPE_PREFIX, TEAM_PERMISSION_SCOPE_PREFIX] as const;
 export const customScopeIdRegex = /^[a-z0-9_:.-]+$/;
 export const permissionIdRegex = /^\$?[a-z0-9_:]+$/;
@@ -27,6 +27,13 @@ export function getTeamPermissionScope(permissionId: string): string {
 
 export function isValidPermissionId(permissionId: string): boolean {
   return permissionIdRegex.test(permissionId);
+}
+
+export function isValidPermissionScope(scope: string): boolean {
+  const split = splitScopeOnFirstColon(scope);
+  return split !== undefined
+    && (RESERVED_SCOPE_PREFIXES as readonly string[]).includes(split.prefix)
+    && isValidPermissionId(split.rest);
 }
 
 type PermissionLike = { id: string };

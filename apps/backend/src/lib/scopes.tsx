@@ -1,6 +1,6 @@
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
-import { getProjectPermissionScope, getTeamPermissionScope, isValidCustomScopeId, isValidPermissionId, narrowPermissionsByScopes, OIDC_STANDARD_SCOPES, PROJECT_PERMISSION_SCOPE_PREFIX, RESERVED_SCOPE_PREFIXES, splitScopeOnFirstColon, TEAM_PERMISSION_SCOPE_PREFIX } from "@hexclave/shared/dist/config/scopes";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getProjectPermissionScope, getTeamPermissionScope, isValidCustomScopeId, isValidPermissionId, narrowPermissionsByScopes, OIDC_STANDARD_SCOPES, PROJECT_PERMISSION_SCOPE_PREFIX, splitScopeOnFirstColon, TEAM_PERMISSION_SCOPE_PREFIX } from "@hexclave/shared/dist/config/scopes";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 /**
@@ -190,36 +190,6 @@ export function validateScopes(availableScopes: ScopeDefinition[], requestedScop
   return { valid: true, scopes };
 }
 
-/**
- * Asserts that a set of scopes may be written into a project's config as *custom* scopes.
- *
- * Called at config-write time rather than at authorize time, so a customer finds out they picked a
- * reserved name when they save the setting, not when a user's consent screen renders wrong.
- */
-export function assertCustomScopeIdsAreValid(scopeIds: string[]): void {
-  for (const scopeId of scopeIds) {
-    const split = splitScopeOnFirstColon(scopeId);
-    if (split && (RESERVED_SCOPE_PREFIXES as readonly string[]).includes(split.prefix)) {
-      throw new HexclaveAssertionError(
-        `Custom scope ${JSON.stringify(scopeId)} uses the reserved prefix ${JSON.stringify(split.prefix)}. That prefix is generated automatically from your RBAC permissions.`,
-        { scopeId },
-      );
-    }
-    if ((OIDC_STANDARD_SCOPES as readonly string[]).includes(scopeId)) {
-      throw new HexclaveAssertionError(
-        `Custom scope ${JSON.stringify(scopeId)} is a standard OIDC scope and cannot be redefined.`,
-        { scopeId },
-      );
-    }
-    if (!isValidCustomScopeId(scopeId)) {
-      throw new HexclaveAssertionError(
-        `Custom scope ${JSON.stringify(scopeId)} is not a valid scope ID. Scope IDs are lowercase alphanumeric with underscores, colons, dots and dashes.`,
-        { scopeId },
-      );
-    }
-  }
-}
-
 import.meta.vitest?.describe("parseScope", (test) => {
   test("parses permission scopes", ({ expect }) => {
     expect(parseScope("perm:read_docs")).toEqual({ type: "project_permission", permissionId: "read_docs" });
@@ -310,31 +280,5 @@ import.meta.vitest?.describe("narrowPermissionsByScopes", (test) => {
     const twice = narrowPermissionsByScopes(once, ["perm:read_docs", "perm:write_docs"], "project");
     expect(twice).toEqual(once);
     expect(once.length).toBeLessThanOrEqual(perms.length);
-  });
-});
-
-import.meta.vitest?.describe("assertCustomScopeIdsAreValid", (test) => {
-  test("rejects the reserved permission prefixes", ({ expect }) => {
-    expect(() => assertCustomScopeIdsAreValid(["perm:anything"])).toThrow(/reserved prefix/);
-    expect(() => assertCustomScopeIdsAreValid(["team_perm:anything"])).toThrow(/reserved prefix/);
-  });
-
-  test("rejects redefining an OIDC standard scope", ({ expect }) => {
-    expect(() => assertCustomScopeIdsAreValid(["openid"])).toThrow(/standard OIDC scope/);
-  });
-
-  test("accepts ordinary custom scopes", ({ expect }) => {
-    expect(() => assertCustomScopeIdsAreValid(["files", "files:read", "files.read", "files-read"])).not.toThrow();
-  });
-
-  test("rejects malformed scope IDs", ({ expect }) => {
-    expect(() => assertCustomScopeIdsAreValid(["has space"])).toThrow();
-    expect(() => assertCustomScopeIdsAreValid(["UPPER"])).toThrow();
-  });
-
-  // `permissions` is not a reserved prefix, so a scope that merely *starts* with the letters of one
-  // must still be allowed — the check is on the prefix up to the first colon, not a string prefix.
-  test("does not over-reject scopes that merely start with reserved letters", ({ expect }) => {
-    expect(() => assertCustomScopeIdsAreValid(["permanent:read", "team_permissions_ui"])).not.toThrow();
   });
 });
