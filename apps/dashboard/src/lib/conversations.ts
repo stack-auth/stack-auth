@@ -1,4 +1,4 @@
-import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import { buildHexclaveHeaders, type CurrentUser } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import type {
   ConversationDetailResponse,
@@ -26,7 +26,7 @@ async function apiFetch(
   path: string,
   options: RequestInit = {},
 ) {
-  const headers = await buildStackAuthHeaders(currentUser);
+  const headers = await buildHexclaveHeaders(currentUser);
   const response = await fetch(`${getBaseUrl()}/api/latest/internal/conversations${path}`, {
     ...options,
     headers: {
