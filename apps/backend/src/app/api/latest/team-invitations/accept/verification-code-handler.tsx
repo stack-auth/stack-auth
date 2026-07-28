@@ -6,6 +6,7 @@ import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { KnownErrors } from "@hexclave/shared";
 import { emailSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -73,6 +74,11 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logAccessDeniedInBackground(tenancy, "restricted_user", {
+        userId: user.id,
+        teamId: data.team_id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
@@ -139,6 +145,11 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
+      logAccessDeniedInBackground(tenancy, "restricted_user", {
+        userId: user.id,
+        teamId: data.team_id,
+        restrictedReason: user.restricted_reason.type,
+      });
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
 

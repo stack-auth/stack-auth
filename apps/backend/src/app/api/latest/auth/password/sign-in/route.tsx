@@ -1,4 +1,5 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -53,6 +54,10 @@ export const POST = createSmartRouteHandler({
 
     // we compare the password even if the authMethod doesn't exist to prevent timing attacks
     if (!await comparePassword(password, passwordAuthMethod?.passwordHash || "")) {
+      logAccessDeniedInBackground(tenancy, "failed_password", {
+        email,
+        authMethod: "password",
+      });
       throw new KnownErrors.EmailPasswordMismatch();
     }
 

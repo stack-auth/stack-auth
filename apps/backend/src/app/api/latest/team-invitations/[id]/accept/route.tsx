@@ -4,6 +4,7 @@ import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entit
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -45,6 +46,10 @@ export const POST = createSmartRouteHandler({
       }
 
       if (auth.user.restricted_reason) {
+        logAccessDeniedInBackground(auth.tenancy, "restricted_user", {
+          userId: auth.user.id,
+          restrictedReason: auth.user.restricted_reason.type,
+        });
         throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(auth.user.restricted_reason);
       }
     }

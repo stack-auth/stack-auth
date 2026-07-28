@@ -1,4 +1,5 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -60,6 +61,9 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
 
     if (!passkey) {
+      logAccessDeniedInBackground(tenancy, "failed_passkey", {
+        authMethod: "passkey",
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("Passkey not found");
     }
 
@@ -68,6 +72,10 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     const { origin } = clientDataJSON;
 
     if (!validateRedirectUrl(origin, tenancy)) {
+      logAccessDeniedInBackground(tenancy, "failed_passkey", {
+        authMethod: "passkey",
+        userId: passkey.projectUserId,
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because the origin is not allowed");
     }
 
@@ -91,6 +99,9 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
 
     if (!authVerify.verified) {
+      logAccessDeniedInBackground(tenancy, "failed_passkey", {
+        authMethod: "passkey",
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("The signature of the authentication response could not be verified with the stored public key tied to this credential ID");
     }
     const authenticationInfo = authVerify.authenticationInfo;
