@@ -95,14 +95,17 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
       <section
         ref={noteRef}
         aria-label="Development information"
-        className="pointer-events-auto max-h-[60vh] w-full max-w-[640px] overflow-hidden rounded-2xl border border-black/[0.09] bg-white/90 p-4 text-foreground shadow-xl shadow-black/[0.08] backdrop-blur-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200 dark:border-white/[0.12] dark:bg-zinc-950/90 dark:shadow-black/30 sm:p-5"
+        className="pointer-events-auto max-h-[60vh] w-full max-w-[640px] overflow-hidden rounded-2xl border border-blue-200/70 bg-blue-50/90 p-4 text-foreground shadow-xl shadow-blue-950/[0.08] backdrop-blur-xl animate-in fade-in-0 slide-in-from-bottom-2 duration-200 dark:border-blue-400/[0.22] dark:bg-blue-950/80 dark:shadow-blue-950/40 sm:p-5"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <Code2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Code2 className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
               <p className="text-sm font-semibold tracking-tight">Development info</p>
-              <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              <Badge
+                variant="secondary"
+                className="rounded-full border border-blue-200/70 bg-blue-100/60 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200"
+              >
                 Not visible in production
               </Badge>
             </div>
@@ -152,7 +155,7 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
         )}
 
         {prompt != null && showPrompt && (
-          <pre className="mt-4 max-h-[calc(60vh-10rem)] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-black/[0.08] bg-black/[0.025] p-3 text-[11px] leading-[1.55] text-foreground/80 ring-1 ring-inset ring-black/[0.025] dark:border-white/[0.10] dark:bg-white/[0.04] dark:text-foreground/75 dark:ring-white/[0.025]">
+          <pre className="mt-4 max-h-[calc(60vh-10rem)] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-blue-200/70 bg-blue-100/40 p-3 text-[11px] leading-[1.55] text-foreground/80 ring-1 ring-inset ring-blue-200/40 dark:border-blue-400/[0.18] dark:bg-blue-900/30 dark:text-foreground/75 dark:ring-blue-300/[0.08]">
             <code>{prompt.fullPrompt}</code>
           </pre>
         )}
