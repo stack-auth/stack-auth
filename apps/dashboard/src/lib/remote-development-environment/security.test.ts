@@ -289,6 +289,7 @@ describe("remote development environment security", () => {
   });
 
   it("repairs broad state file permissions before checking requests", async () => {
+    if (process.platform === "win32") return;
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {

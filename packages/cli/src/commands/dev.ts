@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { delimiter, dirname, join, resolve } from "path";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
@@ -15,6 +15,16 @@ type ChildCommand = {
   command: string,
   args: string[],
 };
+
+export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): string {
+  const pathEntries = (env.PATH ?? env.Path ?? "").split(delimiter);
+  const pathExtensions = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  const candidates = pathEntries.flatMap((pathEntry) => [
+    join(pathEntry, command),
+    ...pathExtensions.map((extension) => join(pathEntry, `${command}${extension}`)),
+  ]);
+  return candidates.find((candidate) => existsSync(candidate)) ?? command;
+}
 
 type DevOptions = {
   configFile?: string,
@@ -725,10 +735,10 @@ child.on("error", (error) => {
 });
 `;
 
-function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+export function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      ? spawn(resolveWindowsCommand(command.command, env), command.args, { stdio: "inherit", env })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",

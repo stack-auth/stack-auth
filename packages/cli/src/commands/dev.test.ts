@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, resolveWindowsCommand, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -100,6 +100,21 @@ describe("dashboardEnvWithStatePath", () => {
     expect(dashboardEnvWithStatePath({
       STACK_DEV_ENVS_PATH: "C:\\custom\\dev-envs.json",
     }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json").STACK_DEV_ENVS_PATH).toBe("C:\\custom\\dev-envs.json");
+  });
+});
+
+describe("resolveWindowsCommand", () => {
+  it("resolves command shims without using a shell", () => {
+    const commandDir = mkdtempSync(join(tmpdir(), "hexclave-command-"));
+    const commandPath = join(commandDir, "npm.cmd");
+    writeFileSync(commandPath, "");
+
+    expect(resolveWindowsCommand("npm", {
+      PATH: commandDir,
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    }).toLowerCase()).toBe(commandPath.toLowerCase());
+
+    rmSync(commandDir, { recursive: true, force: true });
   });
 });
 
