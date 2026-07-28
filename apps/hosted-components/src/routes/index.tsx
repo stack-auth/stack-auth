@@ -1,5 +1,6 @@
 import { useUser } from "@hexclave/react";
 import { createFileRoute } from '@tanstack/react-router';
+import { DevelopmentPageNote } from "~/components/development-page-note";
 import { HostedUserButton } from "~/components/hosted-user-button";
 
 export const Route = createFileRoute('/')({
@@ -17,16 +18,19 @@ function HandlerPage() {
   const name = user.displayName || user.primaryEmail || "User";
 
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-        <HostedUserButton />
+    <>
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
+          <HostedUserButton />
+        </div>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: "0.5rem" }}>
+          Welcome, {name}
+        </h1>
+        <p style={{ color: "#666", fontSize: "0.875rem" }}>
+          You are signed in.
+        </p>
       </div>
-      <h1 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: "0.5rem" }}>
-        Welcome, {name}
-      </h1>
-      <p style={{ color: "#666", fontSize: "0.875rem" }}>
-        You are signed in.
-      </p>
-    </div>
+      <DevelopmentPageNote description="This is Hexclave's default post-sign-in landing page. Configure your own afterSignIn URL to customize what users see after signing in." />
+    </>
   );
 }

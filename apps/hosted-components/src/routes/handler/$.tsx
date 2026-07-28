@@ -1,5 +1,7 @@
 import { createFileRoute, useLocation } from '@tanstack/react-router';
 import { HexclaveHandler } from '@hexclave/react';
+import type { ReactNode } from "react";
+import { DevelopmentPageNote, type DevelopmentPageKey } from "~/components/development-page-note";
 import { HostedAccountSettings } from '../../hosted-components/account-settings/index';
 import {
   HostedEmailVerification,
@@ -18,55 +20,91 @@ export const Route = createFileRoute('/handler/$')({
   component: HandlerPage,
 });
 
+type HostedPage = {
+  pageKey: DevelopmentPageKey,
+  render: () => ReactNode,
+};
+
+const hostedPages: Partial<Record<string, HostedPage>> = {
+  "account-settings": {
+    pageKey: "accountSettings",
+    render: () => <HostedAccountSettings fullPage />,
+  },
+  "sign-in": {
+    pageKey: "signIn",
+    render: () => <HostedSignIn fullPage automaticRedirect />,
+  },
+  "log-in": {
+    pageKey: "signIn",
+    render: () => <HostedSignIn fullPage automaticRedirect />,
+  },
+  "sign-up": {
+    pageKey: "signUp",
+    render: () => <HostedSignUp fullPage automaticRedirect />,
+  },
+  register: {
+    pageKey: "signUp",
+    render: () => <HostedSignUp fullPage automaticRedirect />,
+  },
+  "forgot-password": {
+    pageKey: "forgotPassword",
+    render: () => <HostedForgotPassword fullPage />,
+  },
+  "password-reset": {
+    pageKey: "passwordReset",
+    render: () => <HostedPasswordReset fullPage />,
+  },
+  "email-verification": {
+    pageKey: "emailVerification",
+    render: () => <HostedEmailVerification fullPage />,
+  },
+  mfa: {
+    pageKey: "mfa",
+    render: () => <HostedMfa fullPage />,
+  },
+  error: {
+    pageKey: "error",
+    render: () => <HostedError fullPage />,
+  },
+  "team-invitation": {
+    pageKey: "teamInvitation",
+    render: () => <HostedTeamInvitation fullPage />,
+  },
+  "cli-auth-confirm": {
+    pageKey: "cliAuthConfirm",
+    render: () => <HostedCliAuthConfirm fullPage />,
+  },
+  onboarding: {
+    pageKey: "onboarding",
+    render: () => <HostedOnboarding fullPage />,
+  },
+};
+
 function HandlerPage() {
   const location = useLocation();
-  const hostedHandlerPath = getHostedHandlerPath(location.pathname);
+  const hostedPage = hostedPages[getHostedHandlerPath(location.pathname)];
 
-  if (hostedHandlerPath === 'account-settings') {
-    return <HostedAccountSettings fullPage />;
+  if (hostedPage == null) {
+    return <HexclaveHandler fullPage />;
   }
 
-  if (hostedHandlerPath === 'sign-in' || hostedHandlerPath === 'log-in') {
-    return <HostedSignIn fullPage automaticRedirect />;
-  }
+  return (
+    <WithDevelopmentPageNote pageKey={hostedPage.pageKey}>
+      {hostedPage.render()}
+    </WithDevelopmentPageNote>
+  );
+}
 
-  if (hostedHandlerPath === 'sign-up' || hostedHandlerPath === 'register') {
-    return <HostedSignUp fullPage automaticRedirect />;
-  }
-
-  if (hostedHandlerPath === 'forgot-password') {
-    return <HostedForgotPassword fullPage />;
-  }
-
-  if (hostedHandlerPath === 'password-reset') {
-    return <HostedPasswordReset fullPage />;
-  }
-
-  if (hostedHandlerPath === 'email-verification') {
-    return <HostedEmailVerification fullPage />;
-  }
-
-  if (hostedHandlerPath === 'mfa') {
-    return <HostedMfa fullPage />;
-  }
-
-  if (hostedHandlerPath === 'error') {
-    return <HostedError fullPage />;
-  }
-
-  if (hostedHandlerPath === 'team-invitation') {
-    return <HostedTeamInvitation fullPage />;
-  }
-
-  if (hostedHandlerPath === 'cli-auth-confirm') {
-    return <HostedCliAuthConfirm fullPage />;
-  }
-
-  if (hostedHandlerPath === 'onboarding') {
-    return <HostedOnboarding fullPage />;
-  }
-
-  return <HexclaveHandler fullPage />;
+function WithDevelopmentPageNote(props: {
+  pageKey: DevelopmentPageKey,
+  children: ReactNode,
+}) {
+  return (
+    <>
+      {props.children}
+      <DevelopmentPageNote pageKey={props.pageKey} />
+    </>
+  );
 }
 
 function getHostedHandlerPath(pathname: string) {
