@@ -746,13 +746,13 @@ function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
       ? (() => {
+        const resolvedCommand = resolveWindowsCommand(command.command, env);
         const commandEnv = {
           ...env,
-          HEXCLAVE_WINDOWS_APP_COMMAND: resolveWindowsCommand(command.command, env),
           ...Object.fromEntries(command.args.map((arg, index) => [`HEXCLAVE_WINDOWS_APP_ARG_${index}`, arg.replace(/"/g, "\\\"")])),
         };
         const commandLine = `"${[
-          `"!HEXCLAVE_WINDOWS_APP_COMMAND!"`,
+          quoteWindowsShellArg(resolvedCommand),
           ...command.args.map((_, index) => `"!HEXCLAVE_WINDOWS_APP_ARG_${index}!"`),
         ].join(" ")}"`;
         return spawn(env.ComSpec ?? "cmd.exe", ["/d", "/v:on", "/s", "/c", commandLine], {
