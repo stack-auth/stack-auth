@@ -9,7 +9,9 @@ export const Route = createFileRoute('/email-verification-demo')({
 function EmailVerificationDemoPage() {
   return (
     <>
-      <EmailVerification searchParams={{ code: "demo-email-verification-code" }} fullPage />
+      <div data-hexclave-handler-page className="min-h-screen w-full">
+        <EmailVerification searchParams={{ code: "demo-email-verification-code" }} fullPage />
+      </div>
       <DevelopmentPageNote
         pageKey="emailVerification"
         description="This is a demo of Hexclave's default email-verification page. Use the prompt below to customize your own page."
