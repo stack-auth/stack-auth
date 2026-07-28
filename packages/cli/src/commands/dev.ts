@@ -29,6 +29,10 @@ export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): 
   return candidates.find((candidate) => existsSync(candidate)) ?? command;
 }
 
+export function quoteWindowsShellArg(arg: string): string {
+  return `"${arg.replace(/(["^&|<>%!])/g, "^$1")}"`;
+}
+
 type DevOptions = {
   configFile?: string,
 };
@@ -741,7 +745,11 @@ child.on("error", (error) => {
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(resolveWindowsCommand(command.command, env), command.args, { stdio: "inherit", env })
+      ? spawn(
+        env.ComSpec ?? "cmd.exe",
+        ["/d", "/s", "/c", `call ${[resolveWindowsCommand(command.command, env), ...command.args].map(quoteWindowsShellArg).join(" ")}`],
+        { stdio: "inherit", env, windowsVerbatimArguments: true },
+      )
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",

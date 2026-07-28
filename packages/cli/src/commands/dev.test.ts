@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, resolveWindowsCommand, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, quoteWindowsShellArg, resolveWindowsCommand, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -117,6 +117,17 @@ describe("resolveWindowsCommand", () => {
     }).toLowerCase()).toBe(commandPath.toLowerCase());
 
     rmSync(commandDir, { recursive: true, force: true });
+  });
+});
+
+describe("quoteWindowsShellArg", () => {
+  it.each([
+    ["plain", "\"plain\""],
+    ["hello world", "\"hello world\""],
+    ["a\"b", "\"a^\"b\""],
+    ["a&b|c<d>e^f%g!h", "\"a^&b^|c^<d^>e^^f^%g^!h\""],
+  ])("quotes %j safely", (arg, expected) => {
+    expect(quoteWindowsShellArg(arg)).toBe(expected);
   });
 });
 
