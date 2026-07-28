@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as oauthSsrf from "./ssrf-protection/oauth";
-import { resolveClientIdMetadataDocument } from "./project-oauth-provider";
+import { getProjectStaticClients, resolveClientIdMetadataDocument } from "./project-oauth-provider";
 import { Tenancy } from "./tenancies";
 
 const clientId = "https://clients.example.com/client.json";
@@ -13,9 +13,12 @@ function createMockTenancy(): Tenancy {
           enabled: true,
           allowedDomains: {},
         },
+        clients: {},
       },
     },
     project: { id: "12345678-1234-4234-8234-123456789abc" },
+  // Tenancy is an inferred Prisma payload with a large config surface; this test intentionally
+  // supplies only the normalized fields consumed by the metadata resolver.
   } as Tenancy;
 }
 
@@ -53,13 +56,39 @@ describe("resolveClientIdMetadataDocument", () => {
       redirect_uris: ["http://127.0.0.1:8765/callback"],
     });
     try {
-      await expect(resolveClientIdMetadataDocument(createMockTenancy(), clientId)).resolves.toMatchObject({
-        client_id: clientId,
-        redirect_uris: ["http://127.0.0.1:8765/callback"],
-        token_endpoint_auth_method: "none",
-      });
+      await expect(resolveClientIdMetadataDocument(createMockTenancy(), clientId)).resolves.toMatchInlineSnapshot(`
+        {
+          "application_type": "native",
+          "client_id": "https://clients.example.com/client.json",
+          "client_name": "Example MCP client",
+          "grant_types": [
+            "authorization_code",
+            "refresh_token",
+          ],
+          "redirect_uris": [
+            "http://127.0.0.1:8765/callback",
+          ],
+          "response_types": [
+            "code",
+          ],
+          "token_endpoint_auth_method": "none",
+        }
+      `);
     } finally {
       fetchDocument.mockRestore();
     }
+  });
+
+  it("skips static clients whose redirect URI rows are all incomplete", () => {
+    const tenancy = createMockTenancy();
+    tenancy.config.oauthProvider.clients = {
+      incomplete: {
+        displayName: "Incomplete",
+        redirectUris: {
+          first: {},
+        },
+      },
+    };
+    expect(getProjectStaticClients(tenancy)).toMatchInlineSnapshot(`[]`);
   });
 });

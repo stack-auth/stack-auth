@@ -10,7 +10,18 @@ describe("server app MCP user scope wiring", () => {
     const app = Object.create(_HexclaveServerAppImplIncomplete.prototype);
     Reflect.set(app, "_interface", {
       createSession: () => ({}),
+      createServerTeam: async () => ({
+        id: "team-1",
+        display_name: "Created Team",
+        profile_image_url: null,
+        created_at_millis: 0,
+        client_metadata: {},
+        client_read_only_metadata: {},
+        server_metadata: {},
+      }),
     });
+    Reflect.set(app, "_updateServerUser", async () => undefined);
+    Reflect.set(app, "_serverTeamsCache", { refreshWhere: async () => undefined });
     const crud = {
       id: "user-1",
       display_name: "Test User",
@@ -44,6 +55,9 @@ describe("server app MCP user scope wiring", () => {
     Reflect.set(app, "_serverUserProjectPermissionsCache", {
       getOrWait: async () => Result.ok([{ id: "read_docs" }, { id: "write_docs" }]),
     });
+    Reflect.set(app, "_serverTeamUserPermissionsCache", {
+      getOrWait: async () => Result.ok([{ id: "read_docs" }, { id: "write_docs" }]),
+    });
 
     const authInfo = {
       token: "test-token",
@@ -56,7 +70,13 @@ describe("server app MCP user scope wiring", () => {
       authInfo,
     });
 
-    expect(await user.listPermissions()).toEqual([{ id: "read_docs" }]);
+    expect(await user.listPermissions()).toMatchInlineSnapshot(`
+      [
+        {
+          "id": "read_docs",
+        },
+      ]
+    `);
     expect(await user.hasPermission("read_docs")).toBe(true);
     expect(await user.hasPermission("write_docs")).toBe(false);
 
@@ -66,6 +86,12 @@ describe("server app MCP user scope wiring", () => {
 
     authInfo.scopes = ["team_perm:read_docs"];
     const teamScopedUser = await app.getUser({ from: "mcp", authInfo });
-    expect(await teamScopedUser.listPermissions()).toEqual([]);
+    expect(await teamScopedUser.listPermissions()).toMatchInlineSnapshot(`[]`);
+
+    authInfo.scopes = ["team_perm:read_docs"];
+    const userCreatingTeam = await app.getUser({ from: "mcp", authInfo });
+    const createdTeam = await userCreatingTeam.createTeam({ displayName: "Created Team" });
+    expect(await userCreatingTeam.hasPermission(createdTeam, "read_docs")).toBe(true);
+    expect(await userCreatingTeam.hasPermission(createdTeam, "write_docs")).toBe(false);
   });
 });

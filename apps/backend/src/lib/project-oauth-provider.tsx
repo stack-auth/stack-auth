@@ -88,22 +88,26 @@ export function getProjectResourceServers(tenancy: Tenancy): Map<string, { audie
  * `isTrustedClient`.
  */
 export function getProjectStaticClients(tenancy: Tenancy): ClientMetadata[] {
-  return Object.entries(tenancy.config.oauthProvider.clients).map(([clientId, client]) => ({
-    client_id: clientId,
-    client_name: client.displayName,
+  return Object.entries(tenancy.config.oauthProvider.clients).flatMap(([clientId, client]) => {
     // Keyed by opaque ID in config with the URL as a value — see the schema comment on
     // `redirectUris` for why a URL can't be a config key.
     // CompleteConfig supplies an empty redirect-URI record when none was configured. A row may
     // still be half-filled while it is being edited in the dashboard, so skip that row.
-    redirect_uris: Object.values(client.redirectUris).flatMap(uri => uri.url === undefined ? [] : [uri.url]),
-    // Public clients (native apps, CLIs, most MCP clients) can't hold a secret, so they authenticate
-    // with PKCE alone.
-    token_endpoint_auth_method: "none",
-    grant_types: ["authorization_code", "refresh_token"],
-    response_types: ["code"],
-    // MCP clients are overwhelmingly native/CLI apps that listen on a loopback port.
-    application_type: "native",
-  }));
+    const redirectUris = Object.values(client.redirectUris).flatMap(uri => uri.url === undefined ? [] : [uri.url]);
+    if (redirectUris.length === 0) return [];
+    return [{
+      client_id: clientId,
+      client_name: client.displayName,
+      redirect_uris: redirectUris,
+      // Public clients (native apps, CLIs, most MCP clients) can't hold a secret, so they authenticate
+      // with PKCE alone.
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      // MCP clients are overwhelmingly native/CLI apps that listen on a loopback port.
+      application_type: "native",
+    }];
+  });
 }
 
 /**

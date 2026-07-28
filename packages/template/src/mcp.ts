@@ -115,6 +115,10 @@ function canonicalResource(resource: string): string {
 export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTokenVerifier {
   const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
   const issuer = getOAuthIssuerUrl({ projectId: options.projectId, baseUrl });
+  // An explicitly configured resource is developer-controlled configuration. Rejecting it while
+  // constructing the verifier makes a deployment error visible instead of misclassifying it as an
+  // attacker-controlled token claim.
+  const configuredResource = options.resource === undefined ? undefined : canonicalResource(options.resource);
 
   // One JWKS per verifier, cached by `jose` across calls. Creating it lazily keeps construction
   // synchronous and side-effect free, which matters because verifiers are usually built at module
@@ -129,7 +133,7 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
   };
 
   const verifyAccessToken = async (token: string, resource?: string): Promise<McpAuthInfo> => {
-    const expectedResource = options.resource ?? resource;
+    const expectedResource = configuredResource ?? resource;
 
     let payload: jose.JWTPayload;
     try {
@@ -149,8 +153,16 @@ export function createMcpTokenVerifier(options: McpTokenVerifierOptions): McpTok
     // the resource claim is therefore the mandatory application-level boundary.
     if (expectedResource !== undefined) {
       const tokenResource = typeof payload.resource === "string" ? payload.resource : undefined;
-      const matches = tokenResource !== undefined
-        && canonicalResource(tokenResource) === canonicalResource(expectedResource);
+      let matches = false;
+      if (tokenResource !== undefined) {
+        try {
+          matches = canonicalResource(tokenResource) === canonicalResource(expectedResource);
+        } catch {
+          // A malformed resource claim is attacker-controlled token data; it must fail closed as a
+          // resource mismatch rather than escaping as a raw URL parser error.
+          matches = false;
+        }
+      }
       if (!matches) {
         throw new McpTokenVerificationError(
           "The access token was issued for a different resource.",
@@ -324,6 +336,20 @@ if (import.meta.vitest) {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+
+    test("rejects a signed token with an unparsable resource claim", async () => {
+      const { token, originalFetch } = await signedToken({ resource: "not a URL" });
+      try {
+        const verifier = createMcpTokenVerifier({ projectId, baseUrl: "https://api.example.com", resource: "https://mcp.example.com/mcp" });
+        await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ reason: "wrong_resource" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("rejects an unparsable configured resource during verifier construction", () => {
+      expect(() => createMcpTokenVerifier({ projectId, resource: "not a URL" })).toThrow(TypeError);
     });
 
     // The DX contract: one export that both ecosystems accept. If either of these shapes stops

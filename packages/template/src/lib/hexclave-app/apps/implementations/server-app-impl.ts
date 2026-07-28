@@ -764,7 +764,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         }));
         await app._serverTeamsCache.refreshWhere(() => true);
         await app._updateServerUser(crud.id, { selectedTeamId: team.id });
-        return app._serverTeamFromCrud(team);
+        return app._serverTeamFromCrud(team, grantedScopes);
       },
       leaveTeam: async (team: Team) => {
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
