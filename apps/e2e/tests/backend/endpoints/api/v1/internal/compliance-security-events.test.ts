@@ -49,7 +49,12 @@ describe("Compliance Center security events", () => {
         email,
       }),
     ]));
-    expect(response?.body.summary.invalid_password).toBeGreaterThanOrEqual(1);
+    expect(response?.body.summary.invalid_password).toBe(1);
+    expect(response?.body.summary["sign_in_attempt.failed"]).toBe(1);
+    expect(response?.body.summary.sign_in_attempt).toBeGreaterThanOrEqual(2);
+    expect(response?.body.summary.sign_in_attempt).toBeGreaterThanOrEqual(
+      response?.body.summary["sign_in_attempt.failed"] + response?.body.summary["sign_in_attempt.success"],
+    );
   });
 
   it("returns the security posture and access review shapes", async ({ expect }) => {

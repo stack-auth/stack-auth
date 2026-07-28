@@ -21,7 +21,7 @@ export const GET = createSmartRouteHandler({
         primary_email: yupString().nullable().defined(),
         display_name: yupString().nullable().defined(),
         is_admin: yupBoolean().defined(),
-        roles: yupArray(yupString().defined()).defined(),
+        teams: yupArray(yupString().defined()).defined(),
         permissions: yupArray(yupString().defined()).defined(),
         last_sign_in_at: yupString().nullable().defined(),
         signed_up_at: yupString().defined(),
@@ -55,9 +55,12 @@ export const GET = createSmartRouteHandler({
       const capped = users.length > limit;
       const rows = users.slice(0, limit);
       const lastSignInByUser = new Map<string, string>();
-      try {
-        const result = await getClickhouseAdminClient().query({
-          query: `
+      if (rows.length > 0) {
+        try {
+          const client = getClickhouseAdminClient();
+          try {
+            const result = await client.query({
+              query: `
             SELECT
               user_id,
               max(event_at) AS last
@@ -66,26 +69,33 @@ export const GET = createSmartRouteHandler({
               AND branch_id = {branchId:String}
               AND event_type = '$sign-in-attempt'
               AND CAST(data.outcome, 'Nullable(String)') = 'success'
-              AND user_id != ''
+              AND event_at >= {retentionStart:DateTime}
+              AND user_id IN {userIds:Array(String)}
             GROUP BY user_id
           `,
-          query_params: {
-            projectId: tenancy.project.id,
-            branchId: tenancy.branchId,
-          },
-          format: "JSONEachRow",
-        });
-        const signInRows: Array<{ user_id: string, last: string }> = await result.json();
-        for (const signInRow of signInRows) {
-          lastSignInByUser.set(signInRow.user_id, new Date(signInRow.last).toISOString());
-        }
-      } catch (error) {
+              query_params: {
+                projectId: tenancy.project.id,
+                branchId: tenancy.branchId,
+                retentionStart: new Date(new Date().getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19),
+                userIds: rows.map((user) => user.projectUserId),
+              },
+              format: "JSONEachRow",
+            });
+            const signInRows: Array<{ user_id: string, last: string }> = await result.json();
+            for (const signInRow of signInRows) {
+            lastSignInByUser.set(signInRow.user_id, new Date(signInRow.last).toISOString());
+            }
+          } finally {
+            await client.close();
+          }
+        } catch (error) {
         // Sign-in events only exist since $sign-in-attempt logging began. A
         // ClickHouse outage should not prevent the Postgres access review list.
         captureError("compliance-access-review-last-sign-in-query", new HexclaveAssertionError(
           "Failed to load last sign-in timestamps.",
           { cause: error },
         ));
+        }
       }
       return {
         statusCode: 200 as const,
@@ -95,8 +105,11 @@ export const GET = createSmartRouteHandler({
             id: user.projectUserId,
             primary_email: user.contactChannels[0]?.value ?? null,
             display_name: user.displayName,
-            is_admin: user.teamMembers.some((member) => member.teamMemberDirectPermissions.some((permission) => permission.permissionId === "team_admin")),
-            roles: user.teamMembers.map((member) => member.team.displayName),
+            is_admin: [
+              ...user.directPermissions.map((permission) => permission.permissionId),
+              ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
+            ].includes("team_admin"),
+            teams: user.teamMembers.map((member) => member.team.displayName),
             permissions: [
               ...user.directPermissions.map((permission) => permission.permissionId),
               ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
@@ -110,11 +123,12 @@ export const GET = createSmartRouteHandler({
         },
       };
     } catch (error) {
+      if (error instanceof StatusError) throw error;
       captureError("compliance-access-review-query", new HexclaveAssertionError(
         "Failed to load access review users.",
         { cause: error },
       ));
-      throw new StatusError(StatusError.ServiceUnavailable, "Access review is temporarily unavailable.");
+      throw new HexclaveAssertionError("Access review is temporarily unavailable.", { cause: error });
     }
   },
 });

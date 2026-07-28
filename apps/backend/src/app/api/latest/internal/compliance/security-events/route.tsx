@@ -1,7 +1,7 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 
 const MAX_EVENT_ROWS = 5000;
 const DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,6 +71,7 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       events: yupArray(eventSchema).defined(),
+      capped: yupBoolean().defined(),
       summary: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
       trends: yupRecord(yupString().defined(), trendSchema).defined(),
       top_offenders: yupObject({
@@ -98,8 +99,9 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "Invalid compliance event date range.");
     }
 
+    const client = getClickhouseAdminClient();
     try {
-      const result = await getClickhouseAdminClient().query({
+      const result = await client.query({
         query: `
           SELECT
             event_at,
@@ -128,7 +130,7 @@ export const GET = createSmartRouteHandler({
             AND event_at <= {to:DateTime}
             AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           ORDER BY event_at DESC
-          LIMIT ${MAX_EVENT_ROWS}
+          LIMIT ${MAX_EVENT_ROWS + 1}
         `,
         query_params: {
           projectId: tenancy.project.id,
@@ -139,7 +141,9 @@ export const GET = createSmartRouteHandler({
         format: "JSONEachRow",
       });
       const rawRows: RawEventRow[] = await result.json();
-      const trendsResult = await getClickhouseAdminClient().query({
+      const capped = rawRows.length > MAX_EVENT_ROWS;
+      const eventRows = rawRows.slice(0, MAX_EVENT_ROWS);
+      const trendsResult = await client.query({
         query: `
           SELECT
             toDate(event_at) AS day,
@@ -153,6 +157,7 @@ export const GET = createSmartRouteHandler({
             AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
             AND event_at >= {from:DateTime}
             AND event_at <= {to:DateTime}
+            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
           GROUP BY day
           ORDER BY day ASC
         `,
@@ -173,7 +178,84 @@ export const GET = createSmartRouteHandler({
           denials: Number(row.denials),
         },
       ]));
-      const offendersResult = await getClickhouseAdminClient().query({
+      const summaryResult = await client.query({
+        query: `
+          SELECT
+            'category' AS kind,
+            multiIf(
+              event_type = '$sign-in-attempt', 'sign_in_attempt',
+              event_type = '$permission-check', 'permission_check',
+              event_type = '$user-restricted', 'user_restricted',
+              'sign_up_rule'
+            ) AS bucket,
+            count() AS count
+          FROM analytics_internal.events
+          WHERE project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
+            AND event_at >= {from:DateTime}
+            AND event_at <= {to:DateTime}
+            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
+          GROUP BY bucket
+          UNION ALL
+          SELECT
+            'outcome' AS kind,
+            concat(
+              multiIf(
+                event_type = '$sign-in-attempt', 'sign_in_attempt',
+                event_type = '$permission-check', 'permission_check',
+                event_type = '$user-restricted', 'user_restricted',
+                'sign_up_rule'
+              ),
+              '.',
+              COALESCE(
+                NULLIF(CAST(data.outcome, 'Nullable(String)'), ''),
+                if(CAST(data.action, 'Nullable(String)') = 'reject', 'denied', 'restricted')
+              )
+            ) AS bucket,
+            count() AS count
+          FROM analytics_internal.events
+          WHERE project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
+            AND event_at >= {from:DateTime}
+            AND event_at <= {to:DateTime}
+            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
+          GROUP BY bucket
+          UNION ALL
+          SELECT
+            'reason' AS kind,
+            multiIf(
+              event_type = '$sign-in-attempt', NULLIF(CAST(data.failure_reason, 'Nullable(String)'), ''),
+              event_type = '$permission-check', NULLIF(CAST(data.permission_id, 'Nullable(String)'), ''),
+              event_type = '$user-restricted', NULLIF(CAST(data.restricted_reason, 'Nullable(String)'), ''),
+              NULLIF(CAST(data.action, 'Nullable(String)'), '')
+            ) AS bucket,
+            count() AS count
+          FROM analytics_internal.events
+          WHERE project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND event_type IN ('$sign-in-attempt', '$permission-check', '$user-restricted', '$sign-up-rule-trigger')
+            AND event_at >= {from:DateTime}
+            AND event_at <= {to:DateTime}
+            AND (event_type != '$sign-up-rule-trigger' OR CAST(data.action, 'Nullable(String)') IN ('reject', 'restrict'))
+          GROUP BY bucket
+          HAVING bucket IS NOT NULL
+        `,
+        query_params: {
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          from: from.toISOString().slice(0, 19),
+          to: to.toISOString().slice(0, 19),
+        },
+        format: "JSONEachRow",
+      });
+      const rawSummaryRows: Array<{ bucket: string, count: number | string }> = await summaryResult.json();
+      const summary: Record<string, number> = {};
+      for (const row of rawSummaryRows) {
+        summary[row.bucket] = (summary[row.bucket] ?? 0) + Number(row.count);
+      }
+      const offendersResult = await client.query({
         query: `
           SELECT 'email' AS kind, NULLIF(CAST(data.email, 'Nullable(String)'), '') AS value, count() AS count
           FROM analytics_internal.events
@@ -242,7 +324,7 @@ export const GET = createSmartRouteHandler({
         if (row.kind === "ip") topOffenders.ips[row.value] = Number(row.count);
         if (row.kind === "country") topOffenders.countries[row.value] = Number(row.count);
       }
-      const events = rawRows.map((row) => {
+      const events = eventRows.map((row) => {
         const category = row.event_type === "$sign-in-attempt"
           ? "sign_in_attempt" as const
           : row.event_type === "$permission-check"
@@ -278,32 +360,26 @@ export const GET = createSmartRouteHandler({
           user_id: row.user_id,
         };
       });
-      const summary: Record<string, number> = {};
-      for (const event of events) {
-        const summaryKey = event.reason ?? event.category;
-        summary[summaryKey] = (summary[summaryKey] ?? 0) + 1;
-        summary[event.category] = (summary[event.category] ?? 0) + 1;
-        if (event.outcome != null) {
-          const outcomeKey = `${event.category}.${event.outcome}`;
-          summary[outcomeKey] = (summary[outcomeKey] ?? 0) + 1;
-        }
-      }
       return {
         statusCode: 200 as const,
         bodyType: "json" as const,
         body: {
           events,
+          capped,
           summary,
           trends,
           top_offenders: topOffenders,
         },
       };
     } catch (error) {
+      if (error instanceof StatusError) throw error;
       captureError("compliance-security-events-clickhouse-query", new HexclaveAssertionError(
         "Failed to load compliance security events.",
         { cause: error },
       ));
-      throw new StatusError(StatusError.ServiceUnavailable, "Compliance events are temporarily unavailable.");
+      throw new HexclaveAssertionError("Compliance events are temporarily unavailable.", { cause: error });
+    } finally {
+      await client.close();
     }
   },
 });

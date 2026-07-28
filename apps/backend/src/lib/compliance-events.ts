@@ -24,71 +24,76 @@ type UserRestrictedOptions = {
   restrictedReason: string,
 };
 
-async function logSignInAttempt(tenancy: Tenancy, options: SignInAttemptOptions): Promise<void> {
+async function logComplianceEvent(label: string, message: string, callback: () => Promise<void>): Promise<void> {
   try {
-    const ipInfo = await getEndUserIpInfoForEvent();
-    await logEvent([SystemEventTypes.SignInAttempt], {
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      userId: options.userId ?? null,
-      outcome: options.outcome,
-      method: options.method,
-      failureReason: options.failureReason ?? null,
-      email: options.email ?? null,
-      oauthProvider: options.oauthProvider ?? null,
-      ipInfo,
-    }, {
-      billingTeamId: null,
-    });
+    await callback();
   } catch (error) {
-    captureError("compliance-event-log-error", new HexclaveAssertionError(
-      "Failed to log sign-in attempt compliance event",
-      { cause: error },
-    ));
+    captureError(label, new HexclaveAssertionError(message, { cause: error }));
   }
+}
+
+async function logSignInAttempt(tenancy: Tenancy, options: SignInAttemptOptions): Promise<void> {
+  await logComplianceEvent(
+    "compliance-sign-in-attempt-log-error",
+    "Failed to log sign-in attempt compliance event",
+    async () => {
+      const ipInfo = await getEndUserIpInfoForEvent();
+      await logEvent([SystemEventTypes.SignInAttempt], {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        userId: options.userId ?? null,
+        outcome: options.outcome,
+        method: options.method,
+        failureReason: options.failureReason ?? null,
+        email: options.email ?? null,
+        oauthProvider: options.oauthProvider ?? null,
+        ipInfo,
+      }, {
+        billingTeamId: null,
+      });
+    },
+  );
 }
 
 async function logPermissionDenied(tenancy: Tenancy, options: PermissionDeniedOptions): Promise<void> {
-  try {
-    const ipInfo = await getEndUserIpInfoForEvent();
-    await logEvent([SystemEventTypes.PermissionCheck], {
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      userId: options.userId ?? null,
-      outcome: "denied",
-      permissionId: options.permissionId,
-      teamId: options.teamId ?? null,
-      scope: options.scope,
-      ipInfo,
-    }, {
-      billingTeamId: null,
-    });
-  } catch (error) {
-    captureError("compliance-event-log-error", new HexclaveAssertionError(
-      "Failed to log permission denial compliance event",
-      { cause: error },
-    ));
-  }
+  await logComplianceEvent(
+    "compliance-permission-denied-log-error",
+    "Failed to log permission denial compliance event",
+    async () => {
+      const ipInfo = await getEndUserIpInfoForEvent();
+      await logEvent([SystemEventTypes.PermissionCheck], {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        userId: options.userId ?? null,
+        outcome: "denied",
+        permissionId: options.permissionId,
+        teamId: options.teamId ?? null,
+        scope: options.scope,
+        ipInfo,
+      }, {
+        billingTeamId: null,
+      });
+    },
+  );
 }
 
 async function logUserRestricted(tenancy: Tenancy, options: UserRestrictedOptions): Promise<void> {
-  try {
-    const ipInfo = await getEndUserIpInfoForEvent();
-    await logEvent([SystemEventTypes.UserRestricted], {
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      userId: options.userId,
-      restrictedReason: options.restrictedReason,
-      ipInfo,
-    }, {
-      billingTeamId: null,
-    });
-  } catch (error) {
-    captureError("compliance-event-log-error", new HexclaveAssertionError(
-      "Failed to log restricted-user compliance event",
-      { cause: error },
-    ));
-  }
+  await logComplianceEvent(
+    "compliance-user-restricted-log-error",
+    "Failed to log restricted-user compliance event",
+    async () => {
+      const ipInfo = await getEndUserIpInfoForEvent();
+      await logEvent([SystemEventTypes.UserRestricted], {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        userId: options.userId,
+        restrictedReason: options.restrictedReason,
+        ipInfo,
+      }, {
+        billingTeamId: null,
+      });
+    },
+  );
 }
 
 export function logSignInAttemptInBackground(tenancy: Tenancy, options: SignInAttemptOptions): void {

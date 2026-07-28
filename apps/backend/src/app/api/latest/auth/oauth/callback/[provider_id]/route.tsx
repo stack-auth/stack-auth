@@ -207,15 +207,15 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
-          if (KnownErrors.OAuthProviderAccessDenied.isInstance(error)) {
-            logSignInAttemptInBackground(tenancy, {
-              outcome: "failed",
-              method: "oauth",
-              failureReason: "provider_denied",
-              oauthProvider: params.provider_id,
-              userId: projectUserId ?? null,
-            });
-          }
+          logSignInAttemptInBackground(tenancy, {
+            outcome: "failed",
+            method: "oauth",
+            failureReason: KnownErrors.OAuthProviderAccessDenied.isInstance(error)
+              ? "provider_denied"
+              : "provider_unavailable",
+            oauthProvider: params.provider_id,
+            userId: projectUserId ?? null,
+          });
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
         }
         throw error;
@@ -287,6 +287,17 @@ const handler = createSmartRouteHandler({
 
       const oauthResponse = new OAuthResponse();
       const oauthServer = createOAuthServer({ apiUrl });
+      const logOAuthSuccess = (userId: string) => {
+        if (type !== "link") {
+          logSignInAttemptInBackground(tenancy, {
+            outcome: "success",
+            method: "oauth",
+            oauthProvider: provider.id,
+            email: userInfo.email ?? null,
+            userId,
+          });
+        }
+      };
       try {
         await oauthServer.authorize(
           oauthRequest,
@@ -341,6 +352,10 @@ const handler = createSmartRouteHandler({
                   // Check if user already exists with this OAuth account
                   if (oldAccount) {
                     await storeTokens(oldAccount.id);
+                    if (oldAccount.projectUserId == null) {
+                      throw new HexclaveAssertionError("Existing OAuth account is missing its project user ID.");
+                    }
+                    logOAuthSuccess(oldAccount.projectUserId);
 
                     return {
                       id: oldAccount.projectUserId,
@@ -367,6 +382,7 @@ const handler = createSmartRouteHandler({
                     });
 
                     await storeTokens(oauthAccountId);
+                    logOAuthSuccess(linkedUserId);
                     return {
                       id: linkedUserId,
                       newUser: false,
@@ -421,6 +437,7 @@ const handler = createSmartRouteHandler({
                   );
 
                   await storeTokens(oauthAccountId);
+                  logOAuthSuccess(newUserId);
 
                   return {
                     id: newUserId,
