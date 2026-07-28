@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, quoteWindowsShellArg, resolveWindowsCommand, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, resolveWindowsCommand, shouldRestartDashboard, windowsChildProcessInvocation } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -120,14 +120,23 @@ describe("resolveWindowsCommand", () => {
   });
 });
 
-describe("quoteWindowsShellArg", () => {
-  it.each([
-    ["plain", "\"plain\""],
-    ["hello world", "\"hello world\""],
-    ["a\"b", "\"a^\"b\""],
-    ["a&b|c<d>e^f%g!h", "\"a^&b^|c^<d^>e^^f^%g^!h\""],
-  ])("quotes %j safely", (arg, expected) => {
-    expect(quoteWindowsShellArg(arg)).toBe(expected);
+describe("windowsChildProcessInvocation", () => {
+  it("passes the command and args through environment indirection", () => {
+    const invocation = windowsChildProcessInvocation({
+      command: "npm",
+      args: ["space containing argument", "a&b"],
+    }, {
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+    });
+
+    expect(invocation.file).toBe("C:\\Windows\\System32\\cmd.exe");
+    expect(invocation.args.slice(0, 3)).toEqual(["/d", "/v:on", "/s"]);
+    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_COMMAND_SHELL!");
+    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_ARG_0_SHELL!");
+    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_ARG_1_SHELL!");
+    expect(invocation.env.HEXCLAVE_WINDOWS_APP_COMMAND).toBe("npm");
+    expect(invocation.env.HEXCLAVE_WINDOWS_APP_ARG_0).toBe("space containing argument");
+    expect(invocation.env.HEXCLAVE_WINDOWS_APP_ARG_1).toBe("a&b");
   });
 });
 

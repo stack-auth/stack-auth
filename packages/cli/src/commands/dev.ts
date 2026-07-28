@@ -29,10 +29,6 @@ export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): 
   return candidates.find((candidate) => existsSync(candidate)) ?? command;
 }
 
-export function quoteWindowsShellArg(arg: string): string {
-  return `"${arg.replace(/(["^&|<>%!])/g, "^$1")}"`;
-}
-
 type DevOptions = {
   configFile?: string,
 };
@@ -742,22 +738,45 @@ child.on("error", (error) => {
 });
 `;
 
+export type WindowsChildProcessInvocation = {
+  file: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+};
+
+// Node refuses to spawn .cmd/.bat files without an interpreter after its CVE-2024-27980 hardening.
+// Pass user text through environment variables with delayed expansion so cmd never parses it as separators;
+// the HEXCLAVE_WINDOWS_APP_* variables are inherited by the app process as an intentional tradeoff.
+export function windowsChildProcessInvocation(command: ChildCommand, env: NodeJS.ProcessEnv): WindowsChildProcessInvocation {
+  const resolvedCommand = resolveWindowsCommand(command.command, env);
+  const commandEnv = {
+    ...env,
+    HEXCLAVE_WINDOWS_APP_COMMAND: resolvedCommand,
+    HEXCLAVE_WINDOWS_APP_COMMAND_SHELL: resolvedCommand.replace(/"/g, "\\\""),
+    ...Object.fromEntries(command.args.flatMap((arg, index) => [
+      [`HEXCLAVE_WINDOWS_APP_ARG_${index}`, arg],
+      [`HEXCLAVE_WINDOWS_APP_ARG_${index}_SHELL`, arg.replace(/"/g, "\\\"")],
+    ])),
+  };
+  const commandLine = `"${[
+    `"!HEXCLAVE_WINDOWS_APP_COMMAND_SHELL!"`,
+    ...command.args.map((_, index) => `"!HEXCLAVE_WINDOWS_APP_ARG_${index}_SHELL!"`),
+  ].join(" ")}"`;
+  return {
+    file: env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/v:on", "/s", "/c", commandLine],
+    env: commandEnv,
+  };
+}
+
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
       ? (() => {
-        const resolvedCommand = resolveWindowsCommand(command.command, env);
-        const commandEnv = {
-          ...env,
-          ...Object.fromEntries(command.args.map((arg, index) => [`HEXCLAVE_WINDOWS_APP_ARG_${index}`, arg.replace(/"/g, "\\\"")])),
-        };
-        const commandLine = `"${[
-          quoteWindowsShellArg(resolvedCommand),
-          ...command.args.map((_, index) => `"!HEXCLAVE_WINDOWS_APP_ARG_${index}!"`),
-        ].join(" ")}"`;
-        return spawn(env.ComSpec ?? "cmd.exe", ["/d", "/v:on", "/s", "/c", commandLine], {
+        const invocation = windowsChildProcessInvocation(command, env);
+        return spawn(invocation.file, invocation.args, {
           stdio: "inherit",
-          env: commandEnv,
+          env: invocation.env,
           windowsVerbatimArguments: true,
         });
       })()
