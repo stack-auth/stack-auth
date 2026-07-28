@@ -25,64 +25,64 @@ type HostedPage = {
   render: () => ReactNode,
 };
 
-const hostedPages: Partial<Record<string, HostedPage>> = {
-  "account-settings": {
+const hostedPages = new Map<string, HostedPage>([
+  ["account-settings", {
     pageKey: "accountSettings",
     render: () => <HostedAccountSettings fullPage />,
-  },
-  "sign-in": {
+  }],
+  ["sign-in", {
     pageKey: "signIn",
     render: () => <HostedSignIn fullPage automaticRedirect />,
-  },
-  "log-in": {
+  }],
+  ["log-in", {
     pageKey: "signIn",
     render: () => <HostedSignIn fullPage automaticRedirect />,
-  },
-  "sign-up": {
+  }],
+  ["sign-up", {
     pageKey: "signUp",
     render: () => <HostedSignUp fullPage automaticRedirect />,
-  },
-  register: {
+  }],
+  ["register", {
     pageKey: "signUp",
     render: () => <HostedSignUp fullPage automaticRedirect />,
-  },
-  "forgot-password": {
+  }],
+  ["forgot-password", {
     pageKey: "forgotPassword",
     render: () => <HostedForgotPassword fullPage />,
-  },
-  "password-reset": {
+  }],
+  ["password-reset", {
     pageKey: "passwordReset",
     render: () => <HostedPasswordReset fullPage />,
-  },
-  "email-verification": {
+  }],
+  ["email-verification", {
     pageKey: "emailVerification",
     render: () => <HostedEmailVerification fullPage />,
-  },
-  mfa: {
+  }],
+  ["mfa", {
     pageKey: "mfa",
     render: () => <HostedMfa fullPage />,
-  },
-  error: {
+  }],
+  ["error", {
     pageKey: "error",
     render: () => <HostedError fullPage />,
-  },
-  "team-invitation": {
+  }],
+  ["team-invitation", {
     pageKey: "teamInvitation",
     render: () => <HostedTeamInvitation fullPage />,
-  },
-  "cli-auth-confirm": {
+  }],
+  ["cli-auth-confirm", {
     pageKey: "cliAuthConfirm",
     render: () => <HostedCliAuthConfirm fullPage />,
-  },
-  onboarding: {
+  }],
+  ["onboarding", {
     pageKey: "onboarding",
     render: () => <HostedOnboarding fullPage />,
-  },
-};
+  }],
+]);
 
 function HandlerPage() {
   const location = useLocation();
-  const hostedPage = hostedPages[getHostedHandlerPath(location.pathname)];
+  const hostedPage = hostedPages.get(getHostedHandlerPath(location.pathname));
 
   if (hostedPage == null) {
     return <HexclaveHandler fullPage />;

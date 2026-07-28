@@ -1,7 +1,7 @@
 import { useStackApp } from "@hexclave/react";
 import { getCustomPagePrompts } from "@hexclave/shared/dist/interface/handler-urls";
 import { Code2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge, Button, CopyButton } from "~/components/ui";
 
@@ -30,12 +30,23 @@ const customPagePrompts = getCustomPagePrompts();
 
 export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
   const project = useStackApp().useProject();
-  const [dismissed, setDismissed] = useState(
-    () => typeof window !== "undefined" && sessionStorage.getItem(DISMISSED_STORAGE_KEY) === "true",
-  );
+  const [dismissed, setDismissed] = useState<boolean | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
 
-  if (!project.isDevelopmentEnvironment || dismissed) {
+  useEffect(() => {
+    let wasDismissed = false;
+    if (typeof window !== "undefined") {
+      // Storage may be unavailable in partitioned or third-party browser contexts.
+      try {
+        wasDismissed = window.sessionStorage.getItem(DISMISSED_STORAGE_KEY) === "true";
+      } catch {
+        wasDismissed = false;
+      }
+    }
+    setDismissed(wasDismissed);
+  }, []);
+
+  if (!project.isDevelopmentEnvironment || dismissed !== false) {
     return null;
   }
 
@@ -71,7 +82,12 @@ export function DevelopmentPageNote(props: DevelopmentPageNoteProps) {
             size="icon"
             className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground"
             onClick={() => {
-              sessionStorage.setItem(DISMISSED_STORAGE_KEY, "true");
+              // Storage may be unavailable in partitioned or third-party browser contexts.
+              try {
+                window.sessionStorage.setItem(DISMISSED_STORAGE_KEY, "true");
+              } catch {
+                // Keep the dismissal in memory when browser storage is unavailable.
+              }
               setDismissed(true);
             }}
           >
