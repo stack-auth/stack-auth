@@ -7,6 +7,10 @@
 ![Sign-in is not available message](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-no-auth-methods.png)
 
 - Sign-in and sign-up pages now show a helpful message instead of an empty form when a project has no authentication methods enabled, pointing developers to the config snippet or dashboard setting that fixes it.
+- Users restricted by an administrator now see the public reason they were given on the onboarding screen, instead of a generic message.
+- New `hexclave team` CLI commands to list, create, update, invite to, and leave teams, plus team selection when creating a project.
+- Signing up with an email that another account already uses for authentication now shows an inline error on the form.
+- Auth pages no longer flash a loading placeholder over already-visible content when a session is swapped in.
 
 ## 7/24/26
 
