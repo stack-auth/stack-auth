@@ -603,20 +603,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     // END_PLATFORM
 
-    // Type assertion needed because the new restricted_by_admin fields may not be reflected in TypeScript types yet
-    // after schema changes - the runtime values are present after the schema is updated
-    const crudWithAdminRestriction = crud as typeof crud & {
-      restricted_by_admin: boolean,
-      restricted_by_admin_reason: string | null,
-      restricted_by_admin_private_details: string | null,
-    };
     const serverUser = withUserDestructureGuard({
       ...super._createBaseUser(crud),
       lastActiveAt: new Date(crud.last_active_at_millis),
       serverMetadata: crud.server_metadata,
-      restrictedByAdmin: crudWithAdminRestriction.restricted_by_admin,
-      restrictedByAdminReason: crudWithAdminRestriction.restricted_by_admin_reason,
-      restrictedByAdminPrivateDetails: crudWithAdminRestriction.restricted_by_admin_private_details,
+      restrictedByAdminPrivateDetails: crud.restricted_by_admin_private_details,
       countryCode: crud.country_code,
       riskScores: {
         signUp: {

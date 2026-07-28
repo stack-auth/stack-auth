@@ -50,6 +50,23 @@ export function Onboarding(props: {
     return <VerifyEmailScreen user={user} email={user.primaryEmail} fullPage={props.fullPage} />;
   }
 
+  if (restrictedReason?.type === "restricted_by_administrator") {
+    return (
+      <MessageCard
+        title={t("Your account has been restricted")}
+        fullPage={!!props.fullPage}
+        secondaryButtonText={t("Sign out")}
+        secondaryAction={async () => {
+          await user.signOut();
+        }}
+      >
+        {/* The public reason is set by the project's administrators (sign-up rules or manually), so it's the most
+        helpful thing we can show; the generic sentence is only a fallback for when they didn't provide one. */}
+        <p>{user.restrictedByAdminReason ?? t("An administrator has restricted your account. Please reach out to support if you believe this is an error.")}</p>
+      </MessageCard>
+    );
+  }
+
   // Unknown restricted reason - show generic message
   return (
     <MessageCard

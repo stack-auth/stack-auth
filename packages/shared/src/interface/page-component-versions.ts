@@ -1635,6 +1635,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - Handle restricted reasons:
           - \`email_not_verified\` and no primary email => ask user for email and call \`user.update({ primaryEmail })\`.
           - \`email_not_verified\` with primary email => show verification step, resend via \`user.sendVerificationEmail()\`, allow changing email.
+          - \`restricted_by_administrator\` => show \`user.restrictedByAdminReason\` (the public reason set by an administrator), falling back to a generic restricted message.
           - Any other restricted reason => show generic setup-required state.
         - Provide sign-out path from onboarding states.
       `,
@@ -1653,6 +1654,18 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
           if (!user || user.isAnonymous) {
             void runAsynchronously(hexclaveApp.redirectToSignIn());
             return null;
+          }
+
+          if (user.restrictedReason?.type === "restricted_by_administrator") {
+            return (
+              <MessageCard
+                title="Your account has been restricted"
+                secondaryButtonText="Sign out"
+                secondaryAction={async () => await user.signOut()}
+              >
+                {user.restrictedByAdminReason ?? "An administrator has restricted your account."}
+              </MessageCard>
+            );
           }
 
           if (user.restrictedReason?.type !== "email_not_verified") {

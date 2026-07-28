@@ -19,6 +19,8 @@ public struct User: @unchecked Sendable {
     public let isAnonymous: Bool
     public let isRestricted: Bool
     public let restrictedReason: RestrictedReason?
+    public let restrictedByAdmin: Bool
+    public let restrictedByAdminReason: String?
     public let oauthProviders: [OAuthProviderInfo]
     
     public struct RestrictedReason: Sendable {
@@ -60,6 +62,9 @@ extension User {
         } else {
             self.restrictedReason = nil
         }
+        
+        self.restrictedByAdmin = json["restricted_by_admin"] as? Bool ?? false
+        self.restrictedByAdminReason = json["restricted_by_admin_reason"] as? String
         
         if let providers = json["oauth_providers"] as? [[String: Any]] {
             self.oauthProviders = providers.map { OAuthProviderInfo(id: $0["id"] as? String ?? "") }
