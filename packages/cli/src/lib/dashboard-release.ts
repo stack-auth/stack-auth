@@ -3,13 +3,16 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync
 import { dirname, join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
+import * as zlib from "node:zlib";
+import * as tar from "tar";
 import extractZip from "extract-zip";
 import { devEnvStatePath } from "./dev-env-state.js";
 import { CliError, errorMessage } from "./errors.js";
 
-// The RDE dashboard ships as a zipped standalone build attached to a GitHub
-// Release rather than bundled in the CLI tarball; `hexclave dev` fetches the
-// newest one at runtime and caches it. Publishing side: dashboard-release.yaml.
+// The development-environment dashboard ships as standalone archives attached
+// to a GitHub Release rather than bundled in the CLI tarball; `hexclave dev`
+// fetches the newest one at runtime and caches it. Publishing side:
+// dashboard-release.yaml.
 
 const DASHBOARD_REPO = "hexclave/hexclave";
 // Floating manifest pointing at the newest build — a stable download URL (no API
@@ -30,6 +33,9 @@ const LOG_PREFIX = "[Hexclave] ";
 // `version` becomes a cache dir name and the manifest is untrusted, so require a
 // path-safe semver.
 const SAFE_VERSION_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
 // Don't hang forever on a slow host; a timeout falls through to the offline cache.
 const MANIFEST_FETCH_TIMEOUT_MS = 10_000;
 const DASHBOARD_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
@@ -54,6 +60,12 @@ export type DashboardManifest = {
   version: string,
   sha256: string,
   url: string,
+  platformArchives?: Record<string, DashboardPlatformArchive>,
+};
+
+export type DashboardPlatformArchive = {
+  sha256: string,
+  url: string,
 };
 
 export type ResolvedDashboard = {
@@ -61,17 +73,85 @@ export type ResolvedDashboard = {
   version: string,
 };
 
+export const DASHBOARD_PLATFORM_KEYS = [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-arm64",
+  "linux-x64",
+  "win32-arm64",
+  "win32-x64",
+] as const;
+export type DashboardPlatformKey = (typeof DASHBOARD_PLATFORM_KEYS)[number];
+
 function logDashboard(message: string): void {
   console.warn(`${LOG_PREFIX}${message}`);
 }
 
 export function parseDashboardManifest(raw: unknown): DashboardManifest | null {
-  if (raw == null || typeof raw !== "object") return null;
-  const manifest = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return null;
+  const manifest = raw;
   if (typeof manifest.version !== "string" || !SAFE_VERSION_REGEX.test(manifest.version)) return null;
   if (typeof manifest.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(manifest.sha256)) return null;
   if (typeof manifest.url !== "string" || !isAllowedDownloadUrl(manifest.url)) return null;
-  return { version: manifest.version, sha256: manifest.sha256.toLowerCase(), url: manifest.url };
+  let platformArchives: Record<string, DashboardPlatformArchive> | undefined;
+  if (manifest.platformArchives != null) {
+    if (!isRecord(manifest.platformArchives)) {
+      return { version: manifest.version, sha256: manifest.sha256.toLowerCase(), url: manifest.url };
+    }
+    const validPlatformArchives: Record<string, DashboardPlatformArchive> = {};
+    for (const [platform, value] of Object.entries(manifest.platformArchives)) {
+      if (!DASHBOARD_PLATFORM_KEYS.some((supportedKey) => supportedKey === platform)) continue;
+      if (!isRecord(value)) continue;
+      const archive = value;
+      if (
+        typeof archive.sha256 !== "string"
+        || !/^[0-9a-f]{64}$/i.test(archive.sha256)
+        || typeof archive.url !== "string"
+        || !isAllowedDownloadUrl(archive.url)
+      ) {
+        continue;
+      }
+      validPlatformArchives[platform] = {
+        sha256: archive.sha256.toLowerCase(),
+        url: archive.url,
+      };
+    }
+    if (Object.keys(validPlatformArchives).length > 0) platformArchives = validPlatformArchives;
+  }
+  return {
+    version: manifest.version,
+    sha256: manifest.sha256.toLowerCase(),
+    url: manifest.url,
+    ...(platformArchives == null ? {} : { platformArchives }),
+  };
+}
+
+export function dashboardPlatformKey(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): DashboardPlatformKey | undefined {
+  const key = `${platform}-${arch}`;
+  return DASHBOARD_PLATFORM_KEYS.find((supportedKey) => supportedKey === key);
+}
+
+type ZstdCapability = {
+  createZstdCompress?: unknown,
+  createZstdDecompress?: unknown,
+};
+
+export function hasZstdSupport(zlibModule: ZstdCapability = zlib): boolean {
+  return typeof zlibModule.createZstdCompress === "function" && typeof zlibModule.createZstdDecompress === "function";
+}
+
+export function selectDashboardArchive(
+  manifest: DashboardManifest,
+  platformKey = dashboardPlatformKey(),
+  zstdAvailable = hasZstdSupport(),
+): { sha256: string, url: string, cacheSuffix?: DashboardPlatformKey } {
+  const platformArchive = !zstdAvailable || platformKey == null ? undefined : manifest.platformArchives?.[platformKey];
+  return platformArchive == null
+    ? { sha256: manifest.sha256, url: manifest.url }
+    : { ...platformArchive, cacheSuffix: platformKey };
 }
 
 export function dashboardDirOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -88,12 +168,16 @@ export function dashboardCacheRoot(): string {
   return join(dirname(devEnvStatePath()), DASHBOARD_CACHE_DIR_NAME);
 }
 
-export function dashboardVersionDir(version: string): string {
-  return join(dashboardCacheRoot(), version);
+export function dashboardVersionDir(version: string, cacheSuffix?: DashboardPlatformKey): string {
+  return join(dashboardCacheRoot(), cacheSuffix == null ? version : `${version}--${cacheSuffix}`);
 }
 
-export function isDashboardCached(version: string): boolean {
-  const dir = dashboardVersionDir(version);
+export function isDashboardCached(
+  version: string,
+  cacheSuffix?: DashboardPlatformKey,
+  cacheRoot: string = dashboardCacheRoot(),
+): boolean {
+  const dir = join(cacheRoot, cacheSuffix == null ? version : `${version}--${cacheSuffix}`);
   return existsSync(join(dir, DASHBOARD_COMPLETE_MARKER)) && existsSync(join(dir, DASHBOARD_SERVER_RELATIVE_PATH));
 }
 
@@ -136,13 +220,29 @@ function isVersionNewer(candidate: ParsedVersion, current: ParsedVersion): boole
   return false;
 }
 
-export function latestCachedDashboardVersion(): string | undefined {
-  const root = dashboardCacheRoot();
-  if (!existsSync(root)) return undefined;
-  const cached = readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && isDashboardCached(entry.name))
-    .map((entry) => entry.name);
-  return pickLatestVersion(cached);
+export function latestCachedDashboard(
+  platformKey?: DashboardPlatformKey,
+  cacheRoot: string = dashboardCacheRoot(),
+): { version: string, root: string } | undefined {
+  if (!existsSync(cacheRoot)) return undefined;
+  const suffix = platformKey == null ? "" : `--${platformKey}`;
+  const cached = readdirSync(cacheRoot, { withFileTypes: true })
+    .filter((entry) => (
+      entry.isDirectory()
+      && (platformKey == null
+        ? !DASHBOARD_PLATFORM_KEYS.some((supportedKey) => entry.name.endsWith(`--${supportedKey}`))
+        : entry.name.endsWith(suffix))
+    ))
+    .map((entry) => {
+      const version = suffix.length === 0 ? entry.name : entry.name.slice(0, -suffix.length);
+      const root = join(cacheRoot, platformKey == null ? version : `${version}--${platformKey}`);
+      return isDashboardCached(version, platformKey, cacheRoot)
+        ? { version, root }
+        : undefined;
+    })
+    .filter((entry): entry is { version: string, root: string } => entry != null);
+  const version = pickLatestVersion(cached.map((entry) => entry.version));
+  return version == null ? undefined : cached.find((entry) => entry.version === version);
 }
 
 export async function fetchDashboardManifest(env: NodeJS.ProcessEnv = process.env): Promise<DashboardManifest | null> {
@@ -166,52 +266,67 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function downloadDashboardRelease(manifest: DashboardManifest, onProgress?: (message: string) => void): Promise<void> {
+async function downloadDashboardRelease(
+  manifest: DashboardManifest,
+  archive: { sha256: string, url: string, cacheSuffix?: DashboardPlatformKey },
+  onProgress?: (message: string) => void,
+): Promise<void> {
   const cacheRoot = dashboardCacheRoot();
   mkdirSync(cacheRoot, { recursive: true });
   // Unique temp names so parallel runs don't collide; publish is an atomic rename.
   const suffix = `${process.pid}-${randomBytes(8).toString("hex")}`;
-  const tmpZip = join(cacheRoot, `.download-${manifest.version}-${suffix}.zip`);
+  const tmpArchive = join(
+    cacheRoot,
+    `.download-${manifest.version}-${suffix}${archive.cacheSuffix == null ? ".zip" : ".tar.zst"}`,
+  );
   const tmpDir = join(cacheRoot, `.extract-${manifest.version}-${suffix}`);
-  const targetDir = dashboardVersionDir(manifest.version);
+  const targetDir = dashboardVersionDir(manifest.version, archive.cacheSuffix);
   try {
     onProgress?.(`Downloading Hexclave dashboard ${manifest.version}`);
-    const response = await fetch(manifest.url, { redirect: "follow", signal: AbortSignal.timeout(DASHBOARD_DOWNLOAD_TIMEOUT_MS) });
+    const response = await fetch(archive.url, { redirect: "follow", signal: AbortSignal.timeout(DASHBOARD_DOWNLOAD_TIMEOUT_MS) });
     // The manifest URL passed isAllowedDownloadUrl, but redirects can land on a
     // different host/scheme; re-check the final URL before streaming the archive.
     if (!isAllowedDownloadUrl(response.url)) {
       throw new CliError(`Dashboard ${manifest.version} download was redirected to a disallowed URL (${response.url}).`);
     }
     if (!response.ok || response.body == null) {
-      throw new CliError(`Failed to download dashboard ${manifest.version} (HTTP ${response.status}) from ${manifest.url}.`);
+      throw new CliError(`Failed to download dashboard ${manifest.version} (HTTP ${response.status}) from ${archive.url}.`);
     }
-    await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tmpZip));
+    await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tmpArchive));
 
     onProgress?.(`Verifying Hexclave dashboard ${manifest.version}`);
-    const digest = await sha256File(tmpZip);
-    if (digest !== manifest.sha256) {
-      throw new CliError(`Dashboard ${manifest.version} failed its integrity check (expected ${manifest.sha256}, got ${digest}).`);
+    const digest = await sha256File(tmpArchive);
+    if (digest !== archive.sha256) {
+      throw new CliError(`Dashboard ${manifest.version} failed its integrity check (expected ${archive.sha256}, got ${digest}).`);
     }
 
     rmSync(tmpDir, { recursive: true, force: true });
     mkdirSync(tmpDir, { recursive: true });
     onProgress?.(`Extracting Hexclave dashboard ${manifest.version}`);
-    await extractZip(tmpZip, { dir: tmpDir });
+    if (archive.cacheSuffix == null) {
+      await extractZip(tmpArchive, { dir: tmpDir });
+    } else {
+      await pipeline(
+        createReadStream(tmpArchive),
+        zlib.createZstdDecompress(),
+        tar.x({ cwd: tmpDir, strict: true, preservePaths: false }),
+      );
+    }
     if (!existsSync(join(tmpDir, DASHBOARD_SERVER_RELATIVE_PATH))) {
       throw new CliError(`Dashboard ${manifest.version} archive is missing its server entrypoint.`);
     }
-    writeFileSync(join(tmpDir, DASHBOARD_COMPLETE_MARKER), `${manifest.sha256}\n`);
+    writeFileSync(join(tmpDir, DASHBOARD_COMPLETE_MARKER), `${archive.sha256}\n`);
 
     // Publish atomically, never rmSync-ing a *valid* targetDir — a concurrent
     // `hexclave dev` may be reading it. The marker is written before the rename,
     // so any fully-published dir passes isDashboardCached.
-    if (isDashboardCached(manifest.version)) {
+    if (isDashboardCached(manifest.version, archive.cacheSuffix)) {
       return;
     }
     try {
       renameSync(tmpDir, targetDir);
     } catch {
-      if (isDashboardCached(manifest.version)) {
+      if (isDashboardCached(manifest.version, archive.cacheSuffix)) {
         return;
       }
       // targetDir exists but isn't valid — an interrupted publish left a partial
@@ -221,7 +336,7 @@ async function downloadDashboardRelease(manifest: DashboardManifest, onProgress?
       renameSync(tmpDir, targetDir);
     }
   } finally {
-    rmSync(tmpZip, { force: true });
+    rmSync(tmpArchive, { force: true });
     rmSync(tmpDir, { recursive: true, force: true });
   }
 }
@@ -242,26 +357,27 @@ export async function resolveDashboardRuntime(opts: {
 
   const manifest = opts.manifest !== undefined ? opts.manifest : await fetchDashboardManifest();
   if (manifest != null) {
-    if (isDashboardCached(manifest.version)) {
-      return { root: dashboardVersionDir(manifest.version), version: manifest.version };
+    const archive = selectDashboardArchive(manifest);
+    if (isDashboardCached(manifest.version, archive.cacheSuffix)) {
+      return { root: dashboardVersionDir(manifest.version, archive.cacheSuffix), version: manifest.version };
     }
     try {
-      await downloadDashboardRelease(manifest, opts.onProgress);
-      return { root: dashboardVersionDir(manifest.version), version: manifest.version };
+      await downloadDashboardRelease(manifest, archive, opts.onProgress);
+      return { root: dashboardVersionDir(manifest.version, archive.cacheSuffix), version: manifest.version };
     } catch (error) {
-      const cached = latestCachedDashboardVersion();
+      const cached = latestCachedDashboard(dashboardPlatformKey()) ?? latestCachedDashboard();
       if (cached != null) {
-        logDashboard(`Failed to download dashboard ${manifest.version} (${errorMessage(error)}); using cached ${cached}.`);
-        return { root: dashboardVersionDir(cached), version: cached };
+        logDashboard(`Failed to download dashboard ${manifest.version} (${errorMessage(error)}); using cached ${cached.version}.`);
+        return cached;
       }
       throw error;
     }
   }
 
-  const cached = latestCachedDashboardVersion();
+  const cached = latestCachedDashboard(dashboardPlatformKey()) ?? latestCachedDashboard();
   if (cached != null) {
-    logDashboard(`Offline: using cached Hexclave dashboard ${cached}.`);
-    return { root: dashboardVersionDir(cached), version: cached };
+    logDashboard(`Offline: using cached Hexclave dashboard ${cached.version}.`);
+    return cached;
   }
 
   throw new CliError([

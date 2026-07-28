@@ -16,6 +16,9 @@ on:
       - 'apps/dashboard/**'
       - 'packages/cli/scripts/package-dashboard-release.mjs'
       - 'packages/cli/scripts/copy-runtime-assets.mjs'
+      - 'packages/cli/src/lib/dashboard-release.ts'
+      - 'packages/cli/package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/dashboard-release.yaml'
 
 permissions:
@@ -63,10 +66,31 @@ jobs:
           TAG: ${{ steps.package.outputs.tag }}
           ZIP: ${{ steps.package.outputs.zip }}
           ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          PLATFORM_ARCHIVES_DIR: ${{ steps.package.outputs.platform_archives_dir }}
           VERSION: ${{ steps.package.outputs.version }}
           EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
+          MANIFEST: ${{ steps.package.outputs.manifest }}
         run: |
           set -euo pipefail
+          assets=("$ZIP")
+          while IFS= read -r asset; do assets+=("$asset"); done < <(find "$PLATFORM_ARCHIVES_DIR" -maxdepth 1 -type f -name '*.tar.zst' -print)
+          for asset in "${assets[@]:1}"; do
+            asset_name="$(basename "$asset")"
+            case "$asset_name" in
+              "dashboard-${VERSION}-"*.tar.zst) ;;
+              *)
+                echo "::error::Unexpected platform archive name $asset_name for dashboard version $VERSION."
+                exit 1
+                ;;
+            esac
+            platform_key="${asset_name#dashboard-${VERSION}-}"
+            platform_key="${platform_key%.tar.zst}"
+            if ! jq -e --arg key "$platform_key" '(.platformArchives // {}) | has($key)' "$MANIFEST" >/dev/null; then
+              echo "::error::Platform archive $asset_name produced unknown manifest key $platform_key."
+              exit 1
+            fi
+          done
+          platform_live_shas='{}'
           # A published dashboard-v<version> asset is immutable, so never replace
           # it; advertise the sha of whatever asset is live. (The rebuild isn't
           # byte-reproducible — staged files get fresh mtimes — so we can't just
@@ -86,12 +110,35 @@ jobs:
               echo "$TAG exists without its asset; uploading."
               gh release upload "$TAG" "$ZIP" --clobber
             fi
+            existing_assets="$(gh release view "$TAG" --json assets -q '.assets[].name')"
+            for asset in "${assets[@]:1}"; do
+              asset_name="$(basename "$asset")"
+              expected_asset_sha="$(sha256sum "$asset" | cut -d' ' -f1)"
+              live_asset_sha="$expected_asset_sha"
+              if grep -qx "$asset_name" <<<"$existing_assets"; then
+                tmp="$(mktemp -d)"
+                gh release download "$TAG" -p "$asset_name" -D "$tmp"
+                live_asset_sha="$(sha256sum "$tmp/$asset_name" | cut -d' ' -f1)"
+                if [ "$live_asset_sha" != "$expected_asset_sha" ]; then
+                  echo "::warning::$TAG already has a published asset whose sha256 ($live_asset_sha) differs from this rebuild ($expected_asset_sha). Releases are immutable, so the existing asset is kept and advertised. A differing hash is expected for nondeterministic rebuilds of identical content; if you intended to ship NEW dashboard content, bump the version in apps/dashboard/package.json."
+                else
+                  echo "Existing $TAG asset matches the build; reusing it."
+                fi
+              else
+                echo "$TAG is missing $asset_name; uploading."
+                gh release upload "$TAG" "$asset"
+              fi
+              platform_key="${asset_name#dashboard-${VERSION}-}"
+              platform_key="${platform_key%.tar.zst}"
+              platform_live_shas="$(jq --arg key "$platform_key" --arg sha "$live_asset_sha" '. + {($key): $sha}' <<<"$platform_live_shas")"
+            done
           else
-            gh release create "$TAG" "$ZIP" \
+            gh release create "$TAG" "${assets[@]}" \
               --title "RDE dashboard $VERSION" \
               --notes "Standalone RDE dashboard build for \`hexclave dev\` (version $VERSION)."
           fi
           echo "live_sha=$live_sha" >> "$GITHUB_OUTPUT"
+          echo "platform_live_shas=$platform_live_shas" >> "$GITHUB_OUTPUT"
 
       - name: Update floating latest manifest
         env:
@@ -99,12 +146,39 @@ jobs:
           MANIFEST: ${{ steps.package.outputs.manifest }}
           VERSION: ${{ steps.package.outputs.version }}
           LIVE_SHA: ${{ steps.publish.outputs.live_sha }}
+          PLATFORM_LIVE_SHAS: ${{ steps.publish.outputs.platform_live_shas }}
         run: |
           set -euo pipefail
           # Advertise the live asset's sha, which may differ from the rebuild's.
+          expected_platform_keys="$(jq -c '.platformArchives // {} | keys' "$MANIFEST")"
           tmp="$(mktemp)"
-          jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
+          jq --arg s "$LIVE_SHA" --argjson platform_shas "$PLATFORM_LIVE_SHAS" '
+            .sha256 = $s
+            | reduce ($platform_shas | to_entries[]) as $entry
+                (.;
+                 .platformArchives[$entry.key].sha256 = $entry.value)
+          ' "$MANIFEST" > "$tmp"
           mv "$tmp" "$MANIFEST"
+          # The patch above must survive the CLI's own validation: a manifest the
+          # parser rejects makes every CLI fall back to the previous release, and a
+          # platformArchives block it silently drops downgrades everyone to the zip.
+          MANIFEST_PATH="$MANIFEST" EXPECTED_PLATFORM_KEYS="$expected_platform_keys" pnpm exec tsx --eval '
+            import { readFileSync } from "fs";
+            import { parseDashboardManifest } from "./packages/cli/src/lib/dashboard-release.ts";
+            const path = process.env.MANIFEST_PATH;
+            const expectedKeys = process.env.EXPECTED_PLATFORM_KEYS;
+            if (path == null || expectedKeys == null) {
+              throw new Error("Manifest validation is missing MANIFEST_PATH or EXPECTED_PLATFORM_KEYS.");
+            }
+            const manifest = parseDashboardManifest(JSON.parse(readFileSync(path, "utf8")));
+            if (manifest == null) {
+              throw new Error("Patched dashboard manifest failed CLI parser validation.");
+            }
+            const keys = JSON.stringify(Object.keys(manifest.platformArchives ?? {}).sort());
+            if (keys !== JSON.stringify(JSON.parse(expectedKeys).sort())) {
+              throw new Error(`Patched dashboard manifest advertises platform archives ${keys}, expected ${expectedKeys}.`);
+            }
+          '
           # dashboard-latest is only ever a plain X.Y.Z release. Refuse to advance
           # it to a prerelease/build-metadata version rather than guess SemVer
           # prerelease ordering in bash (`sort -V` is not a SemVer comparator).
