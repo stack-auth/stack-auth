@@ -1,6 +1,7 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { HandlerUrls } from "../../common";
+import { getComparableRedirectLocation } from "./redirect-location";
 
 export const crossDomainAuthQueryParams = {
   marker: "hexclave_cross_domain_auth",
@@ -226,6 +227,14 @@ export async function planRedirectToHandler(options: {
       return { type: "redirect", url: options.rawHandlerUrl };
     }
     const redirectBackTarget = new URL(redirectBackUrl, options.currentUrl);
+    // A return target pointing back to the current auth page can never complete authentication;
+    // use the configured post-auth destination instead of feeding automaticRedirect a self-loop.
+    if (
+      getComparableRedirectLocation(redirectBackTarget)
+      === getComparableRedirectLocation(options.currentUrl)
+    ) {
+      return { type: "redirect", url: options.rawHandlerUrl };
+    }
     const crossDomainHandoff = getCrossDomainHandoffForRedirect({
       currentUrl: options.currentUrl,
       redirectBackTarget,

@@ -1,5 +1,6 @@
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { readSessionStorageItem, removeSessionStorageItem, writeSessionStorageItem } from "../../../../utils/session-storage";
+import { getComparableRedirectLocation } from "./redirect-location";
 
 /**
  * Last line of defense against redirect loops (most importantly in hosted components flows, where
@@ -69,14 +70,6 @@ function readBreadcrumbs(): RedirectBreadcrumb[] {
 
 function writeBreadcrumbs(breadcrumbs: RedirectBreadcrumb[]): void {
   writeSessionStorageItem(breadcrumbsStorageKey, JSON.stringify(breadcrumbs));
-}
-
-/**
- * Loop iterations usually differ only in nonce-style query params (`code`, `state`,
- * `after_auth_return_to`, ...), so redirects are compared by origin + pathname only.
- */
-function getComparableRedirectLocation(url: URL): string {
-  return `${url.origin}${url.pathname}`;
 }
 
 export function recordRedirectAndThrowIfLoopDetected(options: { currentUrl: URL, targetUrl: URL }): void {
