@@ -1578,15 +1578,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    */
   private _sessionsByTokenStoreAndSessionKey = new WeakMap<Store<TokenObject>, Map<string, InternalSession>>();
   /**
-   * Monotonic IDs for `_signInToAccountWithTokens` calls, so that a sign-in which awaits longer than a sign-in that
-   * started after it doesn't publish its (by then outdated) tokens on top of the newer ones.
-   */
-  private _signInAttemptCounter = 0;
-  private _lastPublishedSignInAttemptId = 0;
-  /**
-   * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet.
-   *                         Used to create (and hence warm the caches of) the session of a sign-in before the token
-   *                         store update makes it observable to the rest of the app.
+   * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet
+   *                         (so we can warm a sign-in's session before the token store publishes it).
    */
   protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>, overrideTokenObj?: TokenObject): InternalSession {
     const tokenObj = overrideTokenObj ?? tokenStore.get();
@@ -1644,66 +1637,33 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
   // END_PLATFORM
 
+  private _signInAttemptCounter = 0;
   protected async _signInToAccountWithTokens(tokens: { accessToken: string | null, refreshToken: string }) {
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
       throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
-    const signInAttemptId = ++this._signInAttemptCounter;
-
-    // Fetch the user of the incoming tokens before publishing them, so the new session's cache is already warm when
-    // the token store update below notifies its subscribers. Mounted `useUser()` hooks re-read the cache when the
-    // session changes, so an empty cache entry for the new session makes them suspend — flashing their Suspense
-    // fallback over UI that was already on the screen. That is most visible on the sign-in/sign-up pages, which sit
-    // there signed out until the analytics anonymous sign-up swaps in a session a few seconds after the page loaded.
-    const prefetchedUser = await this._prefetchCurrentUserForFreshTokens(tokens);
-
+    const attemptId = ++this._signInAttemptCounter;
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
-
-    // We awaited above, so a sign-in that started after ours may have already taken effect (eg. the analytics anonymous
-    // sign-up racing against a real sign-in on the same page). Publishing our older tokens now would roll the app back
-    // to the session it just left, so drop this sign-in instead.
-    if (this._lastPublishedSignInAttemptId > signInAttemptId) {
-      return;
-    }
-    this._lastPublishedSignInAttemptId = signInAttemptId;
 
     // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
     // access token for the same access-only session), push the new token into it in place; constructing a new
     // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
     //
-    // Note that we create the session (and seed its cache) from the tokens directly, before writing them to the token
-    // store; that way, the session is already fully warm by the time the token store notifies its subscribers.
+    // We build the session from the tokens instead of the token store, so that we can fetch its user before the token
+    // store publishes it below: mounted `useUser()` hooks re-read the cache when the session changes, so a cold cache
+    // entry at that point makes them suspend, flashing their Suspense fallback over UI that's already on the screen.
+    // That's most visible on the auth pages, which sit there signed out until the analytics anonymous sign-up swaps in
+    // a session a few seconds after the page loaded.
     const session = this._getSessionFromTokenStore(tokenStore, tokens);
-    if (prefetchedUser !== null) {
-      this._currentUserCache.forceSetCachedValue([session], prefetchedUser);
-    }
     session.updateAccessToken(tokens);
+    // If the fetch fails, we still publish the session (dropping a successful sign-in over a failed /users/me would be
+    // much worse than a flicker); the cache stays dirty, so `useUser()` retries and surfaces the error itself.
+    await Result.fromPromise(this._currentUserCache.getOrWait([session], "write-only"));
 
+    // A sign-in that started after ours may have raced past us while we were fetching, in which case publishing our
+    // (by now outdated) tokens would roll the app back to the session it just left.
+    if (attemptId !== this._signInAttemptCounter) return;
     tokenStore.set(tokens);
-
-    if (prefetchedUser === null) {
-      // We had nothing to seed the cache with (no access token to pre-fetch with, or the pre-fetch failed), so warm it
-      // in the background instead; that may lose the race against the re-render, but it's the best we can do.
-      runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
-    }
-  }
-
-  /**
-   * Fetches the current user for a token pair that has not been written to the token store yet, without touching the
-   * app-level session (token stores created from an explicit token pair are in-memory only).
-   *
-   * Returns `null` if the user could not be fetched, in which case callers should fall back to a background refresh.
-   */
-  private async _prefetchCurrentUserForFreshTokens(
-    tokens: { accessToken: string | null, refreshToken: string },
-  ): Promise<Result<CurrentUserCrud['Client']['Read'] | null> | null> {
-    const freshTokenStoreInit = this._getTokenStoreInitForFreshTokens(tokens);
-    if (freshTokenStoreInit === undefined) {
-      return null;
-    }
-    const prefetchSession = await this._getSession(freshTokenStoreInit);
-    const result = await this._currentUserCache.getOrWait([prefetchSession], "write-only");
-    return result.status === "ok" ? result : null;
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {

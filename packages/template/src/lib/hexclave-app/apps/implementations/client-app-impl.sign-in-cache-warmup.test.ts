@@ -6,122 +6,85 @@ function createAccessTokenString(refreshTokenId: string): string {
   const nowSeconds = Math.floor(Date.now() / 1000);
   return [
     encode({ alg: "none", typ: "JWT" }),
-    encode({
-      sub: "user-id",
-      exp: nowSeconds + 60,
-      iat: nowSeconds,
-      iss: "https://api.example.test",
-      aud: "project-id",
-      project_id: "project-id",
-      branch_id: "main",
-      refresh_token_id: refreshTokenId,
-      role: "authenticated",
-      name: null,
-      email: null,
-      email_verified: false,
-      selected_team_id: null,
-      signed_up_at: nowSeconds,
-      is_anonymous: false,
-      is_restricted: false,
-      restricted_reason: null,
-      requires_totp_mfa: false,
-    }),
+    encode({ sub: "user-id", exp: nowSeconds + 60, iat: nowSeconds, refresh_token_id: refreshTokenId }),
     "",
   ].join(".");
 }
 
+function createTestSetup(getUser: () => Promise<unknown>) {
+  const clientApp = new StackClientApp({
+    baseUrl: "http://localhost:12345",
+    projectId: "00000000-0000-4000-8000-000000000000",
+    publishableClientKey: "stack-pk-test",
+    tokenStore: "memory",
+    redirectMethod: "none",
+    noAutomaticPrefetch: true,
+  });
+  Reflect.set(Reflect.get(clientApp, "_interface"), "getClientUserByToken", getUser);
+  const privateMethod = (name: string) => (...args: unknown[]) => Reflect.get(clientApp, name).apply(clientApp, args);
+  return {
+    currentUserCache: Reflect.get(clientApp, "_currentUserCache"),
+    signIn: (refreshToken: string) => privateMethod("_signInToAccountWithTokens")({
+      accessToken: createAccessTokenString(`${refreshToken}-id`),
+      refreshToken,
+    }),
+    getSessionFromTokenStore: privateMethod("_getSessionFromTokenStore"),
+    getTokenStore: async () => privateMethod("_getOrCreateTokenStore")(await privateMethod("_createCookieHelper")()),
+  };
+}
+
 describe("StackClientApp sign-in cache warm-up", () => {
   it("has the new session's user cached by the time the token store change is published", async () => {
-    const clientApp = new StackClientApp({
-      baseUrl: "http://localhost:12345",
-      projectId: "00000000-0000-4000-8000-000000000000",
-      publishableClientKey: "stack-pk-test",
-      tokenStore: "memory",
-      redirectMethod: "none",
-      noAutomaticPrefetch: true,
-    });
-
-    const clientInterface = Reflect.get(clientApp, "_interface");
-    let getClientUserByTokenCalls = 0;
-    Reflect.set(clientInterface, "getClientUserByToken", async () => {
-      getClientUserByTokenCalls += 1;
+    let getUserCalls = 0;
+    const setup = createTestSetup(async () => {
+      getUserCalls += 1;
       return { id: "user-id", is_anonymous: false, is_restricted: false };
     });
 
-    // The new session's user is cached before the token store update is published, so `useUser()` hooks that re-render
-    // because of the new session read a warm cache instead of suspending and flashing their Suspense fallback.
+    // `useUser()` hooks re-read the cache when the session changes, so if the cache were still cold here, they'd
+    // suspend and flash their Suspense fallback over the UI that's already on the screen.
     const cacheStatusesOnTokenStoreChange: string[] = [];
-    const tokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore").call(
-      clientApp,
-      await Reflect.get(clientApp, "_createCookieHelper").call(clientApp),
-    );
+    const tokenStore = await setup.getTokenStore();
     tokenStore.onChange(() => {
-      const session = Reflect.get(clientApp, "_getSessionFromTokenStore").call(clientApp, tokenStore);
-      const currentUserCache = Reflect.get(clientApp, "_currentUserCache");
-      cacheStatusesOnTokenStoreChange.push(currentUserCache.getIfCached([session]).status);
+      const session = setup.getSessionFromTokenStore(tokenStore);
+      cacheStatusesOnTokenStoreChange.push(setup.currentUserCache.getIfCached([session]).status);
     });
 
-    await Reflect.get(clientApp, "_signInToAccountWithTokens").call(clientApp, {
-      accessToken: createAccessTokenString("refresh-token-id"),
-      refreshToken: "refresh-token",
-    });
+    await setup.signIn("refresh-token");
 
-    const session = await Reflect.get(clientApp, "_getSession").call(clientApp);
-    const cachedUser = Reflect.get(clientApp, "_currentUserCache").getIfCached([session]);
-    expect(cachedUser.status).toBe("ok");
-    expect(cachedUser.data.data).toMatchObject({ id: "user-id" });
-    expect(getClientUserByTokenCalls).toBe(1);
     expect(cacheStatusesOnTokenStoreChange).toEqual(["ok"]);
+    const cachedUser = setup.currentUserCache.getIfCached([setup.getSessionFromTokenStore(tokenStore)]);
+    expect(cachedUser.data.data).toMatchObject({ id: "user-id" });
+    expect(getUserCalls).toBe(1);
   });
 
   it("doesn't let a slow sign-in publish its tokens on top of a sign-in that started later", async () => {
-    const clientApp = new StackClientApp({
-      baseUrl: "http://localhost:12345",
-      projectId: "00000000-0000-4000-8000-000000000000",
-      publishableClientKey: "stack-pk-test",
-      tokenStore: "memory",
-      redirectMethod: "none",
-      noAutomaticPrefetch: true,
+    let onFirstFetchStarted!: () => void;
+    let releaseFirstFetch!: () => void;
+    const firstFetchStarted = new Promise<void>((resolve) => {
+      onFirstFetchStarted = resolve;
+    });
+    const firstFetchReleased = new Promise<void>((resolve) => {
+      releaseFirstFetch = resolve;
     });
 
-    let onFirstPrefetchStarted!: () => void;
-    const firstPrefetchStarted = new Promise<void>((resolve) => {
-      onFirstPrefetchStarted = resolve;
-    });
-    let releaseFirstPrefetch!: () => void;
-    const firstPrefetchReleased = new Promise<void>((resolve) => {
-      releaseFirstPrefetch = resolve;
-    });
-
-    const clientInterface = Reflect.get(clientApp, "_interface");
-    let getClientUserByTokenCalls = 0;
-    Reflect.set(clientInterface, "getClientUserByToken", async () => {
-      getClientUserByTokenCalls += 1;
-      // The first sign-in's pre-fetch only finishes once we let it, so the second one deterministically gets to publish
-      // while the first one is still waiting.
-      if (getClientUserByTokenCalls === 1) {
-        onFirstPrefetchStarted();
-        await firstPrefetchReleased;
+    let getUserCalls = 0;
+    const setup = createTestSetup(async () => {
+      // Only the first sign-in's fetch blocks, so the second one deterministically gets to publish while it waits.
+      if (++getUserCalls === 1) {
+        onFirstFetchStarted();
+        await firstFetchReleased;
       }
       return { id: "user-id", is_anonymous: false, is_restricted: false };
     });
 
-    const signIn = (refreshToken: string, refreshTokenId: string) => Reflect.get(clientApp, "_signInToAccountWithTokens").call(clientApp, {
-      accessToken: createAccessTokenString(refreshTokenId),
-      refreshToken,
-    });
-
-    const slowSignIn = signIn("old-refresh-token", "old-refresh-token-id");
-    await firstPrefetchStarted;
-    await signIn("new-refresh-token", "new-refresh-token-id");
-    releaseFirstPrefetch();
+    const slowSignIn = setup.signIn("old-refresh-token");
+    await firstFetchStarted;
+    await setup.signIn("new-refresh-token");
+    releaseFirstFetch();
     await slowSignIn;
-    expect(getClientUserByTokenCalls).toBe(2);
 
-    const tokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore").call(
-      clientApp,
-      await Reflect.get(clientApp, "_createCookieHelper").call(clientApp),
-    );
-    expect(tokenStore.get().refreshToken).toBe("new-refresh-token");
+    expect(getUserCalls).toBe(2);
+    expect((await setup.getTokenStore()).get().refreshToken).toBe("new-refresh-token");
   });
 });
