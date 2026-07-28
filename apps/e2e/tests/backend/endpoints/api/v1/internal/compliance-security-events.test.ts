@@ -18,7 +18,7 @@ describe("Compliance Center security events", () => {
     await Auth.Password.signInWithEmail({ password });
 
     let response;
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
       response = await niceBackendFetch("/api/v1/internal/compliance/security-events", {
         accessType: "admin",
         query: {
@@ -26,7 +26,15 @@ describe("Compliance Center security events", () => {
           to: new Date(Date.now() + 60_000).toISOString(),
         },
       });
-      if (response.status === 200 && response.body.events.some((event: { email: string | null }) => event.email === email)) {
+      // ClickHouse writes are eventually consistent, so wait until BOTH the failed and successful
+      // rows are visible; breaking on the first matching row races the success insert (flaky CI).
+      const matching = response.status === 200
+        ? response.body.events.filter((event: { email: string | null }) => event.email === email)
+        : [];
+      if (
+        matching.some((event: { outcome: string | null }) => event.outcome === "failed")
+        && matching.some((event: { outcome: string | null }) => event.outcome === "success")
+      ) {
         break;
       }
       await wait(500);
