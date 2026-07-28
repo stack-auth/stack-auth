@@ -104,9 +104,11 @@ describe("dashboardEnvWithStatePath", () => {
 });
 
 describe("resolveWindowsCommand", () => {
-  it("resolves command shims without using a shell", () => {
+  it("prefers command shims over extensionless commands", () => {
     const commandDir = mkdtempSync(join(tmpdir(), "hexclave-command-"));
+    const extensionlessCommandPath = join(commandDir, "npm");
     const commandPath = join(commandDir, "npm.cmd");
+    writeFileSync(extensionlessCommandPath, "");
     writeFileSync(commandPath, "");
 
     expect(resolveWindowsCommand("npm", {
