@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   DASHBOARD_DIR_OVERRIDE_ENV_VAR,
   DASHBOARD_MANIFEST_URL_ENV_VAR,
@@ -7,12 +10,20 @@ import {
   dashboardPlatformKey,
   dashboardVersionDir,
   hasZstdSupport,
+  latestCachedDashboard,
   parseDashboardManifest,
   pickLatestVersion,
   selectDashboardArchive,
 } from "./dashboard-release.js";
 
 const VALID_SHA = "a".repeat(64);
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 describe("parseDashboardManifest", () => {
   it("accepts a well-formed manifest and lowercases the digest", () => {
@@ -142,6 +153,17 @@ describe("dashboard archive selection", () => {
   it("keeps platform-specific and universal cache directories separate", () => {
     expect(dashboardVersionDir("1.2.3", "linux-x64")).not.toBe(dashboardVersionDir("1.2.3"));
     expect(dashboardVersionDir("1.2.3", "linux-x64")).toContain("1.2.3--linux-x64");
+  });
+
+  it("never returns a platform cache from the universal lookup", () => {
+    const cacheRoot = mkdtempSync(join(tmpdir(), "dashboard-cache-test-"));
+    temporaryDirectories.push(cacheRoot);
+    const platformRoot = join(cacheRoot, "1.2.3--linux-x64");
+    mkdirSync(join(platformRoot, "apps", "dashboard"), { recursive: true });
+    writeFileSync(join(platformRoot, ".hexclave-complete"), "hash\n");
+    writeFileSync(join(platformRoot, "apps", "dashboard", "server.js"), "");
+
+    expect(latestCachedDashboard(undefined, cacheRoot)).toBeUndefined();
   });
 });
 

@@ -216,16 +216,26 @@ function isVersionNewer(candidate: ParsedVersion, current: ParsedVersion): boole
   return false;
 }
 
-function latestCachedDashboard(platformKey?: DashboardPlatformKey): { version: string, root: string } | undefined {
-  const root = dashboardCacheRoot();
+export function latestCachedDashboard(
+  platformKey?: DashboardPlatformKey,
+  cacheRoot: string = dashboardCacheRoot(),
+): { version: string, root: string } | undefined {
+  const root = cacheRoot;
   if (!existsSync(root)) return undefined;
   const suffix = platformKey == null ? "" : `--${platformKey}`;
   const cached = readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.endsWith(suffix))
+    .filter((entry) => (
+      entry.isDirectory()
+      && (platformKey == null
+        ? !DASHBOARD_PLATFORM_KEYS.some((supportedKey) => entry.name.endsWith(`--${supportedKey}`))
+        : entry.name.endsWith(suffix))
+    ))
     .map((entry) => {
       const version = suffix.length === 0 ? entry.name : entry.name.slice(0, -suffix.length);
-      return isDashboardCached(version, platformKey)
-        ? { version, root: dashboardVersionDir(version, platformKey) }
+      const cachedRoot = join(root, platformKey == null ? version : `${version}--${platformKey}`);
+      return existsSync(join(cachedRoot, DASHBOARD_COMPLETE_MARKER))
+        && existsSync(join(cachedRoot, DASHBOARD_SERVER_RELATIVE_PATH))
+        ? { version, root: cachedRoot }
         : undefined;
     })
     .filter((entry): entry is { version: string, root: string } => entry != null);
