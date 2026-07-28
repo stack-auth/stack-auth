@@ -1272,6 +1272,38 @@ it("deletes a project with admin access", async ({ expect }) => {
   `);
 });
 
+it("deletes a project that has a Stripe connected account", async ({ expect }) => {
+  await Auth.fastSignUp();
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // Create the Stripe connected account for the project
+  const setupResponse = await niceBackendFetch(`/api/v1/internal/payments/setup`, {
+    accessType: "admin",
+    method: "POST",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {},
+  });
+  expect(setupResponse.status).toBe(200);
+
+  const deleteResponse = await niceBackendFetch(`/api/v1/internal/projects/current`, {
+    accessType: "admin",
+    method: "DELETE",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    }
+  });
+
+  expect(deleteResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("deletes a project with server access", async ({ expect }) => {
   await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
