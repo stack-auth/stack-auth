@@ -122,7 +122,7 @@ describe("dashboard archive selection", () => {
   };
 
   it("uses the platform archive when one matches", () => {
-    expect(selectDashboardArchive(manifest, "linux-x64")).toEqual({
+    expect(selectDashboardArchive(manifest, "linux-x64", true)).toEqual({
       sha256: "b".repeat(64),
       url: "https://x/dashboard-linux-x64.tar.zst",
       cacheSuffix: "linux-x64",
