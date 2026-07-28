@@ -83,9 +83,11 @@ describe("resolveClientIdMetadataDocument", () => {
     const tenancy = createMockTenancy();
     tenancy.config.oauthProvider.clients = {
       incomplete: {
+        type: "public",
         displayName: "Incomplete",
+        trusted: false,
         redirectUris: {
-          first: {},
+          first: { url: undefined },
         },
       },
     };
