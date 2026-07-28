@@ -745,11 +745,22 @@ child.on("error", (error) => {
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(
-        env.ComSpec ?? "cmd.exe",
-        ["/d", "/s", "/c", `call ${[resolveWindowsCommand(command.command, env), ...command.args].map(quoteWindowsShellArg).join(" ")}`],
-        { stdio: "inherit", env, windowsVerbatimArguments: true },
-      )
+      ? (() => {
+        const commandEnv = {
+          ...env,
+          HEXCLAVE_WINDOWS_APP_COMMAND: resolveWindowsCommand(command.command, env),
+          ...Object.fromEntries(command.args.map((arg, index) => [`HEXCLAVE_WINDOWS_APP_ARG_${index}`, arg.replace(/"/g, "\\\"")])),
+        };
+        const commandLine = `"${[
+          `"!HEXCLAVE_WINDOWS_APP_COMMAND!"`,
+          ...command.args.map((_, index) => `"!HEXCLAVE_WINDOWS_APP_ARG_${index}!"`),
+        ].join(" ")}"`;
+        return spawn(env.ComSpec ?? "cmd.exe", ["/d", "/v:on", "/s", "/c", commandLine], {
+          stdio: "inherit",
+          env: commandEnv,
+          windowsVerbatimArguments: true,
+        });
+      })()
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
