@@ -167,6 +167,15 @@ async function postBulldozerRowsBatch(path: string, rowsData: Record<string, unk
   });
 }
 
+async function deleteBulldozerRowsBatch(path: string, rowsData: Record<string, unknown>[]) {
+  if (rowsData.length === 0) return;
+  await fetchBulldozerServerJson<{ success: true }>({
+    method: "POST",
+    path,
+    body: { rows: rowsData.map((rowData) => ({ rowData })) },
+  });
+}
+
 /**
  * Batch ingress is tenancy-scoped (the URL carries the tenancy), but a backfill
  * page is ordered by (tenancyId, id) and can straddle tenancies. Group first so
@@ -240,6 +249,44 @@ export async function bulldozerWriteItemQuantityChange(
       suffix: "manual-item-quantity-changes",
     }),
     itemQuantityChangeToStoredRow(change),
+  );
+}
+
+export async function bulldozerTryDecreaseItemQuantityChanges(
+  changes: Parameters<typeof itemQuantityChangeToStoredRow>[0][],
+): Promise<{ insufficientItemId: string | null }> {
+  if (changes.length === 0) return { insufficientItemId: null };
+  const first = changes[0];
+  const customerType = lowerCustomerType(first.customerType);
+  for (const change of changes) {
+    if (
+      change.tenancyId !== first.tenancyId
+      || change.customerId !== first.customerId
+      || lowerCustomerType(change.customerType) !== customerType
+    ) {
+      throw new Error("Conditional item quantity changes must belong to one customer");
+    }
+  }
+  return await fetchBulldozerServerJson<{ insufficientItemId: string | null }>({
+    method: "POST",
+    path: bulldozerCustomerPath({
+      tenancyId: first.tenancyId,
+      customerType,
+      customerId: first.customerId,
+      suffix: "manual-item-quantity-changes/try-decrease-batch",
+    }),
+    body: { rows: changes.map((change) => ({ rowData: itemQuantityChangeToStoredRow(change) })) },
+  });
+}
+
+export async function bulldozerDeleteItemQuantityChanges(
+  changes: Parameters<typeof itemQuantityChangeToStoredRow>[0][],
+): Promise<void> {
+  if (changes.length === 0) return;
+  const first = changes[0];
+  await deleteBulldozerRowsBatch(
+    `/v1/${encodeURIComponent(first.tenancyId)}/manual-item-quantity-changes/delete-batch`,
+    changes.map(itemQuantityChangeToStoredRow),
   );
 }
 
