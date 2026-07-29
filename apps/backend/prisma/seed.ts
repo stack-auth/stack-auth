@@ -10,7 +10,7 @@ import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { ALL_APPS } from '@hexclave/shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
 import { AdminUserProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
-import { ITEM_IDS, PLAN_LIMITS } from '@hexclave/shared/dist/plans';
+import { ITEM_IDS, PLAN_LIMITS, UNLIMITED } from '@hexclave/shared/dist/plans';
 import { DayInterval } from '@hexclave/shared/dist/utils/dates';
 import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
@@ -358,6 +358,53 @@ export async function seed() {
       console.log('Granted Growth plan to internal team');
     }
   }
+
+  // On top of the Growth plan (kept so the dashboard shows a real plan), grant
+  // the internal team effectively unlimited quantities of every metered item.
+  // The internal team is Hexclave itself: its telemetry is dogfooding, and the
+  // dogfooded dashboard/backend traffic must never exhaust its own quotas and
+  // start rejecting batches (Growth is finite — 1M events/month, and
+  // analytics_timeout_seconds is a NEVER-repeating pool that dashboard query
+  // polling permanently drains). Fixed ids keep the upserts idempotent across
+  // reseeds, and each reseed also tops the balance back up to UNLIMITED.
+  // UNLIMITED (1e9) instead of Int32 max so summing with plan grants and other
+  // changes stays comfortably inside the column type.
+  const internalTeamUnlimitedGrants: { id: string, itemId: string }[] = [
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000001', itemId: ITEM_IDS.seats },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000002', itemId: ITEM_IDS.authUsers },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000003', itemId: ITEM_IDS.emailsPerMonth },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000004', itemId: ITEM_IDS.analyticsTimeoutSeconds },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000005', itemId: ITEM_IDS.analyticsEvents },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000006', itemId: ITEM_IDS.analyticsSpans },
+    { id: 'b3a52b60-0a1e-4a3c-9c3e-000000000007', itemId: ITEM_IDS.sessionReplays },
+  ];
+  for (const grant of internalTeamUnlimitedGrants) {
+    // Written with raw Prisma for the same reason as the Growth subscription
+    // above (bulldozer storage isn't initialized at this point in the seed);
+    // the rows are ingressed by the db:backfill-bulldozer-from-prisma step.
+    await internalPrisma.itemQuantityChange.upsert({
+      where: {
+        tenancyId_id: {
+          tenancyId: internalTenancy.id,
+          id: grant.id,
+        },
+      },
+      update: {
+        quantity: UNLIMITED,
+      },
+      create: {
+        tenancyId: internalTenancy.id,
+        id: grant.id,
+        customerId: internalTeamId,
+        customerType: CustomerType.TEAM,
+        itemId: grant.itemId,
+        quantity: UNLIMITED,
+        description: 'Internal team unlimited allowance (Hexclave dogfooding must never exhaust its own quotas)',
+        expiresAt: null,
+      },
+    });
+  }
+  console.log('Granted unlimited item quantities to internal team');
 
   // Upsert the internal API key set before any flake-prone work (dummy-project
   // seed, email/svix, clickhouse).

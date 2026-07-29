@@ -333,13 +333,7 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
 
   const clickhouseClient = getClickhouseAdminClientForMetrics();
   const result = await clickhouseClient.query({
-    query: `
-      SELECT count() AS total
-      FROM analytics_internal.events
-      WHERE project_id IN {projectIds:Array(String)}
-        AND event_at >= {periodStart:DateTime}
-        AND event_at < {periodEnd:DateTime}
-    `,
+    query: getAnalyticsEventsUsageQueryForTest(),
     query_params: {
       projectIds,
       periodStart: formatClickhouseDateTimeParam(period.start),
@@ -349,6 +343,25 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
   });
   const rows: { total: string | number }[] = await result.json();
   return Number(rows[0]?.total ?? 0);
+}
+
+export function getAnalyticsEventsUsageQueryForTest(): string {
+  return `
+    SELECT sum(total) AS total
+    FROM (
+      SELECT count() AS total
+      FROM analytics_internal.events
+      WHERE project_id IN {projectIds:Array(String)}
+        AND event_at >= {periodStart:DateTime}
+        AND event_at < {periodEnd:DateTime}
+      UNION ALL
+      SELECT count() AS total
+      FROM analytics_internal.logs
+      WHERE project_id IN {projectIds:Array(String)}
+        AND event_at >= {periodStart:DateTime}
+        AND event_at < {periodEnd:DateTime}
+    )
+  `;
 }
 
 // The immutable write ledger receives one row for every accepted custom-span
