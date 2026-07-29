@@ -27,7 +27,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body }, fullReq) => {
-    // Forward the caller's Hexclave/Stack auth headers so the inner AI call
+    // Forward the caller's Hexclave auth headers so the inner AI call
     // (which is a fresh HTTP request to /ai/query/generate) is authenticated
     // and resolves to the authenticated model tier rather than falling back
     // to the unauthenticated one.

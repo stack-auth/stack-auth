@@ -50,6 +50,20 @@ describe("skill page shell", () => {
 });
 
 describe("skill site pages", () => {
+  it("starts the root HTML page with agent fetch instructions, then human content", async () => {
+    const html = await skillGet(htmlRequest("https://skill.hexclave.com/")).text();
+
+    const agentHeadingIndex = html.indexOf("If you are an AI agent");
+    const curlIndex = html.indexOf("curl -sSL https://skill.hexclave.com");
+    const humanHeadingIndex = html.indexOf("If you are a human");
+    const pageHeadingIndex = html.indexOf("The Hexclave Agent Skill");
+
+    expect(agentHeadingIndex).toBeGreaterThan(-1);
+    expect(curlIndex).toBeGreaterThan(agentHeadingIndex);
+    expect(humanHeadingIndex).toBeGreaterThan(curlIndex);
+    expect(pageHeadingIndex).toBeGreaterThan(humanHeadingIndex);
+  });
+
   it("serves the general setup docs URL on the root skill page", async () => {
     const html = await skillGet(htmlRequest("https://skill.hexclave.com/")).text();
 
