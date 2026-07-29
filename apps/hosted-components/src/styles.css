@@ -174,3 +174,8 @@ html:has(head > [data-stack-theme="dark"]) .hosted-skeleton {
   --ring: inherit !important;
   --radius: inherit !important;
 }
+
+html[data-hexclave-development-page-note-visible] [data-hexclave-handler-page] {
+  overflow-y: auto;
+  padding-bottom: var(--hexclave-development-page-note-height);
+}

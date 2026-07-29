@@ -586,7 +586,7 @@ function ManagedDomainSetupDialog(props: {
                           <li>Under <span className="font-medium text-foreground">Import DNS records</span>, click <span className="font-medium text-foreground">Select a file</span> and pick the file you just downloaded.</li>
                         </ol>
                         <Image
-                          src="/assets/cloudflare-import-dns.png"
+                          src="/assets/cloudflare-import-dns.webp"
                           alt="Cloudflare Import and Export dialog screenshot"
                           width={1048}
                           height={828}

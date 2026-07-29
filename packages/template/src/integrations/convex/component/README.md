@@ -30,13 +30,13 @@ Next, update or create a file in `convex/convex.config.ts`:
 
 ```ts
 import { defineApp } from "convex/server";
-import stackAuthComponent from "@hexclave/js/convex.config";  // Vanilla JS
-// or: import stackAuthComponent from "@hexclave/react/convex.config";  // React
-// or: import stackAuthComponent from "@hexclave/next/convex.config";  // Next.js
+import hexclaveComponent from "@hexclave/js/convex.config";  // Vanilla JS
+// or: import hexclaveComponent from "@hexclave/react/convex.config";  // React
+// or: import hexclaveComponent from "@hexclave/next/convex.config";  // Next.js
 
 
 const app = defineApp();
-app.use(stackAuthComponent);
+app.use(hexclaveComponent);
 
 export default app;
 ```
