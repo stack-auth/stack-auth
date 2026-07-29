@@ -434,7 +434,8 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
   try {
-    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+    // Replicated, so that a caller reading right after this write doesn't see the pre-write snapshot root.
+    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
       newRowData: options.rowData as unknown as PiledriverObject,
@@ -490,7 +491,7 @@ function readBatchRows(body: unknown): unknown[] {
 async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown, rowIdField?: string }) {
   const rows = readStoredRowsFromBodies(options);
   try {
-    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
   } catch (error) {
     // A batch is one cascade, so a cascade-phase failure can't be pinned to a single row.
     // Attach the table + the batch's row identifiers (no rowData here, to keep batch events small).

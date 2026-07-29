@@ -68,6 +68,17 @@ export function HostedOnboarding(props: {
       } as any;
     }
 
+    if (demoMode === "admin-restricted") {
+      return {
+        ...baseMockUser,
+        isRestricted: true,
+        primaryEmail: "user@example.com",
+        restrictedReason: { type: "restricted_by_administrator" },
+        restrictedByAdmin: true,
+        restrictedByAdminReason: "Your sign-up was flagged by our fraud prevention rules.",
+      } as any;
+    }
+
     if (demoMode === "other-restricted") {
       return {
         ...baseMockUser,
@@ -330,6 +341,8 @@ export function HostedOnboarding(props: {
     );
   }
 
+  const isRestrictedByAdmin = restrictedReason?.type === "restricted_by_administrator";
+
   // Generic setup-required state
   return (
     <HostedAuthShell fullPage={props.fullPage}>
@@ -338,10 +351,14 @@ export function HostedOnboarding(props: {
           <AlertTriangle className="h-6 w-6" />
         </div>
         <Typography type="h2" className="mb-2 text-xl font-semibold tracking-tight">
-          Complete your account setup
+          {isRestrictedByAdmin ? "Your account has been restricted" : "Complete your account setup"}
         </Typography>
         <Typography className="text-sm text-muted-foreground">
-          You have not yet completed your account setup. Please reach out to support if you believe this is an error.
+          {/* The public reason is set by the project's administrators (sign-up rules or manually), so it's the most
+          helpful thing we can show; the generic sentences are only fallbacks for when they didn't provide one. */}
+          {isRestrictedByAdmin
+            ? user.restrictedByAdminReason ?? "An administrator has restricted your account. Please reach out to support if you believe this is an error."
+            : "You have not yet completed your account setup. Please reach out to support if you believe this is an error."}
         </Typography>
       </div>
 

@@ -1609,8 +1609,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * - So different token stores are separated and don't leak information between each other, eg. if the same user sends two requests to the same server they should get a different session object
    */
   private _sessionsByTokenStoreAndSessionKey = new WeakMap<Store<TokenObject>, Map<string, InternalSession>>();
-  protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>): InternalSession {
-    const tokenObj = tokenStore.get();
+  /**
+   * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet
+   *                         (so we can warm a sign-in's session before the token store publishes it).
+   */
+  protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>, overrideTokenObj?: TokenObject): InternalSession {
+    const tokenObj = overrideTokenObj ?? tokenStore.get();
     const sessionKey = InternalSession.calculateSessionKey(tokenObj);
     const existing = sessionKey ? this._sessionsByTokenStoreAndSessionKey.get(tokenStore)?.get(sessionKey) : null;
     if (existing) return existing;
@@ -1665,21 +1669,33 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
   // END_PLATFORM
 
+  private _signInAttemptCounter = 0;
   protected async _signInToAccountWithTokens(tokens: { accessToken: string | null, refreshToken: string }) {
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
       throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
+    const attemptId = ++this._signInAttemptCounter;
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
-    tokenStore.set(tokens);
 
     // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
     // access token for the same access-only session), push the new token into it in place; constructing a new
     // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
-    const session = this._getSessionFromTokenStore(tokenStore);
+    //
+    // We build the session from the tokens instead of the token store, so that we can fetch its user before the token
+    // store publishes it below: mounted `useUser()` hooks re-read the cache when the session changes, so a cold cache
+    // entry at that point makes them suspend, flashing their Suspense fallback over UI that's already on the screen.
+    // That's most visible on the auth pages, which sit there signed out until the analytics anonymous sign-up swaps in
+    // a session a few seconds after the page loaded.
+    const session = this._getSessionFromTokenStore(tokenStore, tokens);
     session.updateAccessToken(tokens);
+    // If the fetch fails, we still publish the session (dropping a successful sign-in over a failed /users/me would be
+    // much worse than a flicker); the cache stays dirty, so `useUser()` retries and surfaces the error itself.
+    await Result.fromPromise(this._currentUserCache.getOrWait([session], "write-only"));
 
-    // Pre-fetch the current user so the cache is warm when useUser() re-renders (write-only, so it never suspends).
-    runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
+    // A sign-in that started after ours may have raced past us while we were fetching, in which case publishing our
+    // (by now outdated) tokens would roll the app back to the session it just left.
+    if (attemptId !== this._signInAttemptCounter) return;
+    tokenStore.set(tokens);
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
@@ -1857,6 +1873,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async listUsers() {
         const result = Result.orThrow(await app._teamMemberProfilesCache.getOrWait([session, crud.id], "write-only"));
         return result.map((crud) => app._clientTeamUserFromCrud(crud));
+      },
+      async removeUser(userId: string) {
+        await app._interface.removeUserFromTeam(crud.id, userId, session);
+        await app._teamMemberProfilesCache.refresh([session, crud.id]);
+        await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
       },
       // IF_PLATFORM react-like
       useUsers() {
@@ -2184,6 +2206,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       isAnonymous: crud.is_anonymous,
       isRestricted: crud.is_restricted,
       restrictedReason: crud.restricted_reason,
+      restrictedByAdmin: crud.restricted_by_admin,
+      restrictedByAdminReason: crud.restricted_by_admin_reason,
       toClientJson(): CurrentUserCrud['Client']['Read'] {
         return crud;
       }
@@ -2349,7 +2373,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       async leaveTeam(team: Team) {
         await app._interface.leaveTeam(team.id, session);
-        // TODO: refresh cache
+        await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
@@ -3643,7 +3668,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["ContactChannelAlreadyUsedForAuthBySomeoneElse"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new HexclaveAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
