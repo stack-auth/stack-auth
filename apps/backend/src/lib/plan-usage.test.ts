@@ -1,7 +1,7 @@
 import { ITEM_IDS, UNLIMITED } from "@hexclave/shared/dist/plans";
 import { describe, expect, it } from "vitest";
 import type { SubscriptionRow } from "./payments/schema/types";
-import { buildUsageRow, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip } from "./plan-usage";
+import { buildUsageRow, getAnalyticsEventsUsageQueryForTest, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip } from "./plan-usage";
 
 function createSubscriptionPeriod(startMillis: number, endMillis: number): SubscriptionRow {
   return {
@@ -116,6 +116,15 @@ describe("buildUsageRow", () => {
         "used": 250000,
       }
     `);
+  });
+});
+
+describe("analytics event usage query", () => {
+  it("counts the events and logs destinations that debit analytics_events", () => {
+    const query = getAnalyticsEventsUsageQueryForTest();
+    expect(query).toContain("FROM analytics_internal.events");
+    expect(query).toContain("FROM analytics_internal.logs");
+    expect(query).toContain("UNION ALL");
   });
 });
 

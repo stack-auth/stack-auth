@@ -1,7 +1,7 @@
 import withPostHog from "@/analytics";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
+import { tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { globalPrismaClient } from "@/prisma-client";
-import { getHexclaveServerApp } from "@/hexclave";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -284,9 +284,10 @@ export async function logEvent<T extends EventType[]>(
       // the event anyway (treat the quota as available)
       let isDebited = true;
       try {
-        const app = getHexclaveServerApp();
-        const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-        isDebited = await eventsItem.tryDecreaseQuantity(1);
+        const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [
+          { itemId: ITEM_IDS.analyticsEvents, quantity: 1 },
+        ]);
+        isDebited = debitResult.insufficientItemId == null;
       } catch (error) {
         captureError("events:analytics-events-quota-check", error);
       }
