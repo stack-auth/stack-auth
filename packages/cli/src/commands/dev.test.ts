@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, resolveWindowsCommand, shouldRestartDashboard, windowsChildProcessInvocation } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -103,41 +103,48 @@ describe("dashboardEnvWithStatePath", () => {
   });
 });
 
-describe("resolveWindowsCommand", () => {
-  it("prefers command shims over extensionless commands", () => {
-    const commandDir = mkdtempSync(join(tmpdir(), "hexclave-command-"));
-    const extensionlessCommandPath = join(commandDir, "npm");
-    const commandPath = join(commandDir, "npm.cmd");
-    writeFileSync(extensionlessCommandPath, "");
-    writeFileSync(commandPath, "");
+it.skipIf(process.platform !== "win32")("preserves argv through a Windows command shim", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "hexclave-windows-argv-"));
+  const outputPath = join(tempDir, "argv.json");
+  const scriptPath = join(tempDir, "print-argv.cjs");
+  const shimPath = join(tempDir, "print-argv.cmd");
+  const args = [
+    "plain",
+    "space containing argument",
+    "a&b",
+    "%PATH%",
+    "!PATH!",
+    "^caret",
+    'a"quoted"b',
+    '{"json":"value"}',
+    "trailing\\",
+    'back\\slash"quote',
+    "",
+  ];
 
-    expect(resolveWindowsCommand("npm", {
-      PATH: commandDir,
-      PATHEXT: ".com;.exe;.bat;.cmd",
-    })).toBe(commandPath);
+  writeFileSync(scriptPath, [
+    'const fs = require("node:fs");',
+    "const args = process.argv.slice(2);",
+    "console.log(JSON.stringify(args));",
+    'fs.writeFileSync(process.env.HEXCLAVE_TEST_ARGV_OUTPUT, JSON.stringify(args));',
+  ].join("\n"));
+  writeFileSync(shimPath, [
+    "@echo off",
+    `node "%~dp0print-argv.cjs" %*`,
+  ].join("\r\n"));
 
-    rmSync(commandDir, { recursive: true, force: true });
-  });
-});
-
-describe("windowsChildProcessInvocation", () => {
-  it("passes the command and args through environment indirection", () => {
-    const invocation = windowsChildProcessInvocation({
-      command: "npm",
-      args: ["space containing argument", "a&b"],
+  try {
+    await expect(runChildProcess({
+      command: shimPath,
+      args,
     }, {
-      ComSpec: "C:\\Windows\\System32\\cmd.exe",
-    });
-
-    expect(invocation.file).toBe("C:\\Windows\\System32\\cmd.exe");
-    expect(invocation.args.slice(0, 3)).toEqual(["/d", "/v:on", "/s"]);
-    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_COMMAND_SHELL!");
-    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_ARG_0_SHELL!");
-    expect(invocation.args[4]).toContain("!HEXCLAVE_WINDOWS_APP_ARG_1_SHELL!");
-    expect(invocation.env.HEXCLAVE_WINDOWS_APP_COMMAND).toBe("npm");
-    expect(invocation.env.HEXCLAVE_WINDOWS_APP_ARG_0).toBe("space containing argument");
-    expect(invocation.env.HEXCLAVE_WINDOWS_APP_ARG_1).toBe("a&b");
-  });
+      ...process.env,
+      HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+    })).resolves.toBe(0);
+    expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 describe("configErrorLogPrefix", () => {

@@ -1,7 +1,8 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
+import crossSpawn from "cross-spawn";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
-import { delimiter, dirname, extname, join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
@@ -15,19 +16,6 @@ type ChildCommand = {
   command: string,
   args: string[],
 };
-
-export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): string {
-  if (extname(command) !== "" || command.includes("/") || command.includes("\\")) {
-    return command;
-  }
-  const pathEntries = (env.PATH ?? env.Path ?? "").split(delimiter);
-  const pathExtensions = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
-  const candidates = pathEntries.flatMap((pathEntry) => [
-    ...pathExtensions.map((extension) => join(pathEntry, `${command}${extension}`)),
-    join(pathEntry, command),
-  ]);
-  return candidates.find((candidate) => existsSync(candidate)) ?? command;
-}
 
 type DevOptions = {
   configFile?: string,
@@ -738,48 +726,11 @@ child.on("error", (error) => {
 });
 `;
 
-export type WindowsChildProcessInvocation = {
-  file: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-};
-
-// Node refuses to spawn .cmd/.bat files without an interpreter after its CVE-2024-27980 hardening.
-// Pass user text through environment variables with delayed expansion so cmd never parses it as separators;
-// the HEXCLAVE_WINDOWS_APP_* variables are inherited by the app process as an intentional tradeoff.
-export function windowsChildProcessInvocation(command: ChildCommand, env: NodeJS.ProcessEnv): WindowsChildProcessInvocation {
-  const resolvedCommand = resolveWindowsCommand(command.command, env);
-  const commandEnv = {
-    ...env,
-    HEXCLAVE_WINDOWS_APP_COMMAND: resolvedCommand,
-    HEXCLAVE_WINDOWS_APP_COMMAND_SHELL: resolvedCommand.replace(/"/g, "\\\""),
-    ...Object.fromEntries(command.args.flatMap((arg, index) => [
-      [`HEXCLAVE_WINDOWS_APP_ARG_${index}`, arg],
-      [`HEXCLAVE_WINDOWS_APP_ARG_${index}_SHELL`, arg.replace(/"/g, "\\\"")],
-    ])),
-  };
-  const commandLine = `"${[
-    `"!HEXCLAVE_WINDOWS_APP_COMMAND_SHELL!"`,
-    ...command.args.map((_, index) => `"!HEXCLAVE_WINDOWS_APP_ARG_${index}_SHELL!"`),
-  ].join(" ")}"`;
-  return {
-    file: env.ComSpec ?? "cmd.exe",
-    args: ["/d", "/v:on", "/s", "/c", commandLine],
-    env: commandEnv,
-  };
-}
-
-function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+export function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? (() => {
-        const invocation = windowsChildProcessInvocation(command, env);
-        return spawn(invocation.file, invocation.args, {
-          stdio: "inherit",
-          env: invocation.env,
-          windowsVerbatimArguments: true,
-        });
-      })()
+      // cross-spawn handles Windows command shims that Node cannot spawn directly.
+      ? crossSpawn(command.command, command.args, { stdio: "inherit", env })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
