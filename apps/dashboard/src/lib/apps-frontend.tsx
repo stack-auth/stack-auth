@@ -5,16 +5,16 @@ import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
-import ConvexLogo from "../../public/convex-logo.png";
-import NeonLogo from "../../public/neon-logo.png";
-import TanStackStartLogo from "../../public/tanstack-start-logo.png";
+import ConvexLogo from "../../public/convex-logo.webp";
+import NeonLogo from "../../public/neon-logo.webp";
+import TanStackStartLogo from "../../public/tanstack-start-logo.webp";
 import VercelLogo from "../../public/vercel-logo.svg";
 
 export type { AppId };
 
 // Helper to generate screenshot paths
 const getScreenshots = (appName: string, count: number): string[] => {
-  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
+  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.webp`);
 };
 
 export const DUMMY_ORIGIN = "https://example.com";
