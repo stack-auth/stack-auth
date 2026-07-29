@@ -2,7 +2,7 @@ import { InternalSession } from "@hexclave/shared/dist/sessions";
 import { AsyncCache } from "@hexclave/shared/dist/utils/caches";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { createGlobal, getGlobal } from "@hexclave/shared/dist/utils/globals";
+import { createGlobal, getGlobal, setGlobal } from "@hexclave/shared/dist/utils/globals";
 import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
 import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
@@ -174,23 +174,33 @@ export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
 
 
 function fetchBackendUrlsInBackground(primaryBaseUrl: string): void {
-  createGlobal('__stack-fetch-backend-urls-started', () => {
-    runAsynchronously(async () => {
-      try {
-        const res = await fetch(`${primaryBaseUrl}/api/v1/internal/backend-urls`);
-        if (!res.ok) {
-          return;
-        }
-        const data = await res.json();
-        if (!Array.isArray(data.urls) || !data.urls.every((u: unknown) => typeof u === 'string')) {
-          return;
-        }
-        createGlobal('__stack-fetched-backend-urls', () => data.urls as string[]);
-      } catch (e) {
-        captureError('fetch-backend-urls-in-background', e);
+  // The started-marker MUST be set before the fetch is issued, NOT via
+  // createGlobal around this whole body: createGlobal only stores the value
+  // after its init returns, and the fetch below runs through the SDK's own
+  // fetch instrumentation, whose should-this-span-be-ignored check calls
+  // getApiUrls() → this function again. With a createGlobal-wrapped body that
+  // re-entrant call re-ran the init before the marker existed → infinite
+  // recursion (RangeError) on the first instrumented fetch of the process.
+  // Marker-first makes the re-entrant call a no-op; the discovery fetch itself
+  // then matches the primary base URL and is skipped by the ignore check.
+  if (getGlobal('__stack-fetch-backend-urls-started')) {
+    return;
+  }
+  setGlobal('__stack-fetch-backend-urls-started', true);
+  runAsynchronously(async () => {
+    try {
+      const res = await fetch(`${primaryBaseUrl}/api/v1/internal/backend-urls`);
+      if (!res.ok) {
+        return;
       }
-    });
-    return true;
+      const data = await res.json();
+      if (!Array.isArray(data.urls) || !data.urls.every((u: unknown) => typeof u === 'string')) {
+        return;
+      }
+      createGlobal('__stack-fetched-backend-urls', () => data.urls as string[]);
+    } catch (e) {
+      captureError('fetch-backend-urls-in-background', e);
+    }
   });
 }
 

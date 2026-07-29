@@ -8,7 +8,12 @@ import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _HexclaveClientAppImpl } from "../implementations";
 import type { ParentRef, Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
-import { AnalyticsOptions } from "../implementations/session-replay";
+// Type-only, and from analytics-config (not session-replay): a value import of
+// the recorder module here would defeat the lazy analytics loading.
+import type { AnalyticsOptions, AnalyticsOptionsJson } from "../implementations/analytics-config";
+import type { ObservabilityOptions } from "../implementations/observability-config";
+import type { TelemetryOptions } from "../implementations/telemetry-config";
+import type { Logger } from "../implementations/logs";
 
 /** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
@@ -39,10 +44,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   noAutomaticPrefetch?: boolean,
 
   /**
-   * Options for analytics and session recording. Replays are enabled by default;
-   * set `{ replays: { enabled: false } }` to opt out.
+   * Product analytics and session-recording options.
    */
   analytics?: AnalyticsOptions,
+  /** Code observability options for errors, logs, spans, and propagation. */
+  observability?: ObservabilityOptions,
+  /** Shared telemetry delivery lifecycle options. */
+  telemetry?: TelemetryOptions,
 } & (
   { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }
 ) & (
@@ -51,7 +59,24 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
 
 
 /** @deprecated Use `HexclaveClientAppJson` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
-export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined } & {
+export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = {
+  baseUrl?: string | { browser: string, server: string },
+  extraRequestHeaders?: Record<string, string>,
+  projectId?: ProjectId,
+  publishableClientKey?: string,
+  urls?: HandlerUrlOptions,
+  oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
+  tokenStore?: TokenStoreInit<HasTokenStore>,
+  redirectMethod?: RedirectMethod,
+  devTool?: boolean | "auto",
+  noAutomaticPrefetch?: boolean,
+  inheritsFrom?: undefined,
+  analytics?: AnalyticsOptionsJson,
+  observability?: ObservabilityOptions,
+  // Only the `resource` half of TelemetryOptions crosses the serialization boundary:
+  // `telemetryOptionsToJson` drops `waitUntil`, since a runtime hook can't survive
+  // being serialized into the client payload and re-hydrated on the other side.
+  telemetry?: Pick<TelemetryOptions, "resource">,
   uniqueIdentifier: string,
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
@@ -124,21 +149,37 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
 
     /**
+     * Native structured logging: `logger.trace/debug/info/warn/error(message, data?)`
+     * records a `$log` event in the analytics events table (the same place
+     * automatic console capture writes to). Fire-and-forget and guaranteed never to throw into your code:
+     * invalid structured data is dropped with a console warning, and
+     * environments without a delivery path warn once and drop. Messages are
+     * truncated to 8KB; `data` follows the same rules as event data. Logs
+     * carry the same ambient context as events (current page view, enclosing
+     * `withSpan()` frames).
+     */
+    readonly logger: Logger,
+
+    /**
      * Starts a custom span (a time interval). The span is written immediately
      * as an open interval and re-written when data changes or it ends — a span
      * that is never ended (e.g. the tab closed) stays visible as an open
-     * interval. Invalid input and unavailable analytics throw synchronously
-     * instead of returning a span that silently discards updates.
+     * interval. Invalid input throws synchronously; when the ENVIRONMENT makes
+     * telemetry impossible (e.g. during server-side rendering on a client
+     * app), an inert no-op span is returned instead — all its methods are safe
+     * to call and `ref()` keeps the id it would have had — so isomorphic code
+     * does not need environment branches around span calls.
      */
     startSpan(spanType: string, options?: StartSpanOptions): Span,
 
     /**
      * Registers a span as an ambient parent for all subsequently tracked
-     * custom events and spans (additive with explicit `parentIds`). Ending the
-     * span automatically unregisters it.
+     * custom events and spans. All ambient and explicit parents must describe
+     * one ancestry path; sibling paths are rejected. Ending the span
+     * automatically unregisters it.
      */
     setGlobalSpan(span: Span): void,
-    unsetGlobalSpan(span: Span): void,
+    clearGlobalSpan(span: Span): void,
 
     /**
      * Sends all buffered analytics immediately and settles in-flight sends.
@@ -166,7 +207,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     /**
      * The cross-tier span-propagation headers (`x-hexclave-span-context`) for a
      * request the SDK cannot attach them to itself — `fetch` to same-origin (and
-     * `analytics.spanPropagation.targets`) already gets them automatically, so
+     * `observability.spanPropagation.allowedOrigins`) already gets them automatically, so
      * this is the escape hatch for other transports (XHR, sendBeacon, WebSocket
      * handshakes) or manually-built requests. Carries the same ambient context an
      * event tracked right now would get: the per-tab replay segment, global spans,

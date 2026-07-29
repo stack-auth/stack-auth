@@ -36,6 +36,15 @@
         "default": "./dist/tanstack-start-server-context.server.js"
       }
     },
+    "./tanstack-start": {
+      "types": "./dist/integrations/tanstack-start.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/tanstack-start.js"
+      },
+      "require": {
+        "default": "./dist/integrations/tanstack-start.js"
+      }
+    },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {

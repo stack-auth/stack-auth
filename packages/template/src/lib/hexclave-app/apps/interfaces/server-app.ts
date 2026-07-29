@@ -10,6 +10,7 @@ import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamC
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _HexclaveServerAppImpl } from "../implementations";
 import type { Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
+import type { Logger } from "../implementations/logs";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
@@ -51,8 +52,25 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * session + the `x-hexclave-span-context` header the browser SDK attaches
      * automatically. With `request`, `userId` is derived from the session unless
      * explicitly overridden.
+     *
+     * When the framework integration registered an ambient request provider
+     * (Next.js: `hexclaveInstrumentation().register()`), calls WITHOUT
+     * `request` made inside a request scope attribute to the caller's session
+     * automatically — `request` remains as the explicit override.
      */
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string, request?: RequestLike }): Promise<void>,
+
+    /**
+     * Server-side native logging (same API as the client `logger`): `$log`
+     * events through the server telemetry buffer. Inside a
+     * `withSpan({ request })` scope — or any request scope when an ambient
+     * request provider is registered (Next.js:
+     * `hexclaveInstrumentation().register()`) — logs automatically link to the
+     * caller's client session (page view, `$http-client` fetch span,
+     * session-replay ancestry) just like server events — no context threading
+     * needed.
+     */
+    readonly logger: Logger,
 
     /**
      * Server-side variant of `startSpan`: attribution is explicit via `userId`.
@@ -71,6 +89,9 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * callback) under the caller's client session, resolved from the session + the
      * `x-hexclave-span-context` header. This is the primitive the framework
      * adapters build on — with an adapter you never pass `request` yourself.
+     * With an ambient request provider registered (Next.js:
+     * `hexclaveInstrumentation().register()`), bare `withSpan(type, fn)` calls
+     * inside a request scope adopt the ambient request the same way.
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
     withSpan<T>(spanType: string, options: StartSpanOptions & { userId?: string, request?: RequestLike }, fn: (span: Span) => Promise<T> | T): Promise<T>,

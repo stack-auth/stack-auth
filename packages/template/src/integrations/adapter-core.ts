@@ -85,6 +85,9 @@ export async function runAdapterSpan<T>(
     data: Record<string, unknown>,
     link?: AdapterSpanLink,
     telemetry: AdapterTelemetryOptions | undefined,
+    /** Backdated span start — for hook-based adapters (Elysia's plugin) that
+     * materialize the span at response time but measured from request receipt. */
+    startedAtMs?: number,
   },
   fn: (span: Span | null) => Promise<T>,
 ): Promise<T> {
@@ -96,7 +99,7 @@ export async function runAdapterSpan<T>(
   const data = { ...info.data, ...custom?.data ?? {} };
   return await app.withSpan(
     spanType,
-    { ...info.link, data },
+    { ...info.link, data, ...info.startedAtMs !== undefined ? { startedAtMs: info.startedAtMs } : {} },
     (span) => fn(span),
   );
 }
@@ -113,6 +116,8 @@ export async function runRequestSpan<T>(
     defaultSpanType: string,
     data: Record<string, unknown>,
     telemetry: AdapterTelemetryOptions | undefined,
+    /** See runAdapterSpan. */
+    startedAtMs?: number,
   },
   fn: (span: Span | null) => Promise<T>,
 ): Promise<T> {

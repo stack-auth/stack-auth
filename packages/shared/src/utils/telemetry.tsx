@@ -4,51 +4,26 @@ import { HexclaveAssertionError } from "./errors";
 
 const tracer = trace.getTracer('stack-tracer');
 
-// Custom (user-defined) event/span type names: must not start with `$` (reserved
-// for system types), start with a letter, and stay within 64 chars. Shared by
-// the SDK and analytics batch route so local validation cannot drift from the
-// server's batch-level rejection rules.
-export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
-// The released browser tracker flushes at roughly 64 KB per batch. Using that
-// same ceiling for every event/span preserves its generated payloads while
-// giving current custom telemetry one bounded validation contract.
-export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
-export const CUSTOM_TELEMETRY_MAX_PARENT_CHAIN = 10;
-
-// System (`$`-prefixed) EVENT types the analytics batch route accepts on the
-// wire. `$page-view` is span-only in current SDKs (see CLIENT_SYSTEM_SPAN_TYPES)
-// but remains accepted here so older trackers that still dual-emit a page-view
-// EVENT are not 400'd. Shared so the SDK and the route can never disagree
-// about which `$` names are valid — an unknown `$` type 400s the whole batch.
-export const SYSTEM_EVENT_TYPES = [
-  "$page-view",
-  "$click",
-  "$form-submit",
-  "$window-resize",
-  "$copy",
-  "$cut",
-  "$paste",
-  "$context-menu",
-  "$print",
-  "$fullscreen-exit",
-] as const;
-export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
-
-// System (`$`-prefixed) SPAN types the browser SDK is allowed to WRITE through
-// the analytics batch route (versioned upserts, same pipeline as custom spans).
-// `$page-view` is the canonical page-view write path (interval + hierarchy
-// parent). Metrics/dashboard SQL that need page views query spans directly —
-// they are never projected into default.events. Server-derived system spans
-// ($refresh-token, $session-replay, $session-replay-segment) are intentionally
-// NOT here — they can never be written by a client.
-export const CLIENT_SYSTEM_SPAN_TYPES = [
-  "$page-view",
-  "$away",
-  "$offline",
-] as const;
-export type ClientSystemSpanType = typeof CLIENT_SYSTEM_SPAN_TYPES[number];
-
-export const PAGE_VIEW_SPAN_TYPE = "$page-view";
+// The analytics wire-contract constants used to live here, but this module
+// eagerly initializes @opentelemetry/api (the tracer above), and the client
+// SDK's event tracker imports the constants — which dragged OTel into every
+// customer's browser bundle. They now live in the dependency-free
+// ./analytics-wire module; re-exported here so backend imports keep working.
+export {
+  CLIENT_SYSTEM_SPAN_TYPES,
+  CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES,
+  CUSTOM_TELEMETRY_MAX_PARENT_CHAIN,
+  CUSTOM_TELEMETRY_NAME_RE,
+  HTTP_CLIENT_SPAN_TYPE,
+  PAGE_VIEW_SPAN_TYPE,
+  SYSTEM_EVENT_TYPES,
+  TELEMETRY_UUID_RE,
+  buildTraceparent,
+  uuidToW3cSpanId,
+  uuidToW3cTraceId,
+  type ClientSystemSpanType,
+  type SystemEventType,
+} from "./analytics-wire";
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
   return async (...args: P) => {

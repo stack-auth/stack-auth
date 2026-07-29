@@ -63,13 +63,24 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type ParentRef, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
-import { encodeSpanContextHeader, flattenParentRefsToIds, installFetchSpanPropagation, SPAN_CONTEXT_HEADER, type SpanPropagationContext } from "./span-propagation";
+// NOTE: no value import of ./event-tracker or ./session-replay here — the
+// analytics runtime is lazy-loaded by ClientAnalytics; a static value import
+// would put ~2k lines of autocapture back into every initial bundle.
+import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type ParentRef, type Span, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { ClientAnalytics } from "./client-analytics";
+import { normalizeErrorCaptureOptions } from "./error-capture";
+import { createLogger, installConsoleCapture, type LogEmitItem, type Logger } from "./logs";
+import { normalizeNetworkCaptureOptions, type NetworkCaptureConfig } from "./network-capture";
+import { createInertSpanHandle } from "./span-handle";
+import { encodeSpanContextHeader, installFetchSpanPropagation, resolveParentRefsToPath, SPAN_CONTEXT_HEADER, trustedDomainsToPropagationOrigins, type SpanPropagationContext } from "./span-propagation";
+import { installXhrSpanPropagation } from "./xhr-instrumentation";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
-import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
+import { AnalyticsOptions, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./analytics-config";
 import { createAnonymousAnalyticsTokenStore } from "./analytics-session";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, ObservabilityOptions, observabilityOptionsFromJson, observabilityOptionsToJson } from "./observability-config";
+import { requireTelemetryResource, snapshotTelemetryOptions, TelemetryOptions, telemetryOptionsFromJson, telemetryOptionsToJson } from "./telemetry-config";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -79,6 +90,24 @@ import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 import { mountPushedConfigErrorOverlay } from "../../../../pushed-config-error-overlay";
 // END_PLATFORM
+
+export function shouldIgnoreTelemetryDeliveryUrl(url: string, analyticsBaseUrl: string, currentOrigin?: string): boolean {
+  let target: URL;
+  let analyticsBase: URL;
+  try {
+    target = new URL(url, currentOrigin);
+    analyticsBase = new URL(analyticsBaseUrl, currentOrigin);
+  } catch {
+    return false;
+  }
+  if (target.origin !== analyticsBase.origin) return false;
+
+  const basePath = analyticsBase.pathname.replace(/\/+$/, "");
+  return [
+    `${basePath}/api/v1/analytics/events/batch`,
+    `${basePath}/api/v1/session-replays/batch`,
+  ].includes(target.pathname);
+}
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -261,8 +290,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
 
   protected readonly _analyticsOptions: AnalyticsOptions | undefined;
-  private _sessionRecorder: SessionRecorder | null = null;
-  protected _eventTracker: EventTracker | null = null;
+  protected readonly _observabilityOptions: ObservabilityOptions | undefined;
+  protected readonly _telemetryOptions: TelemetryOptions | undefined;
+  // Normalized ObservabilityOptions.network ($http-client capture) — validated at
+  // construction; shared by the browser wrappers and (on subclasses) the
+  // server outbound-fetch instrumentation.
+  protected readonly _networkCaptureConfig: NetworkCaptureConfig;
+  // The lazily-loading front for the browser analytics runtime (event tracker
+  // + session recorder). Non-null exactly when browser analytics is active for
+  // this app — subclasses use that as the browser/server telemetry dispatch.
+  protected _clientAnalytics: ClientAnalytics | null = null;
   private _anonymousAnalyticsTokenStore: Store<TokenObject> | null = null;
   private _anonymousAnalyticsSignUpInProgress: Promise<InternalSession> | null = null;
 
@@ -712,6 +749,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
+    this._observabilityOptions = resolvedOptions.observability;
+    this._telemetryOptions = snapshotTelemetryOptions(resolvedOptions.telemetry);
+    // Validates the user's network options (mutually exclusive
+    // allowOrigins/denyOrigins, sampleRate bounds) — contradictory input must
+    // fail HERE, at construction, not silently at capture time.
+    this._networkCaptureConfig = normalizeNetworkCaptureOptions(this._observabilityOptions?.network);
 
     // Client analytics (events + replays) needs a refreshable client session.
     // Apps authenticated via projectOwnerSession use HexclaveAdminInterface, whose
@@ -721,58 +764,100 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // internal StackClientApp, not on per-project owned admin apps.
     const canRefreshClientAccessTokens = !("projectOwnerSession" in this._interface.options);
     const analyticsEnabled = canRefreshClientAccessTokens && this._analyticsOptions?.enabled !== false;
+    const observabilityEnabled = canRefreshClientAccessTokens && this._observabilityOptions?.enabled !== false;
+    const telemetryResource = analyticsEnabled || observabilityEnabled
+      ? requireTelemetryResource(this._telemetryOptions)
+      : null;
 
-    const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
-    // One per-tab id shared by the SessionRecorder and EventTracker, so replay
-    // chunks and analytics events from the same tab report the same
-    // session_replay_segment_id (they used to each mint their own, which made
-    // event rows impossible to correlate to a replay tab).
-    const sessionReplaySegmentId = generateUuid();
-    if (analyticsEnabled && isBrowserLike() && sessionReplayOptions.enabled) {
-      this._sessionRecorder = new SessionRecorder({
+    const sessionReplayOptions = {
+      ...getSessionReplayOptions(this._analyticsOptions),
+      enabled: analyticsEnabled && getSessionReplayOptions(this._analyticsOptions).enabled,
+    };
+    if ((analyticsEnabled || observabilityEnabled) && isBrowserLike()) {
+      // The facade is constructed eagerly (it mints the per-tab segment id the
+      // propagation wrapper below needs immediately), but the tracker/recorder
+      // modules themselves load lazily — see ClientAnalytics.
+      this._clientAnalytics = new ClientAnalytics({
         projectId: this.projectId,
-        sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await this._getAnalyticsSession(), opts);
-        },
-        sessionReplaySegmentId,
-      }, sessionReplayOptions);
-      this._sessionRecorder.start();
-    }
-
-    if (analyticsEnabled && isBrowserLike()) {
-      this._eventTracker = new EventTracker({
-        projectId: this.projectId,
-        sendBatch: async (body, opts) => {
+        resource: telemetryResource ?? throwErr("Telemetry resource was validated above"),
+        sendEventBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getAnalyticsSession(), opts);
         },
-        sessionReplaySegmentId,
-        registerBackgroundTask: this._analyticsOptions?.waitUntil,
+        sendReplayBatch: async (body, opts) => {
+          return await this._interface.sendSessionReplayBatch(body, await this._getAnalyticsSession(), opts);
+        },
+        replayOptions: sessionReplayOptions,
+        productAnalyticsEnabled: analyticsEnabled,
+        registerBackgroundTask: this._telemetryOptions?.waitUntil,
         getPropagationPolicy: () => ({
           selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
-          allowedOrigins: this._analyticsOptions?.spanPropagation?.targets ?? [],
+          ...this._getPropagationOriginPolicy(),
         }),
         integritySignals: this._analyticsOptions?.integritySignals === true,
+        networkCapture: this._networkCaptureConfig,
+        shouldIgnoreFetchUrl: (url) => this._shouldIgnoreOwnApiFetchUrl(url),
+        errorCapture: normalizeErrorCaptureOptions(this._observabilityOptions?.errorCapture),
+        release: telemetryResource?.service.version ?? null,
+        environment: telemetryResource?.deploymentEnvironmentName ?? null,
+        sdkVersion: clientVersion,
       });
-      this._eventTracker.start();
     }
 
-    // Cross-tier span propagation: attach the span-context header to same-origin
-    // outgoing fetches so a server `withSpan({ request })` parents under this tab's
-    // client session. Gated on a live event tracker (the current per-tab id source,
-    // which reflects sign-out rotation). Same-origin only unless extra exact origins
-    // are allowlisted. Multiple app instances share one fail-closed wrapper.
-    if (
-      analyticsEnabled
-      && isBrowserLike()
-      && this._eventTracker
-      && this._analyticsOptions?.spanPropagation?.enabled !== false
-    ) {
-      const allowedOrigins = this._analyticsOptions?.spanPropagation?.targets ?? [];
-      installFetchSpanPropagation({
-        getContext: () => this._getSpanPropagationContext(),
-        getSelfOrigin: () => (typeof window !== "undefined" ? window.location.origin : null),
-        getAllowedOrigins: () => allowedOrigins,
+    // Automatic console mirroring into `$log` events (warn+error by default —
+    // see DEFAULT_CONSOLE_CAPTURE_LEVELS). Now that this is on by default, it
+    // installs ONLY where this app actually has a delivery path: here that
+    // means an active browser analytics facade (enabled + browser + a
+    // refreshable client session — notably NOT owner-session admin apps, which
+    // would steal the global console and drop everything). The server subclass
+    // installs its own capture against the server telemetry buffer. The patch
+    // handler dispatches lazily through `this.logger`, so installing
+    // mid-construction is safe — and our own constructor-time warns are
+    // skipped by the "Hexclave" prefix rule anyway.
+    const captureConsoleLevels = this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS;
+    if (observabilityEnabled && captureConsoleLevels.length > 0 && this._clientAnalytics !== null) {
+      installConsoleCapture({
+        levels: captureConsoleLevels,
+        // A dedicated origin:"console" logger (not this.logger): console items
+        // must never trigger the lazy analytics load (they queue in the
+        // facade's bounded pre-load buffer instead) — see LogEmitItem.origin.
+        logger: createLogger({ emit: (item) => this._emitLog(item), origin: "console" }),
+        projectId: this.projectId,
+        serviceName: telemetryResource?.service.name ?? throwErr("Telemetry resource was validated above"),
       });
+    }
+
+    // Cross-tier request instrumentation: the fetch + XHR wrappers do two
+    // independent things per outgoing request — attach the span-context header
+    // to same-origin (or allowlisted) targets so a server
+    // `withSpan({ request })` parents under this tab's client session
+    // (controlled by observability.spanPropagation), and open one `$http-client`
+    // span per request as the cross-tier bridge node (controlled by
+    // observability.network). Gated on active browser analytics (the facade is the
+    // current per-tab id source, which reflects sign-out rotation). Installed
+    // at CONSTRUCTION time — before the lazy analytics modules load — so the
+    // very first instrumented requests already carry the segment identity and
+    // get bridge spans; the propagation modules are tiny and pull no
+    // autocapture code. Multiple app instances share one fail-closed wrapper.
+    if (observabilityEnabled && isBrowserLike() && this._clientAnalytics) {
+      const clientAnalytics = this._clientAnalytics;
+      const propagationEnabled = this._observabilityOptions?.spanPropagation?.enabled !== false;
+      const wrapperOptions = {
+        // spanPropagation.enabled only silences the HEADER; $http-client span
+        // capture (network.enabled) is a separate knob handled inside
+        // beginHttpRequestSpan.
+        getContext: () => (propagationEnabled ? this._getSpanPropagationContext() : null),
+        getSelfOrigin: () => (typeof window !== "undefined" ? window.location.origin : null),
+        // Read through the policy method on every request: the trusted-domain
+        // half resolves asynchronously after the first read, and a snapshot
+        // taken at construction would never pick it up.
+        getAllowedOrigins: () => this._getPropagationOriginPolicy().allowedOrigins,
+        getAllowLocalhostOrigins: () => this._getPropagationOriginPolicy().allowLocalhost,
+        beginRequestSpan: (info: Parameters<ClientAnalytics["beginHttpRequestSpan"]>[0]) => clientAnalytics.beginHttpRequestSpan(info),
+      };
+      installFetchSpanPropagation(wrapperOptions);
+      // Same provider object for the XHR patch, so both transports share one
+      // policy and one span factory.
+      installXhrSpanPropagation(wrapperOptions);
     }
 
     if (
@@ -1415,7 +1500,51 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return getTrustedParentDomain(currentDomain, (await this._getTrustedRedirectConfig()).trustedDomains);
   }
 
-  protected _getBrowserCookieTokenStore(): Store<TokenObject> {
+  // Trusted-domain-derived propagation origins. Resolved asynchronously and at
+  // most once per app instance (the propagation decision itself is sync and
+  // fires on every outgoing request — it can only read a cell, never await).
+  private _trustedPropagationOrigins: readonly string[] = [];
+  private _trustedPropagationAllowLocalhost = false;
+  private _trustedPropagationOriginsPromise: Promise<void> | null = null;
+
+  /**
+   * The full origin policy for cross-tier span propagation: the explicit
+   * `spanPropagation.allowedOrigins` plus (unless `useTrustedDomains: false`)
+   * the exact origins derived from the project's trusted domains and the
+   * project's `allow_localhost` dev flag. The trusted-domain half loads
+   * asynchronously on the FIRST policy read (not at construction — apps that
+   * never propagate cross-origin shouldn't fetch the project config for
+   * this); until it resolves the policy is fail-closed to same-origin +
+   * explicit origins, so at worst the first few cross-origin requests skip
+   * the header — acceptable for best-effort telemetry, and the alternative
+   * (blocking a sync decision on a network fetch) is impossible anyway.
+   */
+  protected _getPropagationOriginPolicy(): { allowedOrigins: readonly string[], allowLocalhost: boolean } {
+    const explicit = this._observabilityOptions?.spanPropagation?.allowedOrigins ?? [];
+    if (this._observabilityOptions?.spanPropagation?.useTrustedDomains === false) {
+      return { allowedOrigins: explicit, allowLocalhost: false };
+    }
+    this._trustedPropagationOriginsPromise ??= (async () => {
+      try {
+        const config = await this._getTrustedRedirectConfig();
+        this._trustedPropagationOrigins = trustedDomainsToPropagationOrigins(config.trustedDomains);
+        this._trustedPropagationAllowLocalhost = config.allowLocalhost;
+      } catch (error) {
+        // Errors are handled HERE (warn + permanent fail-closed) rather than
+        // rethrown: the stored promise is a fire-and-forget latch nobody
+        // awaits. No retry: a failing project-config fetch means the SDK is
+        // broadly broken (auth needs the same config), and retrying
+        // per-request would hammer a failing endpoint.
+        console.warn("Hexclave analytics: could not load the project's trusted domains for span propagation; cross-origin propagation stays limited to spanPropagation.allowedOrigins:", error);
+      }
+    })();
+    return {
+      allowedOrigins: this._trustedPropagationOrigins.length === 0 ? explicit : [...explicit, ...this._trustedPropagationOrigins],
+      allowLocalhost: this._trustedPropagationAllowLocalhost,
+    };
+  }
+
+  protected _getBrowserCookieTokenStore(options?: { duringRender?: boolean }): Store<TokenObject> {
     if (!isBrowserLike()) {
       throw new Error("Cannot use cookie token store on the server!");
     }
@@ -1461,8 +1590,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           }
         }
       });
-    } else {
-      // This getter runs during React renders (via _useTokenStore → useUser etc.), so we must not call
+    } else if (options?.duringRender) {
+      // Render-path callers (via _useTokenStore → useUser etc.) must not call
       // Store.set() synchronously here: set() synchronously notifies subscribers, and useSyncExternalStore
       // subscribers react by scheduling re-renders on *other* mounted components, which triggers React's
       // "Cannot update a component while rendering a different component" error (it would also write
@@ -1478,25 +1607,35 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           store.set(currentValue);
         }
       });
+    } else {
+      // Async callers (e.g. _getSession → _fetchCurrentRefreshTokenIdIfSignedIn) rely on the contract
+      // "the store reflects the CURRENT browser cookie": a one-microtask-stale store would mint (and
+      // cache, by session key) an InternalSession from an outdated refresh token. Outside a render
+      // there is no set()-during-render hazard, so check synchronously.
+      const oldValue = this._storedBrowserCookieTokenStore.get();
+      const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
+      if (!deepPlainEquals(currentValue, oldValue)) {
+        this._storedBrowserCookieTokenStore.set(currentValue);
+      }
     }
 
     return this._storedBrowserCookieTokenStore;
   };
-  protected _getOrCreateTokenStore(cookieHelper: CookieHelper, overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
+  protected _getOrCreateTokenStore(cookieHelper: CookieHelper, overrideTokenStoreInit?: TokenStoreInit, options?: { duringRender?: boolean }): Store<TokenObject> {
     const tokenStoreInit = overrideTokenStoreInit === undefined ? this._tokenStoreInit : overrideTokenStoreInit;
 
     switch (tokenStoreInit) {
       case "cookie": {
         // IF_PLATFORM tanstack-start
         if (!isBrowserLike()) {
-          return this._getOrCreateTokenStore(cookieHelper, "nextjs-cookie");
+          return this._getOrCreateTokenStore(cookieHelper, "nextjs-cookie", options);
         }
         // END_PLATFORM
-        return this._getBrowserCookieTokenStore();
+        return this._getBrowserCookieTokenStore(options);
       }
       case "nextjs-cookie": {
         if (isBrowserLike()) {
-          return this._getBrowserCookieTokenStore();
+          return this._getBrowserCookieTokenStore(options);
         } else {
           const tokens = this._getTokensFromCookies(cookieHelper.getAll());
           const store = new Store<TokenObject>(tokens);
@@ -1602,12 +1741,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
     // IF_PLATFORM tanstack-start
     if (!isBrowserLike()) {
-      return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
+      return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit, { duringRender: true });
     }
     // END_PLATFORM
     suspendIfSsr();
     const cookieHelper = createBrowserCookieHelper();
-    const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit);
+    // duringRender: this hook body IS a React render — see _getBrowserCookieTokenStore.
+    const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit, { duringRender: true });
     return tokenStore;
   }
   // END_PLATFORM
@@ -4057,15 +4197,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
     // Clear analytics buffers before sign-out to prevent cross-user event leakage
-    this._eventTracker?.clearBuffer();
-    this._sessionRecorder?.clearBuffer();
+    this._clientAnalytics?.clearBuffer();
     // Then rotate the per-tab id (one fresh id, set on both trackers so they stay
     // in sync). Without this, a same-tab sign-in as a different user would inherit
     // the previous user's session_replay_segment_id and let their telemetry be
     // correlated in analytics.
-    const rotatedSessionReplaySegmentId = generateUuid();
-    this._eventTracker?.setSessionReplaySegmentId(rotatedSessionReplaySegmentId);
-    this._sessionRecorder?.setSessionReplaySegmentId(rotatedSessionReplaySegmentId);
+    this._clientAnalytics?.setSessionReplaySegmentId(generateUuid());
 
     await storeLock.withWriteLock(async () => {
       await this._interface.signOut(session);
@@ -4104,13 +4241,37 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   // Custom telemetry (see the StackClientApp interface for user-facing docs).
-  // The tracker only exists in browser-like environments with analytics enabled
-  // and a persistent token store. Calls outside that environment fail visibly
-  // instead of returning handles that silently discard telemetry.
+  // Browser analytics only exists in browser-like environments with analytics
+  // enabled and a persistent token store. trackEvent outside that environment
+  // fails visibly (a rejected, pre-caught promise) instead of silently
+  // dropping; startSpan returns an inert handle instead — see below.
+
+  // Lazily-built logger (see the interface docs). One instance per app so the
+  // "unavailable" warn-once state is per app, not per call site.
+  private _logger: Logger | null = null;
+
+  get logger(): Logger {
+    this._logger ??= createLogger({ emit: (item) => this._emitLog(item) });
+    return this._logger;
+  }
+
+  /**
+   * The environment-specific `$log` sink behind `app.logger`. Browser: rides
+   * the tracker event path (with pre-load adoption). Non-browser client apps
+   * have no delivery path — "unavailable" makes the logger warn once. The
+   * server subclass overrides this with the server telemetry buffer.
+   */
+  protected _emitLog(item: LogEmitItem): "ok" | "unavailable" {
+    if (this._observabilityOptions?.enabled === false || this._clientAnalytics === null) return "unavailable";
+    // Fire-and-forget is the logger contract; the promise is pre-caught and
+    // delivery failures already warn inside the tracker's flush path.
+    this._clientAnalytics.trackLogEvent(item).catch(() => {});
+    return "ok";
+  }
 
   trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {
-    if (this._eventTracker) {
-      return this._eventTracker.trackCustomEvent(eventType, data, options);
+    if (this._analyticsOptions?.enabled !== false && this._clientAnalytics) {
+      return this._clientAnalytics.trackCustomEvent(eventType, data, options);
     }
     const nameError = getCustomTelemetryNameError("event", eventType);
     if (nameError) return rejectedPreCaught(nameError);
@@ -4122,37 +4283,40 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {
-    if (this._eventTracker) {
-      return this._eventTracker.startSpan(spanType, options);
+    if (this._observabilityOptions?.enabled !== false && this._clientAnalytics) {
+      return this._clientAnalytics.startSpan(spanType, options);
     }
-    const nameError = getCustomTelemetryNameError("span", spanType);
-    if (nameError) {
-      throw new Error(`Hexclave analytics: ${nameError}`);
-    }
-    const dataError = getCustomTelemetryDataError(options?.data);
-    if (dataError) {
-      throw new Error(`Hexclave analytics: ${dataError}`);
-    }
-    if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
-      throw new Error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
-    }
+    // Environment unavailability (SSR / non-browser) hands back an INERT span
+    // instead of throwing: isomorphic code — a hook or utility running on both
+    // server render and hydration — should not need an environment branch
+    // around every span call, and `withSpan` should simply run its callback.
+    // Only invalid INPUT still throws (identical messages to the browser
+    // path); the inert handle's lifecycle methods resolve without ever
+    // emitting a row.
+    assertValidSpanStartInput(spanType, options);
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
     if ("error" in resolved) {
       throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
-    throw new Error("Hexclave analytics: telemetry is unavailable in this environment");
+    return createInertSpanHandle({
+      spanId: generateUuid(),
+      spanType,
+      startedAtMs: options?.startedAtMs ?? Date.now(),
+      parentSpanIds: resolved.ids,
+      initialData: { ...options?.data ?? {} },
+    });
   }
 
   setGlobalSpan(span: Span): void {
-    this._eventTracker?.setGlobalSpan(span);
+    this._clientAnalytics?.setGlobalSpan(span);
   }
 
-  unsetGlobalSpan(span: Span): void {
-    this._eventTracker?.unsetGlobalSpan(span);
+  clearGlobalSpan(span: Span): void {
+    this._clientAnalytics?.clearGlobalSpan(span);
   }
 
   async flush(): Promise<void> {
-    await this._eventTracker?.flush();
+    await this._clientAnalytics?.flush();
   }
 
   withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>;
@@ -4167,19 +4331,38 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * The context an outgoing request should carry so backend telemetry links to
    * this tab's session: the per-tab replay segment plus the SAME ambient custom
    * ancestry a locally-tracked event would get — global spans first, then
-   * enclosing withSpan() frames, each contributing its full frozen chain —
-   * flattened root-first and deduped (the codec caps overflow to the nearest
-   * ancestors, mirroring resolveParentIds). `extraParents` adds explicit
-   * per-request parents on top. Null when there is nothing to propagate.
+   * enclosing withSpan() frames, each contributing its full frozen path. The
+   * paths must be compatible; sibling branches are never flattened into false
+   * ancestry. The codec caps overflow to the nearest ancestors, mirroring
+   * resolveParentIds. `extraParents` extends that path. Null when empty.
    */
+  /**
+   * Analytics and replay uploads must not produce `$http-client` spans: each
+   * such span would need another analytics upload, creating a self-sustaining
+   * flush loop. Other SDK API calls are intentionally captured so their
+   * traceparent connects browser/session ancestry to backend instrumentation.
+   *
+   * URL-based (not a re-entrancy flag) keeps timer and keepalive uploads
+   * covered. Exact path matching avoids suppressing customer traffic on
+   * same-origin proxy setups such as `baseUrl: "/hexclave-api"`.
+   */
+  protected _shouldIgnoreOwnApiFetchUrl(url: string): boolean {
+    const interfaceOptions = this._interface.options;
+    return shouldIgnoreTelemetryDeliveryUrl(
+      url,
+      (interfaceOptions.getAnalyticsBaseUrl ?? interfaceOptions.getBaseUrl)(),
+      typeof window !== "undefined" ? window.location.origin : undefined,
+    );
+  }
+
   protected _getSpanPropagationContext(extraParents?: ParentRef[], root?: boolean): SpanPropagationContext | null {
-    const tracker = this._eventTracker;
+    const tracker = this._clientAnalytics;
     if (!tracker) return null;
     // root drops the ambient custom parents (same meaning as TrackOptions.root) —
     // the precise-control path for interleaved async flows, where the browser's
     // shared sync stack could otherwise mix in another flow's frames. The session
     // attribution (segment id) is identity, not parenting, so it always rides.
-    const customParentSpanIds = flattenParentRefsToIds(root ? [] : tracker.getAmbientParentRefs(), extraParents);
+    const customParentSpanIds = resolveParentRefsToPath(root ? [] : tracker.getAmbientParentRefs(), extraParents);
     const segmentId = tracker.getSessionReplaySegmentId();
     if (!segmentId && customParentSpanIds.length === 0) return null;
     // Like the segment id, the page ancestry is identity, not parenting — it
@@ -4361,10 +4544,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           return clientApp as any;
         }
 
-        const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
+        const { analytics, observability, telemetry, ...restJson } = omit(json, ["uniqueIdentifier"]);
         return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
+          observability: observabilityOptionsFromJson(observability),
+          telemetry: telemetryOptionsFromJson(telemetry),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
@@ -4396,6 +4581,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           extraRequestHeaders: this._options.extraRequestHeaders,
           devTool: this._options.devTool,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
+          observability: observabilityOptionsToJson(this._observabilityOptions),
+          telemetry: telemetryOptionsToJson(this._telemetryOptions),
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {

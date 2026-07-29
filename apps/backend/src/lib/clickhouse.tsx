@@ -57,8 +57,38 @@ export function getClickhouseAdminClient() {
   return createClickhouseClient("admin", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
+let sharedClickhouseAdminClient: ClickHouseClient | undefined;
+
+/**
+ * Process-wide admin client for hot request paths (telemetry ingest and other
+ * per-request reads/writes). Each client owns a keep-alive HTTP connection
+ * pool, so creating one per request either leaks sockets (if never closed) or
+ * throws away connection reuse (if closed per call — a full TCP handshake per
+ * request). This one is created lazily and NEVER closed; its sockets live for
+ * the process lifetime, which is exactly right for a serverful deployment.
+ *
+ * Use getClickhouseAdminClient() (and close it in a finally) only for one-shot
+ * work outside the request path — migrations, scripts, batch jobs — where a
+ * bounded lifetime matters more than connection reuse.
+ */
+export function getSharedClickhouseAdminClient(): ClickHouseClient {
+  sharedClickhouseAdminClient ??= getClickhouseAdminClient();
+  return sharedClickhouseAdminClient;
+}
+
+let sharedClickhouseExternalClient: ClickHouseClient | undefined;
+
+/**
+ * Process-wide limited-user client for analytics queries. Query endpoints are
+ * hot paths; constructing a client per request creates a new keep-alive pool
+ * that is never closed, so sockets accumulate while no connection is reused.
+ */
 export function getClickhouseExternalClient() {
-  return createClickhouseClient("external", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
+  sharedClickhouseExternalClient ??= createClickhouseClient(
+    "external",
+    getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
+  );
+  return sharedClickhouseExternalClient;
 }
 
 // Safety net for heavy analytical reads against `analytics_internal.events`:
@@ -80,12 +110,19 @@ export const METRICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
   join_algorithm: "grace_hash,parallel_hash,hash" as ClickHouseSettings["join_algorithm"],
 };
 
+let sharedClickhouseMetricsClient: ClickHouseClient | undefined;
+
+/**
+ * Shared metrics client. Its settings are immutable and every caller is a
+ * request path, so a process-lifetime pool provides bounded connection reuse.
+ */
 export function getClickhouseAdminClientForMetrics() {
-  return createClickhouseClient(
+  sharedClickhouseMetricsClient ??= createClickhouseClient(
     "admin",
     getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
     METRICS_CLICKHOUSE_SETTINGS,
   );
+  return sharedClickhouseMetricsClient;
 }
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {

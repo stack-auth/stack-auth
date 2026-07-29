@@ -4,7 +4,7 @@ import { ensureAsyncContext, getAsyncLocalStorage, isAsyncContextSettled, syncSt
 /**
  * Ambient span context for withSpan(): tracks the stack of enclosing withSpan
  * frames so telemetry created inside the callback automatically parents under
- * them (additive with global spans and explicit parentIds).
+ * them (merged with compatible global spans and explicit parentIds).
  *
  * Two implementations behind one interface:
  *

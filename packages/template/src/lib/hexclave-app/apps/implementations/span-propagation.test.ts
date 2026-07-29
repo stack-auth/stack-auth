@@ -1,12 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Span } from "./event-tracker";
 import {
   SPAN_CONTEXT_HEADER,
   decodeSpanContextHeader,
   encodeSpanContextHeader,
-  flattenParentRefsToIds,
+  resolveParentRefsToPath,
   installFetchSpanPropagation,
   shouldPropagateSpanContext,
+  trustedDomainsToPropagationOrigins,
+  type RequestSpanOutcome,
   type SpanPropagationContext,
 } from "./span-propagation";
 
@@ -94,33 +96,38 @@ describe("span propagation header codec", () => {
   });
 });
 
-describe("flattenParentRefsToIds", () => {
-  it("contributes each ref's full frozen chain, root-first", () => {
-    // A global span (a→b) plus a nested withSpan frame (a→c): the ancestry a
-    // locally-tracked event would get, so the propagated backend span matches.
-    expect(flattenParentRefsToIds([
+describe("resolveParentRefsToPath", () => {
+  it("uses the longest compatible frozen chain, root-first", () => {
+    expect(resolveParentRefsToPath([
       { spanId: "b", parentSpanIds: ["a"] },
-      { spanId: "c", parentSpanIds: ["a"] },
+      { spanId: "c", parentSpanIds: ["a", "b"] },
     ])).toEqual(["a", "b", "c"]);
   });
 
-  it("dedupes across overlapping chains preserving first-seen order", () => {
-    expect(flattenParentRefsToIds([
+  it("stitches compatible overlapping paths after root truncation", () => {
+    expect(resolveParentRefsToPath([
       { spanId: "c", parentSpanIds: ["a", "b"] },
-      { spanId: "d", parentSpanIds: ["b"] },
+      { spanId: "d", parentSpanIds: ["b", "c"] },
     ])).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("appends explicit extras: raw string contributes only itself, refs/spans their chains", () => {
-    const live = { ref: () => ({ spanId: "s2", parentSpanIds: ["s1"] }) } as unknown as Span;
-    expect(flattenParentRefsToIds(
-      [{ spanId: "g", parentSpanIds: [] }],
-      ["raw", { spanId: "r2", parentSpanIds: ["r1"] }, live],
-    )).toEqual(["g", "raw", "r1", "r2", "s1", "s2"]);
+  it("rejects sibling refs instead of flattening them into a false ancestry path", () => {
+    expect(() => resolveParentRefsToPath([
+      { spanId: "b", parentSpanIds: ["a"] },
+      { spanId: "c", parentSpanIds: ["a"] },
+    ])).toThrow(/one ancestry path/);
+  });
+
+  it("appends raw ids as explicitly declared next parents", () => {
+    const live = { ref: () => ({ spanId: "s2", parentSpanIds: ["g", "s1"] }) } as unknown as Span;
+    expect(resolveParentRefsToPath(
+      [{ spanId: "s1", parentSpanIds: ["g"] }],
+      [live, "raw"],
+    )).toEqual(["g", "s1", "s2", "raw"]);
   });
 
   it("returns [] for no refs and no extras", () => {
-    expect(flattenParentRefsToIds([])).toEqual([]);
+    expect(resolveParentRefsToPath([])).toEqual([]);
   });
 });
 
@@ -157,6 +164,43 @@ describe("shouldPropagateSpanContext (same-origin policy)", () => {
 
   it("cannot resolve a relative url without a self origin, so excludes it", () => {
     expect(shouldPropagateSpanContext({ targetUrl: "/api/x", selfOrigin: null })).toBe(false);
+  });
+
+  it("admits localhost/loopback targets (any port) only with allowLocalhost", () => {
+    // Split-port local dev: frontend on :3000, api on :3001.
+    expect(shouldPropagateSpanContext({ targetUrl: "http://localhost:3001/api/x", selfOrigin: "http://localhost:3000", allowLocalhost: true })).toBe(true);
+    expect(shouldPropagateSpanContext({ targetUrl: "http://127.0.0.1:8080/x", selfOrigin: self, allowLocalhost: true })).toBe(true);
+    expect(shouldPropagateSpanContext({ targetUrl: "http://api.localhost/x", selfOrigin: self, allowLocalhost: true })).toBe(true);
+    // Off by default and never a bypass for non-loopback targets.
+    expect(shouldPropagateSpanContext({ targetUrl: "http://localhost:3001/api/x", selfOrigin: "http://localhost:3000" })).toBe(false);
+    expect(shouldPropagateSpanContext({ targetUrl: "https://api.stripe.com/v1/x", selfOrigin: self, allowLocalhost: true })).toBe(false);
+  });
+});
+
+describe("trustedDomainsToPropagationOrigins", () => {
+  it("derives exact origins from non-wildcard trusted domains and dedupes", () => {
+    expect(trustedDomainsToPropagationOrigins([
+      "https://app.example.com",
+      "https://app.example.com/handler",
+      "https://api.example.com:8443",
+      "http://staging.example.com",
+    ])).toEqual([
+      "https://app.example.com",
+      "https://api.example.com:8443",
+      "http://staging.example.com",
+    ]);
+  });
+
+  it("skips wildcard patterns (propagation stays exact-match, fail-closed)", () => {
+    expect(trustedDomainsToPropagationOrigins(["https://*.example.com", "https://**.example.com"])).toEqual([]);
+  });
+
+  it("skips invalid and non-http(s) entries instead of failing the whole list", () => {
+    expect(trustedDomainsToPropagationOrigins([
+      "not a url",
+      "hexclave-mobile-oauth-url://callback",
+      "https://good.example.com",
+    ])).toEqual(["https://good.example.com"]);
   });
 });
 
@@ -300,5 +344,178 @@ describe("installFetchSpanPropagation", () => {
       customParentSpanIds: [CUSTOM_A],
     });
     second?.();
+  });
+});
+
+describe("installFetchSpanPropagation with beginRequestSpan ($http-client bridge)", () => {
+  const SELF = "https://app.example.com";
+  const SPAN_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const EXPECTED_TRACEPARENT = "00-aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa-8aaaaaaaaaaaaaaa-01";
+
+  let calls: { input: unknown, init: RequestInit | undefined }[];
+  let originalFetch: typeof fetch;
+  let uninstall: (() => void) | null | undefined;
+  let nextResponse: () => Promise<Response>;
+
+  beforeEach(() => {
+    calls = [];
+    nextResponse = () => Promise.resolve({ status: 201 } as Response);
+    originalFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return nextResponse();
+    }) as typeof fetch;
+    (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
+  });
+
+  afterEach(() => {
+    uninstall?.();
+    uninstall = undefined;
+    (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
+  });
+
+  function sentHeaders(index = 0): Headers {
+    return new Headers(calls[index]?.init?.headers);
+  }
+
+  function installWithSpan(opts?: {
+    propagate?: boolean,
+    span?: null,
+    context?: SpanPropagationContext | null,
+  }) {
+    const begin = vi.fn((_info: { url: string, method: string, transport: string }) => {
+      if (opts?.span === null) return null;
+      return { spanUuid: SPAN_UUID, propagate: opts?.propagate ?? true, end };
+    });
+    const end = vi.fn((_outcome: RequestSpanOutcome) => {});
+    uninstall = installFetchSpanPropagation({
+      getContext: () => (opts?.context !== undefined ? opts.context : { projectId: "p", sessionReplaySegmentId: SEG }),
+      getSelfOrigin: () => SELF,
+      getAllowedOrigins: () => [],
+      beginRequestSpan: begin,
+    });
+    return { begin, end };
+  }
+
+  it("opens a span for every http(s) request — even cross-origin, where no header may ride", async () => {
+    const { begin, end } = installWithSpan();
+    await (globalThis as { fetch: typeof fetch }).fetch("https://third-party.example/data", { method: "POST" });
+    expect(begin).toHaveBeenCalledWith({ url: "https://third-party.example/data", method: "POST", transport: "fetch" });
+    expect(sentHeaders().get(SPAN_CONTEXT_HEADER)).toBeNull();
+    expect(sentHeaders().get("traceparent")).toBeNull();
+    // Ended on response headers, with the span never marked propagated.
+    await Promise.resolve();
+    expect(end).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: false });
+  });
+
+  it("skips span creation for non-http(s) targets", async () => {
+    const { begin } = installWithSpan();
+    await (globalThis as { fetch: typeof fetch }).fetch("data:text/plain,hi");
+    expect(begin).not.toHaveBeenCalled();
+  });
+
+  it("attaches httpClientSpanId + traceparent for a propagatable span on an in-policy request", async () => {
+    const { end } = installWithSpan();
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    const headers = sentHeaders();
+    expect(decodeSpanContextHeader(headers.get(SPAN_CONTEXT_HEADER))).toEqual({
+      projectId: "p",
+      sessionReplaySegmentId: SEG,
+      httpClientSpanId: SPAN_UUID,
+    });
+    expect(headers.get("traceparent")).toBe(EXPECTED_TRACEPARENT);
+    await Promise.resolve();
+    expect(end).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: true });
+  });
+
+  it("omits httpClientSpanId and traceparent for a maybe-kept span (propagate: false) — bridge coherence", async () => {
+    const { end } = installWithSpan({ propagate: false });
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    const headers = sentHeaders();
+    expect(decodeSpanContextHeader(headers.get(SPAN_CONTEXT_HEADER))).toEqual({
+      projectId: "p",
+      sessionReplaySegmentId: SEG,
+    });
+    expect(headers.get("traceparent")).toBeNull();
+    await Promise.resolve();
+    expect(end).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: false });
+  });
+
+  it("still attaches the plain context header when no span was created (sampled out / disabled)", async () => {
+    installWithSpan({ span: null });
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    const headers = sentHeaders();
+    expect(decodeSpanContextHeader(headers.get(SPAN_CONTEXT_HEADER))).toEqual({
+      projectId: "p",
+      sessionReplaySegmentId: SEG,
+    });
+    expect(headers.get("traceparent")).toBeNull();
+  });
+
+  it("never overwrites a caller-set traceparent (caller intent wins; span-context still rides)", async () => {
+    await (async () => {
+      const { end } = installWithSpan();
+      await (globalThis as { fetch: typeof fetch }).fetch("/api/x", { headers: { traceparent: "00-11111111111111111111111111111111-1111111111111111-01" } });
+      const headers = sentHeaders();
+      expect(headers.get("traceparent")).toBe("00-11111111111111111111111111111111-1111111111111111-01");
+      expect(decodeSpanContextHeader(headers.get(SPAN_CONTEXT_HEADER))?.httpClientSpanId).toBe(SPAN_UUID);
+      await Promise.resolve();
+      // The header carrying the uuid was attached, so the span counts as propagated.
+      expect(end).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: true });
+    })();
+  });
+
+  it("opens the span but attaches nothing in no-cors mode", async () => {
+    const { begin } = installWithSpan();
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x", { mode: "no-cors" });
+    expect(begin).toHaveBeenCalledTimes(1);
+    expect(sentHeaders().get(SPAN_CONTEXT_HEADER)).toBeNull();
+    expect(sentHeaders().get("traceparent")).toBeNull();
+  });
+
+  it("ends with errored on rejection, and aborted for AbortError rejections", async () => {
+    const { end } = installWithSpan();
+    nextResponse = () => Promise.reject(new Error("connection reset"));
+    await expect((globalThis as { fetch: typeof fetch }).fetch("/api/x")).rejects.toThrow("connection reset");
+    await Promise.resolve();
+    expect(end).toHaveBeenLastCalledWith({ errored: true, aborted: false, propagated: true });
+
+    nextResponse = () => Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    await expect((globalThis as { fetch: typeof fetch }).fetch("/api/x")).rejects.toThrow("aborted");
+    await Promise.resolve();
+    expect(end).toHaveBeenLastCalledWith({ errored: true, aborted: true, propagated: true });
+  });
+
+  it("each provider opens its own span, while header attachment stays fail-closed", async () => {
+    const first = installWithSpan();
+    const secondEnd = vi.fn();
+    const secondUninstall = installFetchSpanPropagation({
+      getContext: () => ({ projectId: "second", customParentSpanIds: [CUSTOM_A] }),
+      getSelfOrigin: () => SELF,
+      getAllowedOrigins: () => [],
+      beginRequestSpan: () => ({ spanUuid: CUSTOM_B, end: secondEnd }),
+    });
+
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    // Two same-origin providers with different contexts: no header at all.
+    expect(sentHeaders().get(SPAN_CONTEXT_HEADER)).toBeNull();
+    expect(sentHeaders().get("traceparent")).toBeNull();
+    expect(first.begin).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(first.end).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: false });
+    expect(secondEnd).toHaveBeenCalledWith({ status: 201, errored: false, aborted: false, propagated: false });
+    secondUninstall?.();
+  });
+
+  it("a throwing beginRequestSpan never breaks the request (and other providers still work)", async () => {
+    uninstall = installFetchSpanPropagation({
+      getContext: () => ({ projectId: "p", sessionReplaySegmentId: SEG }),
+      getSelfOrigin: () => SELF,
+      getAllowedOrigins: () => [],
+      beginRequestSpan: () => {
+        throw new Error("broken provider");
+      },
+    });
+    const response = await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    expect(response.status).toBe(201);
   });
 });

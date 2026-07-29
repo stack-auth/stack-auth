@@ -25,6 +25,15 @@
         "default": "./dist/config.js"
       }
     },
+    "./next": {
+      "types": "./dist/integrations/next.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/next.js"
+      },
+      "require": {
+        "default": "./dist/integrations/next.js"
+      }
+    },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {

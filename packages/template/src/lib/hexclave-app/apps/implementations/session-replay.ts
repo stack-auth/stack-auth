@@ -1,143 +1,17 @@
-import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { captureWarning, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
+import type { AnalyticsReplayOptions } from "./analytics-config";
+import type { TelemetryResource } from "./telemetry-config";
 
-export type AnalyticsReplayOptions = {
-  /**
-   * Whether session replays are enabled.
-   *
-   * @default true
-   */
-  enabled?: boolean,
-  /**
-   * Whether to mask the content of all `<input>` elements.
-   *
-   * @default true
-   */
-  maskAllInputs?: boolean,
-  /**
-   * A CSS class name or RegExp. Elements with a matching class will be blocked
-   * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
-   */
-  blockClass?: string | RegExp,
-  /**
-   * A CSS selector string. Elements matching this selector will be blocked
-   * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
-   */
-  blockSelector?: string,
-};
-
-export type AnalyticsOptions = {
-  /**
-   * Whether SDK-managed analytics capture is enabled.
-   *
-   * @default true
-   */
-  enabled?: boolean,
-  /**
-   * Options for session replay recording. Replays are enabled by default;
-   * set `enabled: false` to opt out.
-   */
-  replays?: AnalyticsReplayOptions,
-  /**
-   * Serverless keep-alive hook: every analytics batch-send promise is passed to
-   * it, so un-awaited trackEvent/startSpan sends survive runtime teardown
-   * without awaiting each call. Wire it to your platform's primitive, e.g.
-   * `waitUntil: (p) => ctx.waitUntil(p)` on Cloudflare Workers or
-   * `import { waitUntil } from "@vercel/functions"` on Vercel.
-   * Not serializable — dropped when the app is serialized (toClientJson).
-   */
-  waitUntil?: (promise: Promise<unknown>) => void,
-  /**
-   * Opt-in presence/integrity signals: an `$away` span per continuous interval
-   * the user spent off the tab/window (its `data.reasons` records which
-   * sensors fired: `tab-hidden`, `window-blur`, or both),
-   * `$copy`/`$cut`/`$paste` (lengths and a
-   * same-page-origin flag only — clipboard CONTENT is never captured),
-   * `$context-menu`, `$print`, and `$fullscreen-exit` events. Built for
-   * review-signal use cases like exam/quiz platforms; all signals are advisory
-   * (page script cannot prove presence), and because they are
-   * surveillance-adjacent they default to OFF.
-   *
-   * @default false
-   */
-  integritySignals?: boolean,
-  /**
-   * Cross-tier span propagation. When on, the browser attaches an
-   * `x-hexclave-span-context` header to SAME-ORIGIN outgoing `fetch` requests, so a
-   * server span opened with `serverApp.withSpan(type, { request })` parents under
-   * this tab's client session. Enabled by default whenever analytics is enabled.
-   */
-  spanPropagation?: {
-    /** Set false to stop auto-attaching the header to outgoing fetch. @default true */
-    enabled?: boolean,
-    /**
-     * Extra exact origins (besides same-origin) allowed to receive the header —
-     * for a split frontend/api domain, e.g. `["https://api.example.com"]`. The
-     * receiving server must also list the header in `Access-Control-Allow-Headers`.
-     */
-    targets?: string[],
-  },
-};
-
-export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {
-  return {
-    ...analyticsOptions?.replays,
-    enabled: analyticsOptions?.replays?.enabled ?? true,
-  };
-}
-
-/**
- * Converts AnalyticsOptions to a JSON-safe representation.
- * RegExp blockClass values are serialized as `{ __regexp, __flags }` objects.
- * The return type is AnalyticsOptions to keep StackClientAppJson simple;
- * the actual runtime value is JSON-safe.
- */
-export function analyticsOptionsToJson(options: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
-  // waitUntil is a function and cannot cross a JSON boundary; the serialized
-  // app runs in a different environment with its own lifecycle anyway.
-  if (options?.waitUntil) {
-    const { waitUntil, ...rest } = options;
-    options = rest;
-  }
-  if (!options?.replays?.blockClass) return options;
-  const { blockClass, ...rest } = options.replays;
-  if (!(blockClass instanceof RegExp)) return options;
-  return {
-    ...options,
-    replays: {
-      ...rest,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      blockClass: { __regexp: blockClass.source, __flags: blockClass.flags } as any,
-    },
-  };
-}
-
-/**
- * Reconstructs AnalyticsOptions from a JSON-deserialized value.
- * Converts `{ __regexp, __flags }` objects back to RegExp instances.
- */
-export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
-  if (!json?.replays?.blockClass) return json;
-  const { blockClass, ...rest } = json.replays;
-  if (typeof blockClass === 'object' && '__regexp' in blockClass) {
-    const bc = blockClass as unknown as { __regexp: string, __flags: string };
-    return {
-      ...json,
-      replays: {
-        ...rest,
-        blockClass: new RegExp(bc.__regexp, bc.__flags),
-      },
-    };
-  }
-  return json;
-}
+// The options types/helpers and the transport primitives used to be defined
+// here; they moved to analytics-config.ts / telemetry-transport.ts so the
+// recorder module can be lazy-loaded (and so fundamental modules don't depend
+// on the browser replay module for primitives). Re-exported for compatibility.
+export { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions, type AnalyticsOptions, type AnalyticsReplayOptions } from "./analytics-config";
+export { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
 
 // ---------- Recording internals ----------
 
@@ -216,10 +90,6 @@ export function makeLegacyStorageKey(projectId: string) {
   return `${LEGACY_LOCAL_STORAGE_PREFIX}:${projectId}`;
 }
 
-export function generateUuid() {
-  return crypto.randomUUID();
-}
-
 export function getOrRotateSession(options: { key: string, legacyKey?: string, nowMs: number }): StoredSession {
   // Hexclave rebrand: prefer the new key; fall back to the legacy key so a
   // recording session active across an SDK upgrade is not orphaned.
@@ -239,31 +109,13 @@ export function getOrRotateSession(options: { key: string, legacyKey?: string, n
 
 export type SessionRecorderDeps = {
   projectId: string,
+  resource: TelemetryResource,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
   // Per-tab id shared with the EventTracker so replay chunks and analytics
   // events from the same tab carry the same session_replay_segment_id. Falls
   // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
 };
-
-export function isAnalyticsNotEnabledError(error: unknown): boolean {
-  return KnownErrors.AnalyticsNotEnabled.isInstance(error);
-}
-
-/**
- * Whether the error looks like a network failure caused by an ad blocker or
- * similar extension blocking analytics requests. These are expected in
- * production and should be silently ignored rather than logged as warnings.
- */
-export function isAdBlockerNetworkError(error: unknown): boolean {
-  if (error instanceof Error) {
-    return error.message.includes("Failed to fetch")
-      || error.message.includes("NetworkError")
-      || error.message.includes("Load failed")
-      || error.message.includes("network connection");
-  }
-  return false;
-}
 
 export class SessionRecorder {
   private _started = false;
@@ -413,6 +265,8 @@ export class SessionRecorder {
 
         const batchId = generateUuid();
         const payload = {
+          schema_version: 2,
+          resource: this._deps.resource,
           browser_session_id: stored.session_id,
           session_replay_segment_id: sessionReplaySegmentId,
           batch_id: batchId,

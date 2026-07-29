@@ -24,6 +24,11 @@ export type ServerRequestSpanContext = {
   // untrusted label, stamped per-item so backend telemetry nests under the
   // page the user was on when they triggered this request.
   pageViewSpanId: string | null,
+  // The `$http-client` span the caller's SDK opened for THIS request (from the
+  // propagation header) — the cross-tier bridge node. Untrusted label. Emitted
+  // per-item only when the fetch is the item's nearest known ancestor; see
+  // httpClientSpanIdForServerItem in server-app-impl.
+  httpClientSpanId: string | null,
   customParentSpanIds: string[],
 };
 
@@ -46,6 +51,7 @@ export function withExplicitServerUser(
     sessionReplayId: null,
     sessionReplaySegmentId: null,
     pageViewSpanId: null,
+    httpClientSpanId: null,
     customParentSpanIds: [],
   };
 }

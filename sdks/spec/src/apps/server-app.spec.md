@@ -14,6 +14,19 @@ Extends HexclaveClientApp constructor options with:
 Required:
   secretServerKey: string - from Hexclave dashboard
 
+The inherited telemetry.resource contract applies unchanged. Give each
+deployable server service its own logical identity, for example:
+
+  telemetry: {
+    resource: {
+      service: { name: "stack-backend" }
+    }
+  }
+
+The server app does not infer this from its key, request host, framework, or
+runtime. See analytics.spec.md "Constructor options" for required fields,
+inheritance/replacement semantics, and validation.
+
 The secretServerKey enables server-only operations like listing all users,
 creating users, and accessing server metadata.
 
@@ -259,6 +272,57 @@ Request:
   }
 
 Does not error.
+
+
+## Telemetry API (server-side variants)
+
+HexclaveServerApp inherits the telemetry surface of HexclaveClientApp
+(trackEvent, logger, startSpan, withSpan, setGlobalSpan/clearGlobalSpan,
+flush, getSpanPropagationHeaders) with server-specific differences — full
+contracts in analytics.spec.md:
+
+  trackEvent(eventType, data?, options?)
+    options additionally accepts:
+      userId: uuid? - explicit attribution (no session to derive it from)
+      request: RequestLike? - resolve attribution AND client-session ancestry
+        from an incoming request (session tokens + the x-hexclave-span-context
+        header). With request, userId is derived from the session unless
+        overridden.
+    With an ambient request provider registered (Next.js:
+    hexclaveInstrumentation().register()), bare calls inside a request scope
+    attribute to the caller automatically — request stays as the explicit
+    override. See analytics.spec.md "Ambient request provider".
+
+  logger
+    Same API as the client logger; rides the server telemetry buffer. Inside a
+    withSpan({ request }) scope — or any request scope when an ambient request
+    provider is registered — logs automatically inherit the caller's
+    client-session ancestry (page view, $http-client fetch span, replay chain).
+
+  startSpan(spanType, options?)
+    options additionally accepts userId. Synchronous — cannot resolve a
+    request (and never consults the ambient request provider); use
+    withSpan(type, { request }, fn) for request-linked spans.
+
+  withSpan(spanType, options, fn)
+    options additionally accepts userId and request. This is the primitive the
+    framework adapters build on (see analytics.spec.md "Framework
+    integrations") — with an adapter you never pass request yourself, and with
+    an ambient request provider registered even bare withSpan(type, fn) calls
+    adopt the ambient request.
+    Ambient parenting is AsyncLocalStorage-backed (exact under concurrency).
+
+  Delivery: server telemetry coalesces per batch context and flushes on the
+  next microtask (no timer) — await the promises, call flush(), or wire
+  telemetry.waitUntil on serverless (auto-detected on Vercel; see
+  analytics.spec.md). Sends sticky-disable for the process on the backend's
+  ANALYTICS_NOT_ENABLED rejection. See analytics.spec.md "Batch wire
+  format" for the envelope (schema_version: 2, resource, refresh_token_id, ...).
+
+  Auto-instrumentation seams (server outbound-fetch $http-client spans — now
+  installed eagerly at app construction — the uncaught-exception $error
+  monitor, Next.js hexclaveInstrumentation, the ambient request provider) are
+  specified in analytics.spec.md.
 
 
 ## queryAnalytics(options)
