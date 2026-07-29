@@ -412,6 +412,39 @@ function HostedCredentialPreviewForm(props: {
   );
 }
 
+/**
+ * Mirrors the `HostedNoAuthMethods` component of the hosted components app, so that the dashboard preview
+ * shows developers exactly what their end users would see when no auth method is enabled.
+ */
+function NoAuthMethodsPreview(props: {
+  projectDisplayName?: string,
+}) {
+  return (
+    <>
+      <div className="flex flex-col items-center text-center">
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-black/[0.08] bg-zinc-100/70 dark:border-white/[0.10] dark:bg-zinc-900/45">
+          <KeyIcon className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <Typography type="h2" className="mb-1 text-xl font-semibold tracking-tight">Sign-in is not available</Typography>
+        <Typography className="text-sm text-muted-foreground">
+          {props.projectDisplayName == null
+            ? "This app has no authentication methods enabled, so nobody can sign in yet."
+            : <>
+              <span className="font-medium text-foreground">{props.projectDisplayName}</span> has no authentication methods enabled, so nobody can sign in yet.
+            </>}
+        </Typography>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-black/[0.08] bg-zinc-100/50 p-4 text-left dark:border-white/[0.10] dark:bg-zinc-900/45">
+        <p className="text-sm font-semibold">Are you the developer?</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Enable at least one sign-in method in your <code className="rounded bg-black/[0.06] px-1 py-0.5 font-mono text-xs dark:bg-white/[0.10]">hexclave.config.ts</code>, or right here in the dashboard.
+        </p>
+      </div>
+    </>
+  );
+}
+
 export function HostedAuthMethodPreview(props: {
   project: HostedAuthPreviewProject,
   type?: HostedAuthType,
@@ -432,6 +465,15 @@ export function HostedAuthMethodPreview(props: {
   const hasPasskey = props.project.config.passkeyEnabled === true && type === "sign-in";
   const hasEmailMethods = props.project.config.credentialEnabled || props.project.config.magicLinkEnabled;
   const enableSeparator = hasEmailMethods && (hasOAuthProviders || hasPasskey);
+  const hasAnyAuthMethod = hasOAuthProviders || props.project.config.passkeyEnabled === true || hasEmailMethods;
+
+  if (!hasAnyAuthMethod) {
+    return (
+      <PreviewFrame className={props.className}>
+        <NoAuthMethodsPreview projectDisplayName={props.project.displayName} />
+      </PreviewFrame>
+    );
+  }
 
   return (
     <PreviewFrame className={props.className}>
@@ -476,7 +518,9 @@ export function HostedAuthMethodPreview(props: {
       ) : props.project.config.magicLinkEnabled ? (
         <HostedMagicLinkPreviewForm />
       ) : !(hasOAuthProviders || hasPasskey) ? (
-        <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
+        <p className="py-2 text-center text-sm text-muted-foreground">
+          New accounts can&apos;t be created with the sign-in methods enabled for this app. Sign in instead.
+        </p>
       ) : null}
 
       {(type === "sign-up" || props.project.config.signUpEnabled) && (

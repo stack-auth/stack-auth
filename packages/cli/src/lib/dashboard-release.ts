@@ -166,7 +166,7 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function downloadDashboardRelease(manifest: DashboardManifest): Promise<void> {
+async function downloadDashboardRelease(manifest: DashboardManifest, onProgress?: (message: string) => void): Promise<void> {
   const cacheRoot = dashboardCacheRoot();
   mkdirSync(cacheRoot, { recursive: true });
   // Unique temp names so parallel runs don't collide; publish is an atomic rename.
@@ -175,6 +175,7 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
   const tmpDir = join(cacheRoot, `.extract-${manifest.version}-${suffix}`);
   const targetDir = dashboardVersionDir(manifest.version);
   try {
+    onProgress?.(`Downloading Hexclave dashboard ${manifest.version}`);
     const response = await fetch(manifest.url, { redirect: "follow", signal: AbortSignal.timeout(DASHBOARD_DOWNLOAD_TIMEOUT_MS) });
     // The manifest URL passed isAllowedDownloadUrl, but redirects can land on a
     // different host/scheme; re-check the final URL before streaming the archive.
@@ -186,6 +187,7 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
     }
     await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tmpZip));
 
+    onProgress?.(`Verifying Hexclave dashboard ${manifest.version}`);
     const digest = await sha256File(tmpZip);
     if (digest !== manifest.sha256) {
       throw new CliError(`Dashboard ${manifest.version} failed its integrity check (expected ${manifest.sha256}, got ${digest}).`);
@@ -193,6 +195,7 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
 
     rmSync(tmpDir, { recursive: true, force: true });
     mkdirSync(tmpDir, { recursive: true });
+    onProgress?.(`Extracting Hexclave dashboard ${manifest.version}`);
     await extractZip(tmpZip, { dir: tmpDir });
     if (!existsSync(join(tmpDir, DASHBOARD_SERVER_RELATIVE_PATH))) {
       throw new CliError(`Dashboard ${manifest.version} archive is missing its server entrypoint.`);
@@ -225,7 +228,10 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
 
 // Resolve the build to launch: on-disk override → manifest version (downloaded if
 // not cached) → newest cached (offline). Throws only when nothing is usable.
-export async function resolveDashboardRuntime(opts: { manifest?: DashboardManifest | null } = {}): Promise<ResolvedDashboard> {
+export async function resolveDashboardRuntime(opts: {
+  manifest?: DashboardManifest | null,
+  onProgress?: (message: string) => void,
+} = {}): Promise<ResolvedDashboard> {
   const override = dashboardDirOverride();
   if (override != null) {
     if (!existsSync(join(override, DASHBOARD_SERVER_RELATIVE_PATH))) {
@@ -240,7 +246,7 @@ export async function resolveDashboardRuntime(opts: { manifest?: DashboardManife
       return { root: dashboardVersionDir(manifest.version), version: manifest.version };
     }
     try {
-      await downloadDashboardRelease(manifest);
+      await downloadDashboardRelease(manifest, opts.onProgress);
       return { root: dashboardVersionDir(manifest.version), version: manifest.version };
     } catch (error) {
       const cached = latestCachedDashboardVersion();

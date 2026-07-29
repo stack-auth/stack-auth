@@ -21,8 +21,7 @@ export type EmailableCheckResult =
 
 const RETRY_BACKOFF_BASE_MS = 4000;
 
-function isReservedTestDomain(emailDomain: string): boolean {
-  if (!["development", "test"].includes(getNodeEnvironment())) return false;
+function isReservedExampleDomain(emailDomain: string): boolean {
   return emailDomain === "example.com" || emailDomain.endsWith(".example.com");
 }
 
@@ -83,8 +82,9 @@ export async function checkEmailWithEmailable(
     const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
     const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
 
-    // Always reject the explicit test domain, regardless of API key
-    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
+    // example.com and its subdomains are reserved for documentation and can never receive email, so avoid spending an
+    // Emailable request on them in every environment. This also covers EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN.
+    if (isReservedExampleDomain(emailDomain)) {
       const testResponse = buildTestUndeliverableResponse(email);
       return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
@@ -97,7 +97,7 @@ export async function checkEmailWithEmailable(
     }
 
     const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
-    if (!apiKey || isReservedTestDomain(emailDomain)) {
+    if (!apiKey) {
       return { status: "deliverable", emailableScore: null };
     }
 
@@ -126,7 +126,7 @@ export async function checkEmailWithEmailable(
 // ── Tests ──────────────────────────────────────────────────────────────
 
 import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
-  const { vi, test, beforeEach } = import.meta.vitest!;
+  const { vi, test, beforeEach, expect } = import.meta.vitest!;
 
   const fakeClient = (verifyFn: (email: string) => Promise<unknown>) => (_apiKey: string) => ({ verify: verifyFn });
 
@@ -152,6 +152,20 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
       .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
+  });
+
+  test.each([
+    "user@example.com",
+    "user@status-monitor.example.com",
+  ])("rejects reserved example address %s without calling Emailable", async (email) => {
+    const verify = vi.fn();
+    const result = await checkEmailWithEmailable(email, { _clientFactory: () => ({ verify }) });
+    expect(result).toMatchObject({
+      status: "not-deliverable",
+      emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" },
+      emailableScore: 0,
+    });
+    expect(verify).not.toHaveBeenCalled();
   });
 
   test("returns ok for deliverable email", async ({ expect }) => {

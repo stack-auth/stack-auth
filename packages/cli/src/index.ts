@@ -8,6 +8,7 @@ import { cliVersion } from "./lib/own-package.js";
 import { AuthError, CliError } from "./lib/errors.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
+import { registerDeployCommand } from "./commands/deploy.js";
 import { registerExecCommand } from "./commands/exec.js";
 import { registerConfigCommand } from "./commands/config-file.js";
 import { registerInitCommand } from "./commands/init.js";
@@ -28,6 +29,7 @@ program
 registerLoginCommand(program);
 registerLogoutCommand(program);
 registerExecCommand(program);
+registerDeployCommand(program);
 registerConfigCommand(program);
 registerInitCommand(program);
 registerProjectCommand(program);
@@ -51,9 +53,11 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
+    // Report the failure before flushing telemetry; the flush can consume its
+    // full timeout, and users should not stare at a silent CLI after it failed.
+    console.error(err);
     captureError("stack-cli-fatal", err);
     await Sentry.flush(2000);
-    console.error(err);
     process.exit(1);
   }
 }

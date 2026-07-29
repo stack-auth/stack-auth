@@ -3,6 +3,7 @@ import { getInternalUser } from "../lib/app.js";
 import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { CliError } from "../lib/errors.js";
+import { withProgress } from "../lib/progress.js";
 
 export type ProjectTarget = "cloud" | "local";
 
@@ -60,8 +61,10 @@ export function registerProjectCommand(program: Command) {
       const sources = resolveProjectListSources(opts);
       const results: ProjectListEntry[] = [];
       const auth = resolveSessionAuth();
-      const user = await getInternalUser(auth);
-      const ownedProjects = await user.listOwnedProjects();
+      const ownedProjects = await withProgress("Loading projects", async () => {
+        const user = await getInternalUser(auth);
+        return await user.listOwnedProjects();
+      });
       for (const p of ownedProjects) {
         const target: ProjectTarget = p.isDevelopmentEnvironment ? "local" : "cloud";
         if ((target === "cloud" && sources.cloud) || (target === "local" && sources.local)) {
@@ -91,7 +94,7 @@ export function registerProjectCommand(program: Command) {
         import("../lib/create-project.js"),
       ]);
       const auth = resolveSessionAuth();
-      const user = await getInternalUser(auth);
+      const user = await withProgress("Loading account", async () => await getInternalUser(auth));
       const { dashboardUrl } = resolveLoginConfig();
 
       const newProject = await createProjectInteractively(user, {

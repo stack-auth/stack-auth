@@ -3,6 +3,7 @@ import type { CurrentInternalUser } from "@hexclave/js";
 import { DEFAULT_DASHBOARD_URL } from "./auth.js";
 import { CliError } from "./errors.js";
 import { isNonInteractiveEnv } from "./interactive.js";
+import { withProgress } from "./progress.js";
 
 type CreateProjectOptions = {
   displayName?: string,
@@ -26,14 +27,16 @@ export async function createProjectInteractively(
     })).trim();
   }
 
-  const teams = await user.listTeams();
-  if (teams.length === 0) {
-    const dashboardUrl = opts.dashboardUrl ?? DEFAULT_DASHBOARD_URL;
-    throw new CliError(`No teams found on your account. Create a team at ${dashboardUrl} first.`);
-  }
+  return await withProgress("Creating project", async () => {
+    const teams = await user.listTeams();
+    if (teams.length === 0) {
+      const dashboardUrl = opts.dashboardUrl ?? DEFAULT_DASHBOARD_URL;
+      throw new CliError(`No teams found on your account. Create a team at ${dashboardUrl} first.`);
+    }
 
-  return await user.createProject({
-    displayName,
-    teamId: teams[0].id,
+    return await user.createProject({
+      displayName,
+      teamId: teams[0].id,
+    });
   });
 }

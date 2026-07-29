@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -28,6 +28,12 @@ type AppNavigationItem = {
   displayName: string,
   href: string,
   external?: boolean,
+  /**
+   * When true, this nav item is intended only for Hexclave-internal surfaces
+   * (e.g. GTM admin). Call sites that render navigation should filter these out
+   * for non-internal viewers when that gating is wired up.
+   */
+  internalOnly?: boolean,
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (hexclaveAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
 };
@@ -92,6 +98,19 @@ export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl
   return isChildUrl(url, fullUrl);
 }
 
+/**
+ * The pathname a plain (non-external, non-`matchPath`) nav item matches `fullUrl` on, or `null` when it does
+ * not match. The pathname doubles as the specificity of the match: a longer one is a deeper prefix.
+ */
+function matchedItemPathname(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL): string | null {
+  if (item.external || isExternalHref(item.href) || item.matchPath) return null;
+  const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
+  if (!isChildUrl(url, fullUrl)) return null;
+  // A `.` href resolves with a trailing slash and a named one without, so normalize before the lengths are
+  // compared — otherwise the slash alone would make an item look one character more specific than it is.
+  return url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+}
+
 export function testItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL) {
   if (item.external || isExternalHref(item.href)) {
     return false;
@@ -99,8 +118,18 @@ export function testItemPath(projectId: string, appFrontend: NavigableAppFronten
 
   if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
 
-  const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
-  return isChildUrl(url, fullUrl);
+  const matched = matchedItemPathname(projectId, appFrontend, item, fullUrl);
+  if (matched == null) return false;
+
+  // Nav items can nest: GTM's Admin lives at `gtm/admin`, underneath the Overview item's own `gtm`. A prefix
+  // match alone lights up both, so the most specific matching item wins — an item that only matches because
+  // it is an ancestor of the sibling the user actually navigated to is not the current page. Siblings with a
+  // custom `matchPath` are left out of the comparison, since they answer yes/no without a path to rank.
+  return !appFrontend.navigationItems.some((sibling) => {
+    if (sibling === item) return false;
+    const siblingMatch = matchedItemPathname(projectId, appFrontend, sibling, fullUrl);
+    return siblingMatch != null && siblingMatch.length > matched.length;
+  });
 }
 
 export const ALL_APPS_FRONTEND = {
@@ -422,6 +451,22 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  gtm: {
+    icon: ChartPolarIcon,
+    href: "gtm",
+    navigationItems: [
+      { displayName: "Overview", href: "." },
+      { displayName: "Admin", href: "admin", internalOnly: true },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>GTM is an internal workspace for curating go-to-market insights, actions, and durable notes.</p>
+        <p>The overview presents the latest signals across the whole business, while the admin page owns all edits.</p>
+        <p>Actions in this initial version are inert records and never perform external side effects.</p>
+      </>
+    ),
+  },
   "cli-auth": {
     icon: TerminalWindowIcon,
     href: "cli-auth",
@@ -434,6 +479,23 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>CLI Auth shows real-time insight into how CLI authentication is used in your project.</p>
         <p>Monitor recent login attempts, see which users have active CLI refresh tokens, and track session health at a glance.</p>
+      </>
+    ),
+  },
+  "deployments-alpha": {
+    icon: GraphIcon,
+    // The route stays /projects/<id>/deployments — only the app id carries the
+    // `-alpha` suffix, so existing links and bookmarks keep working.
+    href: "deployments",
+    navigationItems: [
+      { displayName: "Services", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Deployments gives your project a visual canvas for the services that run your app.</p>
+        <p>Drag static sites, containers, and your Hexclave backend around a grid, then wire outputs from one service straight into another service&apos;s environment variables.</p>
+        <p>Every project keeps exactly one Hexclave service at its center, so credentials like the secret server key are one reference away.</p>
       </>
     ),
   },

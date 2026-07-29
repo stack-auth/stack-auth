@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { getInternalUser } from "../lib/app.js";
 import { resolveSessionAuth } from "../lib/auth.js";
+import { withProgress } from "../lib/progress.js";
 
 export function registerWhoamiCommand(program: Command) {
   program
@@ -9,8 +10,11 @@ export function registerWhoamiCommand(program: Command) {
     .action(async () => {
       const flags = program.opts();
       const auth = resolveSessionAuth();
-      const user = await getInternalUser(auth);
-      const teams = await user.listTeams();
+      const { user, teams } = await withProgress("Loading account", async () => {
+        const user = await getInternalUser(auth);
+        const teams = await user.listTeams();
+        return { user, teams };
+      });
 
       const result = {
         id: user.id,

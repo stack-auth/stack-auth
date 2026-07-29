@@ -13,7 +13,7 @@
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
     "build": "pnpm pre && turbo build",
     "cli": "pnpm pre && turbo run build --filter=@hexclave/cli && pnpm run cli:no-build",
-    "cli:no-build": "pnpm pre && echo && echo && echo '[CLI output starts below]' && echo && echo && STACK_API_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02 STACK_DASHBOARD_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01 STACK_CLI_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only node packages/cli/dist/index.js",
+    "cli:no-build": "pnpm pre && echo && echo && echo '[CLI output starts below]' && echo && echo && HEXCLAVE_API_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02 HEXCLAVE_DASHBOARD_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01 HEXCLAVE_CLI_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only node packages/cli/dist/index.js",
     "build:backend": "pnpm pre && turbo run build --filter=@hexclave/backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@hexclave/dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=@hexclave/example-demo-app...",
