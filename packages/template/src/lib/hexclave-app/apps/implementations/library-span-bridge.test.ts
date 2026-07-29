@@ -474,6 +474,7 @@ describe("library-span-bridge", () => {
         baseUrl: "https://api.example.test",
         tokenStore: "memory",
         noAutomaticPrefetch: true,
+        telemetry: { resource: { service: { name: "test-server" } } },
       });
       const instrumentation = getServerAppInstrumentation(app);
       expect(instrumentation).not.toBeNull();
