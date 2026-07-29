@@ -563,7 +563,9 @@ const Composer: FC<{ placeholder?: ComposerPlaceholder, autoFocus?: boolean }> =
  * back to the public docs site otherwise.
  */
 function getMcpDocsUrl(): string {
-  const base = (getPublicEnvVar("NEXT_PUBLIC_STACK_DOCS_BASE_URL") ?? "https://docs.hexclave.com").replace(/\/$/, "");
+  // `||` instead of `??`: builds without the docs base URL configured inline the
+  // .env placeholder as an empty string rather than undefined.
+  const base = (getPublicEnvVar("NEXT_PUBLIC_STACK_DOCS_BASE_URL") || "https://docs.hexclave.com").replace(/\/$/, "");
   return `${base}/guides/getting-started/ai-integration#option-3-mcp`;
 }
 
