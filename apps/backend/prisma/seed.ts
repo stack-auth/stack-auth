@@ -143,9 +143,9 @@ export async function seed() {
             displayName: "Hexclave MCP",
             uri: mcpResourceUri,
             scopes: {
-              listProjects: { scope: "mcp:list-projects", displayName: "List managed projects" },
-              sqlQuery: { scope: "mcp:sql-query", displayName: "Query project analytics" },
-              readConfig: { scope: "mcp:read-config", displayName: "Read project configuration" },
+              listProjects: { scope: "mcp:list-projects" },
+              sqlQuery: { scope: "mcp:sql-query" },
+              readConfig: { scope: "mcp:read-config" },
             },
           },
         },
