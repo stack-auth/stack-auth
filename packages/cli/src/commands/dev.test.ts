@@ -103,11 +103,7 @@ describe("dashboardEnvWithStatePath", () => {
   });
 });
 
-it.skipIf(process.platform !== "win32")("preserves argv through a Windows command shim", async () => {
-  const tempDir = mkdtempSync(join(tmpdir(), "hexclave-windows-argv-"));
-  const outputPath = join(tempDir, "argv.json");
-  const scriptPath = join(tempDir, "print-argv.cjs");
-  const shimPath = join(tempDir, "print-argv.cmd");
+describe("runChildProcess", () => {
   const args = [
     "plain",
     "space containing argument",
@@ -122,29 +118,59 @@ it.skipIf(process.platform !== "win32")("preserves argv through a Windows comman
     "",
   ];
 
-  writeFileSync(scriptPath, [
-    'const fs = require("node:fs");',
-    "const args = process.argv.slice(2);",
-    "console.log(JSON.stringify(args));",
-    'fs.writeFileSync(process.env.HEXCLAVE_TEST_ARGV_OUTPUT, JSON.stringify(args));',
-  ].join("\n"));
-  writeFileSync(shimPath, [
-    "@echo off",
-    `node "%~dp0print-argv.cjs" %*`,
-  ].join("\r\n"));
+  function createArgvShim() {
+    const tempDir = mkdtempSync(join(tmpdir(), "hexclave-windows-argv-"));
+    const outputPath = join(tempDir, "argv.json");
+    const scriptPath = join(tempDir, "print-argv.cjs");
+    const shimPath = join(tempDir, "print-argv.cmd");
 
-  try {
-    await expect(runChildProcess({
-      command: shimPath,
-      args,
-    }, {
-      ...process.env,
-      HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
-    })).resolves.toBe(0);
-    expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
+    writeFileSync(scriptPath, [
+      'const fs = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      'fs.writeFileSync(process.env.HEXCLAVE_TEST_ARGV_OUTPUT, JSON.stringify(args));',
+    ].join("\n"));
+    writeFileSync(shimPath, [
+      "@echo off",
+      `node "%~dp0print-argv.cjs" %*`,
+    ].join("\r\n"));
+
+    return { outputPath, shimPath, tempDir };
   }
+
+  it.skipIf(process.platform !== "win32")("preserves argv through a Windows command shim", async () => {
+    const { outputPath, shimPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: shimPath,
+        args,
+      }, {
+        ...process.env,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform !== "win32")("resolves a bare command name to its Windows shim", async () => {
+    const { outputPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: "print-argv",
+        args,
+      }, {
+        ...process.env,
+        PATH: `;${tempDir};${process.env.PATH ?? ""}`,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("configErrorLogPrefix", () => {
