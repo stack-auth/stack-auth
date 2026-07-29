@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRequestContext, normalizeRequestLike, type AdapterServerApp } from "./adapter-core";
-import { hexclaveConvexFunction } from "./convex";
-import { createHexclaveElysia } from "./elysia";
+import { createHexclaveConvex } from "./convex";
+import { createHexclaveElysia, type ElysiaLikeForPlugin } from "./elysia";
 import { createHexclaveORPC } from "./orpc";
 import { createHexclaveTRPC } from "./trpc";
 
@@ -195,6 +195,119 @@ describe("Elysia adapter", () => {
     expect(body).toMatchObject({ error: expect.stringContaining("signed in") });
   });
 
+  it("factory-level unauthorized customizes requireUser; requireUserWith overrides per route", () => {
+    const { app } = makeApp();
+    const hexclave = createHexclaveElysia(app, { unauthorized: () => new Response("factory", { status: 403 }) });
+    const set: { status?: number | string } = {};
+    const result = hexclave.requireUser({ request: makeRequest(), set, user: null } as never);
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(403);
+    // A returned Error is thrown instead of short-circuiting as a body.
+    const throwing = hexclave.requireUserWith({ unauthorized: () => Object.assign(new Error("PER-ROUTE"), { perRoute: true }) });
+    expect(() => throwing({ request: makeRequest(), set: {}, user: null } as never)).toThrow(/PER-ROUTE/);
+    // Signed-in callers pass through untouched.
+    expect(hexclave.requireUser({ request: makeRequest(), set: {}, user: FAKE_USER } as never)).toBeUndefined();
+  });
+
+  type PluginHooks = {
+    onRequest: (ctx: { request: Request }) => void,
+    onAfterResponse: (ctx: { request: Request, path?: string, set: { status?: number | string } }) => Promise<void>,
+    onError: (ctx: { request: Request, error?: unknown, set: { status?: number | string } }) => Promise<void>,
+  };
+
+  function collectPluginHooks(hexclave: ReturnType<typeof createHexclaveElysia>): PluginHooks {
+    const hooks: Partial<PluginHooks> = {};
+    const elysia: ElysiaLikeForPlugin = {
+      onRequest: (scope, fn) => {
+        expect(scope).toEqual({ as: "global" });
+        hooks.onRequest = fn;
+        return elysia;
+      },
+      onAfterResponse: (scope, fn) => {
+        expect(scope).toEqual({ as: "global" });
+        hooks.onAfterResponse = fn;
+        return elysia;
+      },
+      onError: (scope, fn) => {
+        expect(scope).toEqual({ as: "global" });
+        hooks.onError = fn;
+        return elysia;
+      },
+    };
+    expect(hexclave.plugin(elysia)).toBe(elysia);
+    if (!hooks.onRequest || !hooks.onAfterResponse || !hooks.onError) throw new Error("plugin did not register all hooks");
+    return { onRequest: hooks.onRequest, onAfterResponse: hooks.onAfterResponse, onError: hooks.onError };
+  }
+
+  it("plugin spans a route via global hooks with backdated start, path/method/status data", async () => {
+    const { app, withSpan } = makeApp();
+    const hooks = collectPluginHooks(createHexclaveElysia(app));
+
+    const request = new Request("https://api.example.com/orders?page=2", { method: "POST" });
+    const beforeMs = Date.now();
+    hooks.onRequest({ request });
+    await hooks.onAfterResponse({ request, path: "/orders", set: { status: 201 } });
+
+    expect(withSpan).toHaveBeenCalledTimes(1);
+    expect(withSpan.mock.calls[0][0]).toBe("elysia.route");
+    const options = withSpan.mock.calls[0][1] as { data: unknown, startedAtMs: number, request: unknown };
+    expect(options.data).toEqual({ path: "/orders", method: "POST", status: 201 });
+    expect(options.startedAtMs).toBeGreaterThanOrEqual(beforeMs);
+    expect(options.request).not.toBeUndefined();
+
+    // A second terminal hook for the same request records nothing.
+    await hooks.onAfterResponse({ request, path: "/orders", set: {} });
+    expect(withSpan).toHaveBeenCalledTimes(1);
+  });
+
+  it("plugin records errors via onError (message in data.error; onAfterResponse then no-ops)", async () => {
+    const { app, withSpan } = makeApp();
+    const hooks = collectPluginHooks(createHexclaveElysia(app));
+
+    const request = new Request("https://api.example.com/boom");
+    hooks.onRequest({ request });
+    await hooks.onError({ request, error: new Error("kaput"), set: { status: 500 } });
+    await hooks.onAfterResponse({ request, set: { status: 500 } });
+
+    expect(withSpan).toHaveBeenCalledTimes(1);
+    // path falls back to the request url's pathname when Elysia has no ctx.path.
+    expect((withSpan.mock.calls[0][1] as { data: unknown }).data).toEqual({ path: "/boom", method: "GET", status: 500, error: "kaput" });
+  });
+
+  it("plugin defaults status to 200 when Elysia leaves set.status unset", async () => {
+    const { app, withSpan } = makeApp();
+    const hooks = collectPluginHooks(createHexclaveElysia(app));
+    const request = new Request("https://api.example.com/ok");
+    hooks.onRequest({ request });
+    await hooks.onAfterResponse({ request, path: "/ok", set: {} });
+    expect((withSpan.mock.calls[0][1] as { data: { status: number } }).data.status).toBe(200);
+  });
+
+  it("plugin skips requests already spanned by a handler() wrapper (no double spans)", async () => {
+    const { app, withSpan } = makeApp();
+    const hexclave = createHexclaveElysia(app);
+    const hooks = collectPluginHooks(hexclave);
+
+    const request = new Request("https://api.example.com/wrapped", { method: "GET" });
+    hooks.onRequest({ request });
+    const wrapped = hexclave.handler(async () => "ok");
+    await wrapped({ request, path: "/wrapped", set: {}, user: FAKE_USER, hexclave: createRequestContext(app, request) } as never);
+    await hooks.onAfterResponse({ request, path: "/wrapped", set: { status: 200 } });
+
+    // Exactly one span — the handler's.
+    expect(withSpan).toHaveBeenCalledTimes(1);
+    expect((withSpan.mock.calls[0][1] as { data: unknown }).data).toEqual({ path: "/wrapped", method: "GET" });
+  });
+
+  it("plugin respects factory-level telemetry: false", async () => {
+    const { app, withSpan } = makeApp();
+    const hooks = collectPluginHooks(createHexclaveElysia(app, { telemetry: false }));
+    const request = new Request("https://api.example.com/quiet");
+    hooks.onRequest({ request });
+    await hooks.onAfterResponse({ request, path: "/quiet", set: {} });
+    expect(withSpan).not.toHaveBeenCalled();
+  });
+
   it("handler wraps the route in an elysia.route span with path + method", async () => {
     const { app, withSpan } = makeApp();
     const hexclave = createHexclaveElysia(app);
@@ -218,7 +331,8 @@ describe("Convex adapter", () => {
 
   it("resolves the caller from convex identity and runs inside a convex.function span", async () => {
     const { app, withSpan, getUser } = makeApp();
-    const wrapped = hexclaveConvexFunction(app, async ({ user, args }) => `${(user as { id: string }).id}:${(args as { n: number }).n}`, { kind: "query", name: "listItems" });
+    const hexclave = createHexclaveConvex(app);
+    const wrapped = hexclave.function(async ({ user, args }) => `${(user as { id: string }).id}:${(args as { n: number }).n}`, { kind: "query", name: "listItems" });
     const result = await wrapped(convexCtx as never, { n: 7 });
     expect(result).toBe("user-1:7");
     expect(getUser).toHaveBeenCalledWith({ from: "convex", ctx: convexCtx, or: "return-null" });
@@ -227,17 +341,35 @@ describe("Convex adapter", () => {
     expect(withSpan.mock.calls[0][1]).toMatchObject({ userId: "user-1", data: { kind: "query", name: "listItems" } });
   });
 
+  it("passes the hexclave context bag to the handler (memoized user resolution)", async () => {
+    const { app } = makeApp();
+    const hexclave = createHexclaveConvex(app);
+    const wrapped = hexclave.function(async ({ hexclave: requestHexclave }) => await requestHexclave.getUser());
+    await expect(wrapped(convexCtx as never, {})).resolves.toEqual(FAKE_USER);
+  });
+
   it("required: true rejects unauthenticated calls inside telemetry; telemetry: false skips the span", async () => {
     const { app, withSpan } = makeApp({ user: null });
-    const guarded = hexclaveConvexFunction(app, async () => "never", { required: true });
+    const hexclave = createHexclaveConvex(app);
+    const guarded = hexclave.function(async () => "never", { required: true });
     await expect(guarded(convexCtx as never, {})).rejects.toThrow(/signed in/);
     expect(withSpan).toHaveBeenCalledTimes(1);
     expect(withSpan.mock.calls[0][0]).toBe("convex.function");
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: {} });
 
     const { app: app2, withSpan: withSpan2 } = makeApp();
-    const bare = hexclaveConvexFunction(app2, async () => "ok", { telemetry: false });
+    const bare = createHexclaveConvex(app2).function(async () => "ok", { telemetry: false });
     await expect(bare(convexCtx as never, {})).resolves.toBe("ok");
     expect(withSpan2).not.toHaveBeenCalled();
+  });
+
+  it("uses the factory-level unauthorized default; the per-function factory wins", async () => {
+    const { app } = makeApp({ user: null });
+    const factoryUnauthorized = () => Object.assign(new Error("FACTORY"), { fromFactory: true });
+    const hexclave = createHexclaveConvex(app, { unauthorized: factoryUnauthorized });
+    await expect(hexclave.function(async () => "never", { required: true })(convexCtx as never, {})).rejects.toMatchObject({ fromFactory: true });
+
+    const perFunction = () => Object.assign(new Error("PER-FUNCTION"), { perFunction: true });
+    await expect(hexclave.function(async () => "never", { required: true, unauthorized: perFunction })(convexCtx as never, {})).rejects.toMatchObject({ perFunction: true });
   });
 });

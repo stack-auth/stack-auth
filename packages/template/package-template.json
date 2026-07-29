@@ -50,6 +50,28 @@
       }
     },
     "//": "END_PLATFORM",
+    "//": "IF_PLATFORM next",
+    "./next": {
+      "types": "./dist/integrations/next.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/next.js"
+      },
+      "require": {
+        "default": "./dist/integrations/next.js"
+      }
+    },
+    "//": "END_PLATFORM",
+    "//": "IF_PLATFORM tanstack-start",
+    "./tanstack-start": {
+      "types": "./dist/integrations/tanstack-start.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/tanstack-start.js"
+      },
+      "require": {
+        "default": "./dist/integrations/tanstack-start.js"
+      }
+    },
+    "//": "END_PLATFORM",
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {
