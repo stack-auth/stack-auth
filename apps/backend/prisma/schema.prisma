@@ -1873,8 +1873,19 @@ model WorkflowRun {
   // (NULLs never collide), the same trick as Tenancy.hasNoOrganization.
   // NOTE: Prisma only applies dbgenerated() as a DEFAULT; the migration
   // hand-writes the actual GENERATED ALWAYS AS ... STORED column, and this
-  // declaration must be kept in sync with it.
-  isActive Boolean? @default(dbgenerated("CASE WHEN \"state\" IN ('QUEUED', 'RUNNING', 'SLEEPING') THEN TRUE ELSE NULL END"))
+  // declaration must be kept in sync with it. The string below must be the
+  // expression as Postgres *renders it back*, not as the migration writes it:
+  // Postgres parses the expression and re-deparses it, so `IN (...)` becomes
+  // `= ANY (ARRAY[...])`, literals gain explicit casts, and it is pretty-printed
+  // with a leading newline. `prisma migrate diff` (the check in CI) compares
+  // these strings literally, so the source form drifts forever. Get the exact
+  // text with:
+  //   SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+  //     JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+  //     WHERE d.adrelid = '"WorkflowRun"'::regclass AND a.attname = 'isActive';
+  // Dropping the dbgenerated() entirely does not work either — diff then reports
+  // the default changing to None. Same deal as the EmailOutbox generated columns.
+  isActive Boolean? @default(dbgenerated("\nCASE\n    WHEN (state = ANY (ARRAY['QUEUED'::\"WorkflowRunState\", 'RUNNING'::\"WorkflowRunState\", 'SLEEPING'::\"WorkflowRunState\"])) THEN true\n    ELSE NULL::boolean\nEND"))
 
   // The id of the WorkflowEvent that triggered this run. Not a foreign key
   // on purpose: events are retention-pruned independently of runs, and the
