@@ -277,11 +277,9 @@ async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOpti
   const sessionAuth = await ensureLoggedInSession();
   const user = await withProgress("Loading account", async () => await getInternalUser(sessionAuth));
 
-  const { dashboardUrl } = resolveLoginConfig();
   const newProject = await createProjectInteractively(user, {
     displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
-    dashboardUrl,
   });
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
 
@@ -317,10 +315,8 @@ async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOp
       throw new CliError(`You don't own any projects. Create one at ${dashboardUrl} or re-run and choose to create one.`);
     }
 
-    const { dashboardUrl } = resolveLoginConfig();
     const newProject = await createProjectInteractively(user, {
       defaultDisplayName: path.basename(outputDir),
-      dashboardUrl,
     });
     console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
     projects = [newProject];

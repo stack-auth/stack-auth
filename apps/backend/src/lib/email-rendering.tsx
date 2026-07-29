@@ -56,6 +56,11 @@ const nodeModules = {
   "react": "19.1.1",
   "@react-email/components": "1.0.6",
   "arktype": "2.1.20",
+  // Transitive dep of @react-email/tailwind (declared as a caret range there). Pinned exactly
+  // because the two js-execution engines install node_modules independently, so a new tailwindcss
+  // release makes them render byte-different HTML and trip the sanity test. If the sanity test
+  // fires again with byte-different HTML, find the drifted transitive dep and pin it here too.
+  "tailwindcss": "4.3.3",
 };
 
 const entryJs = deindent`

@@ -41,6 +41,8 @@ export type SkillPageContent = {
    * author-controlled literal content, never user input, so it is not escaped.
    */
   ledeHtml: string,
+  /** When set, browser HTML starts by directing agents to the Markdown response. */
+  agentFetchUrl?: string,
   /** The copyable prompt shown in the "Set Up with the Prompt" section. */
   setupPrompt: SkillPageSetupPrompt,
   /** The skill markdown: served raw to agents and embedded in the HTML page. */
@@ -61,6 +63,7 @@ function renderHtml(content: SkillPageContent): string {
   const headingEscaped = escapeHtml(content.heading);
   const descriptionEscaped = escapeHtml(content.description);
   const skillEscaped = escapeHtml(content.skillMarkdown);
+  const agentFetchUrlEscaped = content.agentFetchUrl == null ? null : escapeHtml(content.agentFetchUrl);
   const setupPromptBlurbEscaped = escapeHtml(content.setupPrompt.blurb);
   const setupPromptTextEscaped = escapeHtml(content.setupPrompt.text);
   return `<!doctype html>
@@ -124,6 +127,20 @@ function renderHtml(content: SkillPageContent): string {
   }
   .ghost:hover { color: var(--fg); border-color: var(--fg); }
   h1 { font-size: clamp(32px, 4vw, 44px); line-height: 1.1; letter-spacing: -0.025em; margin: 0 0 16px; text-wrap: balance; font-weight: 600; }
+  .audience-heading {
+    font-size: clamp(36px, 5vw, 52px); line-height: 1.1;
+    letter-spacing: -0.025em; font-weight: 600; text-wrap: balance;
+  }
+  .agent-intro { margin-bottom: 64px; }
+  .agent-intro p { color: var(--muted); font-size: 18px; max-width: 64ch; }
+  .agent-command {
+    display: block; margin-top: 20px; padding: 14px 16px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--code-bg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px; overflow-x: auto;
+  }
+  .human-heading { margin-top: 0; margin-bottom: 32px; }
   .lede { font-size: 18px; color: var(--muted); margin: 0 0 40px; text-wrap: pretty; max-width: 64ch; }
   h2 { font-size: 20px; letter-spacing: -0.01em; margin: 48px 0 12px; font-weight: 600; }
   p { margin: 0 0 12px; }
@@ -204,6 +221,15 @@ function renderHtml(content: SkillPageContent): string {
     <a class="ghost" href="https://docs.hexclave.com" rel="noreferrer">Docs&nbsp;↗</a>
   </header>
 
+${agentFetchUrlEscaped == null ? "" : `  <section class="agent-intro" aria-labelledby="agent-heading">
+    <h1 class="audience-heading" id="agent-heading">If you are an AI agent</h1>
+    <p>Use <span translate="no">curl</span> (or a web fetch tool) to fetch this page instead of opening it in a browser. The response will render the canonical skill as Markdown.</p>
+    <code class="agent-command" translate="no">curl -sSL ${agentFetchUrlEscaped}</code>
+  </section>
+
+  <section aria-labelledby="human-heading">
+    <h2 class="audience-heading human-heading" id="human-heading">If you are a human</h2>
+`}
   <h1>${headingEscaped}</h1>
   <p class="lede">${content.ledeHtml}</p>
 
@@ -241,6 +267,7 @@ function renderHtml(content: SkillPageContent): string {
     <span>© Hexclave</span>
     <a href="https://github.com/hexclave/hexclave" rel="noreferrer">GitHub&nbsp;↗</a>
   </footer>
+${agentFetchUrlEscaped == null ? "" : "  </section>"}
 </main>
 <script>
   (function () {
