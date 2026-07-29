@@ -2,9 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { NextRequest } from "next/server";
+import { connection, NextRequest } from "next/server";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", async () => {
+  const actual = await vi.importActual<typeof import("next/server")>("next/server");
+  return {
+    ...actual,
+    connection: vi.fn(async () => {}),
+  };
+});
 
 let tempDir: string | undefined;
 const remoteDevelopmentEnvironmentEnabledEnv = "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT";
