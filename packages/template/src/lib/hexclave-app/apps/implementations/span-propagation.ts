@@ -1,5 +1,91 @@
-import { decodeBase64Url, encodeBase64Url } from "@hexclave/shared/dist/utils/bytes";
+import { buildTraceparent } from "@hexclave/shared/dist/utils/analytics-wire";
+import { SPAN_CONTEXT_HEADER, encodeSpanContextHeader, type SpanPropagationContext } from "@hexclave/shared/dist/utils/span-context-codec";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { ParentRef, SpanRef } from "./event-tracker";
+
+// The header codec lives in @hexclave/shared (the backend decodes the same
+// header in parseAuth for tenant attribution — one codec, zero drift); this
+// module re-exports it so SDK-internal consumers keep one import site.
+export {
+  SPAN_CONTEXT_HEADER,
+  decodeSpanContextHeader,
+  encodeSpanContextHeader,
+  readSpanContextHeader,
+  type SpanPropagationContext,
+} from "@hexclave/shared/dist/utils/span-context-codec";
+
+export type ParentSpanPathPart =
+  | { kind: "known-path", ids: readonly string[] }
+  | { kind: "declared-next", id: string };
+
+function isParentPathPrefix(prefix: readonly string[], path: readonly string[]): boolean {
+  return prefix.length <= path.length && prefix.every((id, index) => path[index] === id);
+}
+
+function parentPathOverlap(left: readonly string[], right: readonly string[]): number {
+  const maxLength = Math.min(left.length, right.length);
+  for (let length = maxLength; length > 0; length -= 1) {
+    const leftStart = left.length - length;
+    if (right.slice(0, length).every((id, index) => left[leftStart + index] === id)) {
+      return length;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Merges parent information into one farthest-known-to-nearest-known path.
+ *
+ * Span refs carry a frozen path, so two refs are compatible only when one path
+ * extends the other or their retained ends overlap (a capped path may have lost
+ * its root). Raw ids have no ancestry metadata; their position in a `parentIds`
+ * array explicitly declares that they follow the path built so far.
+ */
+export function mergeParentSpanPath(
+  parts: readonly ParentSpanPathPart[],
+): { ids: string[] } | { error: string } {
+  let merged: string[] = [];
+
+  for (const part of parts) {
+    if (part.kind === "declared-next") {
+      if (!merged.includes(part.id)) merged.push(part.id);
+      continue;
+    }
+
+    if (new Set(part.ids).size !== part.ids.length) {
+      return { error: "A parent span path must not contain duplicate span ids" };
+    }
+    if (merged.length === 0 || isParentPathPrefix(merged, part.ids)) {
+      merged = [...part.ids];
+      continue;
+    }
+    if (isParentPathPrefix(part.ids, merged)) continue;
+    const forwardOverlap = parentPathOverlap(merged, part.ids);
+    if (forwardOverlap > 0) {
+      const candidate = [...merged, ...part.ids.slice(forwardOverlap)];
+      if (new Set(candidate).size !== candidate.length) {
+        return { error: "A parent span path must not contain duplicate span ids" };
+      }
+      merged = candidate;
+      continue;
+    }
+    const backwardOverlap = parentPathOverlap(part.ids, merged);
+    if (backwardOverlap > 0) {
+      const candidate = [...part.ids.slice(0, -backwardOverlap), ...merged];
+      if (new Set(candidate).size !== candidate.length) {
+        return { error: "A parent span path must not contain duplicate span ids" };
+      }
+      merged = candidate;
+      continue;
+    }
+
+    return {
+      error: "Parent spans must describe one ancestry path; unrelated or sibling span refs cannot both be structural parents",
+    };
+  }
+
+  return { ids: merged };
+}
 
 /**
  * Cross-tier span propagation.
@@ -22,137 +108,32 @@ import type { ParentRef, SpanRef } from "./event-tracker";
  * unknown-version headers are ignored, never surfaced as an error.
  */
 
-/** The single header carrying the client's ambient span context. */
-export const SPAN_CONTEXT_HEADER = "x-hexclave-span-context";
-
-/** Wire format is `${VERSION}.${base64url(json)}` so we can evolve the payload. */
-const SPAN_CONTEXT_VERSION = "v1";
-
 /**
- * Cap on the custom parent chain carried in the header. Mirrors `MAX_PARENT_CHAIN`
- * in event-tracker.ts and the backend analytics-events route.
+ * Merges ambient parent refs (+ optional explicit extras) into the single
+ * farthest-known-to-nearest-known path the header carries. Each ref contributes
+ * its full frozen path (`[...parentSpanIds, spanId]`); incompatible branches are
+ * rejected rather than flattened. Raw ids declare successive parents in their
+ * array order. The codec drops malformed ids on decode and the backend
+ * re-validates them.
  */
-const MAX_CUSTOM_PARENT_SPAN_IDS = 10;
-
-/** Reject absurd header values before we spend work decoding them. */
-const MAX_HEADER_LENGTH = 4096;
-
-/** Mirrors the backend UUID_RE; the raw ids in the header must be span uuids. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * The client's ambient span context, carried across the wire as raw ids (no
- * `rti-`/`sri-`/`srsi-`/`cs-` prefixes — those are applied server-side). `projectId`
- * lets the receiver ignore a header that belongs to a different Hexclave project.
- */
-export type SpanPropagationContext = {
-  projectId: string,
-  sessionReplayId?: string,
-  sessionReplaySegmentId?: string,
-  customParentSpanIds?: string[],
-};
-
-/**
- * Flattens ambient parent refs (+ optional explicit extras) into the flat,
- * root-first, deduped id list the header carries. Each ref contributes its full
- * frozen chain (`[...parentSpanIds, spanId]`); explicit extras follow the same
- * ParentRef rules as parentIds elsewhere (a raw string contributes only itself).
- * Mirrors the merge in resolveParentIds, minus validation — the codec drops
- * malformed ids on decode and the backend re-validates.
- */
-export function flattenParentRefsToIds(refs: SpanRef[], extraParents?: ParentRef[]): string[] {
-  const chains: string[][] = refs.map((ref) => [...ref.parentSpanIds, ref.spanId]);
+export function resolveParentRefsToPath(refs: SpanRef[], extraParents?: ParentRef[]): string[] {
+  const parts: ParentSpanPathPart[] = refs.map((ref) => ({
+    kind: "known-path",
+    ids: [...ref.parentSpanIds, ref.spanId],
+  }));
   for (const parent of extraParents ?? []) {
     if (typeof parent === "string") {
-      chains.push([parent]);
+      parts.push({ kind: "declared-next", id: parent });
     } else {
       const ref: SpanRef = "ref" in parent && typeof parent.ref === "function" ? parent.ref() : parent as SpanRef;
-      chains.push([...ref.parentSpanIds, ref.spanId]);
+      parts.push({ kind: "known-path", ids: [...ref.parentSpanIds, ref.spanId] });
     }
   }
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const chain of chains) {
-    for (const id of chain) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        ids.push(id);
-      }
-    }
+  const merged = mergeParentSpanPath(parts);
+  if ("error" in merged) {
+    throw new Error(`Hexclave analytics: ${merged.error}`);
   }
-  return ids;
-}
-
-/** Header bag shape shared by browser `Headers` and node request-like objects. */
-type RequestLikeHeaders = { get: (name: string) => string | null } | Record<string, string | null>;
-
-/** Reads the span-context header from a request's headers (case-insensitive). */
-export function readSpanContextHeader(headers: RequestLikeHeaders): string | null {
-  if (typeof (headers as { get?: unknown }).get === "function") {
-    return (headers as { get: (name: string) => string | null }).get(SPAN_CONTEXT_HEADER);
-  }
-  const lower = SPAN_CONTEXT_HEADER.toLowerCase();
-  for (const [name, value] of Object.entries(headers as Record<string, string | null>)) {
-    if (name.toLowerCase() === lower) return value;
-  }
-  return null;
-}
-
-/** Serializes a context into the `x-hexclave-span-context` header value. */
-export function encodeSpanContextHeader(context: SpanPropagationContext): string {
-  const payload: Record<string, unknown> = { projectId: context.projectId };
-  if (context.sessionReplayId) payload.sessionReplayId = context.sessionReplayId;
-  if (context.sessionReplaySegmentId) payload.sessionReplaySegmentId = context.sessionReplaySegmentId;
-  if (context.customParentSpanIds && context.customParentSpanIds.length > 0) {
-    // Cap keeps the NEAREST ancestors (tail of a root-first list) — the same
-    // overflow rule resolveParentIds applies to locally-tracked items.
-    payload.customParentSpanIds = context.customParentSpanIds.slice(-MAX_CUSTOM_PARENT_SPAN_IDS);
-  }
-  const json = JSON.stringify(payload);
-  return `${SPAN_CONTEXT_VERSION}.${encodeBase64Url(new TextEncoder().encode(json))}`;
-}
-
-/**
- * Parses a header value back into a context. Returns null for anything missing,
- * oversized, wrong-version, non-decodable, or structurally invalid — a bad header
- * must never throw into the request path. Individual fields are dropped (not
- * fatal) when they fail uuid validation, so a partially-corrupt header still
- * yields whatever ids are well-formed.
- */
-export function decodeSpanContextHeader(headerValue: string | null | undefined): SpanPropagationContext | null {
-  if (typeof headerValue !== "string" || headerValue.length === 0 || headerValue.length > MAX_HEADER_LENGTH) {
-    return null;
-  }
-  const dot = headerValue.indexOf(".");
-  if (dot === -1) return null;
-  if (headerValue.slice(0, dot) !== SPAN_CONTEXT_VERSION) return null;
-
-  let parsed: unknown;
-  try {
-    const json = new TextDecoder().decode(decodeBase64Url(headerValue.slice(dot + 1)));
-    parsed = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-
-  const obj = parsed as Record<string, unknown>;
-  if (typeof obj.projectId !== "string" || obj.projectId.length === 0) return null;
-
-  const context: SpanPropagationContext = { projectId: obj.projectId };
-  if (typeof obj.sessionReplayId === "string" && UUID_RE.test(obj.sessionReplayId)) {
-    context.sessionReplayId = obj.sessionReplayId;
-  }
-  if (typeof obj.sessionReplaySegmentId === "string" && UUID_RE.test(obj.sessionReplaySegmentId)) {
-    context.sessionReplaySegmentId = obj.sessionReplaySegmentId;
-  }
-  if (Array.isArray(obj.customParentSpanIds)) {
-    const ids = obj.customParentSpanIds
-      .filter((id): id is string => typeof id === "string" && UUID_RE.test(id))
-      .slice(-MAX_CUSTOM_PARENT_SPAN_IDS);
-    if (ids.length > 0) context.customParentSpanIds = ids;
-  }
-  return context;
+  return merged.ids;
 }
 
 /**
@@ -160,13 +141,18 @@ export function decodeSpanContextHeader(headerValue: string | null | undefined):
  * SAME-ORIGIN ONLY: attaching a custom header cross-origin both leaks the context
  * to third parties and forces a CORS preflight that the third party won't allow,
  * breaking the customer's request. `allowedOrigins` opts specific extra origins in
- * (e.g. a split `api.example.com`), matched by exact origin. Non-http(s) targets
- * and unparseable urls are always excluded.
+ * (e.g. a split `api.example.com`), matched by exact origin. `allowLocalhost`
+ * additionally admits any localhost/loopback target (set from the project's
+ * `allow_localhost` dev flag — split-port local dev like `:3000` → `:3001` is
+ * unenumerable as exact origins, and the exposure of a header to another
+ * process on the developer's own machine is not the boundary this policy
+ * defends). Non-http(s) targets and unparseable urls are always excluded.
  */
 export function shouldPropagateSpanContext(opts: {
   targetUrl: string | URL,
   selfOrigin: string | null,
   allowedOrigins?: readonly string[],
+  allowLocalhost?: boolean,
 }): boolean {
   let target: URL;
   try {
@@ -178,7 +164,34 @@ export function shouldPropagateSpanContext(opts: {
   }
   if (target.protocol !== "http:" && target.protocol !== "https:") return false;
   if (opts.selfOrigin !== null && target.origin === opts.selfOrigin) return true;
-  return opts.allowedOrigins?.includes(target.origin) ?? false;
+  if (opts.allowedOrigins?.includes(target.origin) === true) return true;
+  return opts.allowLocalhost === true && isLocalhost(target);
+}
+
+/**
+ * Derives the exact origins the propagation policy admits from the project's
+ * configured trusted domains (the same list that guards auth redirects — a
+ * boundary the customer already maintains, which is what makes it a safe
+ * zero-config default for the split frontend/api case). Only non-wildcard
+ * entries qualify: propagation matches exact origins on purpose (fail-closed),
+ * and expanding `https://*.example.com` into a pattern match would silently
+ * loosen that. Invalid entries are skipped, not fatal — one bad domain in the
+ * dashboard must not break propagation for the rest.
+ */
+export function trustedDomainsToPropagationOrigins(trustedDomains: readonly string[]): string[] {
+  const origins = new Set<string>();
+  for (const domain of trustedDomains) {
+    if (domain.includes("*")) continue;
+    let url: URL;
+    try {
+      url = new URL(domain);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+    origins.add(url.origin);
+  }
+  return [...origins];
 }
 
 /** Marker on globalThis so the fetch wrapper installs at most once (HMR / multiple app instances). */
@@ -201,6 +214,64 @@ function requestInputMode(input: unknown, init: RequestInit | undefined): string
   return undefined;
 }
 
+function requestInputMethod(input: unknown, init: RequestInit | undefined): string {
+  if (typeof init?.method === "string" && init.method !== "") return init.method.toUpperCase();
+  if (typeof input === "object" && input !== null && typeof (input as { method?: unknown }).method === "string") {
+    return (input as { method: string }).method.toUpperCase(); // Request
+  }
+  return "GET";
+}
+
+/** The absolute http(s) URL of a request target, or null when it cannot be
+ * resolved (non-http(s) scheme, unparseable, or relative without a base). */
+export function resolveHttpRequestUrl(rawUrl: string, selfOrigin: string | null): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl, selfOrigin ?? undefined);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  return parsed.href;
+}
+
+export function isAbortError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+}
+
+/**
+ * Ends all spans opened for one request when its fetch promise settles —
+ * on RESPONSE HEADERS for successes (never the body stream: a span that only
+ * closed at body completion would misreport streaming responses as slow), and
+ * on rejection for failures. The derived promise is fully handled here, so an
+ * uncaught rejection remains exactly the caller's to observe.
+ */
+function endRequestSpansOnSettle(
+  promise: Promise<Response>,
+  opened: readonly { span: RequestSpanHandle, propagated: boolean }[],
+): void {
+  const endAll = (outcome: { status?: number, errored: boolean, aborted: boolean }) => {
+    for (const entry of opened) {
+      try {
+        entry.span.end({ ...outcome, propagated: entry.propagated });
+      } catch {
+        // Ending a span must never throw into the caller's request handling.
+      }
+    }
+  };
+  promise.then(
+    (response) => {
+      // Runtime-guarded despite the Response type: fetch stubs/polyfills may
+      // resolve with partial objects, and a missing status must not become NaN.
+      const status = typeof response.status === "number" ? response.status : undefined;
+      endAll({ status, errored: false, aborted: false });
+    },
+    (error: unknown) => {
+      endAll({ errored: true, aborted: isAbortError(error) });
+    },
+  );
+}
+
 /**
  * Builds the RequestInit for attaching a span-context header to one fetch call,
  * or returns null when the header must NOT be attached: `no-cors` mode (custom
@@ -217,13 +288,14 @@ export function buildFetchInitWithSpanContext(opts: {
   headerValue: string,
   selfOrigin: string | null,
   allowedOrigins: readonly string[],
+  allowLocalhost?: boolean,
   bypassOriginPolicy?: boolean,
 }): RequestInit | null {
   if (requestInputMode(opts.input, opts.init) === "no-cors") return null;
   if (!opts.bypassOriginPolicy) {
     const url = requestInputUrl(opts.input);
     if (url === null) return null;
-    if (!shouldPropagateSpanContext({ targetUrl: url, selfOrigin: opts.selfOrigin, allowedOrigins: opts.allowedOrigins })) return null;
+    if (!shouldPropagateSpanContext({ targetUrl: url, selfOrigin: opts.selfOrigin, allowedOrigins: opts.allowedOrigins, allowLocalhost: opts.allowLocalhost })) return null;
   }
   const isRequest = typeof Request !== "undefined" && opts.input instanceof Request;
   const base: HeadersInit | undefined = opts.init?.headers !== undefined
@@ -235,6 +307,39 @@ export function buildFetchInitWithSpanContext(opts: {
   return { ...opts.init, headers };
 }
 
+export type RequestSpanInfo = {
+  /** Absolute http(s) URL of the outgoing request (resolved against selfOrigin). */
+  url: string,
+  method: string,
+  transport: "fetch" | "xhr",
+};
+
+export type RequestSpanOutcome = {
+  /** Response status; omitted when the request never produced response headers. */
+  status?: number,
+  errored: boolean,
+  aborted: boolean,
+  /** True when this span's uuid actually rode the outgoing span-context header. */
+  propagated?: boolean,
+};
+
+/**
+ * Structurally matches network-capture's HttpRequestSpanHandle — declared here
+ * (instead of imported) so this module stays decoupled from the span state
+ * machine: the wrapper only needs an id and an end callback.
+ */
+export type RequestSpanHandle = {
+  spanUuid: string,
+  /**
+   * Whether the span's uuid may be promised to the backend via
+   * `httpClientSpanId` + `traceparent`. False for spans that are only
+   * tentatively kept (sampled-out / errors-only capture): a traceparent must
+   * always point at a stored span. Default true when omitted.
+   */
+  propagate?: boolean,
+  end: (outcome: RequestSpanOutcome) => void,
+};
+
 export type FetchSpanPropagationOptions = {
   /** The current ambient client context, or null when there is nothing to link. */
   getContext: () => SpanPropagationContext | null,
@@ -242,6 +347,20 @@ export type FetchSpanPropagationOptions = {
   getSelfOrigin: () => string | null,
   /** Extra exact origins allowed to receive the header (split frontend/api domains). */
   getAllowedOrigins: () => readonly string[],
+  /** Whether localhost/loopback targets may receive the header (dev-only
+   * convenience, sourced from the project's `allow_localhost`). Optional so
+   * existing providers keep their exact-origins-only behavior. */
+  getAllowLocalhostOrigins?: () => boolean,
+  /**
+   * Opens a `$http-client` span for one outgoing request, or null when the
+   * request must not be recorded (capture disabled, SDK-own URL, filtered
+   * origin). Called for EVERY http(s) request — span creation is local, so
+   * unlike the header it has no CORS side effect and is independent of the
+   * origin policy. The wrapper calls `end` exactly once, when response
+   * HEADERS arrive or the request settles with an error (the body stream is
+   * never touched).
+   */
+  beginRequestSpan?: (info: RequestSpanInfo) => RequestSpanHandle | null,
 };
 
 type FetchSpanPropagationState = {
@@ -296,29 +415,99 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
   };
 
   const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const candidates = new Map<string, RequestInit>();
+    type SpanEntry = { span: RequestSpanHandle, propagated: boolean };
+    const openedSpans: SpanEntry[] = [];
+    const candidates = new Map<string, { init: RequestInit, spanEntry: SpanEntry | null }>();
     for (const provider of state.providers) {
       try {
+        // `$http-client` span creation happens for EVERY http(s) request,
+        // independent of the header origin policy: creating a span is a local
+        // write with no CORS side effect. With multiple providers, each
+        // eligible provider opens its own span (correct per-project
+        // attribution); only HEADER attachment keeps the fail-closed
+        // single-candidate rule below.
+        let spanEntry: SpanEntry | null = null;
+        if (provider.beginRequestSpan) {
+          const rawUrl = requestInputUrl(input);
+          const absoluteUrl = rawUrl === null ? null : resolveHttpRequestUrl(rawUrl, provider.getSelfOrigin());
+          if (absoluteUrl !== null) {
+            const span = provider.beginRequestSpan({ url: absoluteUrl, method: requestInputMethod(input, init), transport: "fetch" });
+            if (span) {
+              spanEntry = { span, propagated: false };
+              openedSpans.push(spanEntry);
+            }
+          }
+        }
         const context = provider.getContext();
         if (!context) continue;
-        const headerValue = encodeSpanContextHeader(context);
+        // The span's uuid rides the header only when the span is guaranteed to
+        // be stored (propagate !== false) — bridge coherence: httpClientSpanId
+        // and the traceparent below must always point at a stored span. When
+        // no span was created (capture disabled / filtered / sampled out), the
+        // context header still rides WITHOUT httpClientSpanId and no
+        // traceparent is emitted.
+        const propagatableSpan = spanEntry !== null && spanEntry.span.propagate !== false ? spanEntry : null;
+        const headerValue = encodeSpanContextHeader(
+          propagatableSpan !== null ? { ...context, httpClientSpanId: propagatableSpan.span.spanUuid } : context,
+        );
         const initWithHeader = buildFetchInitWithSpanContext({
           input,
           init,
           headerValue,
           selfOrigin: provider.getSelfOrigin(),
           allowedOrigins: provider.getAllowedOrigins(),
+          allowLocalhost: provider.getAllowLocalhostOrigins?.() ?? false,
         });
-        if (initWithHeader) candidates.set(headerValue, initWithHeader);
+        if (initWithHeader) candidates.set(headerValue, { init: initWithHeader, spanEntry: propagatableSpan });
       } catch {
         // A broken provider must not affect the request or the other providers.
       }
     }
+    let finalInit = init;
     if (candidates.size === 1) {
       const candidate = candidates.values().next();
-      if (!candidate.done) return callFetch(input, candidate.value);
+      if (!candidate.done) {
+        finalInit = candidate.value.init;
+        const spanEntry = candidate.value.spanEntry;
+        if (spanEntry !== null) {
+          spanEntry.propagated = true;
+          try {
+            // The W3C bridge: `traceparent` derives deterministically from the
+            // $http-client span's uuid, so backend OTel spans of this request
+            // share a trace id computable from the client span. Caller intent
+            // wins — an explicitly-set traceparent is never overwritten.
+            // (no-cors requests never reach here: buildFetchInitWithSpanContext
+            // already excluded them.)
+            const headers = new Headers(finalInit.headers);
+            if (!headers.has("traceparent")) {
+              headers.set("traceparent", buildTraceparent(spanEntry.span.spanUuid));
+              finalInit = { ...finalInit, headers };
+            }
+          } catch {
+            // The span-context header still rides even if traceparent fails.
+          }
+        }
+      }
     }
-    return callFetch(input as RequestInfo | URL, init);
+    let promise: Promise<Response>;
+    try {
+      promise = callFetch(input, finalInit);
+    } catch (error) {
+      // A synchronously-throwing fetch (misbehaving polyfill/stub) must still
+      // close the spans we opened, then propagate unchanged to the caller.
+      for (const entry of openedSpans) {
+        try {
+          entry.span.end({ errored: true, aborted: isAbortError(error), propagated: entry.propagated });
+        } catch {
+          // Never let span teardown mask the original error.
+        }
+      }
+      throw error;
+    }
+    if (openedSpans.length > 0) {
+      endRequestSpansOnSettle(promise, openedSpans);
+    }
+    return promise;
   }) as typeof fetch;
 
   state.wrappedFetch = wrapped;
