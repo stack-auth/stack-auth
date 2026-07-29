@@ -1,5 +1,6 @@
 packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
   s_50c6b5323dd4a8::t_63e529abd3153b 1832,1834,1933,1935
+  s_c6374bd6e28a90::t_ec34be286703df 41
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -11,6 +12,14 @@ packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
       "agent_id": {
         "tool": "codex",
         "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
         "model": "gpt-5.6-sol"
       },
       "human_author": "mantrakp04 <mantrakp@gmail.com>"
