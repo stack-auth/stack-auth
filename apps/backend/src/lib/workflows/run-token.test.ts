@@ -8,9 +8,12 @@ vi.mock("@/prisma-client", () => ({
   globalPrismaClient: { workflowRun: { findUnique: findUniqueMock } },
 }));
 
+import { KnownErrors } from "@hexclave/shared";
 import {
   authenticateWorkflowRunToken,
+  authenticateWorkflowRunTokenRequestOrThrow,
   createWorkflowRunToken,
+  getWorkflowRunTokenFromHeaders,
   isWorkflowRunToken,
   verifyWorkflowRunTokenClaims,
   WORKFLOW_RUN_TOKEN_PREFIX,
@@ -273,5 +276,87 @@ describe("workflow run token — live state check", () => {
     findUniqueMock.mockResolvedValue({ state: "RUNNING", leaseToken: CLAIMS.leaseToken, workflowId: "some-other-workflow" });
     const result = await authenticate();
     expect(result.status === "error" && result.error).toBe("workflow-mismatch");
+  });
+});
+
+describe("workflow run token — header routing", () => {
+  test("returns null when neither header holds a run token", () => {
+    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: null, superSecretAdminKey: null })).toBeNull();
+    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "ssk_abc123", superSecretAdminKey: "sak_abc123" })).toBeNull();
+  });
+
+  test("routes a token in the admin header", () => {
+    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "ssk_abc123", superSecretAdminKey: "wrt_x" }))
+      .toEqual({ token: "wrt_x", fromAdminHeader: true });
+  });
+
+  test("routes a token in the server header", () => {
+    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "wrt_x", superSecretAdminKey: null }))
+      .toEqual({ token: "wrt_x", fromAdminHeader: false });
+  });
+
+  test("prefers the admin header when both hold tokens", () => {
+    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "wrt_server", superSecretAdminKey: "wrt_admin" }))
+      .toEqual({ token: "wrt_admin", fromAdminHeader: true });
+  });
+});
+
+describe("workflow run token — auth-path entry point", () => {
+  const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  beforeEach(() => {
+    findUniqueMock.mockReset();
+    findUniqueMock.mockResolvedValue({ state: "RUNNING", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
+    consoleLogSpy.mockClear();
+  });
+
+  const authenticateRequest = async (overrides?: { token?: string, fromAdminHeader?: boolean, tenancyId?: string | null }) => {
+    return await authenticateWorkflowRunTokenRequestOrThrow({
+      credential: { token: overrides?.token ?? await mint(), fromAdminHeader: overrides?.fromAdminHeader ?? true },
+      projectId: PROJECT_ID,
+      branchId: CLAIMS.branchId,
+      tenancyId: overrides && "tenancyId" in overrides ? overrides.tenancyId ?? null : CLAIMS.tenancyId,
+    });
+  };
+
+  test("returns the claims for a valid token on a running run", async () => {
+    const claims = await authenticateRequest();
+    expect(claims.runId).toBe(CLAIMS.runId);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+
+  test("maps a rejection to the invalid-admin-key error when the token rode in the admin header", async () => {
+    findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
+    await expect(authenticateRequest({ fromAdminHeader: true })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+  });
+
+  test("maps a rejection to the invalid-server-key error when the token rode in the server header", async () => {
+    findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
+    await expect(authenticateRequest({ fromAdminHeader: false })).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
+  });
+
+  test("treats an unresolved tenancy as an authentication failure, without a log line or a DB read", async () => {
+    await expect(authenticateRequest({ tenancyId: null })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(findUniqueMock).not.toHaveBeenCalled();
+  });
+
+  test("does not log rejections reachable by unauthenticated callers (forged signature)", async () => {
+    await expect(authenticateRequest({ token: await mintRaw({ expirationTime: "-60s" }) })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+
+  test("logs when a GENUINE engine-minted token is rejected (canceled run still calling out)", async () => {
+    findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
+    await expect(authenticateRequest()).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+    expect(consoleLogSpy.mock.calls[0][0]).toContain("run-not-running");
+  });
+
+  test("never leaks the rejection reason in the thrown error", async () => {
+    findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
+    const thrown: unknown = await authenticateRequest().catch((e: unknown) => e);
+    if (!(thrown instanceof Error)) throw new Error("expected authenticateRequest to throw an Error");
+    expect(`${thrown.message} ${JSON.stringify(Object.entries(thrown))}`).not.toContain("run-not-running");
   });
 });

@@ -1,4 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
+import { KnownErrors } from "@hexclave/shared";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { signJWT, verifyJWT } from "@hexclave/shared/dist/utils/jwt";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -239,4 +240,79 @@ export async function authenticateWorkflowRunToken(options: {
   if (run.leaseToken == null || run.leaseToken !== claims.leaseToken) return Result.error("lease-superseded");
 
   return Result.ok(claims);
+}
+
+export type WorkflowRunTokenRequestCredential = {
+  token: string,
+  /** Which credential header carried the token — determines which KnownError a rejection maps to. */
+  fromAdminHeader: boolean,
+};
+
+/**
+ * Routes the two project-credential headers: returns the run token if either
+ * carries one, else null. The run token deliberately rides in the ordinary
+ * key headers (see the module comment) instead of a dedicated header, so the
+ * auth path needs this to tell a `wrt_` credential apart from a real key.
+ *
+ * Resolved per header rather than short-circuiting on the first: if both hold
+ * run tokens the admin header wins (it is the slot the runtime shim actually
+ * uses), and callers should still use {@link isWorkflowRunToken} per header to
+ * suppress the ApiKeySet lookup ONLY for the header that holds a token — a
+ * run token in one header must not reject a genuine key in the other.
+ */
+export function getWorkflowRunTokenFromHeaders(headers: { secretServerKey: string | null, superSecretAdminKey: string | null }): WorkflowRunTokenRequestCredential | null {
+  if (isWorkflowRunToken(headers.superSecretAdminKey)) return { token: headers.superSecretAdminKey, fromAdminHeader: true };
+  if (isWorkflowRunToken(headers.secretServerKey)) return { token: headers.secretServerKey, fromAdminHeader: false };
+  return null;
+}
+
+/**
+ * Rejections reachable by any unauthenticated caller who knows a project id
+ * (which is semi-public): purely syntactic failures, forged/expired
+ * signatures, and a (projectId, branchId) that resolves to no tenancy — none
+ * of which prove the caller ever held a real token. These are not logged,
+ * because logging them would hand out a free log-spam primitive and tell us
+ * nothing actionable. Everything else got past signature verification, i.e.
+ * a GENUINE engine-minted token was rejected — that is always worth a log
+ * line (a canceled run's sandbox still calling out, a superseded lease, a
+ * drifted claim).
+ */
+const UNAUTHENTICATED_REACHABLE_REJECTIONS: readonly WorkflowRunTokenRejection[] = ["not-a-run-token", "unparsable", "audience-mismatch", "signature-or-expiry-invalid", "tenancy-not-found"];
+
+/**
+ * The auth-path entry point: fully authenticates a run-token credential
+ * (crypto + live run state) and, on rejection, throws the SAME KnownError an
+ * invalid real key in that header would produce — the specific rejection
+ * reason must never reach the caller, since it would disclose run ids, run
+ * state, and lease details to unauthenticated probing.
+ */
+export async function authenticateWorkflowRunTokenRequestOrThrow(options: {
+  credential: WorkflowRunTokenRequestCredential,
+  projectId: string,
+  branchId: string,
+  /**
+   * Null when (projectId, branchId) resolved to no tenancy. Treated as an
+   * authentication failure rather than a branch-not-found error so an
+   * unauthenticated caller cannot use this path to probe which branches
+   * exist.
+   */
+  tenancyId: string | null,
+}): Promise<WorkflowRunTokenClaims> {
+  const authResult = options.tenancyId == null
+    ? Result.error("tenancy-not-found" as const)
+    : await authenticateWorkflowRunToken({
+      token: options.credential.token,
+      projectId: options.projectId,
+      branchId: options.branchId,
+      tenancyId: options.tenancyId,
+    });
+  if (authResult.status === "error") {
+    if (!UNAUTHENTICATED_REACHABLE_REJECTIONS.includes(authResult.error)) {
+      console.log(`[Workflow run token] Rejected an authentic run token for project ${options.projectId}: ${authResult.error}`);
+    }
+    throw options.credential.fromAdminHeader
+      ? new KnownErrors.InvalidSuperSecretAdminKey(options.projectId)
+      : new KnownErrors.InvalidSecretServerKey(options.projectId);
+  }
+  return authResult.data;
 }
