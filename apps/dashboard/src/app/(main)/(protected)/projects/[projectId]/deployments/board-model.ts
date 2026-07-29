@@ -16,13 +16,12 @@ export type ServiceStatus = "deployed" | "building" | "not_deployed" | "crashed"
 // value, "connection" vars carry the "serviceId.outputKey" reference they
 // resolve to at deploy time, and "secret" vars carry only the secret key whose
 // value lives in the write-only per-project secret store (Project Settings >
-// Secrets) — `secretHasDefault` says whether the definition has a fallback.
+// Secrets).
 export type EnvVar = {
   key: string,
   type: "plain" | "secret" | "connection",
   value: string | null,
   secretKey: string | null,
-  secretHasDefault: boolean | null,
 };
 
 export type BoardService = {
@@ -170,7 +169,6 @@ export function buildBoardServices(apiServices: AdminDeploymentServiceJson[], he
         type: envVar.type,
         value: envVar.value,
         secretKey: envVar.secret_key,
-        secretHasDefault: envVar.secret_has_default,
       })),
       api: apiService,
     });

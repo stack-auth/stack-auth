@@ -32,7 +32,6 @@
 
 import {
   DEPLOYMENT_ENV_VAR_KEY_REGEX,
-  DEPLOYMENT_SECRET_KEY_REGEX,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
   SERVICE_OUTPUT_KEYS,
@@ -40,6 +39,7 @@ import {
   type DeploymentServiceDefinition,
   type HexclaveOutputKey,
 } from "@hexclave/shared/dist/deployments";
+import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import path from "node:path";
 import { CliError, errorMessage } from "./errors.js";
 
@@ -133,7 +133,7 @@ function createServicesContext(mode: "deploy" | "dev"): { context: ServicesFunct
   const referencedServiceIds = new Set<string>();
 
   const secret = (key: unknown, defaultValue?: unknown): unknown => {
-    if (typeof key !== "string" || !DEPLOYMENT_SECRET_KEY_REGEX.test(key)) {
+    if (typeof key !== "string" || !PROJECT_SECRET_KEY_REGEX.test(key)) {
       throw new CliError(`secret() must be called with a secret key containing only letters, numbers, underscores, and hyphens (got ${JSON.stringify(key)}).`);
     }
     if (defaultValue !== undefined && typeof defaultValue !== "string") {
@@ -202,6 +202,10 @@ export type EvaluatedService = {
   definition: DeploymentServiceDefinition,
   env: Record<string, EvaluatedEnvVarValue>,
   absoluteRootDirectory: string,
+  // Local-only: `hexclave dev --service-id` runs this. It is deliberately
+  // absent from `definition` (and from the sync route's schema) because the
+  // backend never acts on it, so there is no reason for it to leave the
+  // machine or to be stored where it could drift from the config file.
   devCommand: string | undefined,
   includeFiles: ((relativePath: string) => boolean) | undefined,
   excludeFiles: ((relativePath: string) => boolean) | undefined,
@@ -283,7 +287,10 @@ function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<
         return [envVarKey, { value: value.value }];
       }
       case "secret": {
-        return [envVarKey, { type: "secret", key: value.secretKey, ...value.defaultValue !== undefined ? { default_value: value.defaultValue } : {} }];
+        // No default_value: defaults are author-side only and never persisted
+        // server-side. They travel with the deploy request instead — see
+        // collectSecretDefaults.
+        return [envVarKey, { type: "secret", key: value.secretKey }];
       }
       case "connection": {
         return [envVarKey, { type: "connection", value: value.reference }];
@@ -366,6 +373,9 @@ export function evaluateServicesFunction(options: {
     }
 
     const env = evaluateEnvRecord(serviceId, record.env);
+    // Read (and type-checked) but deliberately NOT part of `definition`: the
+    // dev command is only ever run locally by `hexclave dev --service-id`, so
+    // it stays on this machine — see EvaluatedService.devCommand below.
     const devCommand = readOptionalStringField(record, serviceId, "devCommand");
     services.set(serviceId, {
       serviceId,
@@ -379,7 +389,6 @@ export function evaluateServicesFunction(options: {
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
         root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
-        dev_command: devCommand,
         env: serializeEnvForWire(env),
       },
       env,
@@ -480,6 +489,23 @@ function findDependencyCycle(serviceIds: string[], dependencies: Map<string, Set
     if (cycle !== undefined) return cycle;
   }
   return undefined;
+}
+
+/**
+ * Collects a service's `secret(key, default)` fallbacks, keyed by env var key,
+ * for the deploy request. These are NOT part of the synced definition: the
+ * backend uses them only to fill secrets that have no stored value, and never
+ * persists them — so the dashboard's secrets page can say "set" or "not
+ * there" and nothing in between.
+ */
+export function collectSecretDefaults(service: EvaluatedService): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  for (const [envVarKey, value] of Object.entries(service.env)) {
+    if (value.kind === "secret" && value.defaultValue !== undefined) {
+      defaults[envVarKey] = value.defaultValue;
+    }
+  }
+  return defaults;
 }
 
 /**

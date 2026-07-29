@@ -31,35 +31,46 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   // definition (their env lived in the dropped config section), and the
   // deploy route uses exactly this NULL to refuse deploying them with an
   // empty env set.
-  const services = await sql<{ devCommand: string | null, env: unknown, definitionSyncedAt: Date | null }[]>`
-    SELECT "devCommand", "env", "definitionSyncedAt" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
+  const services = await sql<{ env: unknown, definitionSyncedAt: Date | null }[]>`
+    SELECT "env", "definitionSyncedAt" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  expect(services[0]).toEqual({ devCommand: null, env: {}, definitionSyncedAt: null });
+  expect(services[0]).toEqual({ env: {}, definitionSyncedAt: null });
 
   // The new columns are writable.
   await sql`
     UPDATE "DeploymentService"
-    SET "devCommand" = 'pnpm dev', "env" = ${sql.json({ API_KEY: { type: "secret", key: "API_KEY", default_value: "dev" } })}, "definitionSyncedAt" = NOW()
+    SET "env" = ${sql.json({ API_KEY: { type: "secret", key: "API_KEY", default_value: "dev" } })}, "definitionSyncedAt" = NOW()
     WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  const updated = await sql<{ devCommand: string | null, env: any }[]>`
-    SELECT "devCommand", "env" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
+  const updated = await sql<{ env: any, definitionSyncedAt: Date | null }[]>`
+    SELECT "env", "definitionSyncedAt" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  expect(updated[0].devCommand).toBe("pnpm dev");
   expect(updated[0].env.API_KEY.key).toBe("API_KEY");
+  expect(updated[0].definitionSyncedAt).not.toBeNull();
+
+  // The dev command is a config-file-only field, so the migration must NOT
+  // have added a column for it (a stray column would invite a write path that
+  // lets the stored copy drift from the config file).
+  const devCommandColumns = await sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'DeploymentService'
+      AND column_name = 'devCommand'
+  `;
+  expect(devCommandColumns).toHaveLength(0);
 
   // Secrets table exists and accepts rows.
   const secretId = randomUUID();
   await sql`
-    INSERT INTO "DeploymentSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
+    INSERT INTO "ProjectSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
     VALUES (${ctx.projectId}, ${secretId}::uuid, NOW(), 'API_KEY', ${sql.json({ edkBase64: "a", ciphertextBase64: "b" })})
   `;
 
   // One value per (project, key).
   await expect(sql`
-    INSERT INTO "DeploymentSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
+    INSERT INTO "ProjectSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
     VALUES (${ctx.projectId}, ${randomUUID()}::uuid, NOW(), 'API_KEY', ${sql.json({ edkBase64: "c", ciphertextBase64: "d" })})
-  `).rejects.toThrow(/DeploymentSecret_projectId_key_key/);
+  `).rejects.toThrow(/ProjectSecret_projectId_key_key/);
 
   // The same key is allowed for a different project.
   const otherProjectId = `test-${randomUUID()}`;
@@ -68,20 +79,20 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${otherProjectId}, NOW(), NOW(), 'Deployment Definitions Migration Test 2', '', false)
   `;
   await sql`
-    INSERT INTO "DeploymentSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
+    INSERT INTO "ProjectSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
     VALUES (${otherProjectId}, ${randomUUID()}::uuid, NOW(), 'API_KEY', ${sql.json({ edkBase64: "e", ciphertextBase64: "f" })})
   `;
 
   // Secrets require an existing project...
   await expect(sql`
-    INSERT INTO "DeploymentSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
+    INSERT INTO "ProjectSecret" ("projectId", "id", "updatedAt", "key", "encrypted")
     VALUES ('nonexistent-project', ${randomUUID()}::uuid, NOW(), 'API_KEY', ${sql.json({ edkBase64: "g", ciphertextBase64: "h" })})
-  `).rejects.toThrow(/DeploymentSecret_projectId_fkey/);
+  `).rejects.toThrow(/ProjectSecret_projectId_fkey/);
 
   // ...and cascade away with their project.
   await sql`DELETE FROM "Project" WHERE "id" = ${otherProjectId}`;
   const remaining = await sql<{ count: string }[]>`
-    SELECT COUNT(*)::text AS count FROM "DeploymentSecret" WHERE "projectId" = ${otherProjectId}
+    SELECT COUNT(*)::text AS count FROM "ProjectSecret" WHERE "projectId" = ${otherProjectId}
   `;
   expect(remaining[0].count).toBe("0");
 };

@@ -11,10 +11,10 @@
 // a translation layer that would have to be maintained in three places.
 
 import * as yup from "yup";
+import { PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
 import { yupObject, yupRecord, yupString } from "./schema-fields";
 
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
-export const DEPLOYMENT_SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
 // A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
 // service's output (e.g. "hexclave.projectId") that the backend resolves at
 // deploy time. This is deliberately its own env var TYPE rather than a
@@ -45,17 +45,18 @@ export type ServiceOutputKey = typeof SERVICE_OUTPUT_KEYS[number];
 
 // One env var, discriminated by `type`:
 // - absent (plain): a literal `value`.
-// - "secret": only the secret's name (`key`) and an optional `default_value`
-//   are in the definition; the actual value is stored per project in the
-//   dashboard (Project Settings → Secrets) and read at deploy time. A secret
-//   with neither a stored value nor a default fails the deploy.
+// - "secret": only the secret's name (`key`) is in the definition; the actual
+//   value lives in the project's secret store (see ./project-secrets), set in
+//   the dashboard under Project Settings → Secrets and read server-side at
+//   deploy time. A secret with no stored value fails the deploy
+//   unless the deploy request supplies a default for it (see
+//   deploymentSecretDefaultsSchema).
 // - "connection": `value` names another service's output (see the regex
 //   comment above); resolved server-side at deploy time.
 export type DeploymentEnvVarDefinition = {
   type?: "secret" | "connection" | undefined,
   value?: string | undefined,
   key?: string | undefined,
-  default_value?: string | undefined,
 };
 
 export type DeploymentServiceDefinition = {
@@ -71,8 +72,6 @@ export type DeploymentServiceDefinition = {
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
   root_directory?: string | undefined,
-  // The command `hexclave dev --service-id <id>` runs for this service.
-  dev_command?: string | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
 
@@ -92,12 +91,29 @@ export const deploymentEnvVarSchema = yupObject({
     }
   }),
   key: yupString().when("type", ([type], schema) => type === "secret"
-    ? schema.defined().matches(DEPLOYMENT_SECRET_KEY_REGEX, "deployment secret keys must contain only letters, numbers, underscores, and hyphens")
+    ? schema.defined().matches(PROJECT_SECRET_KEY_REGEX, "project secret keys must contain only letters, numbers, underscores, and hyphens")
     : schema.oneOf([undefined], 'deployment env vars may only have a key when their type is "secret"')),
-  default_value: yupString().when("type", ([type], schema) => type === "secret"
-    ? schema.optional()
-    : schema.oneOf([undefined], 'deployment env vars may only have a default_value when their type is "secret"')),
+  // `secret(key, default)` fallbacks are a config-file concept that must never
+  // be persisted: they travel with the deploy request instead (see
+  // deploymentSecretDefaultsSchema). Rejected rather than ignored — this is
+  // the schema every write path validates against, so refusing the field here
+  // is what makes "a stored definition cannot contain a default" a checkable
+  // property instead of a convention. (yupRecord validates values without
+  // casting them, so a `.strip()` here would be a silent no-op.)
+  default_value: yupString().oneOf([undefined], "deployment env var definitions must not carry a default_value — secret defaults belong to the deploy request, not to the stored definition"),
 });
+
+// Fallback values for a service's `secret()` env vars, sent with a DEPLOY
+// request and never stored: they are the second argument of `secret(key,
+// default)` in the config file's `services` export, which is a purely
+// author-side convenience. Keyed by ENV VAR key (not secret key) because
+// that's where the default is written — the same secret may be referenced by
+// two env vars with different defaults, and the dashboard must never learn
+// that any of this exists.
+export const deploymentSecretDefaultsSchema = yupRecord(
+  yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment secret default keys must be env var keys"),
+  yupString().defined(),
+);
 
 export const deploymentServiceDefinitionSchema = yupObject({
   type: yupString().oneOf(["vercel"]).defined(),
@@ -106,7 +122,15 @@ export const deploymentServiceDefinitionSchema = yupObject({
   build_command: yupString().optional(),
   output_directory: yupString().optional(),
   root_directory: yupString().optional(),
-  dev_command: yupString().optional(),
+  // `devCommand` is a config-file-only field: `hexclave dev --service-id`
+  // reads it straight out of the local config file, and the backend never acts
+  // on it, so it is never sent and never stored. Rejected rather than simply
+  // absent because yupRecord re-validates its values in a fresh validation
+  // whose path no longer starts with "body" — the route handler's
+  // unknown-property check therefore does NOT reach inside `services`, so an
+  // omitted field would be silently dropped instead of reported (same reason
+  // `default_value` below is spelled out).
+  dev_command: yupString().oneOf([undefined], "deployment service definitions must not carry a dev_command — the dev command stays in your config file and is never sent to the server (upgrade your Hexclave CLI if this came from `hexclave deploy`)"),
   env: yupRecord(
     yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment env var keys must start with a letter or underscore and contain only letters, digits, and underscores"),
     deploymentEnvVarSchema.defined(),
@@ -118,11 +142,10 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
     type: "vercel",
     root_directory: "./",
     framework: "nextjs",
-    dev_command: "pnpm dev",
     env: {
       MY_ENV_VAR: { value: "true" },
       DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
-      OPENAI_API_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" },
+      OPENAI_API_KEY: { type: "secret", key: "OPENAI" },
       NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
@@ -137,13 +160,10 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "vercel", env: { A: { type: "secret" } },
   }, { abortEarly: false })).rejects.toThrow(/key/);
-  // Plain values may not carry a secret key or default.
+  // Plain values may not carry a secret key.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "vercel", env: { A: { value: "x", key: "a" } },
   }, { abortEarly: false })).rejects.toThrow(/only have a key/);
-  await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { A: { value: "x", default_value: "y" } },
-  }, { abortEarly: false })).rejects.toThrow(/only have a default_value/);
   // Connections must point at `<serviceId>.<outputKey>`.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } },
@@ -156,6 +176,42 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   await expect(deploymentServiceDefinitionSchema.validate({
     framework: "nextjs", env: {},
   }, { abortEarly: false })).rejects.toThrow(/type/);
+});
+
+import.meta.vitest?.test("a service's dev command is not part of its definition", async ({ expect }) => {
+  // The dev command never leaves the config file (see the schema comment), so
+  // a client sending one is out of date rather than merely verbose — say so
+  // instead of dropping the field on the floor.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "vercel", dev_command: "pnpm dev", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/must not carry a dev_command/);
+});
+
+import.meta.vitest?.test("a secret's default value is not part of its definition", async ({ expect }) => {
+  // The invariant behind the dashboard's secrets page: a definition can only
+  // ever say WHICH secret an env var needs, never what it falls back to. If a
+  // default could be stored, "is this secret set?" would stop having a single
+  // answer, which is exactly the three-way badge state this replaced.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "vercel",
+    env: { OPENAI_API_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" } },
+  }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "vercel",
+    env: { PLAIN: { value: "x", default_value: "y" } },
+  }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
+});
+
+import.meta.vitest?.test("deploymentSecretDefaultsSchema accepts env-var-keyed defaults", async ({ expect }) => {
+  await expect(deploymentSecretDefaultsSchema.validate({
+    OPENAI_API_KEY: "sk-dev",
+    // An empty default is meaningful — it means "deploy with this var empty",
+    // which is different from having no default at all.
+    OPTIONAL_FLAG: "",
+  }, { abortEarly: false })).resolves.toEqual({ OPENAI_API_KEY: "sk-dev", OPTIONAL_FLAG: "" });
+  await expect(deploymentSecretDefaultsSchema.validate({
+    "1BAD": "x",
+  }, { abortEarly: false })).rejects.toThrow(/env var keys/);
 });
 
 // Type-level check that the yup schema stays assignable to the hand-written

@@ -52,7 +52,7 @@ model Project {
   gtmActions                 GtmAction[]
   gtmNotes                   GtmNote[]
   gtmOnboardings             GtmOnboarding[]
-  deploymentSecrets          DeploymentSecret[]
+  projectSecrets             ProjectSecret[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -1640,14 +1640,49 @@ model DeletedRow {
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
 }
 
+// ================== Project secrets ==================
+// Per-project credential values, write-only through the API
+// (set/overwrite/delete, never read back) and envelope-encrypted with the same
+// KMS flow as the data vault's server-side layer (`encryptWithKms`), so
+// plaintext never touches this table. Only the feature consuming a secret
+// decrypts it, server-side.
+//
+// Deployments are the only consumer today (`secret()` env vars in the config
+// file's `services` export name a key here), but the store deliberately isn't
+// deployments-specific — see @/lib/project-secrets.
+//
+// Keyed by project, not tenancy: these are infrastructure credentials that
+// branches share by design, and a per-organization copy of an API key would be
+// meaningless. If a consumer ever needs per-branch values, the intended shape is
+// a nullable `branchId` (null = every branch) resolved
+// exact-match-then-project-wide; that needs a partial unique index for the NULL
+// case, which Prisma can't express, so it wants a hand-written migration.
+model ProjectSecret {
+  projectId String
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  key String
+  // { edkBase64, ciphertextBase64 } from encryptWithKms()
+  encrypted Json
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, id])
+  @@unique([projectId, key])
+}
+
 // ================== Deployments ==================
 // State for the Deployments app. Service definitions come from the `services`
 // export of hexclave.config.ts: `hexclave deploy` evaluates it and syncs the
-// serializable parts (build config, dev command, env var definitions) into
+// parts the server needs (build config, env var definitions) into
 // DeploymentService rows, which are the authoritative server-side copy — the
 // dashboard renders services from these rows and cannot edit them. Secret
 // VALUES are never part of a definition: env vars of type "secret" only name a
-// key into the per-project DeploymentSecret table below.
+// key in the ProjectSecret store above.
 
 model DeploymentService {
   tenancyId String @db.Uuid
@@ -1676,7 +1711,11 @@ model DeploymentService {
   buildCommand    String?
   outputDirectory String?
   rootDirectory   String?
-  devCommand      String?
+  // Note there is deliberately no dev command here: `devCommand` in the config
+  // file's `services` export is consumed locally by `hexclave dev
+  // --service-id`, and the backend never acts on it, so storing it would only
+  // buy a display row in the dashboard at the price of a column that can drift
+  // from the config file.
   // Record of env var key -> DeploymentEnvVarDefinition (see
   // @hexclave/shared/dist/deployments): { value } for plain vars,
   // { type: "secret", key, default_value? } for secrets (never their values),
@@ -1689,31 +1728,6 @@ model DeploymentService {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, serviceId])
-}
-
-// Per-project values for the secrets referenced by `secret()` env vars in the
-// config file's `services` export. Values are write-only through the API
-// (set/overwrite/delete, never read back) and are envelope-encrypted with the
-// same KMS flow as the data vault's server-side layer (`encryptWithKms`), so
-// plaintext never touches this table; the backend decrypts them only at deploy
-// time to push them to the deployment target. Keyed by project (not tenancy):
-// secrets are infrastructure credentials that branches share by design.
-model DeploymentSecret {
-  projectId String
-
-  id String @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  key String
-  // { edkBase64, ciphertextBase64 } from encryptWithKms()
-  encrypted Json
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@id([projectId, id])
-  @@unique([projectId, key])
 }
 
 model DeploymentServiceDomain {

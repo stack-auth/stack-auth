@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { computeDeploymentLevels, evaluateServicesFunction, resolveDevEnv, type ServicesFunctionContext } from "./services-config.js";
+import { collectSecretDefaults, computeDeploymentLevels, evaluateServicesFunction, resolveDevEnv, type ServicesFunctionContext } from "./services-config.js";
 
 const CONFIG_PATH = path.join(path.sep, "repo", "hexclave.config.ts");
 
@@ -39,18 +39,22 @@ describe("evaluateServicesFunction (deploy mode)", () => {
       install_command: "pnpm install",
       build_command: "pnpm build",
       output_directory: ".next",
-      dev_command: "pnpm dev",
       root_directory: "apps/web",
       env: {
         DB_URL: { type: "connection", value: "database.url" },
-        OPENAI: { type: "secret", key: "OPENAI_API_KEY", default_value: "some-default" },
+        // No default_value, even though OPENAI is declared with one: defaults
+        // are never synced into a definition (see collectSecretDefaults).
+        OPENAI: { type: "secret", key: "OPENAI_API_KEY" },
         REQUIRED_SECRET: { type: "secret", key: "REQUIRED" },
         PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
         PLAIN: { value: "literal" },
       },
     });
     expect(frontend?.absoluteRootDirectory).toBe(path.join(path.sep, "repo", "apps", "web"));
+    // The dev command is read for local use only — `hexclave dev` gets it from
+    // here, and it must never appear in the definition synced above.
     expect(frontend?.devCommand).toBe("pnpm dev");
+    expect(frontend?.definition).not.toHaveProperty("dev_command");
     expect(services.get("database")?.definition.root_directory).toBe(".");
   });
 
@@ -172,6 +176,53 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     }));
     expect(services.get("web")?.includeFiles?.("a.txt")).toBe(true);
     expect(services.get("web")?.excludeFiles?.("a.txt")).toBe(false);
+  });
+});
+
+describe("collectSecretDefaults", () => {
+  function webServiceWithEnv(servicesExport: unknown) {
+    const { services } = evaluate(servicesExport);
+    const web = services.get("web");
+    if (web === undefined) throw new Error("the services export under test must define a service named `web`");
+    return web;
+  }
+
+  it("collects only secrets that declare a default, keyed by env var", () => {
+    const web = webServiceWithEnv(({ secret, hexclave }: ServicesFunctionContext) => ({
+      web: {
+        type: "vercel",
+        env: {
+          WITH_DEFAULT: secret("OPENAI_API_KEY", "some-default"),
+          WITHOUT_DEFAULT: secret("REQUIRED"),
+          PLAIN: "literal",
+          PROJECT_ID: (hexclave as any).projectId,
+        },
+      },
+    }));
+    expect(collectSecretDefaults(web)).toEqual({ WITH_DEFAULT: "some-default" });
+  });
+
+  it("keys by env var so one secret can have different defaults per var", () => {
+    // The default belongs to the `secret()` CALL, not to the secret — two env
+    // vars may fill from the same key with different fallbacks, which a
+    // secret-key-keyed map would silently collapse.
+    const web = webServiceWithEnv(({ secret }: ServicesFunctionContext) => ({
+      web: {
+        type: "vercel",
+        env: {
+          PRIMARY: secret("SHARED", "primary-default"),
+          SECONDARY: secret("SHARED", "secondary-default"),
+        },
+      },
+    }));
+    expect(collectSecretDefaults(web)).toEqual({ PRIMARY: "primary-default", SECONDARY: "secondary-default" });
+  });
+
+  it("keeps an empty-string default, which is not the same as having none", () => {
+    const web = webServiceWithEnv(({ secret }: ServicesFunctionContext) => ({
+      web: { type: "vercel", env: { EMPTY: secret("MAYBE", ""), NONE: secret("OTHER") } },
+    }));
+    expect(collectSecretDefaults(web)).toEqual({ EMPTY: "" });
   });
 });
 

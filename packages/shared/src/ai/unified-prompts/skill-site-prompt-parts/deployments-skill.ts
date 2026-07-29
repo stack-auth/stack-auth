@@ -54,10 +54,10 @@ export const deploymentsSkillSection = deindent`
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
     "const p = await hexclaveServerApp.getProject(); \\
-     await p.setDeploymentSecret('OPENAI_API_KEY', process.env.OPENAI_API_KEY);"
+     await p.setProjectSecret('OPENAI_API_KEY', process.env.OPENAI_API_KEY);"
   \`\`\`
 
-  \`listDeploymentSecrets()\` returns keys and timestamps only — values can never be read back. A deploy fails up front if any \`secret()\` without a default has no stored value. Note that \`exec\` requires a \`hexclave login\` session — a server-key-only environment (typical CI) can DEPLOY using stored secrets but cannot SET them; set secrets beforehand from a logged-in machine or the dashboard.
+  \`listProjectSecrets()\` returns keys and timestamps only — values can never be read back, and the dashboard lists only keys that have a value. \`defaultValue\` lives purely in the config file: it is sent with the deploy and never stored, so it never shows up as a set secret. A deploy fails up front and names every \`secret()\` without a default that has no stored value. Note that \`exec\` requires a \`hexclave login\` session — a server-key-only environment (typical CI) can DEPLOY using stored secrets but cannot SET them; set secrets beforehand from a logged-in machine or the dashboard.
 
   ## Agent workflow (do this — do not drive the dashboard UI)
 

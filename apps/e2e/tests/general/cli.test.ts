@@ -470,18 +470,45 @@ describe("Stack CLI", () => {
       // before web even started (topological order, not just start order).
       expect(stderr.indexOf("[db] Deployment succeeded")).toBeGreaterThanOrEqual(0);
       expect(stderr.indexOf("[db] Deployment succeeded")).toBeLessThan(stderr.indexOf("[web] Starting deployment"));
-      // The definitions were synced server-side, including the dev command.
+      // The definitions were synced server-side — but NOT the config file's
+      // `devCommand`, which `hexclave dev` runs locally and the CLI therefore
+      // never sends (the config above sets one, so this also covers that a
+      // devCommand in the config file doesn't trip the sync route).
+      // OPENAI also proves the secret-default path end to end: nothing set a
+      // value for OPENAI_KEY, so this deploy only succeeded because the CLI
+      // sent `secret("OPENAI_KEY", "sk-default")`'s default with the deploy
+      // request — while the SYNCED definition names the secret and nothing
+      // else, so the default was never persisted.
       const execRes = await runCli([
         "exec", "--cloud-project-id", createdProjectId,
-        "const p = await hexclaveServerApp.getProject(); const svc = (await p.listDeploymentServices()).find(s => s.id === 'web'); return JSON.stringify({ dev: svc.dev_command, keys: svc.env.map(e => e.key).sort() });",
+        "const p = await hexclaveServerApp.getProject(); const svc = (await p.listDeploymentServices()).find(s => s.id === 'web'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI') });",
       ]);
       if (execRes.exitCode !== 0) {
         throw new Error(`exec exited ${execRes.exitCode}. stderr: ${execRes.stderr}`);
       }
       expect(JSON.parse(JSON.parse(execRes.stdout.trim()))).toEqual({
-        dev: "npm run dev",
+        hasDevCommand: false,
         keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
+        openai: { key: "OPENAI", type: "secret", value: null, secret_key: "OPENAI_KEY" },
       });
+
+      // A secret with NO default and no stored value fails before anything is
+      // packaged, naming every key that needs a dashboard value.
+      fs.writeFileSync(path.join(deployDir, "missing-secret.config.ts"), [
+        "export const services = ({ secret }: any) => ({",
+        '  web: { type: "vercel", rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
+        "});",
+        "",
+      ].join("\n"));
+      const missingSecretRes = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "missing-secret.config.ts"), "--no-config-push"],
+        {},
+        deployDir,
+      );
+      expect(missingSecretRes.exitCode).not.toBe(0);
+      expect(missingSecretRes.stderr).toContain("ALSO_NEEDED");
+      expect(missingSecretRes.stderr).toContain("NEEDS_A_VALUE");
+      expect(missingSecretRes.stderr).toContain("Project Settings > Secrets");
 
       // The config export was pushed to the branch config by default.
       const readBranchConfig = async () => {

@@ -62,14 +62,15 @@ export type AdminDeploymentRunJson = {
 // synced from the config file's `services` export): "plain" vars carry their
 // literal `value`, "connection" vars carry the "serviceId.outputKey" reference
 // they resolve to at deploy time, and "secret" vars carry only the
-// `secret_key` naming a per-project secret (values are write-only —
-// `secret_has_default` says whether the definition carries a fallback).
+// `secret_key` naming a per-project secret (values are write-only). Any
+// `secret(key, default)` fallback from the config file is deliberately absent:
+// defaults never leave the deploy request, so nothing server-side or in the
+// dashboard can report on them.
 export type AdminDeploymentEnvVarJson = {
   key: string,
   type: "plain" | "secret" | "connection",
   value: string | null,
   secret_key: string | null,
-  secret_has_default: boolean | null,
 };
 
 export type AdminDeploymentServiceJson = {
@@ -80,7 +81,6 @@ export type AdminDeploymentServiceJson = {
   build_command: string | null,
   output_directory: string | null,
   root_directory: string | null,
-  dev_command: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
@@ -90,9 +90,9 @@ export type AdminDeploymentServiceJson = {
   latest_run: AdminDeploymentRunJson | null,
 };
 
-// A stored deployment secret. Values are write-only and never part of any
+// A stored project secret. Values are write-only and never part of any
 // response shape.
-export type AdminDeploymentSecretJson = {
+export type AdminProjectSecretJson = {
   key: string,
   created_at_millis: number,
   updated_at_millis: number,
@@ -1403,18 +1403,18 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return (await response.json()).items;
   }
 
-  async listDeploymentSecrets(): Promise<AdminDeploymentSecretJson[]> {
+  async listProjectSecrets(): Promise<AdminProjectSecretJson[]> {
     const response = await this.sendAdminRequest(
-      "/deployments/secrets",
+      "/project-secrets",
       { method: "GET" },
       null,
     );
     return (await response.json()).items;
   }
 
-  async setDeploymentSecret(key: string, value: string): Promise<void> {
+  async setProjectSecret(key: string, value: string): Promise<void> {
     await this.sendAdminRequest(
-      "/deployments/secrets",
+      "/project-secrets",
       {
         method: "POST",
         headers: {
@@ -1426,9 +1426,9 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async deleteDeploymentSecret(key: string): Promise<void> {
+  async deleteProjectSecret(key: string): Promise<void> {
     await this.sendAdminRequest(
-      urlString`/deployments/secrets/${key}`,
+      urlString`/project-secrets/${key}`,
       { method: "DELETE" },
       null,
     );

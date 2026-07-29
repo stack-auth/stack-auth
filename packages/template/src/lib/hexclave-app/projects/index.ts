@@ -3,11 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminDeploymentSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
-export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentRunJson, AdminDeploymentSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentRunJson, AdminProjectSecretJson, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -153,21 +153,22 @@ export type AdminProject = {
   listDeploymentServices(this: AdminProject): Promise<AdminDeploymentServiceJson[]>,
 
   /**
-   * Lists the project's stored deployment secrets (keys and timestamps only —
-   * values are write-only and can never be read back).
+   * Lists the project's stored secrets (keys and timestamps only — values are
+   * write-only and can never be read back).
    */
-  listDeploymentSecrets(this: AdminProject): Promise<AdminDeploymentSecretJson[]>,
+  listProjectSecrets(this: AdminProject): Promise<AdminProjectSecretJson[]>,
 
   /**
-   * Sets (or overwrites) the value of a deployment secret. The value is read
-   * server-side at deploy time to fill `secret()` env vars.
+   * Sets (or overwrites) the value of a project secret. Values are only read
+   * server-side by the feature that consumes them — today, a deploy filling
+   * `secret()` env vars.
    */
-  setDeploymentSecret(this: AdminProject, key: string, value: string): Promise<void>,
+  setProjectSecret(this: AdminProject, key: string, value: string): Promise<void>,
 
   /**
-   * Deletes a stored deployment secret value.
+   * Deletes a stored project secret value.
    */
-  deleteDeploymentSecret(this: AdminProject, key: string): Promise<void>,
+  deleteProjectSecret(this: AdminProject, key: string): Promise<void>,
 
   /**
    * Lists the most recent deployment runs of a service, newest first.

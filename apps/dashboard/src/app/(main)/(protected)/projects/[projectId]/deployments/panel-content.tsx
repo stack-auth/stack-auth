@@ -256,8 +256,7 @@ export function VariablesContent({ service, services, isHexclave }: {
             <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/[0.06] px-2 py-1 text-[11px] text-muted-foreground ring-1 ring-amber-500/20">
               <LockSimpleIcon className="h-3 w-3 shrink-0 text-amber-500" weight="fill" />
               <span className="min-w-0 truncate">
-                Secret <span className="font-mono text-foreground">{envVar.secretKey}</span>
-                {envVar.secretHasDefault ? " · has a default value" : " · value set under Project Settings > Secrets"}
+                Secret <span className="font-mono text-foreground">{envVar.secretKey}</span> · value set under Project Settings &gt; Secrets
               </span>
             </div>
           )}
@@ -734,7 +733,8 @@ export function SettingsContent({ service, isHexclave }: {
     { label: "Install command", value: service.api?.install_command, fallback: "Auto-detect" },
     { label: "Build command", value: service.api?.build_command, fallback: "Auto-detect" },
     { label: "Output directory", value: service.api?.output_directory, fallback: "Auto-detect" },
-    { label: "Dev command", value: service.api?.dev_command, fallback: "Not set" },
+    // No "Dev command" row: `devCommand` is consumed locally by `hexclave dev`
+    // and never sent to the server, so there is nothing here to show.
   ];
 
   return (

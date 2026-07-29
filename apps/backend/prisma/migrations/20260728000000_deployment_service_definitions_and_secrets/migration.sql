@@ -1,9 +1,18 @@
--- Service definitions move out of the branch config and into DeploymentService
--- rows (synced from the config file's `services` export by `hexclave deploy`),
--- so the rows gain the definition-only fields the config used to hold: the dev
--- command and the env var definitions. Both tables involved are small (the
--- Deployments app is in alpha), and PG11+ adds columns with constant defaults
--- without a table rewrite, so no batching sentinel is needed here.
+-- Two changes that arrive together because the same rework introduced them:
+--
+-- 1. Service definitions move out of the branch config and into
+--    DeploymentService rows (synced from the config file's `services` export by
+--    `hexclave deploy`), so the rows gain the definition-only field the config
+--    used to hold: the env var definitions. (The config file's `devCommand`
+--    deliberately gets no column: it is consumed locally by `hexclave dev` and
+--    the backend never acts on it.)
+-- 2. ProjectSecret, a per-project write-only store for KMS-encrypted credential
+--    values. Deployments' `secret()` env vars are its first consumer, but it is
+--    deliberately not scoped or named after them.
+--
+-- Both tables involved are small (the Deployments app is in alpha), and PG11+
+-- adds columns with constant defaults without a table rewrite, so no batching
+-- sentinel is needed here.
 
 -- AlterTable
 -- definitionSyncedAt stays NULL for pre-existing rows on purpose: their
@@ -11,11 +20,10 @@
 -- backfilled here, so deploys must refuse them until a `hexclave deploy`
 -- syncs a real definition.
 ALTER TABLE "DeploymentService" ADD COLUMN "definitionSyncedAt" TIMESTAMP(3),
-ADD COLUMN     "devCommand" TEXT,
 ADD COLUMN     "env" JSONB NOT NULL DEFAULT '{}';
 
 -- CreateTable
-CREATE TABLE "DeploymentSecret" (
+CREATE TABLE "ProjectSecret" (
     "projectId" TEXT NOT NULL,
     "id" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -23,11 +31,11 @@ CREATE TABLE "DeploymentSecret" (
     "key" TEXT NOT NULL,
     "encrypted" JSONB NOT NULL,
 
-    CONSTRAINT "DeploymentSecret_pkey" PRIMARY KEY ("projectId","id")
+    CONSTRAINT "ProjectSecret_pkey" PRIMARY KEY ("projectId","id")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "DeploymentSecret_projectId_key_key" ON "DeploymentSecret"("projectId", "key");
+CREATE UNIQUE INDEX "ProjectSecret_projectId_key_key" ON "ProjectSecret"("projectId", "key");
 
 -- AddForeignKey
-ALTER TABLE "DeploymentSecret" ADD CONSTRAINT "DeploymentSecret_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ProjectSecret" ADD CONSTRAINT "ProjectSecret_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;

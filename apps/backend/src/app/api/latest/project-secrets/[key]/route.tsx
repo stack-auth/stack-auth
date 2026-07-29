@@ -1,4 +1,4 @@
-import { SECRET_KEY_REGEX } from "@/lib/deployments";
+import { PROJECT_SECRET_KEY_REGEX } from "@/lib/project-secrets";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -6,9 +6,9 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const DELETE = createSmartRouteHandler({
   metadata: {
-    summary: "Delete deployment secret",
-    description: "Deletes a stored deployment secret value. Deploys of services whose env vars reference the secret will fail afterwards unless the definition provides a default value.",
-    tags: ["Deployments"],
+    summary: "Delete project secret",
+    description: "Deletes a stored project secret value. Deploys of services whose env vars reference the secret will fail afterwards unless the deploy supplies a default value for it.",
+    tags: ["Secrets"],
     hidden: true,
   },
   request: yupObject({
@@ -17,7 +17,7 @@ export const DELETE = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      key: yupString().defined().matches(SECRET_KEY_REGEX, "Secret keys must contain only letters, numbers, underscores, and hyphens"),
+      key: yupString().defined().matches(PROJECT_SECRET_KEY_REGEX, "Secret keys must contain only letters, numbers, underscores, and hyphens"),
     }).defined(),
     method: yupString().oneOf(["DELETE"]).defined(),
   }),
@@ -29,14 +29,14 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    const deleted = await globalPrismaClient.deploymentSecret.deleteMany({
+    const deleted = await globalPrismaClient.projectSecret.deleteMany({
       where: {
         projectId: auth.tenancy.project.id,
         key: params.key,
       },
     });
     if (deleted.count === 0) {
-      throw new StatusError(404, `No deployment secret with key ${JSON.stringify(params.key)} exists in this project.`);
+      throw new StatusError(404, `No secret with key ${JSON.stringify(params.key)} exists in this project.`);
     }
     return {
       statusCode: 200,

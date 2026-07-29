@@ -7,10 +7,14 @@
 //   file's `services` export (e.g. "api"). It's what the CLI and all API
 //   routes use.
 // - The DeploymentService Prisma row holds BOTH the definition (as last synced
-//   by `hexclave deploy` — build config, dev command, env var definitions) and
+//   by `hexclave deploy` — build config and env var definitions; NOT the
+//   config file's `devCommand`, which never leaves the developer's machine) and
 //   the operational state (Vercel project id, custom domains, runs). Secret
-//   VALUES are never part of a definition; they live in the per-project
-//   DeploymentSecret table, envelope-encrypted via KMS.
+//   VALUES are never part of a definition; they live in the project secret
+//   store (see @/lib/project-secrets), envelope-encrypted via KMS. Neither are secret
+//   DEFAULTS (`secret(key, default)`): they travel with the deploy request and
+//   are never persisted, so the dashboard's secrets page can present a single
+//   unambiguous state — a key either has a stored value or it isn't there.
 //
 // KNOWN GAP — services removed from the config file. The definitions are
 // synced additively: a service that disappears from the `services` export
@@ -23,8 +27,9 @@
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DEPLOYMENT_SECRET_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS } from "@hexclave/shared/dist/deployments";
-import { decryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
+import { decryptProjectSecret, listEncryptedProjectSecrets, readProjectSecretValue } from "@/lib/project-secrets";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS } from "@hexclave/shared/dist/deployments";
+import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -45,14 +50,6 @@ export const UPLOAD_EXPIRY_MS = 15 * 60 * 1000;
 export const MAX_UPLOAD_BYTES = MAX_TARBALL_GZIPPED_BYTES;
 
 export const ENV_VAR_KEY_REGEX = DEPLOYMENT_ENV_VAR_KEY_REGEX;
-export const SECRET_KEY_REGEX = DEPLOYMENT_SECRET_KEY_REGEX;
-
-// Secret values are meant to be things like API keys, not blobs; the bound
-// exists so a hostile client can't stuff megabytes into a KMS-encrypted row.
-export const MAX_SECRET_VALUE_LENGTH = 32 * 1024;
-// Bounds the per-log-read KMS decryption work in collectLogRedactionSecrets
-// (every stored secret is decrypted for redaction on each log read).
-export const MAX_SECRETS_PER_PROJECT = 100;
 
 export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include: { domains: true } }>;
 
@@ -88,7 +85,6 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
       type: typeof entry.type === "string" ? entry.type as DeploymentEnvVarDefinition["type"] : undefined,
       value: typeof entry.value === "string" ? entry.value : undefined,
       key: typeof entry.key === "string" ? entry.key : undefined,
-      default_value: typeof entry.default_value === "string" ? entry.default_value : undefined,
     };
   }
   return result;
@@ -101,7 +97,6 @@ export function definitionFromServiceRow(row: {
   buildCommand: string | null,
   outputDirectory: string | null,
   rootDirectory: string | null,
-  devCommand: string | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
   return {
@@ -111,7 +106,6 @@ export function definitionFromServiceRow(row: {
     build_command: row.buildCommand ?? undefined,
     output_directory: row.outputDirectory ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
-    dev_command: row.devCommand ?? undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
 }
@@ -155,7 +149,6 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       buildCommand: definition.build_command ?? null,
       outputDirectory: definition.output_directory ?? null,
       rootDirectory: definition.root_directory ?? null,
-      devCommand: definition.dev_command ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable
@@ -165,7 +158,6 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
         if (entry.type !== undefined) stored.type = entry.type;
         if (entry.value !== undefined) stored.value = entry.value;
         if (entry.key !== undefined) stored.key = entry.key;
-        if (entry.default_value !== undefined) stored.default_value = entry.default_value;
         return [envVarKey, stored];
       })),
     };
@@ -293,7 +285,7 @@ export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
 // is the boundary where the coupling rules become explicit.
 export type NormalizedDeploymentEnvVar =
   | { type: "plain", value: string }
-  | { type: "secret", secretKey: string, defaultValue: string | undefined }
+  | { type: "secret", secretKey: string }
   | { type: "connection", serviceId: string, outputKey: string };
 
 /**
@@ -305,10 +297,10 @@ export type NormalizedDeploymentEnvVar =
 export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVarDefinition): NormalizedDeploymentEnvVar {
   switch (config.type) {
     case "secret": {
-      if (config.key == null || !DEPLOYMENT_SECRET_KEY_REGEX.test(config.key)) {
+      if (config.key == null || !PROJECT_SECRET_KEY_REGEX.test(config.key)) {
         throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has type "secret" but no valid secret key (letters, numbers, underscores, and hyphens).`);
       }
-      return { type: "secret", secretKey: config.key, defaultValue: config.default_value };
+      return { type: "secret", secretKey: config.key };
     }
     case "connection": {
       if (config.value == null || !DEPLOYMENT_CONNECTION_VALUE_REGEX.test(config.value)) {
@@ -336,47 +328,18 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
 }
 
 /**
- * Decrypts the stored per-project value of a deployment secret, or returns
- * null when no value is stored. Only called at deploy time (and for log
- * redaction) — secret values are write-only everywhere else.
- */
-async function readStoredSecretValue(projectId: string, secretKey: string): Promise<string | null> {
-  const row = await globalPrismaClient.deploymentSecret.findUnique({
-    where: {
-      projectId_key: {
-        projectId,
-        key: secretKey,
-      },
-    },
-  });
-  if (row == null) return null;
-  return await decryptStoredSecret(row.encrypted, secretKey);
-}
-
-async function decryptStoredSecret(encrypted: Prisma.JsonValue, secretKey: string): Promise<string> {
-  if (!isRecord(encrypted) || typeof encrypted.edkBase64 !== "string" || typeof encrypted.ciphertextBase64 !== "string") {
-    throw new HexclaveAssertionError(`Stored deployment secret ${JSON.stringify(secretKey)} has an invalid encrypted payload; the set route should have written { edkBase64, ciphertextBase64 }`);
-  }
-  return await decryptWithKms({ edkBase64: encrypted.edkBase64, ciphertextBase64: encrypted.ciphertextBase64 });
-}
-
-export async function listStoredSecrets(projectId: string): Promise<{ key: string, createdAt: Date, updatedAt: Date }[]> {
-  const rows = await globalPrismaClient.deploymentSecret.findMany({
-    where: { projectId },
-    select: { key: true, createdAt: true, updatedAt: true },
-    orderBy: { key: "asc" },
-  });
-  return rows;
-}
-
-/**
  * Resolves a service's definition env vars into the literal key/value pairs to
  * push to the deployment target:
  * - plain vars pass through,
  * - secret vars are filled from the project's stored secrets (dashboard →
- *   Project Settings → Secrets), falling back to the definition's
- *   default_value; a secret with neither is a 400 that lists every missing
- *   key at once — failing loud beats silently deploying without them,
+ *   Project Settings → Secrets), falling back to `secretDefaults` — the
+ *   deploy request's transient copy of the `secret(key, default)` defaults
+ *   from the config file. Defaults are deliberately NOT part of the stored
+ *   definition: they are an author-side convenience that the dashboard must
+ *   never surface (a stored default would make "this secret has a value"
+ *   ambiguous on the secrets page). A secret with neither is a 400 that lists
+ *   every missing key at once — failing loud beats silently deploying without
+ *   them,
  * - connection vars resolve another service's output server-side. Supported
  *   outputs: `hexclave.{projectId|apiUrl|jwksUrl|publishableClientKey|secretServerKey}`
  *   from the managed Hexclave service, and `<serviceId>.url` from
@@ -392,8 +355,11 @@ export async function resolveEnvVars(options: {
   // never be deployed for the first time).
   serviceId: string,
   env: Record<string, DeploymentEnvVarDefinition>,
+  // Deploy-request-only fallbacks for `secret()` env vars, keyed by ENV VAR
+  // key (see deploymentSecretDefaultsSchema). Never read from the database.
+  secretDefaults: Record<string, string>,
 }): Promise<{ key: string, value: string }[]> {
-  const { tenancy, prisma, serviceId, env } = options;
+  const { tenancy, prisma, serviceId, env, secretDefaults } = options;
   const existingServiceIds = new Set((await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
     select: { serviceId: true },
@@ -420,7 +386,7 @@ export async function resolveEnvVars(options: {
   const readSecret = (secretKey: string): Promise<string | null> => {
     const cached = secretCache.get(secretKey);
     if (cached != null) return cached;
-    const promise = readStoredSecretValue(tenancy.project.id, secretKey);
+    const promise = readProjectSecretValue(tenancy.project.id, secretKey);
     secretCache.set(secretKey, promise);
     return promise;
   };
@@ -439,7 +405,11 @@ export async function resolveEnvVars(options: {
       }
       case "secret": {
         const storedValue = await readSecret(normalized.secretKey);
-        const secretValue = storedValue ?? normalized.defaultValue;
+        // `Object.hasOwn` rather than a truthiness/`??` check on the lookup:
+        // an empty-string default is a legitimate value, and a plain property
+        // read would also pick up Object.prototype members for env var keys
+        // like "constructor".
+        const secretValue = storedValue ?? (Object.hasOwn(secretDefaults, envVarKey) ? secretDefaults[envVarKey] : undefined);
         if (secretValue == null) {
           missingSecretKeys.push(normalized.secretKey);
           break;
@@ -474,7 +444,7 @@ export async function resolveEnvVars(options: {
 
   if (missingSecretKeys.length > 0) {
     const uniqueMissing = [...new Set(missingSecretKeys)].sort(stringCompare);
-    throw new StatusError(400, `Missing values for secrets: ${uniqueMissing.join(", ")}. Set them in the dashboard under Project Settings > Secrets, or give them a default value in your config file's services export (e.g. secret(${JSON.stringify(uniqueMissing[0])}, "some-default")).`);
+    throw new StatusError(400, `Missing values for ${uniqueMissing.length === 1 ? "secret" : "secrets"}: ${uniqueMissing.join(", ")}. All of these must be set in the dashboard under Project Settings > Secrets before this service can deploy.`);
   }
 
   return resolved;
@@ -562,7 +532,7 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
 /**
  * Everything we can re-derive as secret for a service's build logs: every
  * secret API key of the project (covers the `hexclave.secretServerKey`
- * connection output), plus the project's CURRENTLY-stored deployment secret
+ * connection output), plus the project's CURRENTLY-stored project secret
  * values. Note the limit of that last part: a value that was later
  * overwritten or deleted is no longer known here, so old logs that captured
  * it are only redacted while it is still stored — rotation does not
@@ -581,12 +551,10 @@ export async function collectLogRedactionSecrets(options: {
     if (keySet.secretServerKey != null) secretValues.push(keySet.secretServerKey);
     if (keySet.superSecretAdminKey != null) secretValues.push(keySet.superSecretAdminKey);
   }
-  const secretRows = await globalPrismaClient.deploymentSecret.findMany({
-    where: { projectId: tenancy.project.id },
-  });
+  const secretRows = await listEncryptedProjectSecrets(tenancy.project.id);
   for (const row of secretRows) {
     try {
-      secretValues.push(await decryptStoredSecret(row.encrypted, row.key));
+      secretValues.push(await decryptProjectSecret(row.encrypted, row.key));
     } catch (error) {
       // One corrupt/undecryptable row must not 500 every log read of the
       // whole project. Skipping it is safe for redaction: a value we cannot
@@ -915,7 +883,6 @@ export type DeploymentServiceApiShape = {
   build_command: string | null,
   output_directory: string | null,
   root_directory: string | null,
-  dev_command: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   // Whether any run ever reached READY; the dashboard keeps its "deploy your
@@ -925,9 +892,10 @@ export type DeploymentServiceApiShape = {
   // The definition's env vars, normalized: `value` is the literal value for
   // plain vars and the "serviceId.outputKey" reference for connections;
   // `secret_key` names the secret for secret vars (their values are
-  // write-only, so there is nothing else to show) and `secret_has_default`
-  // says whether the definition carries a fallback value.
-  env: { key: string, type: "plain" | "secret" | "connection", value: string | null, secret_key: string | null, secret_has_default: boolean | null }[],
+  // write-only, so there is nothing else to show — in particular, a
+  // `secret(key, default)` fallback never reaches the server outside the
+  // deploy request, so there is nothing here to report about it either).
+  env: { key: string, type: "plain" | "secret" | "connection", value: string | null, secret_key: string | null }[],
   domains: { hostname: string, is_primary: boolean, verified: boolean }[],
   latest_run: DeploymentRunApiShape | null,
 };
@@ -1060,7 +1028,6 @@ export async function serviceToApiShape(options: {
       type: normalized.type,
       value: normalized.type === "plain" ? normalized.value : normalized.type === "connection" ? `${normalized.serviceId}.${normalized.outputKey}` : null,
       secret_key: normalized.type === "secret" ? normalized.secretKey : null,
-      secret_has_default: normalized.type === "secret" ? normalized.defaultValue != null : null,
     });
   }
   env.sort((a, b) => stringCompare(a.key, b.key));
@@ -1073,7 +1040,6 @@ export async function serviceToApiShape(options: {
     build_command: definition.build_command ?? null,
     output_directory: definition.output_directory ?? null,
     root_directory: definition.root_directory ?? null,
-    dev_command: definition.dev_command ?? null,
     provisioned: row.vercelProjectId != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,

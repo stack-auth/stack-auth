@@ -5,7 +5,7 @@ import { getInternalUser } from "../lib/app.js";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
-import { computeDeploymentLevels, evaluateServicesFunction, importConfigModule, type EvaluatedService } from "../lib/services-config.js";
+import { collectSecretDefaults, computeDeploymentLevels, evaluateServicesFunction, importConfigModule, type EvaluatedService } from "../lib/services-config.js";
 import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
 // The names checked (in order) when --config-file is not passed; same
@@ -205,7 +205,11 @@ async function deployService(options: {
   log("Starting deployment...");
   const deployResponse = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(serviceId)}/deploy`, {
     method: "POST",
-    jsonBody: { upload_id: upload.id },
+    // The `secret()` defaults ride along with the deploy instead of being
+    // synced with the definition: they are a config-file concept, and storing
+    // them would make the dashboard's secrets page report a value that isn't
+    // actually stored anywhere.
+    jsonBody: { upload_id: upload.id, secret_defaults: collectSecretDefaults(service) },
   });
   if (typeof deployResponse?.run_id !== "string") {
     throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
@@ -297,7 +301,7 @@ export function registerDeployCommand(program: Command) {
     .option("--config-file <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
     .option("--no-config-push", "Skip pushing the config file's `config` export to the project before deploying")
-    .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.\nSecrets: values for secret() env vars are read from the dashboard (Project Settings > Secrets); the deploy fails up front if any secret has neither a stored value nor a default.")
+    .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.\nSecrets: values for secret() env vars are read from the dashboard (Project Settings > Secrets); the deploy fails up front and lists every secret that still needs a value there.")
     .action(async (opts: DeployOptions) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       const authHeaders = await buildAuthHeadersFactory(auth);
@@ -332,7 +336,7 @@ export function registerDeployCommand(program: Command) {
         throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
       })()));
       if (requiredSecretKeys.length > 0) {
-        const storedSecrets = await deployApiFetch(auth, authHeaders, "/deployments/secrets", { method: "GET" });
+        const storedSecrets = await deployApiFetch(auth, authHeaders, "/project-secrets", { method: "GET" });
         const storedKeys = new Set<string>(
           (Array.isArray(storedSecrets?.items) ? storedSecrets.items : [])
             .map((item: any) => item?.key)
@@ -340,7 +344,16 @@ export function registerDeployCommand(program: Command) {
         );
         const missing = requiredSecretKeys.filter((key) => !storedKeys.has(key));
         if (missing.length > 0) {
-          throw new CliError(`Missing values for secrets: ${missing.join(", ")}. Set them in the dashboard under Project Settings > Secrets, or give them a default value in the services export (e.g. secret(${JSON.stringify(missing[0])}, "some-default")).`);
+          // One error listing EVERY missing key, not one per key: fixing these
+          // means a trip to the dashboard, and finding out about the second
+          // missing secret only after setting the first would mean a round
+          // trip per secret.
+          throw new CliError([
+            `Missing ${missing.length === 1 ? "a value" : "values"} for ${missing.length === 1 ? "this secret" : `these ${missing.length} secrets`}:`,
+            ...missing.map((key) => `  - ${key}`),
+            "",
+            "All of them must be set in the dashboard under Project Settings > Secrets before this deploy can run.",
+          ].join("\n"));
         }
       }
 

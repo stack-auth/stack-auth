@@ -3,6 +3,7 @@ import { getVercelDeploymentsConfigOrNull } from "@/lib/deployments/vercel-clien
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { deleteBytes, downloadBytes, headBytes } from "@/s3";
+import { deploymentSecretDefaultsSchema } from "@hexclave/shared/dist/deployments";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
@@ -23,7 +24,7 @@ async function deleteDeploymentSourceObject(objectKey: string): Promise<void> {
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Deploy service",
-    description: "Starts a deployment of a service from a previously uploaded source tarball. The service's STORED definition (as last synced from the config file's `services` export — sync first via PUT /deployments/services) is authoritative for the build: connections are resolved server-side and secret env vars are filled from the project's stored secret values (with the definition's defaults as fallback), then pushed to the deployment target as encrypted env vars. The request returns a run id after the source files have been uploaded and Vercel has accepted the deployment; the remote build continues after that, so poll the run endpoint for its final status.",
+    description: "Starts a deployment of a service from a previously uploaded source tarball. The service's STORED definition (as last synced from the config file's `services` export — sync first via PUT /deployments/services) is authoritative for the build: connections are resolved server-side and secret env vars are filled from the project's stored secret values (Project Settings > Secrets), falling back to any `secret_defaults` sent with this request. Defaults are request-scoped and never stored. A secret with neither fails the deploy with the full list of keys that need a value in the dashboard. The request returns a run id after the source files have been uploaded and Vercel has accepted the deployment; the remote build continues after that, so poll the run endpoint for its final status.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -38,6 +39,10 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       upload_id: yupString().uuid().defined(),
       target: yupString().oneOf(["production", "preview"]).optional(),
+      // The `secret(key, default)` defaults from the config file, keyed by env
+      // var key. Request-scoped: used only to fill secrets that have no stored
+      // value, and never written to the database.
+      secret_defaults: deploymentSecretDefaultsSchema.optional(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -77,6 +82,7 @@ export const POST = createSmartRouteHandler({
       prisma,
       serviceId: params.service_id,
       env: definition.env,
+      secretDefaults: body.secret_defaults ?? {},
     });
 
     // Consume the upload before doing anything slow: this makes replaying the
