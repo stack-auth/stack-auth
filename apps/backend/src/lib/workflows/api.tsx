@@ -264,8 +264,10 @@ export async function listWorkflowsWithStats(tenancy: Tenancy): Promise<Workflow
 }
 
 /**
- * Deletes a workflow and all of its version/run history. API keys already
- * minted for known active runs are revoked in the same transaction.
+ * Deletes a workflow and all of its version/run history. Deleting the run
+ * rows is also what revokes any credential still held by an in-flight
+ * sandbox: a run token is validated against live run state, so once the run
+ * is gone its token authenticates as `run-not-found`.
  */
 export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Promise<void> {
   validateWorkflowId(workflowId);
@@ -284,22 +286,9 @@ export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Prom
     await tx.workflowDefinition.delete({
       where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
     });
-    const runs = await tx.workflowRun.findMany({
-      where: { tenancyId: tenancy.id, workflowId },
-      select: { id: true },
-    });
     await tx.workflowScheduleCursor.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
     // Step results and attempts cascade from WorkflowRun.
     await tx.workflowRun.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
-    // Deleting the run rows waits for any credential-minting row locks. Key
-    // revocation afterward therefore includes credentials from claims that
-    // were already in flight when deletion began.
-    await tx.apiKeySet.deleteMany({
-      where: {
-        projectId: tenancy.project.id,
-        description: { in: runs.map((run) => `workflow-run:${run.id}`) },
-      },
-    });
     await tx.workflowVersion.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
   });
 }

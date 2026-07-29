@@ -724,3 +724,129 @@ export default workflow("${invalidTriggerId}", { on: [customEvent("contains whit
     });
   });
 });
+
+describe("run credentials", () => {
+  it("does not create any project API keys for workflow runs", async ({ expect }) => {
+    // Regression guard. Runs used to authenticate with a real per-claim
+    // ApiKeySet, which surfaced in the customer-facing Project Keys list (and
+    // could be revoked there, breaking a live run). They now use a signed
+    // run-scoped token that is never persisted. Without this assertion a
+    // revert to key-minting would pass CI green.
+    await inFreshWorkflowsProject(async () => {
+      const workflowId = randomSlug("e2e-nokeys");
+      const eventName = randomSlug("e2e-nokeys-evt");
+
+      await createWorkflow(expect, workflowId, `import { workflow, customEvent, hexclaveApp } from "@hexclave/workflows";
+export default workflow("${workflowId}", {
+  on: [customEvent("${eventName}")],
+}, async (event, step) => {
+  await step.run("count-users", async () => {
+    const users = await hexclaveApp.listUsers({ limit: 1 });
+    return users.length;
+  });
+});
+`);
+      await sendCustomEvent(expect, eventName, {});
+
+      await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(workflowId);
+        return runs.find((run) => run.state === "completed") ?? null;
+      }, { timeoutMs: 120_000 });
+
+      const keysResponse = await niceBackendFetch("/api/v1/internal/api-keys", {
+        method: "GET",
+        accessType: "admin",
+      });
+      expect(keysResponse.status).toBe(200);
+      const descriptions = (keysResponse.body.items as any[]).map((key) => key.description);
+      expect(descriptions.filter((description: string) => description.startsWith("workflow-run:"))).toEqual([]);
+
+      await retireWorkflow(expect, workflowId);
+    });
+  });
+
+  it("rejects a forged run-token credential without leaking why", async ({ expect }) => {
+    // The run token rides in the ordinary project-credential headers, keyed on
+    // the `wrt_` prefix. A forged one must fail closed with the same error a
+    // garbage key produces — never a 500, and never a rejection reason that
+    // discloses run ids, run state or lease details.
+    await inFreshWorkflowsProject(async () => {
+      for (const header of ["x-stack-secret-server-key", "x-stack-super-secret-admin-key"] as const) {
+        const response = await niceBackendFetch("/api/v1/users", {
+          method: "GET",
+          accessType: header === "x-stack-secret-server-key" ? "server" : "admin",
+          headers: { [header]: "wrt_eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJmb3JnZWQifQ.bm90LWEtc2lnbmF0dXJl" },
+        });
+        expect(response.status).toBe(401);
+        const body = JSON.stringify(response.body);
+        for (const leak of ["run-not-found", "lease", "tenancy", "audience", "signature"]) {
+          expect(body).not.toContain(leak);
+        }
+      }
+    });
+  });
+
+  it("stops a canceled run from performing any further side effects", async ({ expect }) => {
+    // Cancellation is what revokes a run's credential now — there is no key to
+    // delete. A run parked on a sleep is a deterministic point to cancel at;
+    // after cancelling, the post-sleep step must never run, so the metadata it
+    // would write must never appear.
+    await inFreshWorkflowsProject(async () => {
+      const workflowId = randomSlug("e2e-cancelrevoke");
+      const eventName = randomSlug("e2e-cancelrevoke-evt");
+      const email = `${randomSlug("wf-cancel")}@example.com`;
+
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: { primary_email: email },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id as string;
+
+      await createWorkflow(expect, workflowId, `import { workflow, customEvent, hexclaveApp } from "@hexclave/workflows";
+export default workflow("${workflowId}", {
+  on: [customEvent("${eventName}")],
+}, async (event, step) => {
+  await step.run("before-nap", async () => {
+    const user = await hexclaveApp.getUser(event.data.userId);
+    await user.update({ serverMetadata: { phase: "before" } });
+  });
+  await step.sleep("nap", "1h");
+  await step.run("after-nap", async () => {
+    const user = await hexclaveApp.getUser(event.data.userId);
+    await user.update({ serverMetadata: { phase: "after" } });
+  });
+});
+`);
+      await sendCustomEvent(expect, eventName, { userId });
+
+      const sleepingRun = await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(workflowId);
+        return runs.find((run) => run.state === "sleeping") ?? null;
+      }, { timeoutMs: 120_000 });
+
+      // The first step really did run with first-party credentials.
+      const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, { method: "GET", accessType: "server" });
+      expect(beforeResponse.body.server_metadata).toEqual({ phase: "before" });
+
+      const cancelResponse = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/runs/cancel`, {
+        method: "POST",
+        accessType: "admin",
+        body: { run_id: sleepingRun.id },
+      });
+      expect(cancelResponse).toMatchObject({ status: 200, body: { canceled_count: 1 } });
+
+      // Several ticks later the run is still canceled and the post-sleep step
+      // never happened.
+      await tickWorkflowEngine(expect);
+      await tickWorkflowEngine(expect);
+      const { runs } = await listRuns(workflowId);
+      expect(runs.find((run) => run.id === sleepingRun.id)).toMatchObject({ state: "canceled" });
+      const afterResponse = await niceBackendFetch(`/api/v1/users/${userId}`, { method: "GET", accessType: "server" });
+      expect(afterResponse.body.server_metadata).toEqual({ phase: "before" });
+
+      await retireWorkflow(expect, workflowId);
+    });
+  });
+});

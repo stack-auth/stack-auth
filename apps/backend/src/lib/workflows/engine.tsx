@@ -1,5 +1,4 @@
 import { Prisma } from "@/generated/prisma/client";
-import { createApiKeySet } from "@/lib/internal-api-keys";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import {
@@ -25,6 +24,7 @@ import {
   type WorkflowSandboxStepBagEntry,
 } from "./protocol";
 import { getWorkflowsRuntimeEnv } from "./runtime-env";
+import { createWorkflowRunToken } from "./run-token";
 
 // The workflow engine: tick-driven like the email queue. A cron route calls
 // runWorkflowEngineStep() in a loop; each step (1) materializes due schedule
@@ -53,7 +53,7 @@ const PER_WORKFLOW_CONCURRENCY = 10;
 // crash window is deferred to a later version.
 const RUN_LEASE_MS = 12 * 60 * 1000;
 // See the credential-minting comment in executeClaimedRun.
-const WORKFLOW_RUN_CREDENTIAL_TTL_MS = 35 * 60 * 1000;
+const WORKFLOW_RUN_TOKEN_TTL_MS = 35 * 60 * 1000;
 export const WORKFLOW_INVOCATION_BACKSTOP_TIMEOUT_MS = WORKFLOWS_DEFAULT_LIMITS.maxStepTimeoutMs + 30 * 1000;
 // How many steps a single claim may chain before handing the run back to
 // the queue, so a hot run cannot starve others for a whole tick.
@@ -741,41 +741,64 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     return;
   }
 
+  // A run that was canceled between the claim committing and us starting has
+  // no business executing a step: the side effect would fire and only then be
+  // discarded by the guarded transition. This narrows that window rather than
+  // closing it — a cancellation landing one millisecond later still gets
+  // through — but the run token's live-state check then blocks the sandbox's
+  // first-party API calls. Cheap unlocked read; no lock is needed now that
+  // nothing is being persisted here.
+  const stillClaimed = await globalPrismaClient.workflowRun.findUnique({
+    where: { tenancyId_id: { tenancyId: run.tenancyId, id: run.id } },
+    select: { state: true, leaseToken: true },
+  });
+  if (stillClaimed == null || stillClaimed.state !== "RUNNING" || stillClaimed.leaseToken !== run.leaseToken) {
+    if (stillClaimed != null && stillClaimed.state === "RUNNING" && stillClaimed.leaseToken !== run.leaseToken) {
+      // The claim committed microseconds ago with a 12-minute lease, so losing
+      // it here should be impossible. Report it: if this ever became
+      // systematically true the symptom would be every run silently doing
+      // nothing forever (re-claimed each time the lease expires, no-op each
+      // time, no state change and no logs).
+      captureError("workflow-run-lease-lost-immediately-after-claim", new HexclaveAssertionError(
+        "Workflow run lost its lease between claim and execution",
+        { tenancyId: run.tenancyId, runId: run.id, workflowId: run.workflowId },
+      ));
+    }
+    return;
+  }
+
   // Short-lived project-admin credentials, minted per claim. Workflow source
   // is admin-authored and deliberately receives the complete AdminApp. The
-  // expiry must
-  // cover the longest possible CHAIN of steps under this claim (the lease is
-  // renewed at every step boundary, but the credential is not re-minted):
-  // tick budget (~13min of chaining) + one full step timeout + slack.
-  // Expired keys are pruned by the retention sweep.
-  const apiKey = await retryTransaction(globalPrismaClient, async (tx) => {
-    // Serialize credential minting with cancellation/deletion on the run
-    // row. Once this lock is released, a canceling transaction can revoke
-    // the newly committed key before it reports success.
-    const locked = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
-      SELECT "id"
-      FROM "WorkflowRun"
-      WHERE "tenancyId" = ${run.tenancyId}::uuid AND "id" = ${run.id}::uuid
-        AND "state" = 'RUNNING' AND "leaseToken" = ${run.leaseToken}::uuid
-      FOR UPDATE
-    `);
-    if (locked.length === 0) return null;
-    return await createApiKeySet({
-      projectId: tenancy.project.id,
-      description: `workflow-run:${run.id}`,
-      expires_at_millis: Date.now() + WORKFLOW_RUN_CREDENTIAL_TTL_MS,
-      has_publishable_client_key: false,
-      has_secret_server_key: true,
-      has_super_secret_admin_key: true,
-    }, tx);
+  // expiry must cover the longest possible CHAIN of steps under this claim
+  // (the lease is renewed at every step boundary, but the credential is not
+  // re-minted). Worst case: the loop's deadline check admits one more
+  // invocation at up to 150s after the tick started, that invocation may run
+  // for the full 630s engine-side backstop, and the provider sandbox outlives
+  // it by 30s — ~13.5min total against a 35min TTL. MAX_CHAINED_STEPS_PER_CLAIM
+  // never binds; the tick deadline does. Nothing is persisted — see
+  // run-token.tsx for why, and for the properties the token relies on.
+  const runToken = await createWorkflowRunToken({
+    projectId: tenancy.project.id,
+    tenancyId: run.tenancyId,
+    branchId: tenancy.branchId,
+    runId: run.id,
+    workflowId: run.workflowId,
+    leaseToken: run.leaseToken,
+    expiresInMs: WORKFLOW_RUN_TOKEN_TTL_MS,
   });
-  if (apiKey == null) return;
   const credentials = {
     apiUrl: getWorkflowsSandboxApiUrl(),
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
-    secretServerKey: apiKey.secret_server_key ?? throwErr("createApiKeySet did not return a secret server key"),
-    superSecretAdminKey: apiKey.super_secret_admin_key ?? throwErr("createApiKeySet did not return a super secret admin key"),
+    // The run token rides in the SDK's existing project-credential slots.
+    // Both hold the same value: the SDK attaches the server key on server- and
+    // admin-type requests and adds the admin key on admin ones, and the auth
+    // path recognises a run token in either. Reusing these slots (rather than
+    // adding a dedicated header) keeps the credential change entirely inside
+    // the engine — stored bundles pin their runtime shim forever, so a new
+    // header would strand every already-synced workflow version.
+    secretServerKey: runToken,
+    superSecretAdminKey: runToken,
   };
 
   const triggerPayload = run.triggerPayload as { ts_millis: number, data: unknown };
@@ -1083,9 +1106,11 @@ async function executeDueRuns(tenancyCache: Map<string, Tenancy | null>, deadlin
 // ─── Cancel / upgrade / retry (used by the API routes too) ─────────────────
 
 export async function cancelWorkflowRuns(tenancy: Tenancy, filter: { workflowId: string, runKey?: string, runId?: string, state?: "queued" | "running" | "sleeping", version?: number }): Promise<{ canceledCount: number }> {
-  // Cancellation and the credential cleanup share one transaction. The engine's
-  // post-invocation transitions are guarded on state = 'RUNNING', so an
-  // in-flight run sees the cancellation rather than overwriting it.
+  // Leaving RUNNING is all it takes to revoke an in-flight run's credential:
+  // the run token is checked against live run state on every API call, so
+  // there is nothing to delete here. The engine's post-invocation transitions
+  // are guarded on state = 'RUNNING', so an in-flight run sees the
+  // cancellation rather than overwriting it.
   const stateFilter = filter.state != null ? Prisma.sql`AND "state" = ${filter.state.toUpperCase()}::"WorkflowRunState"` : Prisma.empty;
   const runKeyFilter = filter.runKey != null ? Prisma.sql`AND "runKey" = ${filter.runKey}` : Prisma.empty;
   const runIdFilter = filter.runId != null ? Prisma.sql`AND "id" = ${filter.runId}::uuid` : Prisma.empty;
@@ -1103,12 +1128,6 @@ export async function cancelWorkflowRuns(tenancy: Tenancy, filter: { workflowId:
         ${versionFilter}
       RETURNING "id", "runKey", "version", "triggerType"
     `);
-    await tx.apiKeySet.deleteMany({
-      where: {
-        projectId: tenancy.project.id,
-        description: { in: canceled.map((row) => `workflow-run:${row.id}`) },
-      },
-    });
     return canceled;
   });
   return { canceledCount: rows.length };
@@ -1351,16 +1370,8 @@ async function pruneWorkflowRetention(): Promise<void> {
       LIMIT 1000
     )
   `);
-  // Per-run sandbox credentials expire with their lease; sweep the rows so
-  // they don't pile up in the api-keys table forever.
-  await globalPrismaClient.$executeRaw(Prisma.sql`
-    DELETE FROM "ApiKeySet"
-    WHERE "id" IN (
-      SELECT "id" FROM "ApiKeySet"
-      WHERE "description" LIKE 'workflow-run:%' AND "expiresAt" < NOW() - make_interval(hours => 1)
-      LIMIT 500
-    )
-  `);
+  // Note: there is deliberately nothing to sweep for run credentials. They
+  // are signed tokens, not rows.
 }
 
 // ─── The tick ──────────────────────────────────────────────────────────────

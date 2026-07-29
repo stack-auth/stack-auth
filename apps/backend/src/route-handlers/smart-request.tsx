@@ -5,6 +5,7 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
+import { authenticateWorkflowRunToken, isWorkflowRunToken } from "@/lib/workflows/run-token";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
@@ -13,6 +14,7 @@ import { HexclaveAdaptSentinel, yupValidate } from "@hexclave/shared/dist/schema
 import { groupBy, typedIncludes } from "@hexclave/shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { traceSpan, withTraceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
@@ -171,6 +173,23 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
   const allowRestrictedUser = allowAnonymousUser || req.headers.get("x-stack-allow-restricted-user") === "true";
 
+  // Workflow sandboxes authenticate with a signed, run-scoped token that rides
+  // in the ordinary project-credential headers (see lib/workflows/run-token.tsx
+  // for why it reuses those slots). Real keys are `pck_`/`ssk_`/`sak_` followed
+  // by base32, so the `wrt_` prefix is unreachable for a genuine key by
+  // construction — not merely improbable.
+  //
+  // Resolved per header rather than picking one: suppressing the key lookup for
+  // a header that does NOT hold a run token would reject a request whose other
+  // header carries a perfectly good key.
+  const adminHeaderIsRunToken = isWorkflowRunToken(superSecretAdminKey);
+  const serverHeaderIsRunToken = isWorkflowRunToken(secretServerKey);
+  const workflowRunTokenSource = adminHeaderIsRunToken
+    ? { token: superSecretAdminKey, fromAdminHeader: true }
+    : serverHeaderIsRunToken
+      ? { token: secretServerKey, fromAdminHeader: false }
+      : null;
+
   // Ensure header combinations are valid
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
   if (!requestType && eitherKeyOrToken) {
@@ -260,8 +279,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const bundledQueries = {
     userIfOnGlobalPrismaClient: userId ? getUserIfOnGlobalPrismaClientQuery(projectId, branchId, userId) : undefined,
     isClientKeyValid: publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
-    isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
-    isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
+    // A workflow run token occupies the same header as a project key but is
+    // authenticated below, not by an ApiKeySet lookup; a `wrt_` value can
+    // never match a key row, so skip the lookup for that header only.
+    isServerKeyValid: secretServerKey && requestType === "server" && !serverHeaderIsRunToken ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
+    isAdminKeyValid: superSecretAdminKey && requestType === "admin" && !adminHeaderIsRunToken ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
     tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
   };
@@ -280,6 +302,39 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
     const result = await checkApiKeySet("internal", { superSecretAdminKey: developmentKeyOverride });
     if (result.status === "error") throw new StatusError(401, "Invalid development key override");
+  } else if (workflowRunTokenSource != null) {
+    // Like the admin-access-token branch, a valid run token satisfies every
+    // request type: it is a full project-admin credential, so the client/
+    // server/admin key checks below would be strictly weaker.
+    //
+    // `tenancy` being null is treated as an authentication failure rather than
+    // a branch-not-found error, so an unauthenticated caller cannot probe
+    // which branches exist — the same reason the real branch check lives
+    // after this block.
+    const authResult = tenancy == null
+      ? Result.error("tenancy-not-found" as const)
+      : await authenticateWorkflowRunToken({
+        token: workflowRunTokenSource.token,
+        projectId,
+        branchId,
+        tenancyId: tenancy.id,
+      });
+    if (authResult.status === "error") {
+      // The reason is useful to us and must not reach the caller — it would
+      // otherwise disclose run ids, run state, and lease details.
+      //
+      // Only rejections that got past signature verification are logged. The
+      // purely syntactic ones are reachable by any unauthenticated caller who
+      // knows a project id (which is semi-public), so logging them would hand
+      // out a free log-spam primitive; a forged signature tells us nothing we
+      // can act on either.
+      if (!["not-a-run-token", "unparsable", "audience-mismatch", "signature-or-expiry-invalid"].includes(authResult.error)) {
+        console.log(`[Workflow run token] Rejected an authentic run token for project ${projectId}: ${authResult.error}`);
+      }
+      throw workflowRunTokenSource.fromAdminHeader
+        ? new KnownErrors.InvalidSuperSecretAdminKey(projectId)
+        : new KnownErrors.InvalidSecretServerKey(projectId);
+    }
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({

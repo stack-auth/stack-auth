@@ -452,8 +452,10 @@ class StepTimeoutMarker {
 const appCredentials = getInput().credentials;
 
 /**
- * The complete admin SDK, authenticated with a short-lived key set minted
- * for this run. Manifest/run-key/probe imports receive inert credentials;
+ * The complete admin SDK, authenticated with a short-lived token minted for
+ * this run (it occupies the SDK's key options, but it is a signed run-scoped
+ * credential, not an API key — see lib/workflows/run-token.tsx).
+ * Manifest/run-key/probe imports receive inert credentials;
  * noAutomaticPrefetch guarantees those modes never make a request.
  */
 export const hexclaveApp = new HexclaveAdminApp({
