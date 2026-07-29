@@ -119,10 +119,11 @@ export function updateCookie(cookieString: string, cookieName: string, cookieVal
   const cookies = cookieString.split(";").map((cookie) => cookie.trim()).filter((cookie) => cookie.length > 0);
   const newCookie = `${cookieName}=${cookieValue}`;
   const cookieIndex = cookies.findIndex((cookie) => cookie.startsWith(`${cookieName}=`));
-  if (cookieIndex === -1) {
-    return `${cookieString}; ${newCookie}`;
+  if (cookieIndex === -1) return cookies.length === 0 ? newCookie : `${cookies.join("; ")}; ${newCookie}`;
+  cookies.splice(cookieIndex, 1, newCookie);
+  for (let index = cookies.length - 1; index > cookieIndex; index--) {
+    if (cookies[index]?.startsWith(`${cookieName}=`)) cookies.splice(index, 1);
   }
-  cookies[cookieIndex] = newCookie;
   return cookies.join("; ");
 }
 

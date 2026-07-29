@@ -932,6 +932,24 @@ model ProjectWrapperCodes {
   @@id([idpId, id])
 }
 
+model ProjectOAuthInteractionCode {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String
+  branchId        String
+  interactionUid  String
+  userId          String @db.Uuid
+  clientId        String
+  codeHash        String @unique
+  scope           String
+  resource        String?
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([projectId, branchId, interactionUid])
+  @@index([expiresAt])
+}
+
 model IdPAdapterData {
   idpId String
   model String

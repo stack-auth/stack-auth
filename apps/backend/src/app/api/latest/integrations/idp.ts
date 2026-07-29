@@ -9,6 +9,8 @@ import { deindent } from '@hexclave/shared/dist/utils/strings';
 import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import Provider, { Adapter, AdapterConstructor, AdapterPayload, Configuration, errors } from 'oidc-provider';
 
+export const OIDC_JWT_SIGNING_ALGORITHM = "ES256" as const;
+
 type AdapterData = {
   payload: AdapterPayload,
   expiresAt: Date,
@@ -229,9 +231,11 @@ export type OidcProviderOptions = {
   middleware?: (provider: Provider) => void,
   /** Where to send the user to log in / consent. */
   interactionUrl?: (interactionUid: string) => string,
+  /** OIDC route overrides for provider variants; integrations retain oidc-provider defaults. */
+  routes?: Configuration["routes"],
 };
 
-function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]): void {
+export function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]): void {
   oidc.use((ctx, next) => {
     try {
       return mw(ctx, next);
@@ -277,6 +281,7 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
       ],
     },
     jwks: privateJwkSet,
+    routes: options.routes,
     features: {
       devInteractions: {
         enabled: false,
@@ -315,6 +320,11 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
             audience: resourceServer.audience,
             scope: resourceServer.scopes.join(" "),
             accessTokenFormat: 'jwt' as const,
+            jwt: {
+              sign: {
+                alg: OIDC_JWT_SIGNING_ALGORITHM,
+              },
+            },
           };
         },
       } : { enabled: false },

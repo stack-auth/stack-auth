@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import * as oauthSsrf from "./ssrf-protection/oauth";
-import { getProjectResourceServers, getProjectStaticClients, resolveClientIdMetadataDocument } from "./project-oauth-provider";
+import { findProjectOAuthAccount, getProjectResourceServers, getProjectStaticClients, resolveClientIdMetadataDocument } from "./project-oauth-provider";
 import { Tenancy } from "./tenancies";
+
+vi.mock("@/app/api/latest/users/crud", () => ({
+  getUser: async ({ userId }: { userId: string }) => userId === "user-1" ? {
+    id: "user-1",
+    primary_email: "user@example.com",
+    primary_email_verified: true,
+    display_name: "Example User",
+    profile_image_url: "https://example.com/user.png",
+  } : null,
+}));
 
 const clientId = "https://clients.example.com/client.json";
 
@@ -67,6 +77,7 @@ describe("resolveClientIdMetadataDocument", () => {
             "authorization_code",
             "refresh_token",
           ],
+          "id_token_signed_response_alg": "ES256",
           "redirect_uris": [
             "http://127.0.0.1:8765/callback",
           ],
@@ -110,5 +121,15 @@ describe("resolveClientIdMetadataDocument", () => {
         "https://mcp.example.com/mcp",
       ]
     `);
+  });
+});
+
+describe("project OAuth account loading", () => {
+  it("loads an account without requiring a token scope", async () => {
+    const account = await findProjectOAuthAccount(createMockTenancy(), "user-1");
+    expect(account?.accountId).toBe("user-1");
+    await expect(account?.claims("id_token", "openid", {}, [])).resolves.toMatchObject({
+      sub: "user-1",
+    });
   });
 });

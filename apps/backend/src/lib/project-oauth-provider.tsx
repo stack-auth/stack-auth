@@ -1,13 +1,20 @@
-import { createOidcProviderInternal } from "@/app/api/latest/integrations/idp";
+import { createOidcProviderInternal, OIDC_JWT_SIGNING_ALGORITHM, wrapOidcMiddleware } from "@/app/api/latest/integrations/idp";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
-import type { AdapterPayload, ClientMetadata } from "oidc-provider";
+import type { AdapterPayload, ClientMetadata, Configuration } from "oidc-provider";
 import { assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument } from "./ssrf-protection/oauth";
-import { deriveScopesFromConfig } from "./permissions";
+import { deriveScopesFromConfig, listPermissions } from "./permissions";
 import { getResourceAudience } from "./tokens";
 import { Tenancy } from "./tenancies";
+import { getUser } from "@/app/api/latest/users/crud";
+import { getHostedHandlerTrustedDomain } from "./redirect-urls";
+import { globalPrismaClient, getPrismaClientForTenancy } from "@/prisma-client";
+import { createHash, randomBytes } from "node:crypto";
+import { narrowPermissionsByScopes, OIDC_STANDARD_SCOPES } from "@hexclave/shared/dist/config/scopes";
+
+type ProjectOAuthAccount = Awaited<ReturnType<NonNullable<Configuration["findAccount"]>>>;
 
 /**
  * A Hexclave project acting as its own OAuth 2.1 / OIDC provider.
@@ -113,6 +120,7 @@ export function getProjectStaticClients(tenancy: Tenancy): ClientMetadata[] {
       response_types: ["code"],
       // MCP clients are overwhelmingly native/CLI apps that listen on a loopback port.
       application_type: "native",
+      id_token_signed_response_alg: OIDC_JWT_SIGNING_ALGORITHM,
     }];
   });
 }
@@ -133,6 +141,280 @@ export function isTrustedClient(tenancy: Tenancy, clientId: string): boolean {
   // lookup would happily resolve `__proto__` or `constructor` to something truthy.
   const client = getOrUndefined(tenancy.config.oauthProvider.clients, clientId);
   return client?.trusted === true;
+}
+
+export async function findProjectOAuthAccount(
+  tenancy: Tenancy,
+  sub: string,
+): Promise<ProjectOAuthAccount> {
+  const user = await getUser({ tenancy, userId: sub });
+  if (!user) return undefined;
+
+  return {
+    accountId: user.id,
+    async claims(_use, scope) {
+      const scopes = new Set(scope.split(" ").filter(Boolean));
+      return {
+        sub: user.id,
+        ...(scopes.has("email") ? {
+          email: user.primary_email ?? undefined,
+          email_verified: user.primary_email_verified,
+        } : {}),
+        ...(scopes.has("profile") ? {
+          name: user.display_name ?? undefined,
+          picture: user.profile_image_url ?? undefined,
+        } : {}),
+      };
+    },
+  };
+}
+
+function getStringProperty(value: unknown, key: string): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const property = Reflect.get(value, key);
+  return typeof property === "string" ? property : undefined;
+}
+
+function getObjectProperty(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return Reflect.get(value, key);
+}
+
+export function getProjectOAuthInteractionUrl(tenancy: Tenancy, uid: string): string {
+  const url = new URL("/handler/oauth-consent", getHostedHandlerTrustedDomain(tenancy.project.id));
+  // The hosted consent route must preserve interaction_uid through sign-in and use it for both
+  // metadata lookup and the one-time approval-code continuation.
+  url.searchParams.set("interaction_uid", uid);
+  return url.toString();
+}
+
+export function installProjectOAuthInteractionMiddleware(oidc: Awaited<ReturnType<typeof createOidcProviderInternal>>, tenancy: Tenancy): void {
+  wrapOidcMiddleware(oidc, async (ctx, next) => {
+    const interactionMatch = /^\/interaction\/([^/]+)$/.exec(ctx.path);
+    if (ctx.method === "GET" && interactionMatch) {
+      const details = await oidc.interactionDetails(ctx.req, ctx.res);
+      const interactionUrl = new URL(getProjectOAuthInteractionUrl(tenancy, interactionMatch[1]));
+      ctx.redirect(interactionUrl.toString());
+      return;
+    }
+
+    const doneMatch = /^\/interaction\/([^/]+)\/done$/.exec(ctx.path);
+    if (doneMatch && (ctx.method === "GET" || ctx.method === "POST")) {
+      const interaction = await oidc.Interaction.find(doneMatch[1]);
+      if (ctx.request.query.error === "access_denied") {
+        if (interaction == null || interaction.uid !== doneMatch[1] || interaction.exp <= Math.floor(Date.now() / 1000)) {
+          ctx.status = 400;
+          ctx.body = "Invalid interaction code.";
+          return;
+        }
+        const redirectUri = getStringProperty(interaction.params, "redirect_uri");
+        if (redirectUri === undefined) {
+          ctx.status = 400;
+          ctx.body = "Invalid interaction code.";
+          return;
+        }
+        const redirect = new URL(redirectUri);
+        redirect.searchParams.set("error", "access_denied");
+        redirect.searchParams.set("error_description", "The resource owner denied the request.");
+        const state = getStringProperty(interaction.params, "state");
+        if (state !== undefined) redirect.searchParams.set("state", state);
+        await interaction.destroy();
+        await globalPrismaClient.idPAdapterData.deleteMany({
+          where: {
+            idpId: getProjectIdpId(tenancy),
+            model: "Interaction",
+            id: doneMatch[1],
+          },
+        });
+        ctx.status = 303;
+        ctx.redirect(redirect.toString());
+        return;
+      }
+      const code = typeof ctx.request.query.code === "string" ? ctx.request.query.code : undefined;
+      const codeHash = code === undefined ? undefined : createHash("sha256").update(code).digest("hex");
+      const storedCode = codeHash === undefined ? undefined : await globalPrismaClient.projectOAuthInteractionCode.findFirst({
+        where: {
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          interactionUid: doneMatch[1],
+          codeHash,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      if (storedCode == null) {
+        ctx.status = 400;
+        ctx.body = "Invalid interaction code.";
+        return;
+      }
+
+      const marked = await globalPrismaClient.projectOAuthInteractionCode.updateMany({
+        where: { id: storedCode.id, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() },
+      });
+      if (marked.count !== 1) {
+        ctx.status = 400;
+        ctx.body = "Invalid interaction code.";
+        return;
+      }
+
+      if (interaction == null || interaction.uid !== doneMatch[1]) {
+        ctx.status = 400;
+        ctx.body = "Invalid interaction code.";
+        return;
+      }
+      const grant = new oidc.Grant({
+        accountId: storedCode.userId,
+        clientId: storedCode.clientId,
+      });
+      const scopes = storedCode.scope.split(" ").filter(Boolean);
+      const oidcStandardScopes = new Set<string>(OIDC_STANDARD_SCOPES);
+      const oidcScopes = scopes.filter(scope => oidcStandardScopes.has(scope));
+      const resourceScopes = scopes.filter(scope => !oidcStandardScopes.has(scope));
+      const requestedScopes = getStringProperty(interaction.params, "scope")?.split(" ").filter(Boolean) ?? [];
+      const grantedScopes = new Set(scopes);
+      const rejectedScopes = requestedScopes.filter(scope => !grantedScopes.has(scope));
+      if (oidcScopes.length > 0) grant.addOIDCScope(oidcScopes.join(" "));
+      if (storedCode.resource !== null && resourceScopes.length > 0) {
+        grant.addResourceScope(storedCode.resource, resourceScopes.join(" "));
+      } else if (storedCode.resource === null && resourceScopes.length > 0) {
+        grant.addOIDCScope(resourceScopes.join(" "));
+      }
+      const rejectedOIDCScopes = rejectedScopes.filter(scope => oidcStandardScopes.has(scope));
+      if (rejectedOIDCScopes.length > 0) grant.rejectOIDCScope(rejectedOIDCScopes.join(" "));
+      const rejectedResourceScopes = rejectedScopes.filter(scope => !oidcStandardScopes.has(scope));
+      if (storedCode.resource !== null && rejectedResourceScopes.length > 0) {
+        grant.rejectResourceScope(storedCode.resource, rejectedResourceScopes.join(" "));
+      } else if (storedCode.resource === null && rejectedResourceScopes.length > 0) {
+        grant.rejectOIDCScope(rejectedResourceScopes.join(" "));
+      }
+      const grantId = await grant.save(60 * 60);
+      interaction.result = {
+        login: { accountId: storedCode.userId },
+        consent: { grantId },
+      };
+      const remainingSeconds = interaction.exp - Math.floor(Date.now() / 1000);
+      if (remainingSeconds <= 0) {
+        ctx.status = 400;
+        ctx.body = "Invalid interaction code.";
+        return;
+      }
+      await interaction.save(remainingSeconds);
+      ctx.status = 303;
+      ctx.redirect(interaction.returnTo);
+      return;
+    }
+    await next();
+  });
+}
+
+type ProjectOAuthApprovalResult =
+  | { status: "invalid" }
+  | { status: "ok", code: string };
+
+export async function approveProjectOAuthInteraction(
+  tenancy: Tenancy,
+  interactionUid: string,
+  userId: string,
+): Promise<ProjectOAuthApprovalResult> {
+  const interaction = await globalPrismaClient.idPAdapterData.findUnique({
+    where: {
+      idpId_model_id: {
+        idpId: getProjectIdpId(tenancy),
+        model: "Interaction",
+        id: interactionUid,
+      },
+    },
+  });
+  if (interaction === null || interaction.expiresAt <= new Date()) return { status: "invalid" };
+
+  const params = getObjectProperty(interaction.payload, "params");
+  const clientId = getStringProperty(params, "client_id");
+  const requestedResource = getStringProperty(params, "resource");
+  const requestedScopes = getStringProperty(params, "scope")?.split(" ").filter(Boolean) ?? [];
+  if (clientId === undefined) return { status: "invalid" };
+
+  const resource = requestedResource === undefined ? undefined : getProjectResourceServers(tenancy).get(requestedResource);
+  if (requestedResource !== undefined && resource === undefined) return { status: "invalid" };
+  const grantedScopes = await narrowProjectOAuthScopes(tenancy, userId, requestedScopes, resource);
+  const code = randomBytes(32).toString("base64url");
+  await globalPrismaClient.projectOAuthInteractionCode.create({
+    data: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      interactionUid,
+      userId,
+      clientId,
+      codeHash: createHash("sha256").update(code).digest("hex"),
+      scope: grantedScopes.join(" "),
+      resource: requestedResource ?? null,
+      expiresAt: new Date(new Date().getTime() + 60_000),
+    },
+  });
+  return { status: "ok", code };
+}
+
+async function narrowProjectOAuthScopes(
+  tenancy: Tenancy,
+  userId: string,
+  requestedScopes: string[],
+  resource: { scopes: string[] } | undefined,
+): Promise<string[]> {
+  const standardScopes = new Set<string>(OIDC_STANDARD_SCOPES);
+  const allowedScopes = new Set([
+    ...standardScopes,
+    ...(resource?.scopes ?? deriveScopesFromConfig(tenancy.config).map(scope => scope.scope)),
+  ]);
+  const scopedRequested = requestedScopes.filter(scope => allowedScopes.has(scope));
+  const tx = await getPrismaClientForTenancy(tenancy);
+  const permissions = await listPermissions(tx, {
+    tenancy,
+    userId,
+    recursive: true,
+    scope: "project",
+    grantedScopes: null,
+  });
+  const narrowedPermissions = narrowPermissionsByScopes(permissions, scopedRequested, "project");
+  const permissionScopes = new Set(narrowedPermissions.map(permission => `perm:${permission.id}`));
+  // Team permissions require an explicit team selection, which this project-level interaction
+  // contract does not carry. Keep them out rather than guessing a team or over-granting.
+  return scopedRequested.filter(scope =>
+    scope.startsWith("team_perm:")
+      ? false
+      : !scope.startsWith("perm:") || permissionScopes.has(scope),
+  );
+}
+
+export async function getProjectOAuthInteractionDetails(
+  tenancy: Tenancy,
+  interactionUid: string,
+  userId: string,
+): Promise<{
+  clientId: string,
+  clientName: string,
+  scopes: string[],
+  resource: string | undefined,
+  trusted: boolean,
+} | undefined> {
+  const interaction = await globalPrismaClient.idPAdapterData.findUnique({
+    where: { idpId_model_id: { idpId: getProjectIdpId(tenancy), model: "Interaction", id: interactionUid } },
+  });
+  if (interaction === null || interaction.expiresAt <= new Date()) return undefined;
+  const params = getObjectProperty(interaction.payload, "params");
+  const clientId = getStringProperty(params, "client_id");
+  if (clientId === undefined) return undefined;
+  const requestedResource = getStringProperty(params, "resource");
+  const resource = requestedResource === undefined ? undefined : getProjectResourceServers(tenancy).get(requestedResource);
+  if (requestedResource !== undefined && resource === undefined) return undefined;
+  const requestedScopes = getStringProperty(params, "scope")?.split(" ").filter(Boolean) ?? [];
+  const client = getOrUndefined(tenancy.config.oauthProvider.clients, clientId);
+  return {
+    clientId,
+    clientName: client?.displayName ?? clientId,
+    scopes: await narrowProjectOAuthScopes(tenancy, userId, requestedScopes, resource),
+    resource: requestedResource,
+    trusted: isTrustedClient(tenancy, clientId),
+  };
 }
 
 /**
@@ -197,6 +479,7 @@ export async function resolveClientIdMetadataDocument(
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     application_type: "native",
+    id_token_signed_response_alg: OIDC_JWT_SIGNING_ALGORITHM,
   };
 }
 
@@ -219,6 +502,7 @@ export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { a
     findClient: providerConfig.clientIdMetadataDocuments.enabled
       ? async (clientId) => await resolveClientIdMetadataDocument(tenancy, clientId)
       : undefined,
+    findAccount: async (_ctx, sub) => await findProjectOAuthAccount(tenancy, sub),
     scopes,
     resourceServers,
     extraTokenClaims: async (_ctx, token) => {
@@ -234,5 +518,12 @@ export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { a
     },
     // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally.
     requirePkce: true,
+    interactionUrl: (uid) => getProjectOAuthInteractionUrl(tenancy, uid),
+    middleware: (oidc) => installProjectOAuthInteractionMiddleware(oidc, tenancy),
+    routes: {
+      // MCP authorization metadata and clients use /authorize; oidc-provider defaults to /auth.
+      authorization: "/authorize",
+      jwks: `/api/v1/projects/${tenancy.project.id}/oidc/.well-known/jwks.json`,
+    },
   });
 }
