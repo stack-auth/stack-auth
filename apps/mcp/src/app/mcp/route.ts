@@ -1,9 +1,10 @@
 import { createHexclaveMcpHandler } from "@/mcp-handler";
+import { authenticatedMcpHandler } from "@/mcp-auth";
 import { renderSetupPageHtml } from "@/setup-page";
 
-const handler = createHexclaveMcpHandler({
+const handler = authenticatedMcpHandler(createHexclaveMcpHandler({
   streamableHttpEndpoint: "/mcp",
-});
+}));
 
 export function GET(req: Request) {
   const accept = req.headers.get("accept") ?? "";

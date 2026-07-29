@@ -942,6 +942,9 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@hexclave/next':
+        specifier: workspace:*
+        version: link:../../packages/next
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
