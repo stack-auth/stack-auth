@@ -1,0 +1,19 @@
+packages/template/src/lib/hexclave-app/apps/implementations/library-span-bridge.test.ts
+  s_c6374bd6e28a90::t_8f9ecf7e482e66 477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4da3d020979eafaa7c559e92fb12016dd4421173",
+  "prompts": {},
+  "sessions": {
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
