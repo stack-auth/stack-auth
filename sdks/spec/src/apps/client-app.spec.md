@@ -44,7 +44,36 @@ Optional:
     Default: false
     If true, skip prefetching project info on construction.
 
+  analytics: AnalyticsOptions
+    Product events, autocapture, replays, and integrity signals.
+  observability: ObservabilityOptions
+    Errors, logs, spans, propagation, and network instrumentation.
+  telemetry: TelemetryOptions
+    Shared resource identity and delivery lifecycle options:
+      resource: {
+        service: {
+          name: string
+          namespace?: string
+          version?: string
+          instanceId?: string
+        }
+        deploymentEnvironmentName?: string
+        attributes?: Record<string, unknown>
+      }
+      waitUntil?: (promise) => void
+    resource.service.name is required whenever Analytics or Observability is
+    enabled (both are enabled by default). The SDK never infers a service name
+    or substitutes a fallback. Full validation, inheritance, and identity
+    semantics live in analytics.spec.md.
+
 On construct: prefetch project info (GET /projects/current) unless noAutomaticPrefetch=true.
+Also on construct, install product autocapture only when Analytics is enabled,
+and install fetch/XHR, error, log, and span instrumentation only when
+Observability is enabled. Both use the same lazy telemetry transport.
+All emitted signals inherit the constructor's immutable telemetry.resource.
+When `inheritsFrom` is used, omitting telemetry inherits the entire parent
+telemetry configuration; an explicitly supplied child telemetry.resource
+replaces the parent's resource atomically rather than deep-merging it.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]
@@ -978,6 +1007,40 @@ options.tokenStore: TokenStoreInit
 Returns: string - the access token for Convex HTTP requests
 
 Does not error.
+
+
+## Telemetry API
+
+The custom-telemetry members. Full behavior contracts, wire formats, and
+validation rules live in analytics.spec.md — the summaries here only pin the
+surface:
+
+  trackEvent(eventType, data?, options?): Promise<void>
+    Buffers a custom analytics event; resolves on batch ack. Rejects
+    (pre-caught) on invalid input or unavailable analytics.
+
+  logger.{trace,debug,info,warn,error}(message, data?): void
+    Native structured logging ($log events). Fire-and-forget; never throws.
+    Available eagerly on every app instance.
+
+  startSpan(spanType, options?): Span
+    Starts a custom span (open interval, versioned upserts). Invalid input
+    throws; environment unavailability (e.g. SSR on a client app) returns an
+    INERT span instead — see analytics.spec.md "Inert spans".
+
+  withSpan(spanType, optionsOrFn, fn?): Promise<T>
+    Runs fn inside a span (ambient parent; auto-end; records data.error and
+    rethrows on throw).
+
+  setGlobalSpan(span) / clearGlobalSpan(span): void
+    Register/unregister an ambient parent.
+
+  flush(): Promise<void>
+    Sends all buffered analytics immediately and settles in-flight sends.
+
+  getSpanPropagationHeaders(options?: { parentIds?, root? }): Record<string, string>
+    The cross-tier x-hexclave-span-context header for transports the SDK
+    cannot instrument itself; {} when there is nothing to propagate.
 
 
 ## Redirect Methods  [BROWSER-ONLY]

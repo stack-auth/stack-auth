@@ -13,7 +13,9 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@hexclave/sh
 import { TeamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, HTTP_CLIENT_SPAN_TYPE, LIB_SPAN_TYPE, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
 import type { AsyncCache } from "@hexclave/shared/dist/utils/caches";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -38,11 +40,19 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
-import { generateUuid } from "./session-replay";
-import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
-import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
+import { assertValidSpanStartInput, autoDetectedBackgroundTaskHook, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveParentIds, withSpanImpl, getCustomTelemetryDataError, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { buildErrorEventData, installServerErrorMonitor } from "./error-capture";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS } from "./observability-config";
+import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
+import { requireTelemetryResource } from "./telemetry-config";
+import { createSpanHandle } from "./span-handle";
+import { generateUuid } from "./telemetry-transport";
+import { getAmbientSpanRefs } from "./span-context";
+import { beginHttpClientSpanCore, sanitizeHttpClientUrl, shouldCaptureNetworkRequest, type HttpRequestSpanHandle } from "./network-capture";
+import { installServerFetchInstrumentation } from "./server-fetch-instrumentation";
+import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER, type RequestSpanInfo, type SpanPropagationContext } from "./span-propagation";
 import { getServerRequestContext, runWithServerRequestContext, withExplicitServerUser, type ServerRequestSpanContext } from "./server-request-context";
+import { registerLibrarySpanBridge, type BeginLibrarySpanInfo, type LibrarySpanBridgeRegistration, type LibrarySpanHandle } from "./library-span-bridge";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -483,6 +493,43 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         });
       })(),
     });
+
+    // Install the outbound-fetch instrumentation and the uncaught-error
+    // monitor EAGERLY at construction: requiring `hexclaveInstrumentation()`
+    // glue or a first `{ request }` call for baseline server telemetry was the
+    // single biggest piece of setup wiring, and a project without the
+    // analytics app self-disables after the first rejected batch (see
+    // _disableServerTelemetry). Construction always happens in customer module
+    // scope — after frameworks like Next.js have applied their own fetch patch
+    // at runtime startup — so the composition ordering documented in
+    // server-fetch-instrumentation.ts still holds. Two exclusions, both
+    // states the lazy install path could never reach before:
+    // - browser-like environments: the CLIENT wrappers own fetch there (and
+    //   when client analytics is off, nothing should patch it) — the
+    //   _clientAnalytics guard inside the install methods doesn't cover
+    //   analytics-disabled browser apps, so gate on the environment;
+    // - projectOwnerSession-backed apps (the dashboard's per-project admin
+    //   apps): they have no server key, so their batches could never be
+    //   accepted — eager install would only produce doomed sends.
+    if (!isBrowserLike() && !("projectOwnerSession" in this._interface.options) && this._observabilityOptions?.enabled !== false) {
+      this._installServerFetchInstrumentation();
+      this._installServerErrorMonitor();
+      // Automatic console capture (warn+error by default), same eager-install
+      // rationale as above. Server-side the delivery path is the server
+      // telemetry buffer behind _emitLog, which this exclusion block already
+      // guarantees can produce accepted batches (non-browser + a real server
+      // key). Browser-like environments install through the client constructor
+      // instead (gated on an active client analytics facade there).
+      const captureConsoleLevels = this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS;
+      if (captureConsoleLevels.length > 0) {
+        installConsoleCapture({
+          levels: captureConsoleLevels,
+          logger: createLogger({ emit: (item) => this._emitLog(item), origin: "console" }),
+          projectId: this.projectId,
+          serviceName: requireTelemetryResource(this._telemetryOptions).service.name,
+        });
+      }
+    }
   }
 
 
@@ -1764,9 +1811,27 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _serverTelemetryBuffers = new Map<string, ServerTelemetryBuffer>();
   private readonly _serverGlobalSpans = new Set<Span>();
   private readonly _serverTelemetryInFlight = new Set<Promise<void>>();
+  // See the soft-cap block in setGlobalSpan.
+  private _warnedServerGlobalSpanCap = false;
+  // Sticky per-process off switch, set when the backend rejects a batch with
+  // ANALYTICS_NOT_ENABLED. Required by the eager instrumentation install: a
+  // project without the analytics app would otherwise send (and warn about) a
+  // doomed batch for every outgoing fetch, forever. Mirrors the client
+  // tracker's _disable().
+  private _serverTelemetryDisabled = false;
+
+  private _disableServerTelemetry(): void {
+    if (this._serverTelemetryDisabled) return;
+    this._serverTelemetryDisabled = true;
+    this._serverTelemetryBuffers.clear();
+    console.warn("Hexclave analytics: the Analytics app is not enabled for this project, so server telemetry is disabled for this process. Enable it in the Hexclave dashboard to collect events, spans, and logs.");
+  }
 
   override trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string, request?: RequestLike }): Promise<void> {
-    if (this._eventTracker) {
+    if (this._analyticsOptions?.enabled === false) {
+      return rejectedPreCaught("analytics is disabled");
+    }
+    if (this._clientAnalytics) {
       // Browser-like environment: identity comes from the session; an explicit
       // userId would silently mis-attribute, so refuse it loudly. `request` is a
       // server-only concern (the browser auto-attaches it to outgoing fetches),
@@ -1774,17 +1839,28 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (options?.userId !== undefined) {
         return rejectedPreCaught("userId is only supported for server-key telemetry; in the browser, events are attributed to the signed-in user");
       }
-      return this._eventTracker.trackCustomEvent(eventType, data, options);
+      return this._clientAnalytics.trackCustomEvent(eventType, data, options);
     }
     // `{ request }`: resolve the caller's session + client-propagated span context
     // (async) and run the send with that context ambient, so the event parents
     // under the client session ($refresh-token/$session-replay/$session-replay-segment).
     if (options?.request) {
+      this._installServerFetchInstrumentation();
+      this._installServerErrorMonitor();
       const { request, ...rest } = options;
       return (async () => {
         const context = await this._resolveServerRequestContext(request, options.userId ?? null);
         await runWithServerRequestContext(context, () => this._trackServerEvent(eventType, data, rest, context.userId));
       })();
+    }
+    // No explicit request: if a framework registered an ambient request
+    // provider (hexclaveInstrumentation in Next.js) and we are not already
+    // inside a `{ request }` scope, attribute via the framework's ambient
+    // request — this is what makes bare `trackEvent` calls in route handlers
+    // parent under the caller's session with zero wiring.
+    if (this._ambientRequestProvider !== null && getServerRequestContext() === null) {
+      return preCaught(this._runWithAmbientRequestScope(options?.userId ?? null, (userId) =>
+        this._trackServerEvent(eventType, data, options, userId)));
     }
     return this._trackServerEvent(eventType, data, options, options?.userId ?? null);
   }
@@ -1800,9 +1876,23 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
     // No request (or browser): the inherited withSpan handles global/enclosing
     // ambient parenting and forwards userId to the server startSpan at runtime.
-    if (!options?.request || this._eventTracker) {
+    if (!options?.request || this._clientAnalytics) {
+      // Framework-ambient fallback (see trackEvent): a bare server withSpan
+      // outside any `{ request }` scope adopts the framework's ambient request
+      // when a provider is registered, so route-handler code never threads the
+      // request by hand. Nested withSpan calls inside an existing scope keep
+      // the fast inherited path — the ALS context already attributes them.
+      if (!this._clientAnalytics && typeof fn === "function" && this._ambientRequestProvider !== null && getServerRequestContext() === null) {
+        return this._runWithAmbientRequestScope(options?.userId ?? null, (userId) =>
+          withSpanImpl((type, opts) => this._startServerSpan(type, opts, userId), spanType, options ?? {}, fn));
+      }
       return super.withSpan(spanType, optionsOrFn as any, maybeFn as any);
     }
+    // First `{ request }` scope on this app: also install the outbound-fetch
+    // instrumentation (lazy so apps that never use request telemetry don't
+    // patch global fetch) and the uncaught-error monitor beside it.
+    this._installServerFetchInstrumentation();
+    this._installServerErrorMonitor();
     const { request, ...rest } = options;
     return (async () => {
       const context = await this._resolveServerRequestContext(request, options.userId ?? null);
@@ -1822,6 +1912,18 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
     let userId: string | null = null;
     let refreshTokenId: string | null = null;
+    // Deduplication note (verified): the framework adapters resolve the session
+    // for `getUser({ tokenStore: request })` as well, but the two paths share
+    // state rather than doubling work — `_getOrCreateTokenStore` memoizes the
+    // token store per request object (`_requestTokenStores` WeakMap) and
+    // `_getSessionFromTokenStore` memoizes the InternalSession per (store,
+    // session key), so both resolve to the SAME session instance. The forced
+    // `fetchNewTokens()` below (deliberate: it round-trips the refresh token,
+    // so the derived userId is server-verified rather than trusted from a
+    // client-supplied access token) installs its fresh access token into that
+    // shared session, which means the adapter's subsequent user fetch hits the
+    // session's token cache instead of refreshing again. Concurrent refreshes
+    // additionally coalesce on the session's internal _refreshPromise.
     const session = await this._getSession(request);
     const tokens = await session.fetchNewTokens();
     if (tokens?.refreshToken != null) {
@@ -1836,8 +1938,58 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       sessionReplayId: sameProject?.sessionReplayId ?? null,
       sessionReplaySegmentId: sameProject?.sessionReplaySegmentId ?? null,
       pageViewSpanId: sameProject?.pageViewSpanId ?? null,
+      httpClientSpanId: sameProject?.httpClientSpanId ?? null,
       customParentSpanIds: sameProject?.customParentSpanIds ?? [],
     }, explicitUserId);
+  }
+
+  // Framework-registered ambient request provider (hexclaveInstrumentation in
+  // the Next.js integration): returns the current request's RequestLike when
+  // called inside a request scope, null otherwise. Single slot with replace
+  // semantics — one framework owns a runtime's ambient requests.
+  private _ambientRequestProvider: (() => Promise<RequestLike | null>) | null = null;
+  private _warnedAmbientRequestResolveFailure = false;
+
+  /** See getServerAppInstrumentation. Public-but-underscored. */
+  _setAmbientRequestProvider(provider: (() => Promise<RequestLike | null>) | null): void {
+    this._ambientRequestProvider = provider;
+  }
+
+  /**
+   * Runs `fn` inside the framework's ambient request scope, if one can be
+   * resolved: provider yields a request → session + propagation header are
+   * resolved exactly like an explicit `{ request }`. Every failure mode
+   * degrades to running `fn` WITHOUT request context (with a warn-once for
+   * genuine errors) — a bare telemetry call must never fail harder than it
+   * did before ambient attribution existed, since the caller never opted into
+   * request semantics.
+   */
+  private async _runWithAmbientRequestScope<T>(explicitUserId: string | null, fn: (userId: string | null) => Promise<T>): Promise<T> {
+    let request: RequestLike | null = null;
+    try {
+      request = await (this._ambientRequestProvider?.() ?? null);
+    } catch (error) {
+      this._warnAmbientRequestResolveFailureOnce(error);
+    }
+    if (request !== null) {
+      let context: ServerRequestSpanContext | null = null;
+      try {
+        context = await this._resolveServerRequestContext(request, explicitUserId);
+      } catch (error) {
+        this._warnAmbientRequestResolveFailureOnce(error);
+      }
+      if (context !== null) {
+        const resolved = context;
+        return await runWithServerRequestContext(resolved, () => fn(resolved.userId));
+      }
+    }
+    return await fn(explicitUserId);
+  }
+
+  private _warnAmbientRequestResolveFailureOnce(error: unknown): void {
+    if (this._warnedAmbientRequestResolveFailure) return;
+    this._warnedAmbientRequestResolveFailure = true;
+    console.warn("Hexclave analytics: could not resolve the ambient request for telemetry attribution; continuing without request context:", error);
   }
 
   /**
@@ -1850,33 +2002,54 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (ambient) {
       return withExplicitServerUser(ambient, explicitUserId);
     }
-    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, pageViewSpanId: null, customParentSpanIds: [] };
+    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, pageViewSpanId: null, httpClientSpanId: null, customParentSpanIds: [] };
   }
 
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
-    if (this._eventTracker) {
+    if (this._observabilityOptions?.enabled === false) {
+      return super.startSpan(spanType, options);
+    }
+    if (this._clientAnalytics) {
       if (options?.userId !== undefined) {
         throw new Error("Hexclave analytics: userId is only supported for server-key telemetry; in the browser, spans are attributed to the signed-in user");
       }
-      return this._eventTracker.startSpan(spanType, options);
+      return this._clientAnalytics.startSpan(spanType, options);
     }
     return this._startServerSpan(spanType, options, options?.userId ?? null);
   }
 
   override setGlobalSpan(span: Span): void {
-    if (this._eventTracker) {
-      this._eventTracker.setGlobalSpan(span);
+    if (this._clientAnalytics) {
+      this._clientAnalytics.setGlobalSpan(span);
       return;
     }
     if (span.isEnded) {
       console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
       return;
     }
+    const existing = [...this._serverGlobalSpans].filter((candidate) => !candidate.isEnded).map((candidate) => candidate.ref());
+    const resolved = resolveParentIds({ ambient: [...existing, span.ref()] });
+    if ("error" in resolved) {
+      throw new Error(`Hexclave analytics: ${resolved.error}`);
+    }
     this._serverGlobalSpans.add(span);
+    // Soft cap, mirroring the client tracker's registries: global spans are
+    // app-instance state on the server, so a long-lived process registering
+    // never-ended globals would otherwise leak without bound. Beyond the cap
+    // the OLDEST span stops being an ambient parent (its row stays valid
+    // server-side); warned once per app instance so loops cannot spam.
+    if (this._serverGlobalSpans.size > SERVER_GLOBAL_SPAN_SOFT_CAP) {
+      const oldest = this._serverGlobalSpans.values().next();
+      if (!oldest.done) this._serverGlobalSpans.delete(oldest.value);
+      if (!this._warnedServerGlobalSpanCap) {
+        this._warnedServerGlobalSpanCap = true;
+        console.warn(`Hexclave analytics: more than ${SERVER_GLOBAL_SPAN_SOFT_CAP} global spans are registered; dropping the oldest ones (their rows remain valid, but they stop being ambient parents). End or clear global spans you no longer need.`);
+      }
+    }
   }
 
-  override unsetGlobalSpan(span: Span): void {
-    this._eventTracker?.unsetGlobalSpan(span);
+  override clearGlobalSpan(span: Span): void {
+    this._clientAnalytics?.clearGlobalSpan(span);
     this._serverGlobalSpans.delete(span);
   }
 
@@ -1903,7 +2076,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   /**
    * The client-propagated custom parents (raw uuids from the request's
    * span-context header — global spans + enclosing client withSpan frames,
-   * already flattened root-first by the sender) FIRST, then
+   * already resolved as one farthest-to-nearest path by the sender) FIRST, then
    * `_serverAmbientParentRefs`: the client ancestry is the outer context a
    * server span nests inside, so the merged root-first list reads
    * client-chain → server frames → explicit parents. All of these are leaf
@@ -1913,15 +2086,39 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * (attribution to the session is always kept).
    */
   private _ambientParentRefsWith(batchContext: ServerRequestSpanContext): SpanRef[] {
+    const propagatedParents = batchContext.customParentSpanIds;
+    const propagatedLeaf = propagatedParents.at(-1);
     return [
-      ...batchContext.customParentSpanIds.map((spanId) => ({ spanId, parentSpanIds: [] as string[] })),
+      ...propagatedLeaf === undefined ? [] : [{
+        spanId: propagatedLeaf,
+        parentSpanIds: propagatedParents.slice(0, -1),
+      }],
       ...this._serverAmbientParentRefs(),
     ];
   }
 
   private _trackServerEvent(eventType: string, data: Record<string, unknown> | undefined, options: TrackOptions | undefined, userId: string | null): Promise<void> {
+    if (this._analyticsOptions?.enabled === false) {
+      return rejectedPreCaught("analytics is disabled");
+    }
     const nameError = getCustomTelemetryNameError("event", eventType);
     if (nameError) return rejectedPreCaught(nameError);
+    return this._trackServerEventUnvalidatedType(eventType, data, options, userId);
+  }
+
+  /**
+   * The name-validation-free core of _trackServerEvent, so SDK-internal system
+   * events (`$`-prefixed, e.g. the `$error` sent by framework
+   * instrumentation's onRequestError, or the `$log` events behind app.logger)
+   * share the exact buffering/attribution path as custom events. Everything
+   * else — data validation, userId validation, parent resolution — still
+   * applies. `logFields` carries the `$log`-only wire fields (route-enforced:
+   * required on $log items, forbidden elsewhere).
+   */
+  private _trackServerEventUnvalidatedType(eventType: string, data: Record<string, unknown> | undefined, options: TrackOptions | undefined, userId: string | null, logFields?: { message: string, level: string }): Promise<void> {
+    if (this._serverTelemetryDisabled) {
+      return rejectedPreCaught("analytics is not enabled for this project");
+    }
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
     if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
@@ -1940,14 +2137,17 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     }));
+    const httpClientSpanId = httpClientSpanIdForServerItem(batchContext, resolved.ids);
     const buffer = this._getServerTelemetryBuffer(batchContext);
     buffer.events.push({
       event: {
         event_type: eventType,
         event_at_ms: Date.now(),
         data: { ...data ?? {} },
+        ...logFields ?? {},
         ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
         ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
+        ...httpClientSpanId !== null ? { http_client_span_id: httpClientSpanId } : {},
       },
       settler,
     });
@@ -1956,17 +2156,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   private _startServerSpan(spanType: string, options: StartSpanOptions | undefined, userId: string | null): Span {
-    const nameError = getCustomTelemetryNameError("span", spanType);
-    if (nameError) {
-      throw new Error(`Hexclave analytics: ${nameError}`);
-    }
-    const dataError = getCustomTelemetryDataError(options?.data);
-    if (dataError) {
-      throw new Error(`Hexclave analytics: ${dataError}`);
-    }
-    if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
-      throw new Error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
-    }
+    assertValidSpanStartInput(spanType, options);
     if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
       throw new Error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
@@ -1981,101 +2171,85 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
 
-    const spanId = generateUuid();
-    const parentSpanIds = resolved.ids;
-    const startedAtMs = options?.startedAtMs ?? Date.now();
-    let accumulatedData: Record<string, unknown> = { ...options?.data ?? {} };
-    let lastVersion = 0;
-    let ended = false;
-    let endPromise: Promise<void> | null = null;
-
-    const nextVersion = () => (lastVersion = Math.max(Date.now(), lastVersion + 1));
-    const enqueue = (endedAtMs: number | null): Promise<void> => this._enqueueServerSpanUpdate(batchContext, {
-      span_id: spanId,
-      span_type: spanType,
-      started_at_ms: startedAtMs,
-      ended_at_ms: endedAtMs,
-      parent_span_ids: parentSpanIds,
-      data: { ...accumulatedData },
-      updated_at_ms: nextVersion(),
-      ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
-    });
-
-    const span: Span = {
-      spanId,
+    // `handle` is assigned synchronously below; the closures can only fire after.
+    let handle!: { span: Span, markInert: () => void };
+    handle = createSpanHandle({
+      spanId: generateUuid(),
       spanType,
-      get isEnded() {
-        return ended;
-      },
-      setData: (data: Record<string, unknown>) => {
-        if (ended) return rejectedPreCaught(`setData() called on already-ended span "${spanType}"`);
-        const merged = { ...accumulatedData, ...data };
-        const mergedError = getCustomTelemetryDataError(merged);
-        if (mergedError) return rejectedPreCaught(mergedError);
-        accumulatedData = merged;
-        return enqueue(null);
-      },
-      end: (endOptions?: { endedAtMs?: number }) => {
-        if (endPromise) return endPromise;
-        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
-        ended = true;
-        this._serverGlobalSpans.delete(span);
-        endPromise = enqueue(endedAtMs);
-        return endPromise;
-      },
-      trackEvent: (eventType: string, data?: Record<string, unknown>, trackOptions?: TrackOptions) =>
-        this._trackServerEvent(eventType, data, { ...trackOptions, parentIds: [span, ...trackOptions?.parentIds ?? []] }, userId),
-      startSpan: (childType: string, childOptions?: StartSpanOptions) =>
-        this._startServerSpan(childType, { ...childOptions, parentIds: [span, ...childOptions?.parentIds ?? []] }, userId),
-      withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
-        withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
-      run: <T,>(fn: () => T) => runWithSpanFrame(span.ref(), fn),
-      // Pinned to exactly this span's frozen chain; carries the caller's segment
-      // identity when this span was resolved from a request. Raw ids — the
-      // receiving backend applies the prefixes.
-      getPropagationHeaders: () => ({
-        [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
-          projectId: this.projectId,
-          ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
-          ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
-          ...batchContext.pageViewSpanId ? { pageViewSpanId: batchContext.pageViewSpanId } : {},
-          customParentSpanIds: [...parentSpanIds, spanId],
+      startedAtMs: options?.startedAtMs ?? Date.now(),
+      parentSpanIds: resolved.ids,
+      pageViewSpanId: batchContext.pageViewSpanId,
+      initialData: { ...options?.data ?? {} },
+      validateData: getCustomTelemetryDataError,
+      // No isSuppressed / live-control registry on the server: there is no
+      // sign-out rotation to inert-ify against — the buffer context is frozen
+      // per span instead. The analytics-not-enabled disable is enforced at the
+      // enqueue seam (_enqueueServerSpanUpdate), not per handle.
+      enqueueRow: (row) => this._enqueueServerSpanUpdate(batchContext, row),
+      onEnded: () => this._serverGlobalSpans.delete(handle.span),
+      capabilities: {
+        trackEvent: (eventType, data, trackOptions) => this._trackServerEvent(eventType, data, trackOptions, userId),
+        startChildSpan: (childType, childOptions) => this._startServerSpan(childType, childOptions, userId),
+        // Pinned to exactly this span's frozen chain; carries the caller's segment
+        // identity when this span was resolved from a request. Raw ids — the
+        // receiving backend applies the prefixes.
+        getSpanPropagationHeaders: (span) => ({
+          [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
+            projectId: this.projectId,
+            ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
+            ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
+            ...batchContext.pageViewSpanId ? { pageViewSpanId: batchContext.pageViewSpanId } : {},
+            customParentSpanIds: [...span.ref().parentSpanIds, span.spanId],
+          }),
         }),
-      }),
-      // Server runtimes do not have a browser-like current origin, so span.fetch
-      // fails closed instead of leaking context to arbitrary third-party URLs.
-      // Use getPropagationHeaders() explicitly when the target service is trusted.
-      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-        try {
-          const initWithHeader = buildFetchInitWithSpanContext({
-            input,
-            init,
-            headerValue: span.getPropagationHeaders()[SPAN_CONTEXT_HEADER],
-            selfOrigin: null,
-            allowedOrigins: [],
-          });
-          return globalThis.fetch(input, initWithHeader ?? init);
-        } catch {
-          return globalThis.fetch(input, init);
-        }
+        // Server runtimes do not have a browser-like current origin, so
+        // span.fetch attaches the header only for the propagation origin
+        // policy (explicit allowedOrigins + the trusted-domain defaults) and
+        // otherwise fails closed instead of leaking context to arbitrary
+        // third-party URLs. Use getSpanPropagationHeaders() explicitly for a
+        // trusted target outside that policy.
+        fetch: (span, input, init) => {
+          try {
+            const policy = this._getPropagationOriginPolicy();
+            const initWithHeader = buildFetchInitWithSpanContext({
+              input,
+              init,
+              headerValue: span.getSpanPropagationHeaders()[SPAN_CONTEXT_HEADER],
+              selfOrigin: null,
+              allowedOrigins: policy.allowedOrigins,
+              allowLocalhost: policy.allowLocalhost,
+            });
+            return globalThis.fetch(input, initWithHeader ?? init);
+          } catch {
+            return globalThis.fetch(input, init);
+          }
+        },
       },
-      ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
-    };
-
-    enqueue(null).catch(() => {});
-    return span;
+    });
+    return handle.span;
   }
 
   private _enqueueServerSpanUpdate(context: ServerRequestSpanContext, row: SpanUpdateRow): Promise<void> {
+    if (this._serverTelemetryDisabled) {
+      return rejectedPreCaught("analytics is not enabled for this project");
+    }
     let settler!: TelemetrySettler;
     const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     }));
+    // `$http-client` spans ARE the bridge nodes and must never point at
+    // themselves (the batch route 400s such rows); every other span follows
+    // the nearest-known-ancestor contract.
+    const httpClientSpanId = row.span_type === HTTP_CLIENT_SPAN_TYPE ? null : httpClientSpanIdForServerItem(context, row.parent_span_ids);
+    const stampedRow: SpanUpdateRow = {
+      ...row,
+      ...httpClientSpanId !== null ? { http_client_span_id: httpClientSpanId } : {},
+    };
     const buffer = this._getServerTelemetryBuffer(context);
-    const previous = buffer.spans.get(row.span_id);
+    const previous = buffer.spans.get(stampedRow.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
     // along so every returned promise settles with the batch that ships.
-    buffer.spans.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
+    buffer.spans.set(stampedRow.span_id, { row: stampedRow, settlers: [...previous?.settlers ?? [], settler] });
     this._afterServerTelemetryEnqueue(context, buffer);
     return promise;
   }
@@ -2121,6 +2295,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     const ctx = buffer.context;
     const payload = {
+      // Versions the BATCH BODY (shape of the envelope + rows), the same way
+      // the span-context header versions itself with its `v1.` prefix. The
+      // backend tolerates unknown fields today; a future route can dispatch on
+      // this instead of sniffing shapes.
+      schema_version: 2,
+      resource: requireTelemetryResource(this._telemetryOptions),
       batch_id: generateUuid(),
       sent_at_ms: Date.now(),
       ...ctx.userId !== null ? { user_id: ctx.userId } : {},
@@ -2138,12 +2318,28 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         const res = await this._interface.sendAnalyticsEventBatchAsServer(JSON.stringify(payload));
         if (res.status === "error") {
           for (const settler of settlers) settler.reject(res.error);
+          // Sticky disable on the analytics-app-not-enabled rejection, matched
+          // on the KnownErrors code in the error text (the server transport
+          // wraps the non-ok Response into an Error message rather than a
+          // parsed KnownError). Required by the eager instrumentation install:
+          // without it, a project without the analytics app would send a
+          // doomed batch per outgoing fetch, forever.
+          if (isAnalyticsNotEnabledFailureText(res.error instanceof Error ? res.error.message : String(res.error))) {
+            this._disableServerTelemetry();
+            return;
+          }
           console.warn("Hexclave analytics: server telemetry send failed:", res.error);
           return;
         }
         if (!res.data.ok) {
           const text = await res.data.text();
           for (const settler of settlers) settler.reject(new Error(`Hexclave analytics: server telemetry send failed: ${res.data.status} ${text}`));
+          // Same sticky disable as the error-result branch above (which body
+          // shape arrives depends on the transport's wrapping).
+          if (isAnalyticsNotEnabledFailureText(text)) {
+            this._disableServerTelemetry();
+            return;
+          }
           console.warn("Hexclave analytics: server telemetry send failed:", res.data.status, text);
           return;
         }
@@ -2157,18 +2353,396 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._serverTelemetryInFlight.delete(tracked);
     });
     this._serverTelemetryInFlight.add(tracked);
-    // Serverless keep-alive (AnalyticsOptions.waitUntil): un-awaited sends must
-    // survive runtime teardown.
-    registerTelemetryBackgroundTask(this._analyticsOptions?.waitUntil, tracked, "server telemetry");
+    // Serverless keep-alive (TelemetryOptions.waitUntil): un-awaited sends must
+    // survive runtime teardown. Without an explicit hook, fall back to the
+    // auto-detected platform hook (currently Vercel's request context) so the
+    // common serverless setup needs no wiring at all.
+    registerTelemetryBackgroundTask(this._telemetryOptions?.waitUntil ?? autoDetectedBackgroundTaskHook, tracked, "server telemetry");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Server outbound fetch instrumentation (cross-tier bridge, server→server)
+  // ---------------------------------------------------------------------------
+
+  private _serverFetchInstrumentationInstalled = false;
+
+  /**
+   * Installs the server-side outbound `fetch` instrumentation: one
+   * `$http-client` span per outgoing request (through the server telemetry
+   * buffer, parented by the ambient ALS request context) and the span-context
+   * header + traceparent for allowlisted origins. Idempotent per app instance;
+   * called lazily on the first `withSpan({ request })` / `trackEvent({ request })`
+   * — or eagerly by framework glue (see hexclaveInstrumentation in the Next.js
+   * integration). Public-but-underscored: reached via
+   * getServerAppInstrumentation, not part of the documented app surface.
+   */
+  _installServerFetchInstrumentation(): void {
+    if (this._serverFetchInstrumentationInstalled) return;
+    this._serverFetchInstrumentationInstalled = true;
+    // Browser-like environment: the client wrappers already own fetch — a
+    // second, server-flavored provider would double-instrument every request.
+    if (this._clientAnalytics) return;
+    if (this._observabilityOptions?.enabled === false) return;
+    installServerFetchInstrumentation({
+      projectId: this.projectId,
+      provider: {
+        getContext: () => this._getServerSpanPropagationContext(),
+        // Same-origin has no meaning server-side (there is no page origin the
+        // process "is on"), so the header policy is the explicit
+        // allowedOrigins plus the trusted-domain-derived defaults (the
+        // project's own app domains — the same policy the browser uses). We
+        // deliberately do NOT bypass the origin policy for this automatic
+        // wrapper — bypassing is reserved for explicit span.fetch, where the
+        // call itself expresses intent; auto-attaching the context to every
+        // third-party URL a server talks to would leak session labels.
+        getSelfOrigin: () => null,
+        getAllowedOrigins: () => this._getPropagationOriginPolicy().allowedOrigins,
+        getAllowLocalhostOrigins: () => this._getPropagationOriginPolicy().allowLocalhost,
+        beginRequestSpan: (info) => this._beginServerHttpRequestSpan(info),
+      },
+    });
+  }
+
+  /**
+   * The context an outgoing SERVER request forwards (server→server hop):
+   * meaningful only inside a `{ request }` scope, where the ambient ALS
+   * context carries the ORIGINAL caller's identity. The incoming request's own
+   * httpClientSpanId is intentionally NOT forwarded — it names the browser→
+   * server hop; the wrapper adds the NEW span's id for this hop instead.
+   */
+  private _getServerSpanPropagationContext(): SpanPropagationContext | null {
+    if (this._observabilityOptions?.spanPropagation?.enabled === false) return null;
+    const ambient = getServerRequestContext();
+    if (ambient === null) return null;
+    const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(ambient) });
+    const chain = "error" in resolved ? [] : resolved.ids;
+    return {
+      projectId: this.projectId,
+      ...ambient.sessionReplayId !== null ? { sessionReplayId: ambient.sessionReplayId } : {},
+      ...ambient.sessionReplaySegmentId !== null ? { sessionReplaySegmentId: ambient.sessionReplaySegmentId } : {},
+      ...ambient.pageViewSpanId !== null ? { pageViewSpanId: ambient.pageViewSpanId } : {},
+      ...chain.length > 0 ? { customParentSpanIds: chain } : {},
+    };
+  }
+
+  /**
+   * Server-side `$http-client` span factory (the fetch wrapper's
+   * beginRequestSpan). Same config gates and keep/drop semantics as the
+   * browser factory; parents come from the ambient ALS request context (the
+   * client-propagated chain + server withSpan frames), and rows ship through
+   * the server telemetry buffer under the batch context frozen at request
+   * time. No per-page-view cap here — server volume is naturally bounded per
+   * request, and long-lived batch jobs are exactly the traffic worth seeing.
+   */
+  private _beginServerHttpRequestSpan(info: RequestSpanInfo): HttpRequestSpanHandle | null {
+    if (this._serverTelemetryDisabled) return null;
+    if (this._shouldIgnoreOwnApiFetchUrl(info.url)) return null;
+    const sanitizedUrl = sanitizeHttpClientUrl(info.url);
+    if (sanitizedUrl === null) return null;
+    // sanitizeHttpClientUrl parsed the same string successfully, so this
+    // cannot throw.
+    const target = new URL(info.url);
+    if (!shouldCaptureNetworkRequest(this._networkCaptureConfig, target)) return null;
+    const batchContext = this._currentServerBatchContext(null);
+    // Ambient refs are pre-validated compatible; degrade to no custom parents
+    // rather than throwing into the caller's request.
+    const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(batchContext) });
+    const parentSpanIds = "error" in resolved ? [] : resolved.ids;
+    return beginHttpClientSpanCore({
+      config: this._networkCaptureConfig,
+      sanitizedUrl,
+      method: info.method,
+      transport: info.transport,
+      parentSpanIds,
+      pageViewSpanId: batchContext.pageViewSpanId,
+      enqueueRow: (row) => this._enqueueServerSpanUpdate(batchContext, row),
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Library-span bridge seam (hidden OTel bridge; see library-span-bridge.ts)
+  // ---------------------------------------------------------------------------
+
+  private _warnedLibrarySpanDataError = false;
+
+  /**
+   * The seam behind the hidden OTel bridge: called SYNCHRONOUSLY at OTel
+   * startSpan time so the ambient batch context and the parent chain are
+   * frozen at call time (the same instant `_startServerSpan` resolves them),
+   * then again on `end()` with the collected data. Exactly ONE complete
+   * `$lib-span` row is enqueued per span, at end — an unended library span is
+   * never shipped, unlike native spans' open-interval upserts, because the
+   * bridge cannot re-write rows and half-open library spans are noise.
+   *
+   * Parent chain resolution restates the bridge's contract:
+   *  (a) `otelParent` given → the OTel-minted ancestor wins outright; its
+   *      stored root-first path already BEGINS at whatever ambient chain that
+   *      ancestor resolved against, so re-merging ambient refs here would
+   *      duplicate (or, under concurrency, diverge from) the prefix. Clamped
+   *      to the NEAREST ancestors when arbitrary OTel nesting depth exceeds
+   *      the shared wire cap.
+   *  (b) no `otelParent` → ambient Hexclave refs at call time (withSpan ALS
+   *      frames + the request context's client-propagated chain).
+   *  (c) neither → project-level root (empty parents), still recorded.
+   *
+   * Note the ambient lookup is the SYNCHRONOUS one only (ALS request scopes,
+   * adapter wrappers) — same as `_startServerSpan`. The async next/headers
+   * ambient provider is an event/log-only affordance; a sync OTel startSpan
+   * cannot await it.
+   *
+   * Returns null when server telemetry cannot record (browser-like env,
+   * analytics disabled) — the bridge span then becomes non-recording.
+   * Public-but-underscored: reached via getServerAppInstrumentation.
+   */
+  _beginLibrarySpan(info: BeginLibrarySpanInfo): LibrarySpanHandle | null {
+    if (this._clientAnalytics) return null;
+    if (this._serverTelemetryDisabled) return null;
+    if (this._observabilityOptions?.enabled === false) return null;
+    const batchContext = this._currentServerBatchContext(null);
+    let parentSpanIds: string[];
+    if (info.otelParent !== null) {
+      parentSpanIds = [...info.otelParent.parentPath, info.otelParent.nativeId].slice(-CUSTOM_TELEMETRY_MAX_PARENT_CHAIN);
+    } else {
+      // Ambient refs are pre-validated compatible; degrade to project root
+      // rather than throwing inside a third-party library's code path.
+      const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(batchContext) });
+      parentSpanIds = "error" in resolved ? [] : resolved.ids;
+    }
+    const nativeId = generateUuid();
+    return {
+      nativeId,
+      parentPath: parentSpanIds,
+      end: (endedAtMs, data) => {
+        const dataError = getCustomTelemetryDataError(data);
+        if (dataError !== null) {
+          // The bridge caps attribute count/bytes well under the row limit,
+          // so this is a should-never-happen guard; a library's span.end()
+          // must never throw, so warn once instead.
+          if (!this._warnedLibrarySpanDataError) {
+            this._warnedLibrarySpanDataError = true;
+            console.warn(`Hexclave analytics: dropping a library span whose data failed validation: ${dataError}`);
+          }
+          return;
+        }
+        const row: SpanUpdateRow = {
+          span_id: nativeId,
+          span_type: LIB_SPAN_TYPE,
+          started_at_ms: info.startedAtMs,
+          // The bridge already clamps end >= start and rounds to integer ms;
+          // re-clamp here so a future second bridge caller cannot regress the
+          // invariant resolveEndedAtMs enforces (throwing is not an option in
+          // a library's end() path).
+          ended_at_ms: Math.max(info.startedAtMs, Math.round(endedAtMs)),
+          parent_span_ids: parentSpanIds,
+          data,
+          updated_at_ms: Date.now(),
+          ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
+        };
+        // Fire-and-forget like the $log sink: the promise is pre-caught and
+        // delivery failures already warn inside the server flush path.
+        this._enqueueServerSpanUpdate(batchContext, row).catch(() => {});
+      },
+    };
+  }
+
+  /**
+   * Registers the hidden OTel bridge with this app instance as its deps
+   * (claims the process-global OTel API only if free; see
+   * registerLibrarySpanBridge for the back-off rules). Returns the bridge's
+   * TracerProvider for instrumentation-class wiring (Prisma etc.), or null
+   * when the bridge backed off / cannot run here. Public-but-underscored:
+   * reached via getServerAppInstrumentation.
+   */
+  async _registerLibrarySpanBridge(): Promise<LibrarySpanBridgeRegistration | null> {
+    if (this._clientAnalytics) return null;
+    if (this._observabilityOptions?.enabled === false) return null;
+    return await registerLibrarySpanBridge({
+      projectId: this.projectId,
+      beginLibrarySpan: (info) => this._beginLibrarySpan(info),
+    });
+  }
+
+  /**
+   * Records one uncaught server-side error as a `$error` EVENT (errors are
+   * instants, not intervals) through the server telemetry buffer. Built for
+   * framework glue (Next.js onRequestError) and the uncaught-exception
+   * monitor; a `request` links the error to the original caller's session
+   * exactly like `trackEvent({ request })`. Public-but-underscored: reached
+   * via getServerAppInstrumentation. The returned promise settles with batch
+   * delivery and is pre-caught.
+   */
+  _captureServerRequestError(error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }): Promise<void> {
+    // Shared payload builder (see error-capture.ts): message/name/stack
+    // bounded to 8KB, flattened mechanism_type/handled scalars, local
+    // fingerprint for grouping, release/environment stamps.
+    const data: Record<string, unknown> = {
+      ...buildErrorEventData(error, {
+        mechanismType: info.mechanism,
+        // Every caller of this seam reports UNCAUGHT errors; a future manual
+        // capture API ("captured" mechanism) would pass handled: true.
+        handled: false,
+        release: requireTelemetryResource(this._telemetryOptions).service.version ?? null,
+        environment: requireTelemetryResource(this._telemetryOptions).deploymentEnvironmentName ?? null,
+        sdkVersion: clientVersion,
+      }),
+      ...info.data ?? {},
+    };
+    if (info.request !== undefined) {
+      const request = info.request;
+      return preCaught((async () => {
+        const context = await this._resolveServerRequestContext(request, null);
+        await runWithServerRequestContext(context, () => this._trackServerEventUnvalidatedType("$error", data, undefined, context.userId));
+      })());
+    }
+    return this._trackServerEventUnvalidatedType("$error", data, undefined, null);
+  }
+
+  private _serverErrorMonitorInstalled = false;
+
+  /**
+   * Installs the process-level uncaught-exception monitor (one `$error` event
+   * per crash, `mechanism_type: "node.uncaughtexception"`). Idempotent per app
+   * instance and replace-keyed per project on globalThis (HMR — see
+   * installServerErrorMonitor). Installed eagerly by
+   * `hexclaveInstrumentation().register()` and lazily on the first
+   * `{ request }`-scoped telemetry call, mirroring the outbound-fetch install.
+   * Public-but-underscored: reached via getServerAppInstrumentation.
+   */
+  _installServerErrorMonitor(): void {
+    if (this._serverErrorMonitorInstalled) return;
+    this._serverErrorMonitorInstalled = true;
+    // Browser-like environment: the window.onerror/onunhandledrejection
+    // capture (ClientAnalytics) owns errors there.
+    if (this._clientAnalytics) return;
+    if (this._observabilityOptions?.enabled === false) return;
+    if (this._observabilityOptions?.errorCapture?.enabled === false) return;
+    installServerErrorMonitor({
+      projectId: this.projectId,
+      capture: (error) => {
+        // Fire-and-forget: the monitor is observation-only and the process is
+        // likely about to exit. The capture flushes on the next microtask —
+        // best-effort delivery; loss on a hard exit is the documented cost of
+        // never touching the app's crash policy (see installServerErrorMonitor).
+        this._captureServerRequestError(error, { mechanism: "node.uncaughtexception" }).catch(() => {});
+      },
+    });
+  }
+
+  /**
+   * Server-side `$log` sink behind `app.logger` (overrides the browser sink):
+   * rides the server telemetry buffer, so a log emitted inside a
+   * `withSpan({ request })` scope automatically inherits the ambient batch
+   * context — the caller's session/page/fetch ancestry — exactly like a
+   * server event. In browser-like environments the inherited client sink wins.
+   */
+  protected override _emitLog(item: LogEmitItem): "ok" | "unavailable" {
+    if (this._observabilityOptions?.enabled === false) return "unavailable";
+    if (this._clientAnalytics) return super._emitLog(item);
+    // Fire-and-forget is the logger contract; the promise is pre-caught and
+    // delivery failures already warn inside the server flush path.
+    const send = (userId: string | null) => this._trackServerEventUnvalidatedType("$log", item.data, undefined, userId, {
+      message: item.message,
+      level: item.level,
+    });
+    // Same framework-ambient fallback as trackEvent: a bare `app.logger.info`
+    // in a route handler lands under the caller's session without wiring.
+    // Inside an existing `{ request }` scope the buffer context already
+    // attributes it, so the fast path stays synchronous.
+    if (this._ambientRequestProvider !== null && getServerRequestContext() === null) {
+      this._runWithAmbientRequestScope(null, (userId) => send(userId)).catch(() => {});
+      return "ok";
+    }
+    send(null).catch(() => {});
+    return "ok";
   }
 }
 
-const SERVER_TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/**
+ * The nearest-known-ancestor contract for per-item `http_client_span_id`
+ * emission (restating the backend's composition rule, buildBatchSpanRows: the
+ * `hc-` prefix composes AFTER the custom chain). An item may name the caller's
+ * `$http-client` fetch span only when that fetch is its NEAREST known
+ * ancestor, i.e. its ENTIRE custom chain arrived via the propagation header. A
+ * server-opened span in the chain sits between the fetch and the item, so such
+ * items chain through their root span and OMIT the id — the root
+ * `withSpan({ request })` span (parents = the header chain) and request-level
+ * events qualify; spans/events nested under a server span do not. Exported for
+ * tests.
+ */
+export function httpClientSpanIdForServerItem(context: ServerRequestSpanContext, parentSpanIds: readonly string[]): string | null {
+  if (context.httpClientSpanId === null) return null;
+  const propagated = new Set(context.customParentSpanIds);
+  return parentSpanIds.every((id) => propagated.has(id)) ? context.httpClientSpanId : null;
+}
+
+export type ServerAppInstrumentation = {
+  installServerFetchInstrumentation: () => void,
+  installServerErrorMonitor: () => void,
+  captureServerRequestError: (error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }) => Promise<void>,
+  /**
+   * Registers the framework's ambient request provider: a function that
+   * returns the current request's RequestLike when called inside a request
+   * scope (null outside one — that is a normal state, not an error). Once
+   * registered, bare `trackEvent` / `withSpan` / logger calls with no explicit
+   * `{ request }` attribute to the ambient request automatically. Single slot,
+   * replace semantics; pass null to unregister.
+   */
+  setAmbientRequestProvider: (provider: (() => Promise<RequestLike | null>) | null) => void,
+  /**
+   * Claims the process-global OpenTelemetry API for the hidden library-span
+   * bridge (only if no other provider is registered — never clobbers a user's
+   * own OTel setup). Resolves with the bridge's TracerProvider for wiring
+   * instrumentation-class libraries, or null when the bridge backed off.
+   */
+  registerLibrarySpanBridge: () => Promise<LibrarySpanBridgeRegistration | null>,
+  /** The library-span bridge's row seam; see _beginLibrarySpan. */
+  beginLibrarySpan: (info: BeginLibrarySpanInfo) => LibrarySpanHandle | null,
+};
 
 /**
- * Buffer coalescing key. customParentSpanIds and pageViewSpanId are intentionally
- * excluded — they are per-item fields (they ride on each row), not part of the
- * batch identity, so items sharing user/refresh/replay/segment still batch together.
+ * SDK-internal accessor for the instrumentation hooks framework integrations
+ * need (Next.js `instrumentation.ts` glue). The integrations only see the
+ * public StackServerApp interface; this narrows via instanceof — no casts, no
+ * interface pollution — and returns null for anything that is not a real
+ * server app (e.g. structural mocks), letting callers fail loud with their own
+ * message. New instrumentation hooks should extend this seam rather than
+ * adding another accessor.
+ */
+export function getServerAppInstrumentation(app: unknown): ServerAppInstrumentation | null {
+  if (!(app instanceof _HexclaveServerAppImplIncomplete)) return null;
+  return {
+    installServerFetchInstrumentation: () => app._installServerFetchInstrumentation(),
+    installServerErrorMonitor: () => app._installServerErrorMonitor(),
+    captureServerRequestError: (error, info) => app._captureServerRequestError(error, info),
+    setAmbientRequestProvider: (provider) => app._setAmbientRequestProvider(provider),
+    registerLibrarySpanBridge: () => app._registerLibrarySpanBridge(),
+    beginLibrarySpan: (info) => app._beginLibrarySpan(info),
+  };
+}
+
+// Hoisted to shared so the tracker, header codec, server buffer, and batch
+// route validate identically — drift here 400s whole batches server-side.
+const SERVER_TELEMETRY_UUID_RE = TELEMETRY_UUID_RE;
+
+/**
+ * Whether a failed batch send's text (error message or raw response body —
+ * the transport wraps non-ok responses into an Error whose message embeds the
+ * body, so both shapes reduce to a substring check on the KnownErrors code)
+ * is the analytics-app-not-enabled rejection that must sticky-disable server
+ * telemetry for the process.
+ */
+function isAnalyticsNotEnabledFailureText(text: string): boolean {
+  return text.includes("ANALYTICS_NOT_ENABLED");
+}
+
+// Matches the client tracker's LIVE_SPAN_REGISTRY_SOFT_CAP; see setGlobalSpan.
+const SERVER_GLOBAL_SPAN_SOFT_CAP = 1000;
+
+/**
+ * Buffer coalescing key. customParentSpanIds, pageViewSpanId, and
+ * httpClientSpanId are intentionally excluded — they are per-item fields (they
+ * ride on each row), not part of the batch identity, so items sharing
+ * user/refresh/replay/segment still batch together.
  */
 function serializeServerBatchKey(context: ServerRequestSpanContext): string {
   return JSON.stringify([context.userId, context.refreshTokenId, context.sessionReplayId, context.sessionReplaySegmentId]);
@@ -2188,7 +2762,12 @@ type ServerTelemetryBuffer = {
       event_type: string,
       event_at_ms: number,
       data: Record<string, unknown>,
+      // `$log`-only wire fields (route-enforced) — see the client TrackedEvent.
+      message?: string,
+      level?: string,
       parent_span_ids?: string[],
+      page_view_span_id?: string,
+      http_client_span_id?: string,
     },
     settler: TelemetrySettler,
   }[],

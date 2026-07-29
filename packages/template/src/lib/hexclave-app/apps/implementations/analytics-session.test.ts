@@ -1,13 +1,44 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAnonymousAnalyticsTokenStore, makeAnonymousAnalyticsTokenStorageKey, parseAnonymousAnalyticsTokens } from "./analytics-session";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000000000";
 
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    key(index) {
+      return [...values.keys()][index] ?? null;
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    setItem(key, value) {
+      values.set(key, value);
+    },
+  };
+}
+
+let storage: Storage;
+
+beforeEach(() => {
+  storage = createMemoryStorage();
+  vi.stubGlobal("localStorage", storage);
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
-  localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("anonymous analytics session", () => {
@@ -39,10 +70,10 @@ describe("anonymous analytics session", () => {
   });
 
   it("keeps an in-memory identity when browser storage access is blocked", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    vi.spyOn(storage, "getItem").mockImplementation(() => {
       throw new DOMException("Blocked by privacy policy", "SecurityError");
     });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
       throw new DOMException("Blocked by privacy policy", "SecurityError");
     });
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -55,7 +86,7 @@ describe("anonymous analytics session", () => {
   });
 
   it("keeps the updated in-memory identity when persistence exceeds quota", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
       throw new DOMException("Quota exceeded", "QuotaExceededError");
     });
     vi.spyOn(console, "warn").mockImplementation(() => {});
