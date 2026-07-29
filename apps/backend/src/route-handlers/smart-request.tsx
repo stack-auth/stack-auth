@@ -5,6 +5,7 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
+import { authenticateWorkflowRunTokenRequestOrThrow, getWorkflowRunTokenFromHeaders, isWorkflowRunToken } from "@/lib/workflows/run-token";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
@@ -171,6 +172,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const allowAnonymousUser = req.headers.get("x-stack-allow-anonymous-user") === "true";
   const allowRestrictedUser = allowAnonymousUser || req.headers.get("x-stack-allow-restricted-user") === "true";
 
+  // Workflow sandboxes authenticate with a signed, run-scoped token that rides
+  // in the ordinary project-credential headers; the full design (and why it
+  // reuses those slots) lives in lib/workflows/run-token.tsx.
+  const workflowRunToken = getWorkflowRunTokenFromHeaders({ secretServerKey, superSecretAdminKey });
+
   // Ensure header combinations are valid
   const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
   if (!requestType && eitherKeyOrToken) {
@@ -260,8 +266,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const bundledQueries = {
     userIfOnGlobalPrismaClient: userId ? getUserIfOnGlobalPrismaClientQuery(projectId, branchId, userId) : undefined,
     isClientKeyValid: publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
-    isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
-    isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
+    // A workflow run token occupies the same header as a project key but is
+    // authenticated below, not by an ApiKeySet lookup; a `wrt_` value can
+    // never match a key row, so skip the lookup for that header only.
+    isServerKeyValid: secretServerKey && requestType === "server" && !isWorkflowRunToken(secretServerKey) ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
+    isAdminKeyValid: superSecretAdminKey && requestType === "admin" && !isWorkflowRunToken(superSecretAdminKey) ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
     tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
   };
@@ -280,6 +289,18 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
     const result = await checkApiKeySet("internal", { superSecretAdminKey: developmentKeyOverride });
     if (result.status === "error") throw new StatusError(401, "Invalid development key override");
+  } else if (workflowRunToken != null) {
+    // Like the admin-access-token branch, a valid run token satisfies every
+    // request type: it is a full project-admin credential, so the client/
+    // server/admin key checks below would be strictly weaker. On rejection
+    // this throws the same KnownError an invalid real key would — the
+    // failure/logging policy lives with the token implementation.
+    await authenticateWorkflowRunTokenRequestOrThrow({
+      credential: workflowRunToken,
+      projectId,
+      branchId,
+      tenancyId: tenancy?.id ?? null,
+    });
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({

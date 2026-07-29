@@ -3,6 +3,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -129,6 +130,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         })
         : null;
 
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox); the Svix webhook below stays fire-and-forget post-commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.created", payload: teamPrismaToCrud(db) });
+
       return { db, freePlanSubscription };
     });
 
@@ -193,7 +198,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
       await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id });
 
-      return await tx.team.update({
+      const updated = await tx.team.update({
         where: {
           tenancyId_teamId: {
             tenancyId: auth.tenancy.id,
@@ -208,6 +213,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
         }),
       });
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.updated", payload: teamPrismaToCrud(updated) });
+      return updated;
     });
 
     const result = teamPrismaToCrud(db);
@@ -263,6 +270,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           },
         },
       });
+
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team.deleted", payload: { id: params.team_id } });
     });
 
     runAsynchronouslyAndWaitUntil(sendTeamDeletedWebhook({

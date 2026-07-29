@@ -16,7 +16,7 @@ How to run the Mintlify docs preview locally from this repository.
   git add docs-mintlify/openapi/
   ```
 
-  That writes `client.json`, `server.json`, `admin.json`, and `webhooks.json` into `docs-mintlify/openapi/` (and into `docs/openapi/` for the legacy Fumadocs app). CI fails if `pnpm codegen` produces different output than what is committed (see root lint-and-build workflow).
+  That writes `client.json`, `server.json`, `admin.json`, and `webhooks.json` into `docs-mintlify/openapi/`. CI fails if `pnpm codegen` produces different output than what is committed (see root lint-and-build workflow).
 
 ## Run locally
 

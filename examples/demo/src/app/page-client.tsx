@@ -11,7 +11,7 @@ export default function PageClient() {
 
   const authButtons = (
     <div className='flex flex-col gap-5 justify-center items-center'>
-      <Image src="/images/wave.png" alt="Wave" width={100} height={100} />
+      <Image src="/images/wave.webp" alt="Wave" width={100} height={100} />
       <Typography type='h3'>Welcome to the Stack demo app!</Typography>
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>

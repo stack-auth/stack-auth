@@ -22,6 +22,9 @@ public actor ServerUser {
     public let isAnonymous: Bool
     public let isRestricted: Bool
     public let restrictedReason: User.RestrictedReason?
+    public let restrictedByAdmin: Bool
+    public let restrictedByAdminReason: String?
+    public let restrictedByAdminPrivateDetails: String?
     public let oauthProviders: [User.OAuthProviderInfo]
     
     init(client: APIClient, json: [String: Any]) {
@@ -59,6 +62,10 @@ public actor ServerUser {
         } else {
             self.restrictedReason = nil
         }
+        
+        self.restrictedByAdmin = json["restricted_by_admin"] as? Bool ?? false
+        self.restrictedByAdminReason = json["restricted_by_admin_reason"] as? String
+        self.restrictedByAdminPrivateDetails = json["restricted_by_admin_private_details"] as? String
         
         if let providers = json["oauth_providers"] as? [[String: Any]] {
             self.oauthProviders = providers.map { User.OAuthProviderInfo(id: $0["id"] as? String ?? "") }
