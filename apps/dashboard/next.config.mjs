@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isRdeBuild = process.env.HEXCLAVE_DASHBOARD_BUILD_FOR_RDE === "true";
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -36,6 +37,12 @@ const withConfiguredSentryConfig = (nextConfig) =>
       // Hides source maps from generated client bundles
       hideSourceMaps: true,
 
+      // RDE artifacts do not ship browser source maps. Hosted and self-host
+      // builds continue generating and uploading them to Sentry.
+      sourcemaps: {
+        disable: isRdeBuild,
+      },
+
       // Automatically tree-shake Sentry logger statements to reduce bundle size
       disableLogger: true,
 
@@ -65,8 +72,8 @@ const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
   // The claude-agent-sdk spawns cli.js as a child process (resolved via
   // import.meta.url). Keeping it external ensures the entire package directory
-  // is included in the standalone trace and hoisted to top-level node_modules/
-  // by copy-runtime-assets — so cli.js, vendor/, etc. survive .pnpm removal.
+  // is included in the standalone trace, so cli.js, vendor/, etc. survive
+  // .pnpm removal.
   serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
@@ -133,7 +140,6 @@ const nextConfig = {
     // localhost origins via CSP frame-ancestors. This only applies to the RDE
     // build target (build:rde-standalone / dev:rde-production); the hosted and
     // self-host Docker builds keep X-Frame-Options: SAMEORIGIN.
-    const isRdeBuild = process.env.HEXCLAVE_DASHBOARD_BUILD_FOR_RDE === "true";
     const allowsFraming = isRdeBuild || resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
     const rdeFrameAncestors = "frame-ancestors 'self' http://localhost:* https://localhost:* http://*.localhost:* https://*.localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:*";
     return [
