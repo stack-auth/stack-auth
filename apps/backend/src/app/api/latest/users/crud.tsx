@@ -9,6 +9,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -870,7 +871,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new HexclaveAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, auth.tenancy.config);
+      const crud = userPrismaToCrud(user, auth.tenancy.config);
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox, at-least-once) — unlike the Svix webhook below, which is
+      // fire-and-forget after commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.created", payload: crud });
+      return crud;
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
@@ -1282,6 +1288,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       const user = userPrismaToCrud(db, auth.tenancy.config);
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.updated", payload: user });
       return {
         user,
         wasAnonymousUpgrade,
@@ -1391,6 +1398,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         include: userFullInclude,
       });
+
+      for (const t of teams) {
+        await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_membership.deleted", payload: { team_id: t.teamId, user_id: params.user_id } });
+      }
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.deleted", payload: { id: params.user_id, teams: teams.map((t) => ({ id: t.teamId })) } });
 
       return { teams };
     });
