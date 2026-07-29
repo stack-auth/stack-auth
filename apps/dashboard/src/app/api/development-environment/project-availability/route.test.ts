@@ -56,6 +56,7 @@ async function getResponse(req: NextRequest) {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.unstubAllEnvs();
   vi.resetModules();
   delete process.env[remoteDevelopmentEnvironmentEnabledEnv];
@@ -101,6 +102,7 @@ describe("development environment project-availability route", () => {
       `http://127.0.0.1:26700/api/development-environment/project-availability?project_id=${knownProjectId}`,
       { host: "127.0.0.1:26700", origin: "http://localhost:3000" },
     ));
+    expect(connection).toHaveBeenCalledOnce();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ running: true, project_available: true });
   });
