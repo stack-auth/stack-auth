@@ -6,6 +6,7 @@ import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
+import { listProjectsTool, readConfigTool, sqlQueryTool } from "@/mcp-tools";
 import packageJson from "../package.json";
 
 function getBackendApiBaseUrl(): string {
@@ -102,6 +103,30 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             },
           }],
         }),
+      );
+
+      server.tool(
+        "list_projects",
+        "List the Hexclave projects managed by the authenticated user. Use the returned project IDs for sql_query and read_config.",
+        {},
+        async () => await listProjectsTool(),
+      );
+      server.tool(
+        "sql_query",
+        "Run a read-only analytics SQL query for a project managed by the authenticated user.",
+        {
+          project_id: z.string().min(1),
+          query: z.string().min(1),
+        },
+        sqlQueryTool,
+      );
+      server.tool(
+        "read_config",
+        "Read the resolved configuration for a project managed by the authenticated user.",
+        {
+          project_id: z.string().min(1),
+        },
+        readConfigTool,
       );
 
       server.tool(

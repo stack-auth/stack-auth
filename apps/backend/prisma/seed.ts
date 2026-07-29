@@ -66,6 +66,7 @@ export async function seed() {
   const otpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED", "") === 'true';
   const signUpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED", "") === 'true';
   const allowLocalhost = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST", "") === 'true';
+  const mcpResourceUri = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_MCP_RESOURCE_URI", "http://localhost:8144/mcp");
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
@@ -135,6 +136,25 @@ export async function seed() {
             displayName: 'Neon Connection Strings',
           }
         }
+      },
+      oauthProvider: {
+        resources: {
+          mcp: {
+            displayName: "Hexclave MCP",
+            uri: mcpResourceUri,
+            scopes: {
+              listProjects: { scope: "mcp:list-projects", displayName: "List managed projects" },
+              sqlQuery: { scope: "mcp:sql-query", displayName: "Query project analytics" },
+              readConfig: { scope: "mcp:read-config", displayName: "Read project configuration" },
+            },
+          },
+        },
+        dynamicClientRegistration: {
+          enabled: true,
+        },
+        clientIdMetadataDocuments: {
+          enabled: true,
+        },
       },
       payments: {
         productLines: {

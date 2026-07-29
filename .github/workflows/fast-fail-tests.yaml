@@ -229,6 +229,7 @@ jobs:
           cp apps/backend/.env.development apps/backend/.env.test.local
           cp apps/dashboard/.env.development apps/dashboard/.env.test.local
           cp apps/e2e/.env.development apps/e2e/.env.test.local
+          cp apps/mcp/.env.development apps/mcp/.env.test.local
           cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
           cp examples/demo/.env.development examples/demo/.env.test.local
           cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local

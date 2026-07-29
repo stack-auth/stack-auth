@@ -1,12 +1,8 @@
-import { getRenderedBranchConfigQuery } from "@/lib/config";
-import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { tool } from "ai";
 import { z } from "zod";
-
-export const READ_CONFIG_RESULT_MAX_CHARS = 50_000;
+import { readRenderedConfig } from "./read-config-executor";
 
 /**
  * Resolves the project/branch whose config should be read. Prefers an explicit
@@ -43,29 +39,6 @@ export function readConfigTool(auth: SmartRequestAuth | null, targetProjectId?: 
   return tool({
     description: "Read the current Hexclave branch config object for this project. This is the resolved configuration that is usually stored in the project's `hexclave.config.ts` file — it includes settings such as installed apps (`apps`), authentication and sign-up behavior (`auth`), API keys (`apiKeys`), RBAC permissions (`rbac`), teams (`teams`), users (`users`), onboarding, emails, and payments. Use this whenever you need to know how the project is currently configured.",
     inputSchema: z.object({}),
-    execute: async () => {
-      try {
-        const config = await rawQuery(globalPrismaClient, getRenderedBranchConfigQuery(target));
-        const serialized = JSON.stringify(config);
-        if (serialized.length > READ_CONFIG_RESULT_MAX_CHARS) {
-          return {
-            success: false as const,
-            error:
-              `The project config is too large to return in full (${serialized.length} characters, limit ${READ_CONFIG_RESULT_MAX_CHARS}). ` +
-              `Ask the user about the specific part of the configuration you need (eg. apps, auth, rbac, teams, payments) so it can be inspected directly instead.`,
-          };
-        }
-        return {
-          success: true as const,
-          config,
-        };
-      } catch (error) {
-        captureError("ai-tool-read-config", error);
-        return {
-          success: false as const,
-          error: "Failed to read the project config. Please try again.",
-        };
-      }
-    },
+    execute: async () => await readRenderedConfig(target.projectId, target.branchId),
   });
 }
