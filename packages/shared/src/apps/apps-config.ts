@@ -172,6 +172,13 @@ export const ALL_APPS = {
     tags: ["developers", "operations"],
     stage: "stable",
   },
+  "observability": {
+    displayName: "Observability",
+    subtitle: "Investigate errors, logs, traces, and service performance",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+    parentAppId: "analytics",
+  },
   "clickmaps": {
     displayName: "Clickmaps",
     subtitle: "Visualize where users click across your app",

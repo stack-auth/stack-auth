@@ -51,32 +51,33 @@ export const GET = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const sessionReplayId = params.session_replay_id;
-    const exists = await prisma.sessionReplay.findUnique({
-      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionReplayId } },
-      select: { id: true },
-    });
+    const [exists, chunks] = await Promise.all([
+      prisma.sessionReplay.findUnique({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionReplayId } },
+        select: { id: true },
+      }),
+      prisma.sessionReplayChunk.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          sessionReplayId,
+        },
+        orderBy: [{ firstEventAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          batchId: true,
+          sessionReplaySegmentId: true,
+          eventCount: true,
+          byteLength: true,
+          firstEventAt: true,
+          lastEventAt: true,
+          createdAt: true,
+          s3Key: true,
+        },
+      }),
+    ]);
     if (!exists) {
       throw new KnownErrors.ItemNotFound(sessionReplayId);
     }
-
-    const chunks = await prisma.sessionReplayChunk.findMany({
-      where: {
-        tenancyId: auth.tenancy.id,
-        sessionReplayId,
-      },
-      orderBy: [{ firstEventAt: "asc" }, { id: "asc" }],
-      select: {
-        id: true,
-        batchId: true,
-        sessionReplaySegmentId: true,
-        eventCount: true,
-        byteLength: true,
-        firstEventAt: true,
-        lastEventAt: true,
-        createdAt: true,
-        s3Key: true,
-      },
-    });
 
     // Determine the slice of chunks to download events for.
     const parsedOffset = query.offset != null ? Number.parseInt(query.offset, 10) : 0;

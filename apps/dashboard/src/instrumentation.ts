@@ -1,62 +1,44 @@
 import * as Sentry from "@sentry/nextjs";
+import type { HexclaveNextInstrumentation } from "@hexclave/next/next";
 import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
-import { OTLPHttpJsonTraceExporter, registerOTel } from "@vercel/otel";
-import { createStackApiOriginTraceTargets } from "./lib/cross-tier-tracing";
-import {
-  CompositeDashboardTraceExporter,
-  createAnalyticsTraceExporterConfig,
-} from "./lib/dashboard-trace-export";
 import "./polyfills";
 
-export async function register() {
-  const developmentTraceExporterUrl = getNodeEnvironment() === "development"
-    ? `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}31/v1/traces`
-    : null;
-  const developmentTraceExporter = developmentTraceExporterUrl === null
-    ? null
-    : new OTLPHttpJsonTraceExporter({
-      url: developmentTraceExporterUrl,
-    });
-  const analyticsTraceExporterConfig = getEnvBoolean("HEXCLAVE_ANALYTICS_OTEL_EXPORT_ENABLED")
-    ? createAnalyticsTraceExporterConfig({
-      apiUrl: getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL"),
-      projectId: getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PROJECT_ID"),
-      secretServerKey: getEnvVariable("HEXCLAVE_SECRET_SERVER_KEY"),
-    })
-    : null;
-  const analyticsTraceExporter = analyticsTraceExporterConfig === null
-    ? null
-    : new OTLPHttpJsonTraceExporter(analyticsTraceExporterConfig);
-  const traceExporter = developmentTraceExporter === null
-    ? analyticsTraceExporter
-    : analyticsTraceExporter === null
-      ? developmentTraceExporter
-      : new CompositeDashboardTraceExporter([
-        developmentTraceExporter,
-        analyticsTraceExporter,
-      ]);
+// The dashboard dogfoods the Hexclave SDK for its own server-tier telemetry
+// (outbound-fetch spans, uncaught-error events, ambient request attribution)
+// instead of the previous @vercel/otel + OTLP-export setup — the backend's
+// OTLP ingestion route is being removed entirely.
+//
+// Resolved lazily (and memoized) because the same instrumentation instance
+// must back both `register` and `onRequestError`, and because in the remote
+// development environment the dashboard intentionally has no server app
+// (`getHexclaveServerApp()` throws there) — telemetry is disabled in that
+// mode rather than crashing startup.
+let hexclaveNextInstrumentationPromise: Promise<HexclaveNextInstrumentation | null> | undefined;
+function getHexclaveNextInstrumentation(): Promise<HexclaveNextInstrumentation | null> {
+  hexclaveNextInstrumentationPromise ??= (async () => {
+    // Next.js builds instrumentation for both Node.js and Edge. Keep the
+    // runtime check inline so the Edge bundle does not follow these
+    // Node-only imports.
+    if (process.env.NEXT_RUNTIME !== "nodejs") return null;
+    const { isRemoteDevelopmentEnvironmentEnabled } = await import("./lib/remote-development-environment/env");
+    if (isRemoteDevelopmentEnvironmentEnabled()) return null;
+    const [{ hexclaveInstrumentation }, { getHexclaveServerApp }] = await Promise.all([
+      import("@hexclave/next/next"),
+      import("./hexclave/server"),
+    ]);
+    return hexclaveInstrumentation(getHexclaveServerApp());
+  })();
+  return hexclaveNextInstrumentationPromise;
+}
 
-  registerOTel({
-    serviceName: "stack-dashboard",
-    instrumentationConfig: {
-      fetch: {
-        propagateContextUrls: createStackApiOriginTraceTargets([
-          getEnvVariable("NEXT_PUBLIC_BROWSER_STACK_API_URL", ""),
-          getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", ""),
-          getEnvVariable("NEXT_PUBLIC_STACK_API_URL", ""),
-        ]),
-        // Export POSTs must not create new spans that recursively schedule
-        // another export after every otherwise-idle batch.
-        ignoreUrls: [
-          ...(developmentTraceExporterUrl === null ? [] : [developmentTraceExporterUrl]),
-          ...(analyticsTraceExporterConfig === null ? [] : [analyticsTraceExporterConfig.url]),
-        ],
-      },
-    },
-    ...(traceExporter === null ? {} : { traceExporter }),
-  });
+export async function register() {
+  const hexclaveNextInstrumentation = await getHexclaveNextInstrumentation();
+  // register() became async when it grew the library-span-bridge claim; Next
+  // awaits the exported register, so awaiting here keeps the bridge installed
+  // before any app code can emit spans.
+  await hexclaveNextInstrumentation?.register();
 
   // Next.js builds instrumentation for both Node.js and Edge. Keep the runtime
   // check inline so the Edge bundle does not follow this Node-only import.
@@ -79,8 +61,12 @@ export async function register() {
 
       enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
 
-      // @vercel/otel owns the server provider so Sentry must not register a
-      // competing provider and split the active trace context.
+      // Sentry is an error-reporting backstop only. Now that @vercel/otel is
+      // gone, the dashboard server deliberately runs no OpenTelemetry
+      // provider at all (server telemetry goes through the Hexclave SDK
+      // natively), so keep Sentry from registering its own provider — with
+      // sentryBaseConfig's tracesSampleRate it would otherwise resurrect a
+      // full OTel tracing setup.
       skipOpenTelemetrySetup: true,
 
       // Add exception metadata to the event
@@ -107,4 +93,15 @@ export async function register() {
     });
 
   }
+}
+
+// Reports every error Next.js catches during request handling as a `$error`
+// event linked to the caller's session. No-ops where the server app is
+// unavailable (Edge runtime, remote development environment).
+export async function onRequestError(
+  ...args: Parameters<HexclaveNextInstrumentation["onRequestError"]>
+): Promise<void> {
+  const hexclaveNextInstrumentation = await getHexclaveNextInstrumentation();
+  if (hexclaveNextInstrumentation === null) return;
+  await hexclaveNextInstrumentation.onRequestError(...args);
 }

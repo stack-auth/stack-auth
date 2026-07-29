@@ -1,6 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
+import { runWithTelemetryTenancyHolder } from "@/lib/self-telemetry-tenancy";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
@@ -70,7 +71,11 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
     concurrentRequestsInProcess++;
     try {
       const requestId = generateSecureRandomString(80);
-      return await traceSpan({
+      // The tenancy holder must be ambient BEFORE the OTel root span opens so
+      // every span of this request (including auth-time spans that end before
+      // parseAuth resolves) records the holder and can be attributed to the
+      // calling project at export time. See lib/self-telemetry-tenancy.ts.
+      return await runWithTelemetryTenancyHolder(async () => await traceSpan({
         description: 'handling API request',
         attributes: {
           "stack.request.request-id": requestId,
@@ -181,7 +186,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
         } finally {
           hasRequestFinished = true;
         }
-      });
+      }));
     } finally {
       concurrentRequestsInProcess--;
     }

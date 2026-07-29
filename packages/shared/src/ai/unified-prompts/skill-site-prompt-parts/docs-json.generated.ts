@@ -126,9 +126,14 @@ const docsJson = {
                 "pages": [
                   "guides/apps/analytics/overview",
                   "guides/apps/analytics/custom-events-and-spans",
-                  "guides/apps/analytics/opentelemetry",
-                  "guides/apps/analytics/cross-tier-tracing",
-                  "guides/apps/analytics/framework-adapters"
+                  {
+                    "group": "Observability",
+                    "pages": [
+                      "guides/apps/analytics/errors-and-logs",
+                      "guides/apps/analytics/cross-tier-tracing",
+                      "guides/apps/analytics/framework-adapters"
+                    ]
+                  }
                 ]
               },
               {
@@ -265,6 +270,10 @@ const docsJson = {
     ]
   },
   "redirects": [
+    {
+      "source": "/guides/apps/analytics/opentelemetry",
+      "destination": "/guides/apps/analytics/cross-tier-tracing"
+    },
     {
       "source": "/guides/going-further/backend-integration",
       "destination": "/guides/going-further/local-vs-cloud-dashboard"

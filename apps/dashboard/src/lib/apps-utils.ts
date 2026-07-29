@@ -51,7 +51,9 @@ export function getEnabledAppIds(installedApps: InstalledAppsMap): AppId[] {
  * Get enabled apps that expose sidebar/cmdk navigation items.
  */
 export function getEnabledNavigableAppIds(installedApps: InstalledAppsMap): AppId[] {
-  return getEnabledAppIds(installedApps).filter((appId) => hasNavigationItems(ALL_APPS_FRONTEND[appId]));
+  return getEnabledAppIds(installedApps).filter((appId) =>
+    getParentAppId(appId) == null && hasNavigationItems(ALL_APPS_FRONTEND[appId])
+  );
 }
 
 /**
@@ -61,4 +63,3 @@ export function getUninstalledAppIds(installedApps: AppId[]): AppId[] {
   const installedSet = new Set(installedApps);
   return getAllAvailableAppIds().filter(appId => !installedSet.has(appId));
 }
-

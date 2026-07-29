@@ -1,35 +1,37 @@
 ---
 title: "Analytics"
-description: "Explore events, traces, session replays, and SQL queries in your project's analytics dataset"
+description: "Understand users and product behavior through events, replays, clickmaps, and SQL exploration"
 sidebarTitle: "Overview"
 ---
 
-The Analytics app gives you direct access to your project's analytics dataset in Hexclave. You can inspect raw event tables, explore span traces on a waterfall timeline, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+The Analytics app is the product-behavior surface in Hexclave. It connects users, events, replays, clickmaps, and SQL exploration without mixing logs and code traces into product-event views.
 
 ## Overview
 
-Analytics is organized into five areas in the dashboard:
+Analytics is organized into these areas in the dashboard:
 
-- **Tables**: Browse event rows with sorting, search, and incremental loading
-- **Traces**: Inspect span trees — sessions, tabs, and your custom spans — on a zoomable waterfall timeline
+- **Overview and Users**: Understand traffic and connect behavior to the canonical user directory
+- **Events**: Browse product events and interactions; logs and errors are excluded
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
 - **Clickmaps**: Visualize where users click on your pages
-- **Queries**: Run and save reusable ClickHouse SQL queries
+- **Explore**: Browse tables and run reusable ClickHouse SQL queries
+- **Observability**: A nested sub-app for Issues, Logs, Traces, Services, and Performance. Logs and Traces are available now; the other pages are registered TODO surfaces.
 
 ## How Analytics Works
 
-Hexclave records analytics events, spans, and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
+Hexclave records product events and replay chunks, then exposes them through Analytics for read-only querying and investigation. The shared telemetry foundation also correlates these signals with code observability without storing them in the same read model.
 
-User activity in your app flows into Hexclave event ingestion, which stores data in ClickHouse. This data powers the Tables view, the Traces waterfall, the Session replay UI, Clickmaps, and the SQL query runner.
+User activity in your app flows into Hexclave event ingestion, which stores product events in ClickHouse. This data powers Events, replays, Clickmaps, and Explore.
 
 ### What Gets Tracked
 
 Hexclave collects both client-side and server-side analytics events:
 
-- **Client-side events**: browser interaction events like `$page-view` and `$click`
+- **Client-side events**: browser interaction events like `$page-view` and `$click`. Page views also carry web vitals (LCP, CLS, INP, and friends) — tracked per navigation, so SPA soft navigations get their own CLS/INP instead of polluting the initial load's numbers
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
 - **Session spans**: every sign-in session and replay recording is recorded as a span, with a span per recorded browser tab underneath — forming a tree your telemetry attaches to
-- **Custom events and spans**: anything you record with `trackEvent` and `startSpan`/`withSpan` — see [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
+- **Custom events**: anything you record with `trackEvent`
+- **Observability signals**: network requests, errors, logs, and custom spans share correlation and ingestion but appear under the Observability sub-app — see [Errors & Logs](/guides/apps/analytics/errors-and-logs) and [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
 
 ## Enabling the Analytics App
 
@@ -46,35 +48,82 @@ To use analytics in your project:
 2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider`
 3. Sign in with a real user session
 4. Open the app and navigate/click around
-5. Check **Analytics -> Tables** to confirm events are arriving
+5. Check **Analytics -> Events** to confirm events are arriving
 
 After setup, Stack automatically captures client-side `$page-view` and `$click` events.
 
 Replay recording is on by default as part of analytics capture; set `analytics.replays.enabled: false` in your client app config to opt out.
 
+## Identify Every Service
+
+Analytics and Observability records are always attributed to the application that produced them. Configure that identity explicitly through `telemetry.resource`:
+
+```ts
+import { HexclaveClientApp, HexclaveServerApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
+
+export const hexclaveClientApp = new HexclaveClientApp({
+  // ...your existing client app options
+  telemetry: {
+    resource: {
+      service: { name: "stack-dashboard" },
+      deploymentEnvironmentName: "production",
+    },
+  },
+});
+
+export const hexclaveServerApp = new HexclaveServerApp({
+  // ...your existing server app options
+  telemetry: {
+    resource: {
+      service: { name: "stack-backend" },
+      deploymentEnvironmentName: "production",
+    },
+  },
+});
+```
+
+`service.name` is required whenever Analytics or Observability is enabled. Hexclave does not infer it from the SDK package, framework, hostname, request URL, project, or runtime, and does not fall back to a generic `Hexclave` service. This keeps telemetry unambiguous when several browser apps, mobile apps, APIs, or workers share one Hexclave project.
+
+The complete public shape is:
+
+```ts
+telemetry: {
+  resource: {
+    service: {
+      name: string;
+      namespace?: string;
+      version?: string;
+      instanceId?: string;
+    };
+    deploymentEnvironmentName?: string;
+    attributes?: Record<string, unknown>;
+  };
+}
+```
+
+The logical service identity is the pair `(service.namespace, service.name)`. Use a stable `name` for one deployable application, an optional shared `namespace` to group related services, `version` for its release, `instanceId` for a particular replica or browser instance, and `deploymentEnvironmentName` for environments such as `production` or `staging`. Keep secrets, credentials, and user data out of `attributes`.
+
+Every event, replay, span, log, error, and automatic network/library signal from an app instance inherits its immutable resource. There is no per-event or per-span override. Hexclave snapshots the resource when the app is constructed, so mutating the original options object later does not rename an active service.
+
+An app created with `inheritsFrom` inherits the entire parent telemetry configuration when `telemetry` is omitted. Supplying `telemetry` on the child replaces the parent's whole telemetry configuration, so include any `waitUntil` hook the child still needs. A child `telemetry.resource` is also atomic: nested `service` fields and `attributes` are not merged with the parent.
+
+For multiple clients using one project, give each deployable application a distinct service identity—for example, `stack-dashboard`, `stack-ios`, and `stack-backend`. Do not encode users, sessions, routes, or request hosts into `service.name`; those belong to individual telemetry records, not service identity.
+
 ## Tables
 
-The **Tables** screen is the fastest way to inspect recent analytics records.
+The **Events** screen is the fastest way to inspect recent product analytics records.
 
-- Currently shows the `events` table
+- Reads the product-only `events` table
 - Built-in ordering and client-side search
 - Relative/absolute timestamp display toggle
 - Row detail dialog for inspecting full JSON payloads
 
 Use this view when you need to quickly answer "what just happened?" without writing SQL.
 
-## Traces
+## Observability
 
-The **Traces** screen renders your span trees — sign-in sessions, replay recordings, browser tabs, and your own [custom events and spans](/guides/apps/analytics/custom-events-and-spans) — as a waterfall timeline.
-
-- Trace list with per-user avatars, durations, and span/event counts; click any span to focus it as its own waterfall
-- Waterfall timeline with events as markers inside their parent spans
-- Drag on the timeline to zoom to a range, `Cmd/Ctrl + scroll` to zoom at the cursor, horizontal scroll to pan (while zoomed), `Option/Alt + caret` to collapse a whole subtree
-- Open spans (not yet ended) render with a fading edge and an `open` badge; spans whose end lies in the future — like a session lasting until its token expires — show elapsed time as of the last load
-- Scope toggle (**All** vs **Custom**) to hide system telemetry, plus type search and time ranges of 1 hour to 30 days
-- Loads the 3,000 most recent spans and 3,000 most recent events in the selected window; use the Refresh button to reload
-
-Use Traces to understand how an operation unfolded — which spans overlapped, what events fired inside them, and how frontend activity connects to [backend spans](/guides/apps/analytics/cross-tier-tracing).
+Open **Analytics -> Observability -> Logs** for structured logs and **Analytics -> Observability -> Traces** for the trace waterfall. Structural trace rows load first; full span attributes load only when a span is selected.
 
 ## Queries
 
@@ -104,10 +153,14 @@ Session replay recording is enabled by default whenever analytics is enabled. Yo
 
 ```ts
 import { HexclaveClientApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
 
 export const hexclaveClientApp = new HexclaveClientApp({
   // ...your existing client app options
   tokenStore: "cookie", // use "nextjs-cookie" in Next.js
+  telemetry: {
+    resource: { service: { name: "stack-dashboard" } },
+  },
   analytics: {
     replays: {
       // Set to false to opt out of replay recording. Defaults to true.
@@ -127,20 +180,24 @@ SDK-managed analytics capture is enabled by default. You can disable it by disab
 
 ```ts
 import { HexclaveClientApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
 
 export const hexclaveClientApp = new HexclaveClientApp({
   // ...your existing client app options
   tokenStore: "cookie", // use "nextjs-cookie" in Next.js
+  telemetry: {
+    resource: { service: { name: "stack-dashboard" } },
+  },
   analytics: { enabled: false },
 });
 ```
 
-This stops the SDK from sending `$page-view` and `$click` events. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
+This stops product events and replays. It does not disable logs, errors, spans, propagation, or instrumentation; use `observability: { enabled: false }` for those.
 
 ## Best Practices
 
-1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
-2. **Use Traces to see cause and effect**: when you need to know how an operation unfolded — what ran, for how long, and what fired inside it — the waterfall beats scanning rows.
+1. **Use Events for product behavior**: it is the fastest way to inspect recent product rows without writing SQL.
+2. **Use Observability for code investigation**: Logs and Traces retain the user/session context that caused the code path.
 3. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
 4. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
 5. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.

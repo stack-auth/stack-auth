@@ -80,10 +80,15 @@ const nextConfig = {
   // opt-in (`export const instant = true` on ready segments) until those routes
   // are restructured to stream/cache a real shell instead of CSR-bailing.
   // https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config/instant#configuring-validation-defaults
+  // NOTE: keep this the only `experimental` key — a duplicate key later in this
+  // object would silently overwrite it (JS last-key-wins), which is exactly how
+  // the instantInsights opt-out was once lost while a second `experimental`
+  // block existed below.
   experimental: {
     instantInsights: {
       validationLevel: "manual-warning",
     },
+    turbopackFileSystemCacheForDev: true,
   },
 
   // we're open-source, so we can provide source maps — but skip them for
@@ -91,10 +96,6 @@ const nextConfig = {
   productionBrowserSourceMaps: process.env.NEXT_CONFIG_OUTPUT !== "standalone",
 
   poweredByHeader: false,
-
-  experimental: {
-    turbopackFileSystemCacheForDev: true,
-  },
 
   typescript: {
     ignoreBuildErrors: process.env.STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT === "true",
@@ -134,6 +135,16 @@ const nextConfig = {
       {
         source: "/consume/decide",
         destination: "https://eu.i.posthog.com/decide",
+      },
+    ];
+  },
+
+  async redirects() {
+    return [
+      {
+        source: "/projects/:projectId/analytics/funnel-graph",
+        destination: "/projects/:projectId/analytics/paths",
+        permanent: true,
       },
     ];
   },

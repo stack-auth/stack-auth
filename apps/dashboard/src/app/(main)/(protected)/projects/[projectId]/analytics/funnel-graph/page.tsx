@@ -1,5 +1,5 @@
-import PageClient from "./page-client";
+import { notFound } from "next/navigation";
 
-export default function Page() {
-  return <PageClient />;
+export default function Page(): never {
+  notFound();
 }

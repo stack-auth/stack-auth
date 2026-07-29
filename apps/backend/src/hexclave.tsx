@@ -19,5 +19,11 @@ export function getHexclaveServerApp() {
     tokenStore: null,
     publishableClientKey: getEnvVariable('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY'),
     secretServerKey: getEnvVariable('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
+    // This app is the backend's control-plane client for quota and internal
+    // project operations. Backend self-observability is owned by the dedicated
+    // self-telemetry exporters; instrumenting this client's own quota calls
+    // feeds ingestion back into itself and can exhaust the local rate limiter.
+    analytics: { enabled: false },
+    observability: { enabled: false },
   });
 }

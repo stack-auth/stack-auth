@@ -124,8 +124,10 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, query }) {
-    const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const schema = await getPrismaSchemaForTenancy(auth.tenancy);
+    const [prisma, schema] = await Promise.all([
+      getPrismaClientForTenancy(auth.tenancy),
+      getPrismaSchemaForTenancy(auth.tenancy),
+    ]);
 
     const rawLimit = query.limit ?? String(DEFAULT_LIMIT);
     const parsedLimit = Number.parseInt(rawLimit, 10);

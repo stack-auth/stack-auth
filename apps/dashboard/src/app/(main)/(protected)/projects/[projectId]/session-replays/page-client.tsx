@@ -18,7 +18,7 @@ import {
   NULL_TAB_KEY,
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +27,7 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useServerApp } from "../use-admin-app";
 import { SessionReplayLimitBanner } from "../analytics/shared";
+import { ReplayActivityMetrics } from "./replay-activity-metrics";
 import {
   ALLOWED_PLAYER_SPEEDS,
   areStatesRenderEquivalent,
@@ -143,16 +144,6 @@ function coerceRrwebEvents(raw: unknown[]): RrwebEventWithTime[] {
     filtered.push(e as { timestamp: number });
   }
   return filtered as unknown as RrwebEventWithTime[];
-}
-
-function formatDurationMs(ms: number) {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${m % 60}m`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
 }
 
 function formatTimelineMs(ms: number) {
@@ -1347,10 +1338,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   FROM default.events
                   WHERE session_replay_id = {id:String}
                   UNION ALL
-                  SELECT name AS event_type, started_at AS event_at, attributes AS data
+                  SELECT span_type AS event_type, started_at AS event_at, data
                   FROM default.spans
                   WHERE session_replay_id = {id:String}
-                    AND name = '$page-view'
+                    AND span_type = '$page-view'
                 )
                 ORDER BY event_at ASC
                 LIMIT 2000`,
@@ -1910,42 +1901,40 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                           {recordingListRows.map(({ replay: r, key }) => {
                             const isSelected = r.id === selectedRecordingId;
                             const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
-                            const duration = formatDurationMs(durationMs);
                             return (
                               <div
                                 key={key}
                                 className={cn(
-                                "rounded-lg",
-                                isSelected
-                                  ? "bg-white shadow-sm ring-1 ring-black/[0.06] dark:bg-background/80 dark:ring-white/[0.06]"
-                                  : "hover:bg-white/70 dark:hover:bg-muted/20",
-                              )}
+                                  "relative w-full rounded-lg text-left outline-none",
+                                  "transition-colors duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-foreground/20",
+                                  isSelected
+                                    ? "bg-foreground/[0.055] ring-1 ring-border/60"
+                                    : "hover:bg-foreground/[0.035]",
+                                )}
                               >
                                 <button
+                                  type="button"
                                   onClick={() => setSelectedRecordingId(r.id)}
-                                  className={cn(
-                                  "w-full text-left rounded-lg px-3 py-2.5",
-                                  "transition-colors hover:transition-none",
-                                )}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-sm font-medium truncate">
-                                      {getRecordingTitle(r)}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                      {duration}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                  aria-current={isSelected ? "true" : undefined}
+                                  aria-label={`Open replay for ${getRecordingTitle(r)}`}
+                                  className="absolute inset-0 rounded-lg outline-none"
+                                />
+                                <div className="pointer-events-none relative flex min-w-0 items-baseline justify-between gap-3 px-3 pt-2.5">
+                                  <span className="truncate text-sm font-medium">
+                                    {getRecordingTitle(r)}
+                                  </span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">
                                     <DisplayDate date={r.lastEventAt} />
-                                    {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
-                                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
-                                        <CursorClickIcon className="h-3 w-3" />
-                                        {clickCountsByReplayId.get(r.id)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </button>
+                                  </span>
+                                </div>
+                                <div className="relative px-3 pb-2.5 pt-0.5">
+                                  <ReplayActivityMetrics
+                                    durationMs={durationMs}
+                                    eventCount={r.eventCount}
+                                    clickCount={clickCountsByReplayId.get(r.id) ?? 0}
+                                    onActivate={() => setSelectedRecordingId(r.id)}
+                                  />
+                                </div>
                               </div>
                             );
                           })}

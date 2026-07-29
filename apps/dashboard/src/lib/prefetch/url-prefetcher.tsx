@@ -57,7 +57,10 @@ const urlPrefetchers: Record<string, UrlPrefetcher[]> = {
   "/projects/*/analytics/queries": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
-  "/projects/*/analytics/traces": [
+  "/projects/*/observability/traces": [
+    ...usageLimitBannerPrefetchers("analytics_events"),
+  ],
+  "/projects/*/observability/logs": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
   "/projects/*/analytics/tables": [

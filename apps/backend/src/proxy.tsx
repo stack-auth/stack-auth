@@ -42,6 +42,11 @@ const corsAllowedRequestHeaders = [
   'sentry-trace',
   'traceparent',
   'tracestate',
+  // The SDK's native cross-tier span context (see span-context-codec in
+  // @hexclave/shared). Without this, browser SDK calls to the Hexclave API
+  // from a different origin would fail CORS preflight once the fetch
+  // instrumentation attaches the header.
+  'x-hexclave-span-context',
 
   // Vercel
   'x-vercel-protection-bypass',
@@ -70,7 +75,10 @@ const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllo
 export async function proxy(request: NextRequest) {
   const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
-  if (delay) {
+  // Preflights are transport negotiation rather than application work. Delaying
+  // them doubles cross-origin development latency and creates a standalone
+  // middleware trace whose only child is STACK: wait(...).
+  if (request.method !== 'OPTIONS' && delay) {
     if (getNodeEnvironment().includes('production')) {
       throw new HexclaveAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
     }

@@ -1,15 +1,29 @@
 ---
 title: "Framework Adapters"
-description: "One-line tRPC, oRPC, Elysia, and Convex integration — auth and session-linked telemetry together"
+description: "One-line Next.js, TanStack Start, tRPC, oRPC, Elysia, and Convex integration — auth and session-linked telemetry together"
 ---
 
 The framework adapters wire Hexclave into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that is automatically linked to the caller's client session via [cross-tier tracing](/guides/apps/analytics/cross-tier-tracing) — you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
 
-All adapters ship as subpath exports of every Hexclave SDK package — import from `@hexclave/js/trpc`, `@hexclave/js/orpc`, `@hexclave/js/elysia`, or `@hexclave/js/convex` (the same subpaths exist on `@hexclave/react`, `@hexclave/next`, and `@hexclave/tanstack-start`). They have zero runtime dependency on the frameworks they adapt: you hand them your own framework instances.
+The tRPC, oRPC, Elysia, and Convex adapters ship as subpath exports of every Hexclave SDK package — import from `@hexclave/js/trpc`, `@hexclave/js/orpc`, `@hexclave/js/elysia`, or `@hexclave/js/convex` (the same subpaths exist on `@hexclave/react`, `@hexclave/next`, and `@hexclave/tanstack-start`). They have zero runtime dependency on the frameworks they adapt: you hand them your own framework instances.
+
+The Next.js and TanStack Start adapters are different: they use the framework's own request plumbing (`next/headers`, the TanStack Start server context), so each one only ships in its framework's SDK package — `@hexclave/next/next` and `@hexclave/tanstack-start/tanstack-start`.
 
 ## Common Options
 
-Every adapter accepts the same telemetry knob wherever it creates spans:
+Every adapter is created from the same factory shape — `createHexclaveX(app, factoryOptions?)` — and every wrapped handler receives both `user` (the resolved caller, or `null`) and `hexclave` (the per-request context, with a memoized `getUser()`).
+
+Factory options accept a default `unauthorized` for every wrapped surface; a per-handler/per-route `unauthorized` always wins over it:
+
+```ts
+const hexclave = createHexclaveNext(hexclaveServerApp, {
+  unauthorized: () => Response.json({ error: "sign in first" }, { status: 401 }),
+});
+```
+
+Surfaces that respond with HTTP send a returned `Response`; surfaces that reject by throwing (server actions, tRPC/oRPC/Convex) throw the returned `Error`.
+
+Every adapter also accepts the same telemetry knob wherever it creates spans:
 
 ```ts
 telemetry?: boolean | { spanType?: string, data?: Record<string, unknown> }
@@ -22,12 +36,83 @@ Span types are deliberately low-cardinality — the variable parts go in the spa
 
 | Adapter | Span type | Data |
 |---|---|---|
+| Next.js | `next.route` / `next.server-action` | `path`, `method` / `name` |
+| TanStack Start | `tanstack-start.server-function` / `tanstack-start.route` | `name` / `path`, `method` |
 | tRPC | `trpc.procedure` | `path`, `type` |
 | oRPC | `orpc.procedure` | `path` |
 | Elysia | `elysia.route` | `path`, `method` |
 | Convex | `convex.function` | `kind`, `name` |
 
 Adapters marked `required: true` reject unauthenticated calls before your handler runs, and the `user` your handler sees is then non-null.
+
+## Next.js
+
+Ships only in `@hexclave/next`. There is no framework instance to hand in: route handlers receive the `Request` directly, and server actions read the ambient request headers via `next/headers`.
+
+```ts app/api/orders/route.ts
+import { createHexclaveNext } from "@hexclave/next/next";
+import { hexclaveServerApp } from "@/hexclave";
+
+const hexclave = createHexclaveNext(hexclaveServerApp);
+
+export const GET = hexclave.routeHandler(async ({ request, user }) => {
+  // runs inside a `next.route` span linked to the caller's client session;
+  // user is non-null because of `required: true`
+  return Response.json({ orders: await listOrdersFor(user) });
+}, { required: true });
+```
+
+`routeHandler` keeps Next.js's `(request, context)` signature, so export the wrapped function directly; your handler receives `{ request, context, user, hexclave }` as a single object (`context` is Next's second argument, e.g. `{ params }`). With `required: true`, unauthenticated calls get a JSON `401` before your handler runs — pass `unauthorized: () => Response` to customize it.
+
+Server actions receive no `Request`, so the adapter reads the ambient headers from `next/headers` — they carry both the session cookies and the `x-hexclave-span-context` header, because the browser SDK's patched fetch instruments React's action POSTs like any other same-origin request:
+
+```ts app/actions.ts
+"use server";
+import { createHexclaveNext } from "@hexclave/next/next";
+import { hexclaveServerApp } from "@/hexclave";
+
+const hexclave = createHexclaveNext(hexclaveServerApp);
+
+export const createOrder = hexclave.serverAction(async ({ user }, formData: FormData) => {
+  // runs inside a `next.server-action` span linked to the caller's client session
+}, { name: "createOrder", required: true });
+```
+
+`serverAction` prepends a `{ user, hexclave }` context to the action's own arguments — the wrapped action keeps its outward signature, so it works with `<form action={...}>` and direct calls alike. `required` rejections throw (customize with `unauthorized: () => Error`); pass `name` so the span is identifiable (the span type stays low-cardinality).
+
+Separately from the wrappers, export `hexclaveInstrumentation(app)` from your `instrumentation.ts` — see [Server-Side Instrumentation](/guides/apps/analytics/cross-tier-tracing#server-side-instrumentation). Server-wide outbound-fetch spans and the uncaught-exception monitor already install when the server app is constructed; `register()` adds ambient request attribution (bare `trackEvent`/`withSpan`/`logger` calls inside a request scope link to the caller without `{ request }`), and `onRequestError` reports the errors Next.js catches during request handling. The wrappers and the instrumentation are complementary: the instrumentation covers everything that happens on the server, the wrappers add the per-route span your handler runs *inside of*.
+
+## TanStack Start
+
+Ships only in `@hexclave/tanstack-start`. It wraps the two server surfaces — server function handlers and server route methods — instead of shipping a `createMiddleware` instance, so it never depends on TanStack's version-sensitive middleware generics.
+
+```ts src/server/orders.ts
+import { createServerFn } from "@tanstack/react-start";
+import { createHexclaveTanStackStart } from "@hexclave/tanstack-start/tanstack-start";
+import { hexclaveServerApp } from "~/hexclave";
+
+const hexclave = createHexclaveTanStackStart(hexclaveServerApp);
+
+export const getOrders = createServerFn({ method: "GET" }).handler(
+  hexclave.serverFn(async ({ ctx, user }) => {
+    // runs inside a `tanstack-start.server-function` span linked to the caller's client session
+  }, { name: "getOrders", required: true }),
+);
+```
+
+Server functions receive no `Request`; the adapter reads the ambient request headers through the SDK's TanStack Start server context (the same mechanism the cookie token store uses). The wrapped handler receives `{ ctx, user, hexclave }`, where `ctx` is whatever TanStack passes your handler (`{ data, context, … }`). `required` rejections throw; pass `name` so the span is identifiable.
+
+Server route methods do receive a `Request`, and the wrapper uses it directly:
+
+```ts src/routes/api/orders.ts
+export const ServerRoute = createServerFileRoute().methods({
+  GET: hexclave.routeHandler(async ({ request, user }) => {
+    return Response.json({ orders: await listOrdersFor(user) });
+  }, { required: true }),
+});
+```
+
+`routeHandler` handlers receive `{ ctx, request, user, hexclave }` and must return a `Response`; with `required: true`, unauthenticated calls get a JSON `401` (customize with `unauthorized: () => Response`).
 
 ## tRPC
 
@@ -97,7 +182,7 @@ Procedures receive `context.user` and `context.hexclave`, and run inside an `orp
 
 ## Elysia
 
-Elysia has no around-middleware, so the adapter is three composable pieces: a `.resolve()` callback for the user, a `beforeHandle` guard, and a handler wrapper that puts your route inside the span:
+The adapter is a set of composable pieces: a `.use()`-able plugin that spans **every** route, a `.resolve()` callback for the user, a `beforeHandle` guard, and a handler wrapper for full-fidelity per-route spans:
 
 ```ts server/app.ts
 import { Elysia } from "elysia";
@@ -107,16 +192,20 @@ import { hexclaveServerApp } from "./hexclave";
 const hexclave = createHexclaveElysia(hexclaveServerApp);
 
 new Elysia()
+  .use(hexclave.plugin)           // spans ALL routes of this app
   .resolve(hexclave.resolveUser)  // adds `user` and `hexclave` to every route's context
   .get("/me", ({ user }) => user, { beforeHandle: hexclave.requireUser })
-  .post("/checkout", hexclave.handler(async ({ user }) => {
+  .post("/checkout", hexclave.handler(async ({ user, hexclave }) => {
     // runs inside an `elysia.route` span linked to the caller's session
   }), { beforeHandle: hexclave.requireUser });
 ```
 
+- `plugin` spans **all** routes of the app it's `.use()`d on — including 404s, which are real traffic — via Elysia's global lifecycle hooks (requires Elysia >= 1.0). Each span runs from request receipt to response completion and records `path`, `method`, `status`, and the error message on failures.
 - `resolveUser` resolves the caller once per request and exposes `user` (or `null`).
-- `requireUser` short-circuits unauthenticated calls with a `401` and a JSON error body. It reads the `user` that `resolveUser` provides, so it only works on apps (or plugins) where `.resolve(hexclave.resolveUser)` ran — without it, every call gets a `401`.
-- `handler(fn, { telemetry? })` wraps the route in the span; use it on routes you want traced. The span works even without `resolveUser`, since the request is taken from Elysia's context.
+- `requireUser` short-circuits unauthenticated calls with a `401` and a JSON error body (customize the response with the factory-level `unauthorized`, or per route with `requireUserWith({ unauthorized })`). It reads the `user` that `resolveUser` provides, so it only works on apps (or plugins) where `.resolve(hexclave.resolveUser)` ran — without it, every call gets a `401`.
+- `handler(fn, { telemetry? })` wraps the route in the span; use it on routes where telemetry created *inside* the handler should nest under the route span. The span works even without `resolveUser`, since the request is taken from Elysia's context.
+
+One honest limitation: Elysia has no around-middleware, so the plugin's span is materialized when the response completes — its interval is correct (it contains the handler), but `trackEvent`/`startSpan` calls made inside your handler can't ambiently nest under it. The `handler()` wrapper is the full-fidelity path: it puts your handler inside the span's async extent, so child spans and events nest automatically. The plugin detects wrapped handlers and skips its own span, so using both never double-records.
 
 ## Convex
 
@@ -136,23 +225,27 @@ Then wrap your function handlers:
 
 ```ts convex/items.ts
 import { query } from "./_generated/server";
-import { hexclaveConvexFunction } from "@hexclave/js/convex";
+import { createHexclaveConvex } from "@hexclave/js/convex";
 import { hexclaveServerApp } from "./hexclave";
 
+const hexclave = createHexclaveConvex(hexclaveServerApp);
+
 export const listItems = query({
-  handler: hexclaveConvexFunction(hexclaveServerApp, async ({ ctx, args, user }) => {
+  handler: hexclave.function(async ({ ctx, args, user }) => {
     // user: the authenticated caller (non-null with { required: true })
   }, { required: true, kind: "query", name: "listItems" }),
 });
 ```
 
-The wrapped handler receives `{ ctx, args, user }` as a single object. Options: `required`, `kind` (`"query" | "mutation" | "action"`, recorded in the span data), `name` (likewise), `telemetry`, and `unauthorized`.
+The wrapped handler receives `{ ctx, args, user, hexclave }` as a single object. Options: `required`, `kind` (`"query" | "mutation" | "action"`, recorded in the span data), `name` (likewise), `telemetry`, and `unauthorized` (an `Error` factory; the factory-level `unauthorized` is the fallback).
 
 ## Which Piece Does What
 
 | | Resolves `user` | Rejects unauthenticated | Request-linked span |
 |---|---|---|---|
+| Next.js | `routeHandler` / `serverAction` | `{ required: true }` (401 response / thrown error) | `routeHandler` / `serverAction` (ambient `next/headers`) |
+| TanStack Start | `serverFn` / `routeHandler` | `{ required: true }` (thrown error / 401 response) | `serverFn` (ambient server context) / `routeHandler` |
 | tRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `createContext` |
 | oRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `wrapFetchHandler` |
-| Elysia | `resolveUser` | `requireUser` guard | `handler(fn)` |
-| Convex | `hexclaveConvexFunction` | `{ required: true }` | user-attributed only (no request over WebSockets) |
+| Elysia | `resolveUser` | `requireUser` / `requireUserWith` guard | `plugin` (all routes) / `handler(fn)` (full fidelity) |
+| Convex | `hexclave.function` | `{ required: true }` | user-attributed only (no request over WebSockets) |

@@ -59,6 +59,23 @@ export type QueryDataGridToolbarContext<TRow = RowData> =
     isRefetching: boolean,
   };
 
+/**
+ * Per-column display overrides for QueryDataGrid. The grid still discovers
+ * the schema from the query result; configs only change how a discovered
+ * column is presented. `hidden` columns stay on the row object (so custom
+ * `onRowClick` handlers and quick search can use them) but are not rendered
+ * as grid columns.
+ */
+export type QueryDataGridColumnConfig = {
+  /** Header label shown instead of the raw column name. */
+  header?: string,
+  width?: number,
+  /** Growth factor for leftover horizontal space (see DataGridColumnDef.flex). */
+  flex?: number,
+  hidden?: boolean,
+  renderCell?: (value: unknown, row: RowData) => ReactNode,
+};
+
 export type QueryDataGridProps = {
   /**
    * The SQL query to execute.
@@ -74,6 +91,12 @@ export type QueryDataGridProps = {
    *   touch its LIMIT.
    */
   query: string,
+  /**
+   * ClickHouse query parameters referenced by `query` (and by the
+   * sort/search wrapper the grid builds around it). Prefer bound params
+   * over interpolating dynamic values into the SQL string.
+   */
+  queryParams?: Record<string, string | number>,
   /** Execution mode. Defaults to `paginated`. */
   mode?: QueryDataGridMode,
   /** Page size for paginated mode. Defaults to 50. */
@@ -123,6 +146,8 @@ export type QueryDataGridProps = {
   toolbarActions?:
     | ReactNode
     | ((ctx: QueryDataGridToolbarContext<RowData>) => ReactNode),
+  /** Per-column display overrides, keyed by discovered column name. */
+  columnConfigs?: ReadonlyMap<string, QueryDataGridColumnConfig>,
   /** Whether the default row-click-to-inspect dialog is enabled. Defaults to `true`. */
   enableRowDetailDialog?: boolean,
   /** Custom row click handler. Overrides the default row detail dialog. */
@@ -322,11 +347,13 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
   function QueryDataGrid(
     {
       query,
+      queryParams,
       mode = "paginated",
       pageSize = 50,
       defaultOrderBy,
       defaultOrderDir = "desc",
       enableQuickSearchFilter = true,
+      columnConfigs,
       toolbar,
       searchBar,
       toolbarExtra,
@@ -361,6 +388,13 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     defaultOrderByRef.current = defaultOrderBy;
     const defaultOrderDirRef = useRef(defaultOrderDir);
     defaultOrderDirRef.current = defaultOrderDir;
+    // Ref mirror so the dataSource generator can read the latest params
+    // without being recreated on every fresh-but-equal object identity.
+    const queryParamsRef = useRef(queryParams);
+    queryParamsRef.current = queryParams;
+    // Stable key so callers can pass a fresh `{}` / params object each render
+    // without resetting the grid or recreating the data source.
+    const queryParamsKey = JSON.stringify(queryParams ?? {});
 
     const [gridState, setGridState] = useState<DataGridState>(() => {
       const base = createDefaultDataGridState([]);
@@ -398,7 +432,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
         pagination: { ...prev.pagination, pageIndex: 0 },
         quickSearch: "",
       }));
-    }, [query]);
+    }, [query, queryParamsKey]);
 
     useEffect(() => {
       onError?.(error);
@@ -410,10 +444,11 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
 
     const columns = useMemo<DataGridColumnDef<RowData>[]>(
       () =>
-        discoveredColumns.map((col): DataGridColumnDef<RowData> => {
-          const isDate = isDateColumnName(col);
-          if (isDate) {
-            return {
+        discoveredColumns.flatMap((col): DataGridColumnDef<RowData>[] => {
+          const config = columnConfigs?.get(col);
+          if (config?.hidden) return [];
+          const base: DataGridColumnDef<RowData> = isDateColumnName(col)
+            ? {
               id: col,
               header: col,
               accessor: (row) => row[col],
@@ -422,26 +457,40 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               sortable: true,
               type: "dateTime",
               parseValue: parseClickHouseDateOrNull,
+            }
+            : {
+              id: col,
+              header: col,
+              accessor: (row) => row[col],
+              width: guessColumnWidth(col),
+              minWidth: 80,
+              sortable: true,
+              type: "string",
+              renderCell: ({ value }) => <CellValue value={value} />,
             };
-          }
-          return {
-            id: col,
-            header: col,
-            accessor: (row) => row[col],
-            width: guessColumnWidth(col),
-            minWidth: 80,
-            sortable: true,
-            type: "string",
-            renderCell: ({ value }) => <CellValue value={value} />,
-          };
+          if (config == null) return [base];
+          const configuredRenderCell = config.renderCell;
+          return [{
+            ...base,
+            ...(config.header == null ? {} : { header: config.header }),
+            ...(config.width == null ? {} : { width: config.width }),
+            ...(config.flex == null ? {} : { flex: config.flex }),
+            ...(configuredRenderCell == null ? {} : {
+              renderCell: ({ value, row }: { value: unknown, row: RowData }) => configuredRenderCell(value, row),
+            }),
+          }];
         }),
-      [discoveredColumns],
+      [discoveredColumns, columnConfigs],
     );
 
-    // Capture `query` and `mode` so the generator identity and the SQL it
-    // executes change together. useDataSource keys off that identity to
-    // refetch when either input changes.
+    // Capture `query`, `mode`, and `queryParamsKey` so the generator identity
+    // and the SQL it executes change together. useDataSource keys off that
+    // identity to refetch when any input changes. Params are read from a ref
+    // so equal-content object identity churn does not recreate the generator;
+    // `queryParamsKey` is intentionally unused in the body — its job is only
+    // to bust this memo when the params payload changes.
     const dataSource = useMemo<DataGridDataSource<RowData>>(() => {
+      void queryParamsKey;
       return async function* (params) {
         setError(null);
         try {
@@ -475,6 +524,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
 
           const response = await serverApp.queryAnalytics({
             query: finalQuery,
+            params: queryParamsRef.current ?? {},
             include_all_branches: false,
             timeout_ms: 30000,
           });
@@ -506,7 +556,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
           yield { rows: [], hasMore: false };
         }
       };
-    }, [serverApp, query, mode]);
+    }, [serverApp, query, queryParamsKey, mode]);
 
     const getRowId = useCallback((row: RowData): string => {
       if (typeof row[INTERNAL_ROW_ID_KEY] === "string") return row[INTERNAL_ROW_ID_KEY];

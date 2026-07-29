@@ -26,7 +26,7 @@ type TableConfig = {
   defaultOrderDir: "asc" | "desc",
 };
 
-type TableId = string;
+export type TableId = string;
 
 const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   [
@@ -154,7 +154,7 @@ const AVAILABLE_TABLE_OPTIONS = [...AVAILABLE_TABLES.entries()].map(
 
 // ─── Per-table content ──────────────────────────────────────────────
 
-function TableContent({ tableId }: { tableId: TableId }) {
+export function TableContent({ tableId }: { tableId: TableId }) {
   const tableConfig = AVAILABLE_TABLES.get(tableId) ?? throwErr(`Unknown analytics table: ${tableId}`);
 
   // AI thread behind the search bar — constrained to row filters over this

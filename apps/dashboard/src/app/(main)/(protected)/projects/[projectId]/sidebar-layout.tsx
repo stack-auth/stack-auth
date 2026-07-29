@@ -39,8 +39,7 @@ import {
   UsersIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
-import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -60,6 +59,7 @@ type AppSection = {
   items: {
     name: string,
     href: string,
+    section?: string,
     external?: boolean,
     match: (fullUrl: URL) => boolean,
   }[],
@@ -277,11 +277,9 @@ function NavItem({
               </Button>
             )}
           </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent side="right" className="!z-[9999]">
-              {item.name}
-            </TooltipContent>
-          </TooltipPortal>
+          <TooltipContent side="right" className="!z-[9999]">
+            {item.name}
+          </TooltipContent>
         </Tooltip>
       </div>
     );
@@ -350,8 +348,15 @@ function NavItem({
           )}
         >
           <div className="space-y-2 py-2 pl-3">
-            {item.items.map((navItem) => (
-              <NavSubItem key={navItem.href} item={navItem} href={navItem.href} onClick={onClick} />
+            {item.items.map((navItem, index) => (
+              <div key={navItem.href}>
+                {navItem.section != null && navItem.section !== item.items[index - 1]?.section && (
+                  <Typography className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                    {navItem.section}
+                  </Typography>
+                )}
+                <NavSubItem item={navItem} href={navItem.href} onClick={onClick} />
+              </div>
             ))}
           </div>
         </div>
@@ -431,14 +436,33 @@ function AppNavItem({
       return null;
     }
     const navigableFrontend: NavigableAppFrontend = appFrontend;
-    const items = navigableFrontend.navigationItems
+    const ownItems = navigableFrontend.navigationItems
       .filter((navItem) => isAppNavigationItemVisible(projectId, navItem))
       .map((navItem) => ({
         name: navItem.displayName,
         href: getItemPath(projectId, navigableFrontend, navItem),
+        section: navItem.section,
         external: navItem.external,
         match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
       }));
+    const childItems = (Object.keys(ALL_APPS) as AppId[])
+      .filter((candidateId) => getParentAppId(candidateId) === appId)
+      .flatMap((candidateId) => {
+        const childFrontend = ALL_APPS_FRONTEND[candidateId];
+        if (!hasNavigationItems(childFrontend)) return [];
+        return childFrontend.navigationItems
+          .filter((navItem) => isAppNavigationItemVisible(projectId, navItem))
+          .map((navItem) => ({
+            name: navItem.displayName,
+            href: getItemPath(projectId, childFrontend, navItem),
+            section: ALL_APPS[candidateId].displayName,
+            external: navItem.external,
+            match: (fullUrl: URL) => testItemPath(projectId, childFrontend, navItem, fullUrl),
+          }));
+      });
+    const primaryItems = ownItems.filter((item) => item.section == null);
+    const sectionItems = ownItems.filter((item) => item.section != null);
+    const items = [...primaryItems, ...childItems, ...sectionItems];
     return {
       name: app.displayName,
       appId,
@@ -493,17 +517,14 @@ function SidebarContent({
   // Memoize getDefaultExpandedSections to prevent recreating the function
   const getDefaultExpandedSections = useCallback((): Set<AppId> => {
     const currentUrl = new URL(pathname, DUMMY_ORIGIN);
-    for (const enabledApp of enabledApps) {
+    for (const enabledApp of getEnabledAppIds(config.apps.installed)) {
       const appFrontend = ALL_APPS_FRONTEND[enabledApp];
-      if (!(appFrontend as any)) {
-        continue;
-      }
       if (testAppPath(projectId, appFrontend, currentUrl)) {
-        return new Set([enabledApp]);
+        return new Set([getParentAppId(enabledApp) ?? enabledApp]);
       }
     }
     return new Set(["authentication"]);
-  }, [enabledApps, pathname, projectId]);
+  }, [config.apps.installed, pathname, projectId]);
 
   const [expandedSections, setExpandedSections] = useState<Set<AppId>>(() => getDefaultExpandedSections());
   const [isProjectSettingsExpanded, setIsProjectSettingsExpanded] = useState(() =>
@@ -670,11 +691,9 @@ function SidebarContent({
                   <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipPortal>
-                <TooltipContent side="right" className="!z-[9999]">
-                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                </TooltipContent>
-              </TooltipPortal>
+              <TooltipContent side="right" className="!z-[9999]">
+                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              </TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -711,6 +730,19 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
   const projectId = useProjectId();
   const pathname = usePathname();
+  const childAppBreadcrumb = useMemo(() => {
+    const currentUrl = new URL(pathname, DUMMY_ORIGIN);
+    for (const appId of Object.keys(ALL_APPS) as AppId[]) {
+      const parentAppId = getParentAppId(appId);
+      const appFrontend = ALL_APPS_FRONTEND[appId];
+      if (parentAppId == null || !hasNavigationItems(appFrontend)) continue;
+      const page = appFrontend.navigationItems.find((item) => testItemPath(projectId, appFrontend, item, currentUrl));
+      if (page != null) {
+        return [ALL_APPS[parentAppId].displayName, ALL_APPS[appId].displayName, page.displayName];
+      }
+    }
+    return null;
+  }, [pathname, projectId]);
   // Custom dashboard detail pages have a transparent iframe background; the companion should match.
   const isCustomDashboardPage = /\/dashboards\/[^/]+/.test(pathname);
 
@@ -768,6 +800,14 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
                   <Logo height={24} href="/" />
                   <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
                   <ProjectSwitcher currentProjectId={projectId} />
+                  {childAppBreadcrumb?.map((item) => (
+                    <div key={item} className="flex min-w-0 items-center gap-2">
+                      <CaretRightIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                      <Typography className="max-w-32 truncate text-sm text-muted-foreground">
+                        {item}
+                      </Typography>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Mobile: Logo */}

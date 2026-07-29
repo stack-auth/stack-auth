@@ -5,30 +5,37 @@ description: "Backend spans automatically link to the client session that caused
 
 When your frontend calls your backend, Hexclave can automatically parent the backend's telemetry under the caller's client session — the same `$refresh-token` -> `$session-replay` -> `$session-replay-segment` tree your client-side [events and spans](/guides/apps/analytics/custom-events-and-spans) attach to. One trace then spans both tiers: the button click, the API call, the database work behind it.
 
-<Info>
-This page covers Hexclave's native `x-hexclave-span-context` propagation, which carries session replay, user attribution, and ambient custom-span context. Standard OpenTelemetry uses `traceparent` and `tracestate` instead. You can run both on the same request; see the [OpenTelemetry guide](/guides/apps/analytics/opentelemetry#continue-traces-across-browser-and-server-boundaries) for W3C propagation and sampling.
-</Info>
+**Zero config is the point.** With analytics enabled, the SDK already instruments every outgoing `fetch` and `XMLHttpRequest` in the browser: each request becomes a [`$http-client` span](#network-capture-http-client-spans), and requests to your own origin — and to your project's [trusted domains](#the-client-side) — carry `x-hexclave-span-context`, Hexclave's native context header. On the server, `withSpan({ request })` — or a [framework adapter](/guides/apps/analytics/framework-adapters) — completes the loop. You don't need any propagation glue.
 
 ## How It Works
 
 Two halves, both automatic once set up:
 
-1. **Client**: with analytics enabled, the SDK wraps `fetch` and attaches a single header — `x-hexclave-span-context` — to requests going to your own origin. It carries the current tab's segment id plus any ambient custom spans (enclosing `withSpan` callbacks and global spans).
-2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you) resolves the caller's sign-in session from the request and reads the header, so everything recorded inside nests under the caller's session and any client spans that were open when the request was made.
+1. **Client**: with analytics enabled, the SDK wraps `fetch` and `XMLHttpRequest` and, for each outgoing request, (a) opens a `$http-client` span — the bridge node of the trace — and (b) attaches `x-hexclave-span-context` to requests going to your own origin, your project's trusted domains, and any origins you allowlist. The header carries the current tab's segment id, the current page-view span, any ambient custom spans (enclosing `withSpan` callbacks and global spans), and the id of the `$http-client` span for this very request.
+2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you) resolves the caller's sign-in session from the request and reads the header, so everything recorded inside nests under the caller's session, the page they were on, and the exact `fetch` that triggered the work.
 
 ## The Client Side
 
-Nothing to do beyond having analytics enabled with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the header is attached automatically to same-origin requests. If your API lives on another origin, allowlist it explicitly:
+Nothing to do beyond having analytics enabled with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the headers are attached automatically, for both `fetch` and XHR-based HTTP clients (like axios' default browser adapter), to requests going to:
+
+- **Your own origin** — same-origin requests always qualify.
+- **Your project's trusted domains** — the exact origins derived from the trusted-domain list your project already maintains for auth redirects. If your frontend and API live on different domains and both are trusted domains, cross-origin propagation works with zero config. Wildcard trusted domains are skipped — propagation matches exact origins only, so wildcards never silently widen the policy. And when your project's "allow localhost" development flag is on, `localhost`/loopback targets on **any** port qualify too, so split-port local dev (app on `:3000`, API on `:4000`) also needs no config.
+- **Anything in `spanPropagation.allowedOrigins`** — for targets that aren't trusted domains:
 
 ```tsx
 import { HexclaveClientApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
 
 export const hexclaveClientApp = new HexclaveClientApp({
   // ...your existing client app options
-  analytics: {
+  telemetry: {
+    resource: { service: { name: "stack-dashboard" } },
+  },
+  observability: {
     spanPropagation: {
-      targets: ["https://api.example.com"],  // exact origins, matched scheme+host+port
-      // enabled: false,                     // turn the automatic header off entirely
+      allowedOrigins: ["https://api.example.com"],  // exact origins, matched scheme+host+port
+      // useTrustedDomains: false,                  // opt out of the trusted-domain defaults
+      // enabled: false,                            // turn the automatic header off entirely
     },
   },
 });
@@ -40,20 +47,25 @@ Cross-origin targets receive the header only if their CORS config allows it: add
 
 Details worth knowing:
 
+- The trusted-domain list is fetched asynchronously the first time propagation needs it; until it loads — and permanently if loading fails — the policy falls back to same-origin plus `allowedOrigins`. Fail-closed, never fail-open.
 - Requests with `mode: "no-cors"` are skipped (browsers strip custom headers there anyway).
 - If you set the `x-hexclave-span-context` header yourself, the SDK never overwrites it — your intent wins.
-- The wrapper chains through the existing `fetch`, so it composes with other wrappers (Sentry, OpenTelemetry); if anything about propagation fails, the request goes out untouched.
+- The wrappers chain through the existing `fetch`/`XMLHttpRequest`, so they compose with other wrappers; if anything about propagation fails, the request goes out untouched.
+
+<Info>
+**Advanced**: alongside `x-hexclave-span-context`, propagated requests also carry a standard W3C `traceparent` header, so your own observability tools can correlate their server-side traces with the request that caused them — no setup required.
+</Info>
 
 ### Other transports
 
-For XHR or manually-built requests that allow custom headers, get the header yourself:
+`fetch` and XHR are instrumented automatically. For transports that allow custom headers but that the SDK cannot instrument — manually-built requests, WebSocket-adjacent handshake endpoints you control — get the header yourself:
 
 ```tsx
 const headers = hexclaveClientApp.getSpanPropagationHeaders();
 // { "x-hexclave-span-context": "v1...." } — or {} when there is nothing to propagate
 
 // pin to a specific span instead of the ambient context:
-const pinned = span.getPropagationHeaders();
+const pinned = span.getSpanPropagationHeaders();
 ```
 
 Browser `navigator.sendBeacon` calls and WebSocket handshakes do not support
@@ -64,6 +76,38 @@ message, explicitly reconstruct a request with the value restored as that
 header before calling `withSpan(..., { request }, ...)`.
 
 `getSpanPropagationHeaders({ root: true })` drops the ambient custom spans but still carries the tab segment id — session attribution is identity, not parenting. `span.fetch(url)` is a convenience that performs a `fetch` with the header pinned to that span, following the same origin policy.
+
+## Network Capture ($http-client spans)
+
+Every outgoing `fetch`/XHR request the SDK observes becomes a `$http-client` span — these are the bridge nodes that connect a page's activity to the backend work it caused. Each span records `method`, `url`, `transport` (`"fetch"` or `"xhr"`), and at completion `status`, plus `error`/`aborted`/`propagated` flags. The stored URL is origin + path only — query strings, fragments, and credentials are stripped before anything leaves the page.
+
+Spans end when response **headers** arrive (a streaming response is not misreported as slow), and capped at 500 per page view. Configure capture with `observability.network`:
+
+```tsx
+import { HexclaveClientApp } from "@hexclave/js";
+// replace `js` with the correct framework SDK package
+
+export const hexclaveClientApp = new HexclaveClientApp({
+  // ...your existing client app options
+  telemetry: {
+    resource: { service: { name: "stack-dashboard" } },
+  },
+  observability: {
+    network: {
+      // enabled: false,             // turn off $http-client spans entirely
+      capture: "all",                // or "errors-only": keep only failures
+      sampleRate: 1,                 // 0..1, applies to fast + successful requests
+      // allowOrigins: ["https://api.example.com"],  // record ONLY these origins
+      // denyOrigins: ["https://cdn.example.com"],   // never record these origins
+      ignoreUrls: ["/health"],       // substring match on the full URL
+    },
+  },
+});
+```
+
+Failures are **always kept**, regardless of `sampleRate` and even under `capture: "errors-only"`: responses with status >= 400, network errors, and slow requests (>= 3 seconds). Aborted requests don't count as failures — SPA data layers cancel superseded requests routinely. `allowOrigins` and `denyOrigins` are mutually exclusive (setting both throws at app construction).
+
+Network capture is independent of `spanPropagation`: `network` controls which requests get spans, `spanPropagation` controls which requests carry the context header. Only requests whose span is guaranteed to be stored (`capture: "all"` and drawn in by `sampleRate`) advertise their span id in the header — so the cross-tier links you see always resolve to a real span.
 
 ## The Server Side
 
@@ -92,24 +136,66 @@ Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextReques
 `startSpan` is synchronous and cannot resolve a request — use `withSpan(type, { request }, fn)` for request-linked spans.
 
 <Info>
-If you use tRPC, oRPC, Elysia, or Convex, skip the manual `{ request }` entirely — the [framework adapters](/guides/apps/analytics/framework-adapters) resolve the caller and wrap your procedures in request-linked spans automatically.
+If you use Next.js, TanStack Start, tRPC, oRPC, Elysia, or Convex, skip the manual `{ request }` entirely — the [framework adapters](/guides/apps/analytics/framework-adapters) resolve the caller and wrap your handlers in request-linked spans automatically.
+</Info>
+
+### Bare calls on Next.js
+
+On Next.js, once [`hexclaveInstrumentation().register()`](#server-side-instrumentation) has run, even passing `request` is optional: bare `withSpan`, `trackEvent`, and `logger` calls made inside a request scope — route handlers, server actions, React Server Components — resolve the ambient request via `next/headers` and behave exactly as if you had passed `{ request }`:
+
+```tsx
+export async function POST() {
+  return await hexclaveServerApp.withSpan("checkout-api", async (span) => {
+    // still parented under the caller's client session — the ambient
+    // request was resolved automatically
+    return Response.json({ ok: true });
+  });
+}
+```
+
+An explicit `request` always wins as an override, and it remains the framework-agnostic path everywhere else. `startSpan` stays synchronous and never consults the ambient request. If resolving the ambient request fails, the SDK warns once and records the telemetry without request context — a bare call never fails harder than it would have without ambient attribution.
+
+## Server-Side Instrumentation
+
+The server tier gets the same treatment as the browser — and most of it needs no setup at all. Constructing a `HexclaveServerApp` eagerly installs:
+
+- **Outbound-fetch spans**: every `fetch` your server makes becomes a `$http-client` span, parented under the request context it happened in — so a browser request that fans out into three upstream calls shows all three in the same waterfall. The same `observability.network` options apply (no per-page cap on servers; requests to Hexclave's own API are never recorded).
+- **The uncaught-exception monitor**: uncaught server errors become [`$error` events](/guides/apps/analytics/errors-and-logs) — observation-only, it never changes your process's crash behavior.
+
+On Next.js, additionally wire up your `instrumentation.ts` for the two pieces that need framework hooks:
+
+```ts instrumentation.ts
+import { hexclaveInstrumentation } from "@hexclave/next";
+import { hexclaveServerApp } from "./hexclave";
+
+const instrumentation = hexclaveInstrumentation(hexclaveServerApp);
+export const register = instrumentation.register;
+export const onRequestError = instrumentation.onRequestError;
+```
+
+- `register()` registers the ambient request provider that makes [bare telemetry calls attribute automatically](#bare-calls-on-next-js) in route handlers, server actions, and RSCs. (It also re-installs the fetch and error hooks — idempotent, so it's safe alongside the eager install and under HMR.)
+- `onRequestError` reports every error Next.js catches during request handling as a `$error` event, linked to the caller's client session via the request's headers. This hook only exists through `instrumentation.ts`, so it always needs the wiring above.
+
+<Info>
+If the Analytics app isn't enabled for your project, server telemetry disables itself for the rest of the process after the first rejected batch, with a single console warning — the eager instrumentation never keeps sending doomed batches for every outgoing fetch.
 </Info>
 
 ## Multi-Hop Propagation
 
-To continue a trace across your own services, propagate from a server span:
+Server→server hops continue the trace automatically: a `fetch` made inside a `withSpan({ request })` scope (or an adapter-wrapped handler) opens its own `$http-client` span carrying the original caller's context, and — for origins in the propagation policy — attaches the context header for that hop. The downstream service links up the same way: `withSpan(type, { request }, fn)` or an adapter.
+
+Servers have no "own origin", so the automatic header rides only to the propagation policy's origins: `spanPropagation.allowedOrigins` plus the trusted-domain defaults (the same exact-origin rules as in the browser, including the localhost dev allowance). For other transports (queues, RPC frameworks, trusted services outside the policy), carry the header yourself:
 
 ```tsx
 await hexclaveServerApp.withSpan("orchestrate", { request }, async (span) => {
-  // server→server fetch with the span context attached:
-  await span.fetch("https://internal.example.com/work");
-
-  // or for any other transport:
-  const headers = span.getPropagationHeaders();
+  // outbound fetches in here are already $http-client spans; for a
+  // non-fetch transport, pin the context to this span explicitly:
+  const headers = span.getSpanPropagationHeaders();
+  await postToInternalQueue(payload, { headers });
 });
 ```
 
-On the server, `span.fetch` bypasses the origin allowlist (there is no CORS between your own services, and calling it is explicit intent). The downstream service links up the same way — `withSpan(type, { request }, fn)`.
+Note that on the server, `span.fetch(url)` does **not** attach the header to arbitrary URLs (that would leak session labels to third parties) — add the origin to your project's trusted domains or `allowedOrigins`, or pass `span.getSpanPropagationHeaders()` explicitly to targets you trust.
 
 ## Trust Model
 
@@ -121,9 +207,15 @@ Malformed, oversized, or unknown-version headers are silently ignored — propag
 
 ## Options Reference
 
-Client-side, on the `analytics` constructor option:
+On the `observability` constructor option (client and server apps):
 
 | Option | Default | What it does |
 |---|---|---|
-| `spanPropagation.enabled` | `true` | Auto-attach the header to outgoing `fetch` calls |
-| `spanPropagation.targets` | `[]` | Extra origins (besides same-origin) that receive the header; exact matches |
+| `spanPropagation.enabled` | `true` | Auto-attach the context header to outgoing `fetch`/XHR calls |
+| `spanPropagation.allowedOrigins` | `[]` | Extra origins (besides same-origin in the browser and the trusted-domain defaults) that receive the header; exact matches |
+| `spanPropagation.useTrustedDomains` | `true` | Also send the header to exact origins derived from the project's trusted domains (wildcards skipped), plus localhost/loopback targets when the project allows localhost |
+| `network.enabled` | `true` | Record outgoing requests as `$http-client` spans |
+| `network.capture` | `"all"` | `"errors-only"` keeps only failures (status >= 400, network errors, >= 3s) |
+| `network.sampleRate` | `1` | Sampling for fast + successful requests; failures are always kept |
+| `network.allowOrigins` / `network.denyOrigins` | — | Origin filters (exact matches; mutually exclusive) |
+| `network.ignoreUrls` | `[]` | URL substrings that are never recorded |

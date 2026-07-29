@@ -5,6 +5,7 @@ import {
   getMetricsWindowBounds,
   isMetricsRevenueInvoiceStatus,
   normalizeAnalyticsOverviewFilters,
+  reconcileAnalyticsVisitorCount,
 } from "./route";
 
 describe("internal metrics helpers", () => {
@@ -73,8 +74,13 @@ describe("internal metrics helpers", () => {
     expect(sql).toContain("FROM analytics_internal.spans FINAL");
     expect(sql).toContain("PREWHERE project_id = {projectId:String}");
     expect(sql).toContain("AND branch_id = {branchId:String}");
-    expect(sql).toContain("AND name = '$page-view'");
+    expect(sql).toContain("AND span_type = '$page-view'");
     expect(sql).toContain("AND started_at >= {since:DateTime}");
     expect(sql).toContain("AND started_at < {untilExclusive:DateTime}");
+  });
+
+  it("uses the same reconciled visitor count for display and per-visitor revenue", () => {
+    expect(reconcileAnalyticsVisitorCount(12, 20)).toBe(20);
+    expect(reconcileAnalyticsVisitorCount(25, 20)).toBe(25);
   });
 });

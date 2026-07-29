@@ -7,15 +7,11 @@ import * as Sentry from "@sentry/nextjs";
 import { getBrowserCompatibilityReport } from "@hexclave/shared/dist/utils/browser-compat";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import posthog from "posthog-js";
-import { createDashboardTracePropagationTargets, resolveDashboardSentryDsn, shouldEnableDashboardTracePropagation } from "./src/lib/cross-tier-tracing";
-import { exportDashboardSentryTransaction } from "./src/lib/sentry-browser-trace-export";
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
 const isDevelopment = process.env.NODE_ENV === "development";
-const shouldExportBrowserTraces = getPublicEnvVar("NEXT_PUBLIC_HEXCLAVE_ANALYTICS_BROWSER_TRACE_EXPORT_ENABLED") === "true";
 
 const postHogKey = getPublicEnvVar('NEXT_PUBLIC_POSTHOG_KEY') ?? "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
 if (postHogKey.length > 5) {
@@ -33,39 +29,21 @@ if (postHogKey.length > 5) {
 }
 
 
+// Cross-tier tracing note: the Hexclave SDK (src/hexclave/client.tsx) now owns
+// the browser span lifecycle, the W3C `traceparent`, and the
+// `x-hexclave-span-context` header on API calls — Sentry no longer participates
+// in tracing at all (no propagateTraceparent/tracePropagationTargets, no
+// transaction export, no dev no-op-transport keep-alive). Sentry stays
+// initialized as an error-reporting/replay backstop only while the native
+// $error pipeline proves itself; PostHog likewise stays as a comparison
+// backstop. Full dogfood means the product works with both of them removed.
 Sentry.init({
   ...sentryBaseConfig,
 
-  dsn: resolveDashboardSentryDsn(getPublicEnvVar('NEXT_PUBLIC_SENTRY_DSN'), isDevelopment),
+  dsn: getPublicEnvVar('NEXT_PUBLIC_SENTRY_DSN'),
 
-  // Browser tracing must stay active in development so API requests carry a
-  // W3C parent. The no-op transport keeps local events, replays, and spans from
-  // leaving the browser even when a developer has a Sentry DSN configured.
-  enabled: shouldEnableDashboardTracePropagation(process.env.CI),
-  ...isDevelopment ? {
-    transport: () => ({
-      send: () => Promise.resolve({}),
-      flush: () => Promise.resolve(true),
-    }),
-  } : {},
-
-  // Sentry owns the browser span lifecycle, but emits the standard W3C header
-  // so the backend's OpenTelemetry provider can continue the same trace.
-  propagateTraceparent: true,
-  tracePropagationTargets: createDashboardTracePropagationTargets([
-    getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL"),
-    getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL"),
-  ]),
-
-  beforeSendTransaction(event) {
-    if (shouldExportBrowserTraces) {
-      // Preserve Sentry's send path and export independently. The callback must
-      // stay synchronous so a slow Analytics endpoint never delays the original
-      // telemetry pipeline.
-      runAsynchronously(() => exportDashboardSentryTransaction(event));
-    }
-    return event;
-  },
+  // Without the tracing duty there is no reason to run Sentry locally or in CI.
+  enabled: !isDevelopment && (process.env.CI === undefined || process.env.CI === ""),
 
   // You can remove this option if you're not planning to use the Sentry Session Replay feature:
   integrations: [

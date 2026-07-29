@@ -110,28 +110,30 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_page_views: MetricsDataPointsSchema,
   daily_clicks: MetricsDataPointsSchema,
   daily_visitors: MetricsDataPointsSchema,
-  hourly_page_views: yupArray(MetricsDataPointSchema).defined(),
-  hourly_active_users: yupArray(MetricsDataPointSchema).defined(),
-  hourly_visitors: yupArray(MetricsDataPointSchema).defined(),
+  hourly_page_views: yupArray(MetricsDataPointSchema).optional().default([]),
+  hourly_active_users: yupArray(MetricsDataPointSchema).optional().default([]),
+  hourly_visitors: yupArray(MetricsDataPointSchema).optional().default([]),
+  daily_anonymous_visitors_fallback: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_revenue: yupArray(MetricsDailyRevenuePointSchema).defined(),
   total_revenue_cents: yupNumber().integer().defined(),
   total_replays: yupNumber().integer().defined(),
   recent_replays: yupNumber().integer().defined(),
   visitors: yupNumber().integer().defined(),
+  anonymous_visitors_fallback: yupNumber().integer().optional().default(0),
   avg_session_seconds: yupNumber().defined(),
   online_live: yupNumber().integer().defined(),
   revenue_per_visitor: yupNumber().defined(),
   top_referrers: yupArray(MetricsTopReferrerSchema).defined(),
   top_region: MetricsTopRegionSchema.nullable().defined(),
-  top_regions: yupArray(MetricsTopCountrySchema).defined(),
-  bounce_rate: yupNumber().defined(),
-  daily_bounce_rate: yupArray(MetricsDataPointSchema).defined(),
-  daily_avg_session_seconds: yupArray(MetricsDataPointSchema).defined(),
+  top_regions: yupArray(MetricsTopCountrySchema).optional().default([]),
+  bounce_rate: yupNumber().optional().default(0),
+  daily_bounce_rate: yupArray(MetricsDataPointSchema).optional().default([]),
+  daily_avg_session_seconds: yupArray(MetricsDataPointSchema).optional().default([]),
   // User-Agent-derived breakdowns for the analytics overview. Computed from the
   // `data.user_agent` blob on `$page-view` events, captured client-side.
-  top_browsers: yupArray(MetricsNamedCountSchema).defined(),
-  top_operating_systems: yupArray(MetricsNamedCountSchema).defined(),
-  top_devices: yupArray(MetricsNamedCountSchema).defined(),
+  top_browsers: yupArray(MetricsNamedCountSchema).optional().default([]),
+  top_operating_systems: yupArray(MetricsNamedCountSchema).optional().default([]),
+  top_devices: yupArray(MetricsNamedCountSchema).optional().default([]),
   conversion_rate: yupNumber().optional(),
   deltas: yupMixed().optional(),
 }).defined();
@@ -236,7 +238,7 @@ export const AnalyticsClickmapResponseBodySchema = yupObject({
 export const MetricsActiveUsersByCountrySchema = yupRecord(
   yupString().defined(),
   yupArray(MetricsRecentUserSchema).defined(),
-).defined();
+).optional().default({});
 
 export const MetricsResponseBodySchema = yupObject({
   total_users: yupNumber().integer().defined(),
@@ -245,11 +247,11 @@ export const MetricsResponseBodySchema = yupObject({
   // from the same `$token-refresh` window that powers `active_users_by_country`,
   // so it works for every project regardless of whether the analytics app
   // (page-view-based `analytics_overview.online_live`) is installed.
-  live_users: yupNumber().integer().defined(),
+  live_users: yupNumber().integer().optional().default(0),
   daily_users: MetricsDataPointsSchema,
   daily_active_users: MetricsDataPointsSchema,
-  hourly_users: yupArray(MetricsDataPointSchema).defined(),
-  hourly_active_users: yupArray(MetricsDataPointSchema).defined(),
+  hourly_users: yupArray(MetricsDataPointSchema).optional().default([]),
+  hourly_active_users: yupArray(MetricsDataPointSchema).optional().default([]),
   users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
   active_users_by_country: MetricsActiveUsersByCountrySchema,
   // recently_registered/active are CRUD User objects passed through from the

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DUMMY_ORIGIN, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getItemPath, testItemPath, type NavigableAppFrontend } from "./apps-frontend";
 
 const PROJECT_ID = "demo-project";
 
@@ -72,5 +72,24 @@ describe("testItemPath", () => {
     const app = appWith([overview, external]);
 
     expect(testItemPath(PROJECT_ID, app, external, urlFor("/projects/demo-project/gtm"))).toBe(false);
+  });
+});
+
+describe("Analytics and Observability navigation", () => {
+  it("keeps removed and code surfaces out of Analytics navigation", () => {
+    const analyticsItems = ALL_APPS_FRONTEND.analytics.navigationItems.map((item) => item.displayName);
+    expect(analyticsItems).not.toContain("Overview");
+    expect(analyticsItems).not.toContain("Users");
+    expect(analyticsItems).not.toContain("Events");
+    expect(analyticsItems).not.toContain("Saved Views");
+    expect(analyticsItems).not.toContain("Logs");
+    expect(analyticsItems).not.toContain("Traces");
+
+    const observability = ALL_APPS_FRONTEND.observability;
+    const logs = observability.navigationItems.find((item) => item.displayName === "Logs");
+    const traces = observability.navigationItems.find((item) => item.displayName === "Traces");
+    if (logs == null || traces == null) throw new Error("Observability must define Logs and Traces navigation.");
+    expect(getItemPath(PROJECT_ID, observability, logs)).toBe("/projects/demo-project/observability/logs");
+    expect(getItemPath(PROJECT_ID, observability, traces)).toBe("/projects/demo-project/observability/traces");
   });
 });

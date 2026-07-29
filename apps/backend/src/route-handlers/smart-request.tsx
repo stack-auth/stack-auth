@@ -5,6 +5,7 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
+import { resolveTelemetryTenancy } from "@/lib/self-telemetry-tenancy";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
@@ -16,6 +17,7 @@ import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@he
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { traceSpan, withTraceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
+import * as zlib from "node:zlib";
 import * as yup from "yup";
 
 const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
@@ -114,6 +116,61 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 }
 
 
+// Hard cap applied to JSON request bodies BEFORE JSON.parse (for compressed
+// bodies it is also the decompression output bound — a zip-bomb guard).
+// JSON.parse of an attacker-sized body is a CPU/allocation amplifier, so the
+// limit must be enforced before parsing rather than by handlers afterwards.
+// 8 MiB matches the largest JSON bodies we accept anywhere (the analytics
+// batch route's decompressed cap).
+const MAX_JSON_BODY_BYTES = 8 * 1024 * 1024;
+
+// Transparent request decompression, deliberately scoped to application/json
+// bodies only: the application/octet-stream batch routes do their own gzip
+// decoding (their compression is an adblocker-evasion detail inside the body,
+// not transport encoding, and is sent WITHOUT a Content-Encoding header), and
+// compressed bodies of every content type were rejected before this existed,
+// so decoding JSON is strictly additive. Kept (despite the retired
+// telemetry-ingest endpoints being its original driver) because gzip/deflate
+// JSON requests are a documented HTTP capability that clients may already rely
+// on, and dropping transport decompression would turn their requests into
+// hard 400s.
+async function decodeBodyContentEncoding(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Uint8Array> {
+  const contentEncoding = req.headers.get("content-encoding")?.trim().toLowerCase() ?? "";
+  const raw = new Uint8Array(bodyBuffer);
+  if (contentEncoding === "" || contentEncoding === "identity") return raw;
+  if (contentEncoding !== "gzip" && contentEncoding !== "deflate") {
+    throw new KnownErrors.BodyParsingError("Unsupported Content-Encoding in request body: " + contentEncoding);
+  }
+  try {
+    // Per RFC 9110, "deflate" is the zlib-wrapped format, which is what
+    // inflate expects; raw-deflate senders are out of spec and get a 400.
+    // Use the worker-pool APIs here: JSON parsing is necessarily on the main
+    // thread, but decompression must not block every other request first.
+    return await new Promise<Buffer>((resolve, reject) => {
+      const callback = (error: Error | null, result: Buffer) => {
+        if (error !== null) {
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      };
+      if (contentEncoding === "gzip") {
+        zlib.gunzip(raw, { maxOutputLength: MAX_JSON_BODY_BYTES }, callback);
+      } else {
+        zlib.inflate(raw, { maxOutputLength: MAX_JSON_BODY_BYTES }, callback);
+      }
+    });
+  } catch (error) {
+    // zlib fails here for exactly two reasons: the output cap was exceeded
+    // (a distinct, permanent 413 so clients shrink their payloads instead
+    // of retrying) or the stream is corrupt (400).
+    if (error instanceof Error && "code" in error && error.code === "ERR_BUFFER_TOO_LARGE") {
+      throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
+    }
+    throw new KnownErrors.BodyParsingError(`Invalid ${contentEncoding}-encoded request body`);
+  }
+}
+
 async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
   const contentType = req.method === "GET" || req.method === "HEAD" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
@@ -131,7 +188,11 @@ async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Sma
       return undefined;
     }
     case "application/json": {
-      const text = getText();
+      const decoded = await decodeBodyContentEncoding(req, bodyBuffer);
+      if (decoded.byteLength > MAX_JSON_BODY_BYTES) {
+        throw new StatusError(StatusError.PayloadTooLarge, "Request body too large");
+      }
+      const text = new TextDecoder().decode(decoded);
       try {
         return JSON.parse(text);
       } catch (e) {
@@ -326,6 +387,19 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   }
 
   const user = await queriesResults.userIfOnGlobalPrismaClient;
+
+  // Auth succeeded: attribute this request's OTel self-instrumentation spans to
+  // the calling project (only reached on success — failed auth throws above, so
+  // failed requests stay under project "internal"). userId/refreshTokenId are
+  // the token-derived (trusted) values; session/replay/page labels come from
+  // the x-hexclave-span-context header inside resolveTelemetryTenancy.
+  resolveTelemetryTenancy({
+    projectId,
+    branchId,
+    userId: userId ?? null,
+    refreshTokenId: refreshTokenId ?? null,
+    headers: req.headers,
+  });
 
   return {
     project,

@@ -1468,12 +1468,39 @@ function pickBulkReferrer(rand: () => number): string {
   return '';
 }
 
-const BULK_PAGE_PATHS = [
-  '/', '/pricing', '/docs', '/docs/getting-started', '/docs/api-reference',
-  '/blog', '/blog/announcing-v2', '/about', '/contact', '/changelog',
-  '/dashboard', '/settings', '/settings/profile', '/settings/billing',
-  '/integrations', '/features', '/enterprise',
+/**
+ * Scrubbed, representative journeys for exercising the demo project's Paths
+ * graph. Reusing destinations across journeys is intentional: it produces the
+ * hubs and differently weighted edges that a real product graph has, while
+ * keeping the fixture deterministic and free of production routes or domains.
+ */
+const DUMMY_NAVIGATION_JOURNEYS: readonly (readonly string[])[] = [
+  ['/', '/product', '/product/analytics', '/pricing', '/sign-up'],
+  ['/', '/product', '/product/observability', '/pricing', '/sign-up'],
+  ['/', '/solutions/startups', '/customers', '/pricing', '/sign-up'],
+  ['/', '/solutions/enterprise', '/security', '/contact-sales'],
+  ['/', '/blog', '/blog/product-analytics', '/docs/getting-started', '/sign-up'],
+  ['/docs', '/docs/getting-started', '/docs/sdk/nextjs', '/docs/api-reference', '/sign-up'],
+  ['/docs', '/docs/observability', '/docs/api-reference', '/contact-sales'],
+  ['/sign-in', '/app', '/app/projects', '/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/paths'],
+  ['/sign-in', '/app', '/app/projects/demo/overview', '/app/projects/demo/users', '/app/projects/demo/users/sample-user', '/app/projects/demo/teams'],
+  ['/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/retention'],
+  ['/app/projects/demo/overview', '/app/projects/demo/observability', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/services', '/app/projects/demo/observability/logs'],
+  ['/app/projects/demo/overview', '/app/projects/demo/session-replays', '/app/projects/demo/session-replays/sample-session', '/app/projects/demo/analytics/events'],
+  ['/app/projects/demo/overview', '/app/projects/demo/authentication', '/app/projects/demo/authentication/methods', '/app/projects/demo/authentication/oauth'],
+  ['/app/projects/demo/overview', '/app/projects/demo/emails', '/app/projects/demo/emails/templates', '/app/projects/demo/emails/sent'],
+  ['/app/projects/demo/overview', '/app/projects/demo/integrations', '/app/projects/demo/integrations/webhooks', '/app/projects/demo/integrations/webhooks/sample-webhook'],
+  ['/app/projects/demo/overview', '/app/projects/demo/api-keys', '/app/projects/demo/settings', '/app/projects/demo/settings/billing'],
+  ['/app/projects/demo/users', '/app/projects/demo/teams', '/app/projects/demo/rbac', '/app/projects/demo/rbac/permissions'],
+  ['/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/saved-views'],
+  ['/app/projects/demo/observability', '/app/projects/demo/observability/issues', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/performance'],
+  ['/pricing', '/docs/getting-started', '/sign-up', '/onboarding', '/onboarding/create-project', '/app/projects/demo/overview'],
 ];
+
+export function buildDummyNavigationJourney(userIndex: number, visitIndex: number): readonly string[] {
+  const journeyIndex = (userIndex + visitIndex) % DUMMY_NAVIGATION_JOURNEYS.length;
+  return DUMMY_NAVIGATION_JOURNEYS[journeyIndex] ?? throwErr(`Missing dummy navigation journey ${journeyIndex}`);
+}
 
 function bulkFakeIp(prefix: string, rand: () => number): string {
   const c = Math.floor(rand() * 256);
@@ -1800,7 +1827,7 @@ async function seedBulkSignupsAndActivity(options: {
 
   const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
   const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
-  const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
+  const userActivity: Array<{ index: number, userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
   // Only users that already existed need a timestamp UPDATE afterwards — the
   // `createMany` below already writes correct createdAt/signedUpAt for every
   // newly-inserted row, so re-updating them would be pure wasted work.
@@ -1841,6 +1868,7 @@ async function seedBulkSignupsAndActivity(options: {
     }
 
     userActivity.push({
+      index: seedUser.index,
       userId,
       signupDaysAgo: seedUser.signupDaysAgo,
       region: seedUser.region,
@@ -1904,7 +1932,7 @@ async function seedBulkSignupsAndActivity(options: {
 
   console.log(`[seed-activity] Generating multi-day activity events for ${userActivity.length} users...`);
 
-  for (const { userId, signupDaysAgo, region } of userActivity) {
+  for (const { index, userId, signupDaysAgo, region } of userActivity) {
     if (signupDaysAgo === 0) continue;
     const isReturning = rand() < 0.7;
     if (!isReturning) continue;
@@ -1939,10 +1967,14 @@ async function seedBulkSignupsAndActivity(options: {
         team_id: null,
       });
 
-      const pageViewCount = 1 + Math.floor(rand() * 4);
+      const navigationJourney = buildDummyNavigationJourney(index, v);
       let clickPageViewSpanId: string | null = null;
-      for (let p = 0; p < pageViewCount; p++) {
-        const pvOffset = Math.floor(rand() * 3600) * 1000;
+      for (let p = 0; p < navigationJourney.length; p++) {
+        // Keep each journey ordered while varying dwell time between pages.
+        // The Paths query infers edges from timestamp order, so independently
+        // random offsets would fabricate transitions that the fixture did not
+        // intend to model.
+        const pvOffset = (p * 4 * 60 + Math.floor(rand() * 2 * 60)) * 1000;
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
         const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
@@ -1955,13 +1987,15 @@ async function seedBulkSignupsAndActivity(options: {
         pageViewSpanRows.push({
           trace_id: prefixedSpanId,
           span_id: prefixedSpanId,
-          name: '$page-view',
+          span_type: '$page-view',
           started_at: formatClickhouseTimestamp(pvTime),
           ended_at: formatClickhouseTimestamp(pvTime),
           parent_span_ids: [],
-          attributes: JSON.stringify({
-            path: BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)],
-            referrer: p === 0 ? pickBulkReferrer(rand) : '',
+          producer: 'sdk',
+          data: JSON.stringify({
+            path: navigationJourney[p],
+            url: `https://demo.example${navigationJourney[p]}`,
+            referrer: p === 0 ? pickBulkReferrer(rand) : `https://demo.example${navigationJourney[p - 1]}`,
             is_anonymous: false,
           }),
           project_id: tenancy.project.id,

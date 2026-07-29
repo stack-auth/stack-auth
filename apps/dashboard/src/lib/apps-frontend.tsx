@@ -27,6 +27,7 @@ type BreadcrumbDefinition = {
 type AppNavigationItem = {
   displayName: string,
   href: string,
+  section?: string,
   external?: boolean,
   /**
    * When true, this nav item is intended only for Hexclave-internal surfaces
@@ -416,17 +417,37 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
-      { displayName: "Tables", href: "./tables" },
-      { displayName: "Traces", href: "./traces" },
+      { displayName: "Funnels", href: "./funnels" },
+      { displayName: "Retention", href: "./retention" },
+      { displayName: "Paths", href: "./paths" },
       { displayName: "Replays", href: "../session-replays" },
       { displayName: "Clickmaps", href: "./clickmaps" },
-      { displayName: "Queries", href: "./queries" },
+      { displayName: "Tables", href: "./tables", section: "Explore" },
+      { displayName: "Queries", href: "./queries", section: "Explore" },
     ],
     screenshots: [],
     storeDescription: (
       <>
         <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
         <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+      </>
+    ),
+  },
+  observability: {
+    icon: CodeIcon,
+    href: "observability",
+    navigationItems: [
+      { displayName: "Issues", href: "./issues" },
+      { displayName: "Logs", href: "./logs" },
+      { displayName: "Traces", href: "./traces" },
+      { displayName: "Services", href: "./services" },
+      { displayName: "Performance", href: "./performance" },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Observability connects errors, logs, traces, and service performance to the user activity that caused them.</p>
+        <p>It inherits Analytics enablement and shares the same telemetry ingestion, tenancy, and correlation foundation.</p>
       </>
     ),
   },
