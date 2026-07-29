@@ -12,6 +12,7 @@ import {
   HostedTeamInvitation,
   HostedCliAuthConfirm,
   HostedOnboarding,
+  HostedOAuthConsent,
 } from '../../hosted-components/auth';
 
 export const Route = createFileRoute('/handler/$')({
@@ -64,6 +65,10 @@ function HandlerPage() {
 
   if (hostedHandlerPath === 'onboarding') {
     return <HostedOnboarding fullPage />;
+  }
+
+  if (hostedHandlerPath === 'oauth-consent') {
+    return <HostedOAuthConsent fullPage />;
   }
 
   return <HexclaveHandler fullPage />;

@@ -261,8 +261,8 @@ if (import.meta.vitest) {
   });
 
   test("derives the JWKS endpoint from the issuer", () => {
-    expect(getOAuthJwksUrl("https://api.example.com/api/v1/projects/project/oidc").toString())
-      .toBe("https://api.example.com/api/v1/projects/project/oidc/.well-known/jwks.json");
+    expect(getOAuthJwksUrl(getOAuthIssuerUrl({ projectId, baseUrl: "https://api.example.com" })).toString())
+      .toBe(`https://api.example.com/api/v1/projects/${projectId}/oidc/.well-known/jwks.json`);
   });
 
   describe("canonicalResource", () => {

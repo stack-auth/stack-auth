@@ -51,7 +51,7 @@ function useProjectIdFromHostname(): string | null | undefined {
   );
 }
 
-function getApiBaseUrlFromEnv(): string | undefined {
+export function getApiBaseUrlFromEnv(): string | undefined {
   const hexclaveValue = import.meta.env.VITE_HEXCLAVE_API_URL;
   const stackValue = import.meta.env.VITE_STACK_API_URL;
   if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
