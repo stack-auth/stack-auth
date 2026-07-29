@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
       }),
       price_id: yupString().defined().meta({
         openapiField: {
-          description: "The Stack auth price ID to purchase",
+          description: "The Hexclave price ID to purchase",
           exampleValue: "price_1234567890abcdef"
         }
       }),

@@ -1,4 +1,4 @@
-import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import { buildHexclaveHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult } from "@assistant-ui/react";
 import type { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -64,7 +64,7 @@ export async function sendAiStreamRequest(
   body: AiStreamRequestBody,
   abortSignal?: AbortSignal,
 ): Promise<ReadableStream<UIMessageChunk>> {
-  const authHeaders = await buildStackAuthHeaders(currentUser);
+  const authHeaders = await buildHexclaveHeaders(currentUser);
 
   const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/stream`, {
     method: "POST",
@@ -182,7 +182,7 @@ export function createUnifiedAiTransport(opts: {
     typeof opts.currentUser === "function" ? opts.currentUser() : opts.currentUser;
   return new DefaultChatTransport<UIMessage>({
     api: `${opts.backendBaseUrl}/api/latest/ai/query/stream`,
-    headers: () => buildStackAuthHeaders(resolveUser()),
+    headers: () => buildHexclaveHeaders(resolveUser()),
     prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
       const modelMessages = await convertToModelMessages(uiMessages);
       const userMessages: WireMessage[] = modelMessages.map((m) => ({
