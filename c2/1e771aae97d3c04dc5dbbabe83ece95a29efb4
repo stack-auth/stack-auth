@@ -1,0 +1,271 @@
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 542-572,780-790
+  s_c6374bd6e28a90::t_db2dd200843030 791
+apps/hosted-components/src/components/ui/copy-button.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 13,29,42
+examples/lovable-react-18-example/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+examples/middleware/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+examples/react-example/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+apps/skills/src/app/route.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 9
+examples/tanstack-start-demo/vite.config.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 10,69
+packages/cli/src/lib/resolve-team.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-62
+packages/cli/src/lib/dashboard-release.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 6-7,12-15,36-38,63-68,76-85,91-92,96-154,171-172,175-180,223-245,269-273,278-281,283,286,293,295,298-300,306-314,318,323,329,339,360-362,365-366,368,370-371,377,379-380
+packages/cli/src/lib/create-project.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 6,10,30-33,35-39
+examples/demo/src/app/page-client.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 14
+apps/skills/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/src/lib/version-check.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 25-26
+apps/mcp/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+examples/js-example/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/hosted-components/src/routes/email-verification-demo.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 3,10-20
+packages/cli/scripts/package-dashboard-release.mjs
+  s_c6374bd6e28a90::t_7552636e9815ca 3-4,6-7,10,13-15,44,46-139,152-167,169,176-179,192
+packages/shared/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/sc/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+docs-mintlify/README.md
+  s_c6374bd6e28a90::t_7552636e9815ca 19
+packages/cli/src/lib/dashboard-release.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-4,10-13,16,20-26,79-167
+sdks/spec/src/apps/client-app.spec.md
+  s_c6374bd6e28a90::t_7552636e9815ca 282-285
+apps/skills/src/skill-page.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 44-45,66,130-143,224-232,270
+examples/demo/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.sign-in-cache-warmup.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-90
+sdks/spec/src/types/users/base-user.spec.md
+  s_c6374bd6e28a90::t_7552636e9815ca 55-61
+packages/template/src/components-page/onboarding.test.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 1-178
+packages/shared-backend/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+docs-mintlify/guides/getting-started/ai-integration.mdx
+  s_c6374bd6e28a90::t_7552636e9815ca 56,80,100
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 8-10,17
+sdks/implementations/swift/Sources/StackAuth/Errors.swift
+  s_c6374bd6e28a90::t_7552636e9815ca 43-53,164-165
+sdks/implementations/swift/Sources/StackAuth/Models/ServerUser.swift
+  s_c6374bd6e28a90::t_7552636e9815ca 25-27,66-68
+  s_c6374bd6e28a90::t_9d0583d5397513 69
+scripts/set-process-title.js
+  s_c6374bd6e28a90::t_7552636e9815ca 10
+packages/react/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+packages/cli/src/commands/team.command.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-124
+sdks/spec/src/types/teams/team.spec.md
+  s_c6374bd6e28a90::t_7552636e9815ca 79-90
+apps/e2e/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+docs-mintlify/openapi/client.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3995
+examples/cjs-test/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/cli/src/commands/team.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-301
+packages/dashboard-ui-components/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/mock-oauth-server/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+sdks/spec/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dev-launchpad/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/next.config.mjs
+  s_c6374bd6e28a90::t_7552636e9815ca 6,40-45,75-76
+apps/skills/src/skill-page.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 53-66
+packages/js/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+apps/dashboard/src/components/vibe-coding/chat-adapters.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 3,257
+apps/hosted-components/src/routes/handler/$.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 3-4,23-82,85,87-88,91-96,98-107
+apps/dashboard/src/lib/ai-conversations.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1,32
+packages/template/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 5
+README.md
+  s_c6374bd6e28a90::t_7552636e9815ca 25,52,58,65,71,78,84,91,97,104,110,117,123,130,136,143,149,156,162,169,175
+apps/e2e/tests/general/cli.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 625
+apps/backend/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 485,1964
+sdks/implementations/swift/Sources/StackAuth/Models/CurrentUser.swift
+  s_c6374bd6e28a90::t_7552636e9815ca 26-27
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1764-1769,1824,1829,1835-1841,1843-1845,1847-1850,2066-2071,2398-2399,2565-2566,3863
+apps/backend/src/prisma-client.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 322-325,351-354,356-360
+apps/dashboard/src/lib/api-headers.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 9
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+docs-mintlify/guides/apps/authentication/cli-authentication.mdx
+  s_c6374bd6e28a90::t_7552636e9815ca 13,18,24,39,44,55
+docs-mintlify/openapi/admin.json
+  s_c6374bd6e28a90::t_7552636e9815ca 5253
+apps/backend/src/app/api/latest/payments/purchases/purchase-session/route.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 33
+docs-mintlify/guides/getting-started/setup.mdx
+  s_c6374bd6e28a90::t_7552636e9815ca 9
+apps/e2e/tests/js/team-memberships.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-117
+apps/hosted-components/src/routes/index.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 3,21-31,33-34
+docs-mintlify/guides/apps/teams/team-selection.mdx
+  s_c6374bd6e28a90::t_7552636e9815ca 25
+packages/cli/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3,38-39,42
+examples/docs-examples/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/template/src/components-page/onboarding.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 53-69
+sdks/implementations/swift/Sources/StackAuth/Models/User.swift
+  s_c6374bd6e28a90::t_7552636e9815ca 22-23,66-67
+  s_c6374bd6e28a90::t_c5f055f4989d87 68
+apps/backend/src/lib/email-rendering.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 59-63
+packages/template/package-template.json
+  s_c6374bd6e28a90::t_7552636e9815ca 16
+apps/dashboard/src/app/(main)/integrations/neon-transfer-confirm-page.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 13
+apps/hosted-components/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+examples/convex/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/shared-backend/src/index.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1
+docs/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/template/src/integrations/convex/component/README.md
+  s_c6374bd6e28a90::t_7552636e9815ca 33-35,39
+sdks/implementations/swift/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/domain-settings.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 589
+apps/e2e/tests/js/app.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 2,68-104
+  s_c6374bd6e28a90::t_fa914effccd5f0 105-106
+CHANGELOG.md
+  s_c6374bd6e28a90::t_7552636e9815ca 7,51,75,82,89,96,103,110
+packages/cli/src/lib/resolve-team.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-58
+apps/backend/src/app/api/latest/internal/rewrite-template-source/route.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 30
+apps/hosted-components/src/hosted-components/auth/onboarding-page.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 71-81,344-345,354,357-361
+sdks/spec/src/types/users/server-user.spec.md
+  s_c6374bd6e28a90::t_7552636e9815ca 17-19
+apps/backend/.env.development
+  s_c6374bd6e28a90::t_7552636e9815ca 48
+examples/e-commerce/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/src/lib/conversations.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1,29
+apps/backend/src/prisma-client.test.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 1-67
+apps/dashboard/src/app/(main)/integrations/oauth-confirm-card.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 10
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 107
+packages/cli/scripts/copy-runtime-assets.mjs
+  s_c6374bd6e28a90::t_7552636e9815ca 2,144-187,199-203,221,227,257-273,297-303,306
+packages/template/src/lib/hexclave-app/teams/index.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 77
+packages/template/src/lib/hexclave-app/users/index.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 140-148
+apps/e2e/tests/backend/endpoints/api/v1/index.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 18
+apps/hosted-components/src/components/development-page-note.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 1-165
+apps/internal-tool/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+packages/cli/src/index.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 20,39
+packages/cli/src/commands/project.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 3,87,92,101
+packages/next/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 4
+packages/cli/src/commands/team.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1-25
+examples/convex/convex/convex.config.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1,5
+packages/shared/src/interface/page-component-versions.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 127,1638,1659-1668
+  s_c6374bd6e28a90::t_4fdbd2e3b1dbb4 1669-1670
+apps/bulldozer-js/src/index.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 437-438,494
+.github/workflows/dashboard-release.yaml
+  s_c6374bd6e28a90::t_7552636e9815ca 19-21,69,72,75-93,113-134,136,141,149,153,155-160,162-181
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 662
+apps/dashboard/src/lib/ai-dashboard/shared-prompt.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 3,64
+packages/ui/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/dashboard/src/components/assistant-ui/chat-stream.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1,67,185
+apps/bulldozer-js/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+docs-mintlify/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/shared/src/interface/client-interface.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 1246,1262,1740-1746
+  s_c6374bd6e28a90::t_cb89b901401f70 1747-1757
+packages/shared-backend/src/config-agent-prompt.test.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 11,13
+apps/dashboard/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+apps/hosted-components/src/styles.css
+  s_c6374bd6e28a90::t_7552636e9815ca 177-181
+docs-mintlify/openapi/server.json
+  s_c6374bd6e28a90::t_7552636e9815ca 5213
+examples/tanstack-start-demo/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/shared-backend/src/config-agent.ts
+  s_c6374bd6e28a90::t_7552636e9815ca 70,72
+examples/convex/app/page.tsx
+  s_c6374bd6e28a90::t_7552636e9815ca 112
+examples/supabase/package.json
+  s_c6374bd6e28a90::t_7552636e9815ca 3
+packages/tanstack-start/package.json
+  s_c6374bd6e28a90::t_4a80ce0d677f27 4
+pnpm-lock.yaml
+  s_c6374bd6e28a90::t_176d8e1c3a48a4 1643,1656-1658,1661-1662,2672-2674,17750-17874
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c21e771aae97d3c04dc5dbbabe83ece95a29efb4",
+  "prompts": {},
+  "sessions": {
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
