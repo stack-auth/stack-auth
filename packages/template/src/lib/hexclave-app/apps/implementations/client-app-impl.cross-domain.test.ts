@@ -323,9 +323,12 @@ describe("StackClientApp cross-domain auth", () => {
     const refreshedRawRefreshTokens: string[] = [];
 
     // Cookie-store writes queue a background trusted-parent-domain lookup. Without this stub, that
-    // lookup fetches the (unreachable) baseUrl with retries while holding the global store lock,
-    // which starves any later test that needs the write lock (e.g. signOut). Not restored on
-    // purpose: queued tasks can still run after this test body finishes.
+    // lookup fetches the (unreachable) baseUrl with retries, leaving noisy background rejections
+    // draining into later tests. (This used to be worse: setAsync once held the global store READ
+    // lock across the whole fetch, so these retries starved any later test needing the write lock,
+    // e.g. signOut. setAsync no longer holds the lock across fetches, but the stub stays to keep
+    // the test run quiet.) Not restored on purpose: queued tasks can still run after this test
+    // body finishes.
     vi.spyOn(clientApp as any, "_getTrustedParentDomain").mockResolvedValue(null);
 
     try {

@@ -30,8 +30,9 @@ describe("client analytics on admin apps", () => {
     });
 
     expect(startSpy).not.toHaveBeenCalled();
-    expect(Reflect.get(adminApp, "_sessionRecorder")).toBeNull();
-    expect(Reflect.get(adminApp, "_eventTracker")).toBeNull();
+    // The lazy analytics facade must not even be constructed for owner-session
+    // admin apps — no facade means no deferred tracker/recorder load either.
+    expect(Reflect.get(adminApp, "_clientAnalytics")).toBeNull();
   });
 
   it("disables analytics on owned admin apps created from a client app", () => {
@@ -44,6 +45,7 @@ describe("client analytics on admin apps", () => {
       redirectMethod: "none",
       noAutomaticPrefetch: true,
       analytics: { enabled: false },
+      telemetry: { resource: { service: { name: "test-client" } } },
     });
     const ownerSession = new InternalSession({
       refreshAccessTokenCallback: async () => null,
@@ -62,7 +64,7 @@ describe("client analytics on admin apps", () => {
     );
 
     expect(startSpy).not.toHaveBeenCalled();
-    expect(Reflect.get(ownedAdminApp, "_sessionRecorder")).toBeNull();
+    expect(Reflect.get(ownedAdminApp, "_clientAnalytics")).toBeNull();
     expect(Reflect.get(ownedAdminApp, "_analyticsOptions")).toEqual({ enabled: false });
   });
 });

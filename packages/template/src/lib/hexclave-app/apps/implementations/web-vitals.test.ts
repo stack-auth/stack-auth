@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startWebVitalsCollector } from "./web-vitals";
+import { startWebVitalsCollector, type WebVitalsCollectorOptions } from "./web-vitals";
 
 // Minimal PerformanceObserver stand-in: one instance per observed type, entries
 // injected by the test. The collector only relies on observe({type, buffered})
@@ -40,10 +40,10 @@ describe("startWebVitalsCollector", () => {
     vi.unstubAllGlobals();
   });
 
-  function startWithMock() {
+  function startWithMock(options?: WebVitalsCollectorOptions) {
     vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
     const updates: number[] = [];
-    const collector = startWebVitalsCollector(() => updates.push(updates.length));
+    const collector = startWebVitalsCollector(() => updates.push(updates.length), options);
     if (collector === null) throw new Error("collector should start with the mocked observer");
     return { collector, updates };
   }
@@ -125,5 +125,46 @@ describe("startWebVitalsCollector", () => {
     collector.disconnect();
     expect(MockPerformanceObserver.instances.every((instance) => instance.disconnected)).toBe(true);
     expect(collector.snapshot()).toEqual({ fcp_ms: 50 });
+  });
+
+  describe("soft-nav mode", () => {
+    it("marks the snapshot and installs no load-metric observers", () => {
+      const { collector } = startWithMock({ mode: "soft-nav", navStartTime: 5000 });
+      expect(collector.snapshot()).toEqual({ soft_nav: 1 });
+      const observedTypes = MockPerformanceObserver.instances.map((instance) => instance.observedType);
+      expect(observedTypes).not.toContain("navigation");
+      expect(observedTypes).not.toContain("paint");
+      expect(observedTypes).not.toContain("largest-contentful-paint");
+      expect(observedTypes).toContain("layout-shift");
+      expect(observedTypes).toContain("event");
+    });
+
+    it("excludes buffered entries from before the navigation", () => {
+      const { collector } = startWithMock({ mode: "soft-nav", navStartTime: 5000 });
+      // Buffered pre-nav shift + interaction belong to the previous page-view.
+      MockPerformanceObserver.byType("layout-shift").emit([
+        { startTime: 4000, value: 0.5, hadRecentInput: false },
+        { startTime: 5200, value: 0.1, hadRecentInput: false },
+      ]);
+      MockPerformanceObserver.byType("event").emit([
+        { startTime: 4500, interactionId: 1, duration: 900 },
+        { startTime: 5300, interactionId: 2, duration: 120 },
+      ]);
+      expect(collector.snapshot()).toEqual({ soft_nav: 1, cls: 0.1, inp_ms: 120 });
+    });
+
+    it("indexes the INP percentile from the interaction count within the window", () => {
+      // 120 interactions happened before the navigation; the window itself has
+      // seen far fewer than 50, so the estimate must stay the longest one.
+      const mutablePerformance = { interactionCount: 120, now: () => 6000 };
+      vi.stubGlobal("performance", mutablePerformance);
+      const { collector } = startWithMock({ mode: "soft-nav", navStartTime: 5000 });
+      mutablePerformance.interactionCount = 130;
+      MockPerformanceObserver.byType("event").emit([
+        { startTime: 5300, interactionId: 2, duration: 300 },
+        { startTime: 5400, interactionId: 3, duration: 90 },
+      ]);
+      expect(collector.snapshot().inp_ms).toBe(300);
+    });
   });
 });

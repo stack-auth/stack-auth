@@ -2,15 +2,18 @@
  * Minimal web-vitals collection (TTFB / FCP / LCP / CLS / INP) built directly on
  * PerformanceObserver — intentionally NOT the `web-vitals` npm package, both to
  * avoid a dependency and because we only need a snapshot-able accumulator: the
- * values are absorbed into the initial `$page-view` span's data (via setData)
+ * values are absorbed into the current `$page-view` span's data (via setData)
  * rather than reported as standalone metric events.
  *
- * Scope: vitals describe the INITIAL page load, so the EventTracker attaches a
- * collector only to the tab's first `$page-view` span and freezes the values
- * when that span ends (first SPA navigation or pagehide). Metrics that would
- * keep accumulating afterwards (CLS, INP) thus measure "the initial page until
- * the first navigation" — the closest honest per-page attribution without
- * browser soft-navigation support.
+ * Scope: the EventTracker attaches one collector per `$page-view` span and
+ * freezes its values when that span ends (SPA navigation or pagehide).
+ *
+ * - `initial` mode covers the tab's hard load: all five metrics.
+ * - `soft-nav` mode covers a SPA navigation: only CLS and INP, windowed to
+ *   entries after the navigation started. TTFB/FCP/LCP describe the HARD load
+ *   and reporting them per soft-nav would be a lie, so those observers are not
+ *   installed at all. The snapshot carries `soft_nav: 1` so dashboard
+ *   percentiles never mix LCP-less soft-nav rows into load metrics.
  */
 
 export type WebVitalsSnapshot = {
@@ -24,7 +27,17 @@ export type WebVitalsSnapshot = {
   cls?: number,
   /** Interaction to next paint, estimated like the web-vitals library (p98-ish). */
   inp_ms?: number,
+  /** Present (1) when the collector ran in soft-nav mode — CLS/INP describe the
+   * SPA navigation window and the load metrics are intentionally absent. */
+  soft_nav?: 1,
 };
+
+export type WebVitalsCollectorOptions =
+  | { mode: "initial" }
+  /** `navStartTime` is the navigation's `performance.now()` timestamp — the
+   * same clock PerformanceEntry.startTime uses — so buffered pre-navigation
+   * entries can be excluded exactly. */
+  | { mode: "soft-nav", navStartTime: number };
 
 export type WebVitalsCollector = {
   snapshot: () => WebVitalsSnapshot,
@@ -47,16 +60,31 @@ function supportsEntryType(type: string): boolean {
   return Array.isArray(supported) && supported.includes(type);
 }
 
+function nativeInteractionCount(): number | null {
+  const value: unknown = Reflect.get(performance, "interactionCount");
+  return typeof value === "number" ? value : null;
+}
+
 /**
  * Starts collecting; returns null where PerformanceObserver is unavailable
  * (SSR, ancient browsers, some webviews). `onUpdate` fires whenever any metric
  * changes — the caller decides how to persist (updates within one flush window
  * coalesce into a single wire row, so no extra throttling is needed here).
  */
-export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollector | null {
+export function startWebVitalsCollector(onUpdate: () => void, options: WebVitalsCollectorOptions = { mode: "initial" }): WebVitalsCollector | null {
   if (typeof PerformanceObserver !== "function" || typeof performance === "undefined") return null;
 
-  const state: WebVitalsSnapshot = {};
+  const softNav = options.mode === "soft-nav";
+  // Entries strictly before the navigation belong to the PREVIOUS page-view's
+  // collector; observers use buffered:true, so this cutoff is what scopes a
+  // soft-nav collector to its own navigation window.
+  const entryCutoffTime = softNav ? options.navStartTime : 0;
+  // `performance.interactionCount` is monotonic-global for the tab, so the
+  // INP percentile index for a soft-nav window must use the count of
+  // interactions WITHIN the window: snapshot a baseline at nav start.
+  const interactionCountBase = softNav ? nativeInteractionCount() ?? 0 : 0;
+
+  const state: WebVitalsSnapshot = softNav ? { soft_nav: 1 } : {};
   const observers: PerformanceObserver[] = [];
 
   // CLS session windows: shifts (without recent input) accumulate into a window
@@ -73,6 +101,7 @@ export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollecto
   const longestById = new Map<number, LongestInteraction>();
 
   const recordInteraction = (entry: PerformanceEntry): boolean => {
+    if (entry.startTime < entryCutoffTime) return false;
     if (!("interactionId" in entry) || typeof entry.interactionId !== "number" || entry.interactionId === 0) return false;
     if (typeof entry.duration !== "number") return false;
 
@@ -89,9 +118,9 @@ export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollecto
       if (dropped !== undefined) longestById.delete(dropped.id);
     }
 
-    const nativeInteractionCount: unknown = Reflect.get(performance, "interactionCount");
-    const index = typeof nativeInteractionCount === "number"
-      ? Math.min(Math.floor(nativeInteractionCount / 50), longestInteractions.length - 1)
+    const currentCount = nativeInteractionCount();
+    const index = currentCount !== null
+      ? Math.min(Math.floor(Math.max(currentCount - interactionCountBase, 0) / 50), longestInteractions.length - 1)
       : 0;
     const inp = Math.round(longestInteractions[index].durationMs);
     if (inp === state.inp_ms) return false;
@@ -113,33 +142,38 @@ export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollecto
     }
   };
 
-  tryObserve("navigation", (entries) => {
-    for (const entry of entries) {
-      if ("responseStart" in entry && typeof entry.responseStart === "number" && entry.responseStart > 0) {
-        state.ttfb_ms = Math.round(entry.responseStart);
-        onUpdate();
+  // The three load metrics describe the hard load only — not installed at all
+  // in soft-nav mode (see the module comment).
+  if (!softNav) {
+    tryObserve("navigation", (entries) => {
+      for (const entry of entries) {
+        if ("responseStart" in entry && typeof entry.responseStart === "number" && entry.responseStart > 0) {
+          state.ttfb_ms = Math.round(entry.responseStart);
+          onUpdate();
+        }
       }
-    }
-  });
+    });
 
-  tryObserve("paint", (entries) => {
-    for (const entry of entries) {
-      if (entry.name === "first-contentful-paint") {
-        state.fcp_ms = Math.round(entry.startTime);
-        onUpdate();
+    tryObserve("paint", (entries) => {
+      for (const entry of entries) {
+        if (entry.name === "first-contentful-paint") {
+          state.fcp_ms = Math.round(entry.startTime);
+          onUpdate();
+        }
       }
-    }
-  });
+    });
 
-  tryObserve("largest-contentful-paint", (entries) => {
-    if (entries.length === 0) return;
-    state.lcp_ms = Math.round(entries[entries.length - 1].startTime);
-    onUpdate();
-  });
+    tryObserve("largest-contentful-paint", (entries) => {
+      if (entries.length === 0) return;
+      state.lcp_ms = Math.round(entries[entries.length - 1].startTime);
+      onUpdate();
+    });
+  }
 
   tryObserve("layout-shift", (entries) => {
     let changed = false;
     for (const entry of entries) {
+      if (entry.startTime < entryCutoffTime) continue;
       if (!("value" in entry) || typeof entry.value !== "number") continue;
       if ("hadRecentInput" in entry && entry.hadRecentInput === true) continue;
       const ts = entry.startTime;

@@ -4,8 +4,11 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventTracker, withSpanImpl } from "./event-tracker";
-import { decodeSpanContextHeader } from "./span-propagation";
+import { HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP } from "./network-capture";
+import { decodeSpanContextHeader, installFetchSpanPropagation } from "./span-propagation";
 import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
+
+const TEST_RESOURCE = { service: { name: "test-client" } } as const;
 
 async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
@@ -53,6 +56,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -69,6 +73,10 @@ describe("EventTracker", () => {
 
       await advancePastFlush();
 
+      expect(JSON.parse(sentBodies[0])).toMatchObject({
+        schema_version: 2,
+        resource: TEST_RESOURCE,
+      });
       // Dead-click classification marks the buffered $click in place —
       // exactly one click event either way.
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
@@ -94,6 +102,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -157,6 +166,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -194,6 +204,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -220,6 +231,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -259,6 +271,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -295,6 +308,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -330,6 +344,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -376,6 +391,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -405,6 +421,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.error(new TypeError("Failed to fetch"));
@@ -437,6 +454,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -466,6 +484,7 @@ describe("EventTracker", () => {
     vi.useFakeTimers();
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async () => Result.ok(new Response()),
     });
 
@@ -494,6 +513,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -533,6 +553,7 @@ describe("EventTracker", () => {
     vi.useFakeTimers();
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async () => Result.ok(new Response()),
     });
 
@@ -551,6 +572,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -582,6 +604,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -599,7 +622,7 @@ describe("EventTracker", () => {
       // payment's chain (checkout, deduped) + payment itself.
       const eventPromise = payment.trackEvent("card_declined", { code: "51" });
 
-      // A raw uuid parent contributes only itself, additively.
+      // A raw uuid explicitly extends the known global path.
       const rawParent = "0f000000-0000-4000-8000-00000000cccc";
       tracker.trackCustomEvent("hint_shown", {}, { parentIds: [rawParent] }).catch(() => {});
 
@@ -631,11 +654,31 @@ describe("EventTracker", () => {
     }
   });
 
+  it("rejects sibling global spans instead of flattening them into a false path", () => {
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async () => Result.ok(new Response()),
+      sessionReplaySegmentId: "segment",
+    });
+
+    try {
+      const left = tracker.startSpan("left", { root: true });
+      const right = tracker.startSpan("right", { root: true });
+      tracker.setGlobalSpan(left);
+
+      expect(() => tracker.setGlobalSpan(right)).toThrow(/one ancestry path/);
+    } finally {
+      tracker.stop();
+    }
+  });
+
   it("continues a span tree from a serialized SpanRef with full ancestry", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -670,6 +713,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return failNext ? Result.error(new TypeError("Failed to fetch")) : Result.ok(new Response());
@@ -699,6 +743,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -734,6 +779,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -766,6 +812,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -811,6 +858,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -836,6 +884,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -875,6 +924,7 @@ describe("EventTracker", () => {
     const registered: Promise<unknown>[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async () => Result.ok(new Response()),
       registerBackgroundTask: (promise) => registered.push(promise),
     });
@@ -892,6 +942,7 @@ describe("EventTracker", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async () => Result.ok(new Response()),
       registerBackgroundTask: () => {
         throw new Error("waitUntil unavailable");
@@ -919,6 +970,7 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.error(new KnownErrors.AnalyticsNotEnabled());
@@ -952,6 +1004,7 @@ describe("EventTracker ambient modes + span handle kit", () => {
   function makeTracker(sentBodies: string[], extraDeps?: Partial<import("./event-tracker").EventTrackerDeps>) {
     return new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -1041,11 +1094,11 @@ describe("EventTracker ambient modes + span handle kit", () => {
     }
   });
 
-  it("span.getPropagationHeaders pins the header to the span's frozen chain + segment identity", () => {
+  it("span.getSpanPropagationHeaders pins the header to the span's frozen chain + segment identity", () => {
     const tracker = makeTracker([]);
     const parent = tracker.startSpan("outer");
     const child = parent.startSpan("inner");
-    const decoded = decodeSpanContextHeader(child.getPropagationHeaders()["x-hexclave-span-context"]);
+    const decoded = decodeSpanContextHeader(child.getSpanPropagationHeaders()["x-hexclave-span-context"]);
     expect(decoded).toEqual({
       projectId: "internal",
       sessionReplaySegmentId: SEG,
@@ -1053,7 +1106,7 @@ describe("EventTracker ambient modes + span handle kit", () => {
     });
   });
 
-  it("span.getPropagationHeaders carries the span's FROZEN page ancestry once the tracker runs", async () => {
+  it("span.getSpanPropagationHeaders carries the span's FROZEN page ancestry once the tracker runs", async () => {
     vi.useFakeTimers();
     const tracker = makeTracker([]);
     try {
@@ -1062,14 +1115,14 @@ describe("EventTracker ambient modes + span handle kit", () => {
       expect(pageViewSpanId).toBeTypeOf("string");
       const span = tracker.startSpan("flow");
 
-      const decoded = decodeSpanContextHeader(span.getPropagationHeaders()["x-hexclave-span-context"]);
+      const decoded = decodeSpanContextHeader(span.getSpanPropagationHeaders()["x-hexclave-span-context"]);
       expect(decoded?.pageViewSpanId).toBe(pageViewSpanId);
 
       // Navigating replaces the current page — but the header stays pinned to
       // the page the span STARTED on (frozen, like the custom chain).
       window.history.pushState({}, "", "/next-page");
       expect(tracker.getCurrentPageViewSpanId()).not.toBe(pageViewSpanId);
-      const decodedAfterNav = decodeSpanContextHeader(span.getPropagationHeaders()["x-hexclave-span-context"]);
+      const decodedAfterNav = decodeSpanContextHeader(span.getSpanPropagationHeaders()["x-hexclave-span-context"]);
       expect(decodedAfterNav?.pageViewSpanId).toBe(pageViewSpanId);
     } finally {
       tracker.stop();
@@ -1107,6 +1160,7 @@ describe("EventTracker $page-view span + autocapture", () => {
   function makeTracker(sentBodies: string[], extraDeps?: Partial<import("./event-tracker").EventTrackerDeps>) {
     return new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -1380,12 +1434,33 @@ describe("EventTracker $page-view span + autocapture", () => {
       tracker.stop();
     }
   });
+
+  it("does not create product spans on identity rotation when Analytics is disabled", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, { productAnalyticsEnabled: false });
+    try {
+      tracker.start();
+      expect(tracker.getCurrentPageViewSpanId()).toBeNull();
+      tracker.setSessionReplaySegmentId("22222222-2222-4222-8222-222222222222");
+      expect(tracker.getCurrentPageViewSpanId()).toBeNull();
+
+      const logPromise = tracker.trackLogEvent({ message: "still observable", level: "info" });
+      await advancePastFlush();
+      await logPromise;
+      expect(allEvents(sentBodies).map((event) => event.event_type)).toEqual(["$log"]);
+      expect(allSpans(sentBodies)).toHaveLength(0);
+    } finally {
+      tracker.stop();
+    }
+  });
 });
 
 describe("EventTracker integrity signals (opt-in)", () => {
   function makeTracker(sentBodies: string[], integritySignals: boolean) {
     return new EventTracker({
       projectId: "internal",
+      resource: TEST_RESOURCE,
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -1624,6 +1699,273 @@ describe("EventTracker integrity signals (opt-in)", () => {
     } finally {
       tracker.stop();
       getSelectionSpy.mockRestore();
+    }
+  });
+});
+
+describe("EventTracker $http-client spans", () => {
+  function makeTracker(sentBodies: string[], extraDeps?: Partial<import("./event-tracker").EventTrackerDeps>) {
+    return new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+      ...extraDeps,
+    });
+  }
+
+  type WireSpan = {
+    span_id: string,
+    span_type: string,
+    ended_at_ms: number | null,
+    parent_span_ids: string[],
+    data: Record<string, unknown>,
+    page_view_span_id?: string,
+    http_client_span_id?: string,
+  };
+
+  function allSpans(sentBodies: string[]): WireSpan[] {
+    return sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: WireSpan[] }).spans ?? []);
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("records a $http-client span with sanitized url, page ancestry, and outcome data", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const pageViewSpanId = tracker.getCurrentPageViewSpanId();
+      const handle = tracker.beginHttpRequestSpan({ url: "https://api.example.com/v1/orders?token=secret", method: "POST", transport: "fetch" });
+      expect(handle).not.toBeNull();
+      expect(handle?.propagate).toBe(true);
+      handle?.end({ status: 502, errored: false, aborted: false, propagated: true });
+      await advancePastFlush();
+
+      const spans = allSpans(sentBodies).filter((span) => span.span_type === "$http-client");
+      expect(spans).toHaveLength(1);
+      expect(spans[0].page_view_span_id).toBe(pageViewSpanId);
+      expect(spans[0].ended_at_ms).toBeTypeOf("number");
+      // A $http-client span never names a bridge span itself.
+      expect(spans[0].http_client_span_id).toBeUndefined();
+      expect(spans[0].data).toMatchObject({
+        method: "POST",
+        // Query strings are stripped at capture (they routinely carry tokens).
+        url: "https://api.example.com/v1/orders",
+        transport: "fetch",
+        status: 502,
+        propagated: 1,
+      });
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("parents under the ambient custom chain (fetch inside withSpan nests under it)", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const parent = tracker.startSpan("checkout");
+      tracker.setGlobalSpan(parent);
+      const handle = tracker.beginHttpRequestSpan({ url: "https://api.example.com/pay", method: "POST", transport: "fetch" });
+      handle?.end({ status: 200, errored: false, aborted: false });
+      await advancePastFlush();
+
+      const httpSpans = allSpans(sentBodies).filter((span) => span.span_type === "$http-client");
+      expect(httpSpans[0].parent_span_ids).toEqual([parent.spanId]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("MANDATORY: a batch flush through the instrumented fetch must not create a span (recursion guard)", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const API_ORIGIN = "https://api.example.test";
+    // Underlying transport stub; the propagation wrapper installs on top of it.
+    const underlyingFetch = ((..._args: unknown[]) => Promise.resolve(new Response())) as typeof fetch;
+    const originalFetch = globalThis.fetch;
+    (globalThis as { fetch: typeof fetch }).fetch = underlyingFetch;
+    const tracker = makeTracker(sentBodies, {
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        // The real SDK transport goes through the (wrapped) global fetch.
+        const response = await globalThis.fetch(`${API_ORIGIN}/api/v1/analytics/events/batch`, { method: "POST", body });
+        return Result.ok(response);
+      },
+      shouldIgnoreFetchUrl: (url) => url.startsWith(`${API_ORIGIN}/`),
+    });
+    const uninstall = installFetchSpanPropagation({
+      getContext: () => null,
+      getSelfOrigin: () => API_ORIGIN,
+      getAllowedOrigins: () => [],
+      beginRequestSpan: (info) => tracker.beginHttpRequestSpan(info),
+    });
+    try {
+      tracker.start();
+      // One real (non-SDK) request so there is at least something to flush and
+      // a control proving the factory works at all.
+      const handle = tracker.beginHttpRequestSpan({ url: "https://api.example.com/data", method: "GET", transport: "fetch" });
+      handle?.end({ status: 200, errored: false, aborted: false });
+      await advancePastFlush();
+      // The flush itself went through the wrapped fetch; give any (wrongly)
+      // created span a chance to be flushed too.
+      await advancePastFlush();
+      await advancePastFlush();
+
+      const httpSpans = allSpans(sentBodies).filter((span) => span.span_type === "$http-client");
+      expect(httpSpans).toHaveLength(1);
+      expect(httpSpans[0].data.url).toBe("https://api.example.com/data");
+    } finally {
+      tracker.stop();
+      uninstall?.();
+      (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
+    }
+  });
+
+  it("caps $http-client spans per page view (warns once) and resets on navigation", async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    // errors-only keeps the cap logic reachable without buffering 500 rows.
+    const tracker = makeTracker(sentBodies, {
+      networkCapture: {
+        enabled: true, capture: "errors-only", sampleRate: 1, allowOrigins: null, denyOrigins: null, ignoreUrls: [],
+      },
+    });
+    try {
+      tracker.start();
+      for (let i = 0; i < HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP; i += 1) {
+        // End immediately (dropped: fast success in errors-only) so the live
+        // registries don't interfere with the count — the budget counts
+        // OPENED requests, kept or not.
+        tracker.beginHttpRequestSpan({ url: "https://x.example/a", method: "GET", transport: "fetch" })
+          ?.end({ status: 200, errored: false, aborted: false });
+      }
+      expect(tracker.beginHttpRequestSpan({ url: "https://x.example/a", method: "GET", transport: "fetch" })).toBeNull();
+      expect(warnSpy.mock.calls.filter(([message]) => typeof message === "string" && message.includes("$http-client")).length).toBe(1);
+      // Navigation resets the budget.
+      window.history.pushState({}, "", "/next-page");
+      expect(tracker.beginHttpRequestSpan({ url: "https://x.example/a", method: "GET", transport: "fetch" })).not.toBeNull();
+    } finally {
+      tracker.stop();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("returns null for ignored, filtered, and disabled capture", () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, {
+      shouldIgnoreFetchUrl: (url) => url.includes("ignored.example"),
+      networkCapture: {
+        enabled: true, capture: "all", sampleRate: 1, allowOrigins: null, denyOrigins: ["https://denied.example"], ignoreUrls: ["/skip-me"],
+      },
+    });
+    try {
+      tracker.start();
+      expect(tracker.beginHttpRequestSpan({ url: "https://ignored.example/a", method: "GET", transport: "fetch" })).toBeNull();
+      expect(tracker.beginHttpRequestSpan({ url: "https://denied.example/a", method: "GET", transport: "fetch" })).toBeNull();
+      expect(tracker.beginHttpRequestSpan({ url: "https://x.example/skip-me", method: "GET", transport: "fetch" })).toBeNull();
+      expect(tracker.beginHttpRequestSpan({ url: "wss://x.example/socket", method: "GET", transport: "fetch" })).toBeNull();
+      expect(tracker.beginHttpRequestSpan({ url: "https://x.example/kept", method: "GET", transport: "fetch" })).not.toBeNull();
+    } finally {
+      tracker.stop();
+    }
+  });
+});
+
+describe("EventTracker per-navigation web vitals", () => {
+  // Mirrors the mock in web-vitals.test.ts: one instance per observed type,
+  // entries injected by the test.
+  class MockPerformanceObserver {
+    static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event", "first-input"];
+    static instances: MockPerformanceObserver[] = [];
+
+    observedType: string | null = null;
+    disconnected = false;
+
+    constructor(private readonly callback: (list: { getEntries: () => unknown[] }) => void) {
+      MockPerformanceObserver.instances.push(this);
+    }
+
+    observe(options: { type: string }) {
+      this.observedType = options.type;
+    }
+
+    disconnect() {
+      this.disconnected = true;
+    }
+
+    emit(entries: unknown[]) {
+      this.callback({ getEntries: () => entries });
+    }
+
+    static byType(type: string): MockPerformanceObserver[] {
+      return MockPerformanceObserver.instances.filter((candidate) => candidate.observedType === type);
+    }
+  }
+
+  afterEach(() => {
+    MockPerformanceObserver.instances = [];
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("attaches a fresh collector per $page-view: full metrics initially, soft-nav CLS/INP after SPA navigations", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("PerformanceObserver", MockPerformanceObserver);
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+    try {
+      tracker.start();
+      const firstSpanId = tracker.getCurrentPageViewSpanId();
+      // Initial mode installs the load-metric observers.
+      expect(MockPerformanceObserver.byType("navigation")).toHaveLength(1);
+      MockPerformanceObserver.byType("paint")[0].emit([{ name: "first-contentful-paint", startTime: 100 }]);
+
+      window.history.pushState({}, "", "/second");
+      const secondSpanId = tracker.getCurrentPageViewSpanId();
+      // The initial collector was disconnected with its span; a soft-nav
+      // collector attached for the new span WITHOUT load-metric observers.
+      expect(MockPerformanceObserver.byType("navigation")).toHaveLength(1);
+      expect(MockPerformanceObserver.byType("layout-shift")).toHaveLength(2);
+      const initialObservers = MockPerformanceObserver.instances.filter((observer) => observer.observedType === "paint");
+      expect(initialObservers.every((observer) => observer.disconnected)).toBe(true);
+
+      // A layout shift after the navigation lands on the NEW span, soft_nav-flagged.
+      const softNavLayoutShift = MockPerformanceObserver.byType("layout-shift")[1];
+      softNavLayoutShift.emit([{ startTime: performance.now() + 1, value: 0.25, hadRecentInput: false }]);
+
+      window.history.pushState({}, "", "/third");
+      await advancePastFlush();
+
+      const spans = sentBodies
+        .flatMap((body) => (JSON.parse(body) as { spans?: { span_id: string, span_type: string, data: Record<string, unknown> }[] }).spans ?? [])
+        .filter((span) => span.span_type === "$page-view");
+      const first = spans.find((span) => span.span_id === firstSpanId);
+      const second = spans.find((span) => span.span_id === secondSpanId);
+      expect((first?.data.web_vitals as Record<string, unknown>).fcp_ms).toBe(100);
+      expect((first?.data.web_vitals as Record<string, unknown>).soft_nav).toBeUndefined();
+      expect(second?.data.web_vitals).toMatchObject({ soft_nav: 1, cls: 0.25 });
+      expect((second?.data.web_vitals as Record<string, unknown>).fcp_ms).toBeUndefined();
+    } finally {
+      tracker.stop();
     }
   });
 });

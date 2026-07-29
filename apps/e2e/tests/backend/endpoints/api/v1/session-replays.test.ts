@@ -8,6 +8,15 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+const DEFAULT_REPLAY_TELEMETRY_FIELDS = {
+  schema_version: 2,
+  resource: {
+    service: { namespace: "e2e", name: "test-client", version: "test" },
+    deploymentEnvironmentName: "test",
+    attributes: { suite: "session-replays" },
+  },
+} as const;
+
 function getInternalDatabaseConnectionString(): string {
   const connectionString = getEnvVariable(
     "HEXCLAVE_DATABASE_CONNECTION_STRING",
@@ -45,6 +54,7 @@ async function uploadBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: options.browserSessionId,
       session_replay_segment_id: options.sessionReplaySegmentId ?? randomUUID(),
       batch_id: options.batchId,
@@ -64,6 +74,7 @@ it("requires a user token", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -97,6 +108,7 @@ it("throws error when analytics is not enabled", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -135,6 +147,7 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: browserSessionId,
       session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
@@ -179,6 +192,7 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: browserSessionId,
       session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
@@ -290,27 +304,34 @@ it("emits $session-replay and $session-replay-segment spans queryable via the sp
 
   // A successful replay upload now guarantees that its trace spans have crossed
   // the ClickHouse acceptance boundary; no background-task polling is required.
-  const queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+  const queryRes = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
     accessType: "admin",
     body: {
-      query: "SELECT name, span_id, parent_span_ids, session_replay_id, session_replay_segment_id FROM spans WHERE session_replay_id = {replayId:String} ORDER BY name",
+      query: "SELECT span_type, span_id, parent_span_ids, session_replay_id, session_replay_segment_id, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM spans WHERE session_replay_id = {replayId:String} ORDER BY span_type",
       params: { replayId },
     },
   });
 
   expect(queryRes.status).toBe(200);
-  const rows = (queryRes?.body as any).result;
+  const rows = (queryRes.body as any).result;
   expect(rows).toHaveLength(2);
 
-  const replaySpan = rows.find((r: any) => r.name === "$session-replay");
-  const segmentSpan = rows.find((r: any) => r.name === "$session-replay-segment");
+  const replaySpan = rows.find((r: any) => r.span_type === "$session-replay");
+  const segmentSpan = rows.find((r: any) => r.span_type === "$session-replay-segment");
 
   // Replay-level span: id is prefixed, parented to the refresh-token span, no segment.
   expect(replaySpan.span_id).toBe(`sri-${replayId}`);
   expect(replaySpan.parent_span_ids).toHaveLength(1);
   expect(replaySpan.parent_span_ids[0]).toMatch(/^rti-/);
   expect(replaySpan.session_replay_segment_id).toBeNull();
+  expect(replaySpan).toMatchObject({
+    service_namespace: "e2e",
+    service_name: "test-client",
+    service_version: "test",
+    deployment_environment_name: "test",
+    resource_suite: "session-replays",
+  });
 
   // Segment span (per tab): ancestor list is root-first [refresh-token, replay];
   // its identity combines the replay id with the recording's per-tab segment id.
@@ -328,6 +349,7 @@ it("accepts a gzipped binary body (compressed large-payload encoding)", async ({
 
   const now = Date.now();
   const payload = {
+    ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
     browser_session_id: randomUUID(),
     session_replay_segment_id: randomUUID(),
     batch_id: randomUUID(),
@@ -436,6 +458,7 @@ it("rejects empty events", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -465,6 +488,7 @@ it("rejects too many events", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -492,6 +516,7 @@ it("rejects invalid browser_session_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: "not-a-uuid",
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -534,6 +559,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: "not-a-uuid",
@@ -576,6 +602,7 @@ it("rejects invalid session_replay_segment_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: "not-a-uuid",
       batch_id: randomUUID(),
@@ -609,7 +636,7 @@ it("rejects invalid session_replay_segment_id", async ({ expect }) => {
   `);
 });
 
-it("rejects events without timestamps instead of fabricating replay bounds", async ({ expect }) => {
+it("skips malformed timestamps and falls back to sent_at_ms for replay bounds", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
@@ -621,6 +648,7 @@ it("rejects events without timestamps instead of fabricating replay bounds", asy
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: browserSessionId,
       session_replay_segment_id: randomUUID(),
       batch_id: batchId,
@@ -630,16 +658,19 @@ it("rejects events without timestamps instead of fabricating replay bounds", asy
     },
   });
 
-  expect(res).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Session replay event at index 0 is missing a timestamp",
-      "headers": Headers {
-        "x-stack-known-error": "BAD_REQUEST",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(res.status).toBe(200);
+  const replayId = res.body?.session_replay_id;
+  expect(typeof replayId).toBe("string");
+
+  await withInternalDatabase(async (client) => {
+    const bounds = await client.query<{ firstMs: string, lastMs: string }>(
+      `SELECT EXTRACT(EPOCH FROM "firstEventAt") * 1000 AS "firstMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastMs" FROM "SessionReplayChunk" WHERE "sessionReplayId" = $1::uuid AND "batchId" = $2::uuid`,
+      [replayId, batchId],
+    );
+    expect(bounds.rows).toHaveLength(1);
+    expect(Number(bounds.rows[0].firstMs)).toBe(1_700_000_000_500);
+    expect(Number(bounds.rows[0].lastMs)).toBe(1_700_000_000_500);
+  });
 });
 
 it("rejects non-integer started_at_ms", async ({ expect }) => {
@@ -651,6 +682,7 @@ it("rejects non-integer started_at_ms", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
@@ -696,6 +728,7 @@ it("rejects oversized payloads", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
       browser_session_id: randomUUID(),
       session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),

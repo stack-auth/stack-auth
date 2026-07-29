@@ -1,18 +1,19 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
+import { increasePlanItemQuantity, tryDecreasePlanItemQuantities } from "@/lib/plan-metering";
 import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
-import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { gzip as gzipCb, gunzipSync } from "node:zlib";
+import { constants as zlibConstants, gzip as gzipCb, gunzipSync } from "node:zlib";
 
 const gzip = promisify(gzipCb);
 
@@ -50,24 +51,20 @@ function maybeDecodeBinaryBody(value: unknown): unknown {
   }
 }
 
-function extractEventTimesMs(events: unknown[]) {
+function extractEventTimesMs(events: unknown[], fallbackMs: number) {
   let minTs = Infinity;
   let maxTs = -Infinity;
 
-  for (const [index, event] of events.entries()) {
-    if (typeof event !== "object" || event === null || !("timestamp" in event)) {
-      throw new StatusError(StatusError.BadRequest, `Session replay event at index ${index} is missing a timestamp`);
-    }
+  for (const event of events) {
+    if (typeof event !== "object" || event === null || !("timestamp" in event)) continue;
     const ts = event.timestamp;
-    if (typeof ts !== "number" || !Number.isFinite(ts)) {
-      throw new StatusError(StatusError.BadRequest, `Session replay event at index ${index} has an invalid timestamp`);
-    }
+    if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
     minTs = Math.min(minTs, ts);
     maxTs = Math.max(maxTs, ts);
   }
 
   if (!Number.isFinite(minTs) || !Number.isFinite(maxTs) || minTs > maxTs) {
-    throw new StatusError(StatusError.BadRequest, "Session replay batches must contain at least one timestamped event");
+    return { firstMs: fallbackMs, lastMs: fallbackMs };
   }
   return { firstMs: minTs, lastMs: maxTs };
 }
@@ -87,6 +84,12 @@ export const POST = createSmartRouteHandler({
       refreshTokenId: adaptSchema
     }).defined(),
     body: yupObject({
+      schema_version: yupNumber().defined().integer().oneOf([2]),
+      resource: yupMixed().defined().test(
+        "telemetry-resource",
+        "Invalid telemetry resource",
+        (value) => getTelemetryResourceError(value) === null,
+      ),
       browser_session_id: yupString().defined().matches(UUID_RE, "Invalid browser_session_id"),
       session_replay_segment_id: yupString().defined().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
@@ -106,6 +109,11 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }, fullReq) {
+    if (!isTelemetryResource(body.resource)) {
+      throw new HexclaveAssertionError("The request schema accepted an invalid telemetry resource");
+    }
+    const resource = body.resource;
+
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
       throw new KnownErrors.AnalyticsNotEnabled();
     }
@@ -137,21 +145,22 @@ export const POST = createSmartRouteHandler({
     const projectId = auth.tenancy.project.id;
     const branchId = auth.tenancy.branchId;
 
-    const { firstMs, lastMs } = extractEventTimesMs(body.events);
+    const { firstMs, lastMs } = extractEventTimesMs(body.events, body.sent_at_ms);
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
 
-    const app = getHexclaveServerApp();
-
     const isNewSession = recentSession == null;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    let sessionReplayQuotaDebited = false;
     if (isNewSession && billingTeamId != null && arePlanLimitsEnforced()) {
-      const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
-      const isDebited = await replaysItem.tryDecreaseQuantity(1);
-      if (!isDebited) {
+      const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [
+        { itemId: ITEM_IDS.sessionReplays, quantity: 1 },
+      ]);
+      if (debitResult.insufficientItemId != null) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, 1);
       }
+      sessionReplayQuotaDebited = true;
     }
 
     const replayId = recentSession?.id ?? randomUUID();
@@ -160,31 +169,52 @@ export const POST = createSmartRouteHandler({
     // A retry's body is not authoritative: callers may resend the same batch ID
     // with different events. Read the durable chunk before updating projections
     // so an idempotent retry cannot permanently expand the replay's bounds.
-    let chunk = await prisma.sessionReplayChunk.findUnique({
-      where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
-      select: {
-        s3Key: true,
-        sessionReplaySegmentId: true,
-        firstEventAt: true,
-        lastEventAt: true,
-      },
-    });
-    let deduped = chunk != null;
+    let chunk: {
+      s3Key: string,
+      sessionReplaySegmentId: string,
+      firstEventAt: Date,
+      lastEventAt: Date,
+    } | null;
     if (recentSession == null) {
       // The replay row must exist before its first chunk because of the foreign
-      // key. Its initial bounds are repaired from the durable chunk below.
-      await prisma.sessionReplay.create({
-        data: {
-          id: replayId,
-          tenancyId,
-          projectUserId,
-          refreshTokenId,
-          startedAt: new Date(firstMs),
-          lastEventAt: new Date(lastMs),
-          shouldUpdateSequenceId: true,
+      // key. Persist it immediately after the debit: once this row exists, a
+      // retry finds the same session and cannot debit again even if S3 or a
+      // later projection fails. Only a failed creation needs compensation.
+      try {
+        await prisma.sessionReplay.create({
+          data: {
+            id: replayId,
+            tenancyId,
+            projectUserId,
+            refreshTokenId,
+            startedAt: new Date(firstMs),
+            lastEventAt: new Date(lastMs),
+            shouldUpdateSequenceId: true,
+          },
+        });
+      } catch (error) {
+        if (sessionReplayQuotaDebited && billingTeamId != null) {
+          try {
+            await increasePlanItemQuantity(billingTeamId, ITEM_IDS.sessionReplays, 1);
+          } catch (refundError) {
+            captureError("session-replay-create-refund", refundError);
+          }
+        }
+        throw error;
+      }
+      chunk = null;
+    } else {
+      chunk = await prisma.sessionReplayChunk.findUnique({
+        where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
+        select: {
+          s3Key: true,
+          sessionReplaySegmentId: true,
+          firstEventAt: true,
+          lastEventAt: true,
         },
       });
     }
+    let deduped = chunk != null;
 
     // A retry must still repair the idempotent segment/span projections. The
     // chunk row is the durable source of truth for those projections; returning
@@ -192,7 +222,8 @@ export const POST = createSmartRouteHandler({
     // the chunk.
     if (chunk == null) {
       const payload = {
-        v: 1,
+        schema_version: 2,
+        resource,
         session_replay_id: replayId,
         browser_session_id: browserSessionId,
         session_replay_segment_id: sessionReplaySegmentId,
@@ -202,7 +233,10 @@ export const POST = createSmartRouteHandler({
         events: body.events,
       };
       const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-      const gzipped = new Uint8Array(await gzip(payloadBytes));
+      // rrweb JSON is extremely repetitive. Best-speed gzip is ~4x cheaper
+      // than the default level for representative replay batches while the
+      // resulting object remains only a few percent of its raw size.
+      const gzipped = new Uint8Array(await gzip(payloadBytes, { level: zlibConstants.Z_BEST_SPEED }));
 
       await uploadBytes({
         key: s3Key,
@@ -246,37 +280,36 @@ export const POST = createSmartRouteHandler({
     // Only durable chunk metadata may advance replay bounds. The atomic update
     // makes concurrent first-seen copies idempotent after their unique-key race
     // and prevents distinct concurrent batches from losing each other's bounds.
-    const replayRows = await prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
-      UPDATE "SessionReplay"
-      SET
-        "startedAt" = LEAST("startedAt", ${chunk.firstEventAt}),
-        "lastEventAt" = GREATEST("lastEventAt", ${chunk.lastEventAt}),
-        "shouldUpdateSequenceId" = TRUE,
-        "updatedAt" = NOW()
-      WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
-      RETURNING "startedAt", "lastEventAt"
-    `;
+    const [replayRows, segmentBounds] = await Promise.all([
+      prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
+        UPDATE "SessionReplay"
+        SET
+          "startedAt" = LEAST("startedAt", ${chunk.firstEventAt}),
+          "lastEventAt" = GREATEST("lastEventAt", ${chunk.lastEventAt}),
+          "shouldUpdateSequenceId" = TRUE,
+          "updatedAt" = NOW()
+        WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
+        RETURNING "startedAt", "lastEventAt"
+      `,
+      // This projection touches a different row/table and derives solely from
+      // the already-durable chunk, so it can advance alongside replay bounds.
+      upsertSessionReplaySegmentBounds(prisma, {
+        tenancyId,
+        sessionReplayId: replayId,
+        sessionReplaySegmentId: chunk.sessionReplaySegmentId,
+        batchFirstEventAt: chunk.firstEventAt,
+        batchLastEventAt: chunk.lastEventAt,
+      }),
+    ]);
     if (replayRows.length !== 1) {
       throw new HexclaveAssertionError("Session replay bounds update did not return exactly one replay row");
     }
     const replay = replayRows[0];
 
-    // Fold this batch's event-time bounds into the maintained per-segment row
-    // (O(1) LEAST/GREATEST upsert — see upsertSessionReplaySegmentBounds). On-path
-    // because it's a single cheap Postgres write and the returned bounds are the
-    // authoritative segment interval.
-    const segmentBounds = await upsertSessionReplaySegmentBounds(prisma, {
-      tenancyId,
-      sessionReplayId: replayId,
-      sessionReplaySegmentId: chunk.sessionReplaySegmentId,
-      batchFirstEventAt: chunk.firstEventAt,
-      batchLastEventAt: chunk.lastEventAt,
-    });
-
     // The replay and segment spans are part of the trace model, not a disposable
     // mirror. Wait for ClickHouse acceptance before reporting a successful replay
     // upload so a returned replay id always has its corresponding trace ancestry.
-    await insertSessionReplaySpans(getClickhouseAdminClient(), {
+    await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
       projectId,
       branchId,
       replayId,
@@ -287,6 +320,7 @@ export const POST = createSmartRouteHandler({
       replayLastEventAt: replay.lastEventAt,
       segmentStartedAt: segmentBounds.firstEventAt,
       segmentLastEventAt: segmentBounds.lastEventAt,
+      resource,
     });
 
     return {

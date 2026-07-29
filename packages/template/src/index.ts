@@ -12,6 +12,8 @@ export type { ParentRef, Span, SpanRef, StartSpanOptions, TrackOptions } from ".
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/hexclave-app/apps/implementations/session-replay";
+export type { ErrorCaptureOptions, LogsOptions, NetworkOptions, ObservabilityOptions, SpanPropagationOptions } from "./lib/hexclave-app/apps/implementations/observability-config";
+export type { TelemetryOptions } from "./lib/hexclave-app/apps/implementations/telemetry-config";
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
 // declarations in the source files (so it survives dts bundling).
 export { HexclaveHandler, StackHandler } from "./components-page/hexclave-handler";
