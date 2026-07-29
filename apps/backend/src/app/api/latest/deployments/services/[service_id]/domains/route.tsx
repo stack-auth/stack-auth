@@ -1,4 +1,4 @@
-import { HOSTNAME_REGEX, getOrCreateOperationalService, getServiceDefinitionOrThrow } from "@/lib/deployments";
+import { HOSTNAME_REGEX, getOrCreateOperationalService, getServiceRowOrThrow } from "@/lib/deployments";
 import { VercelApiError, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "@/lib/deployments/vercel-client";
 import { getPrismaClientForTenancy, isPrismaUniqueConstraintViolation } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -36,9 +36,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params, body }) => {
-    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
-
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
     const existing = await prisma.deploymentServiceDomain.findUnique({
       where: {

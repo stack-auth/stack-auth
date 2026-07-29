@@ -2,179 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertSecretsMatchEnv, extractServiceDefinition, parseSecretOptions, resolveDeployConfigPath, type ServiceEnvVarConfig } from "./deploy.js";
-
-describe("parseSecretOptions", () => {
-  it("parses KEY=VALUE pairs", () => {
-    expect(parseSecretOptions(["a=1", "db_connection=two"])).toEqual(new Map([
-      ["a", "1"],
-      ["db_connection", "two"],
-    ]));
-  });
-
-  it("keeps everything after the first = as the value", () => {
-    expect(parseSecretOptions(["db_connection=postgres://user:pass@host/db?a=b"])).toEqual(new Map([
-      ["db_connection", "postgres://user:pass@host/db?a=b"],
-    ]));
-  });
-
-  it("allows empty values", () => {
-    expect(parseSecretOptions(["empty="])).toEqual(new Map([["empty", ""]]));
-  });
-
-  it("rejects entries without =", () => {
-    expect(() => parseSecretOptions(["novalue"])).toThrow("KEY=VALUE");
-  });
-
-  it("rejects entries with an empty key", () => {
-    expect(() => parseSecretOptions(["=value"])).toThrow("KEY=VALUE");
-  });
-
-  it("rejects invalid keys", () => {
-    expect(() => parseSecretOptions(["bad key=x"])).toThrow("Invalid --secret key");
-    expect(() => parseSecretOptions(["bad.key=x"])).toThrow("Invalid --secret key");
-  });
-
-  it("rejects duplicate keys", () => {
-    expect(() => parseSecretOptions(["a=1", "a=2"])).toThrow("Duplicate --secret key");
-  });
-});
-
-describe("extractServiceDefinition", () => {
-  const config = {
-    "deployments-alpha": {
-      services: {
-        api: {
-          type: "vercel",
-          framework: "nextjs",
-          installCommand: "pnpm install",
-          buildCommand: "pnpm build",
-          outputDirectory: ".next",
-          rootDirectory: "./api",
-          env: {
-            MY_ENV_VAR: { value: "true" },
-            DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
-            NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
-          },
-        },
-        minimal: { type: "vercel" },
-      },
-    },
-  };
-
-  it("extracts a fully specified service", () => {
-    expect(extractServiceDefinition(config, "api")).toEqual({
-      framework: "nextjs",
-      installCommand: "pnpm install",
-      buildCommand: "pnpm build",
-      outputDirectory: ".next",
-      rootDirectory: "./api",
-      env: {
-        MY_ENV_VAR: { value: "true" },
-        DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
-        NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
-      },
-    });
-  });
-
-  it("extracts a minimal service", () => {
-    expect(extractServiceDefinition(config, "minimal")).toEqual({
-      framework: undefined,
-      installCommand: undefined,
-      buildCommand: undefined,
-      outputDirectory: undefined,
-      rootDirectory: undefined,
-      env: {},
-    });
-  });
-
-  it("lists available services when the requested one is missing", () => {
-    expect(() => extractServiceDefinition(config, "web")).toThrow("Available services: api, minimal");
-  });
-
-  it("rejects configs without a deployments-alpha.services section", () => {
-    expect(() => extractServiceDefinition({}, "api")).toThrow("deployments-alpha.services");
-  });
-
-  it("rejects services without a type", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { framework: "nextjs" } } },
-    }, "api")).toThrow('Add `type: "vercel"`');
-  });
-
-  it("rejects services with an unknown type", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "netlify" } } },
-    }, "api")).toThrow('must be "vercel"');
-  });
-
-  it("rejects non-string build fields", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", buildCommand: 42 } } },
-    }, "api")).toThrow("must be a string");
-  });
-
-  it("rejects invalid env var keys", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { "1BAD": { value: "x" } } } } },
-    }, "api")).toThrow("invalid key");
-  });
-
-  it("rejects secret env vars with an inline value", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } } },
-    }, "api")).toThrow("must not have a `value`");
-  });
-
-  it("rejects secret env vars without a key", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "secret" } } } } },
-    }, "api")).toThrow("must have a `key`");
-  });
-
-  it("rejects plain env vars with a secret key", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { value: "x", key: "a" } } } } },
-    }, "api")).toThrow("must not have a `key`");
-  });
-
-  it("rejects the legacy {service.output} interpolation syntax in connections", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } } },
-    }, "api")).toThrow("service output");
-  });
-
-  it("rejects unknown env var types", () => {
-    expect(() => extractServiceDefinition({
-      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "literal", value: "x" } } } } },
-    }, "api")).toThrow("unknown `type`");
-  });
-});
-
-describe("assertSecretsMatchEnv", () => {
-  const env: Record<string, ServiceEnvVarConfig> = {
-    PLAIN: { value: "x" },
-    DB: { type: "secret", key: "db_connection" },
-    API: { type: "secret", key: "api-key" },
-    PROJECT: { type: "connection", value: "hexclave.projectId" },
-  };
-
-  it("accepts exactly matching secrets", () => {
-    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"], ["api-key", "b"]]))).not.toThrow();
-  });
-
-  it("rejects missing secrets", () => {
-    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"]]))).toThrow("Missing secret values for: api-key");
-  });
-
-  it("rejects unknown secrets", () => {
-    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"], ["api-key", "b"], ["typo", "c"]]))).toThrow("Unknown --secret key(s): typo");
-  });
-
-  it("accepts no secrets when none are referenced", () => {
-    expect(() => assertSecretsMatchEnv({ PLAIN: { value: "x" } }, new Map())).not.toThrow();
-  });
-});
+import { evaluateServicesFunction, type ServicesFunctionContext } from "../lib/services-config.js";
+import { collectRequiredSecretKeys, resolveDeployConfigPath } from "./deploy.js";
 
 describe("resolveDeployConfigPath", () => {
   const tempDirs: string[] = [];
@@ -189,7 +18,7 @@ describe("resolveDeployConfigPath", () => {
     }
   });
 
-  it("prefers an explicit --config path", () => {
+  it("prefers an explicit --config-file path", () => {
     const dir = makeTempDir();
     const configPath = path.join(dir, "custom.config.ts");
     fs.writeFileSync(configPath, "export const config = {};");
@@ -214,8 +43,43 @@ describe("resolveDeployConfigPath", () => {
     expect(resolveDeployConfigPath(undefined, dir)).toBe(path.join(dir, "stack.config.ts"));
   });
 
-  it("returns undefined when nothing is found (dashboard mode)", () => {
+  it("errors when no config file is found (a config file is required now)", () => {
     const dir = makeTempDir();
-    expect(resolveDeployConfigPath(undefined, dir)).toBeUndefined();
+    expect(() => resolveDeployConfigPath(undefined, dir)).toThrow("No config file found");
+  });
+});
+
+describe("collectRequiredSecretKeys", () => {
+  const servicesOf = (definition: (ctx: ServicesFunctionContext) => unknown) => [...evaluateServicesFunction({
+    configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
+    servicesExport: definition,
+    mode: "deploy",
+  }).services.values()];
+
+  it("collects only secrets without defaults, deduplicated and sorted", () => {
+    const services = servicesOf(({ secret }) => ({
+      web: {
+        type: "vercel",
+        env: {
+          A: secret("zebra"),
+          B: secret("alpha"),
+          C: secret("zebra"),
+          D: secret("with-default", "fallback"),
+          E: "plain",
+        },
+      },
+      api: {
+        type: "vercel",
+        env: { F: secret("alpha") },
+      },
+    }));
+    expect(collectRequiredSecretKeys(services)).toEqual(["alpha", "zebra"]);
+  });
+
+  it("returns an empty list when every secret has a default", () => {
+    const services = servicesOf(({ secret }) => ({
+      web: { type: "vercel", env: { A: secret("k", "v") } },
+    }));
+    expect(collectRequiredSecretKeys(services)).toEqual([]);
   });
 });

@@ -5,190 +5,34 @@ import { getInternalUser } from "../lib/app.js";
 import { isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuth } from "../lib/auth.js";
 import { AuthError, CliError, errorMessage } from "../lib/errors.js";
 import { packageSourceDirectory } from "../lib/source-packaging.js";
+import { computeDeploymentLevels, evaluateServicesFunction, importConfigModule, type EvaluatedService } from "../lib/services-config.js";
+import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from "./config-file.js";
 
-// The names checked (in order) when --config is not passed; same preference
-// order as `hexclave config push`'s pull-side resolution.
+// The names checked (in order) when --config-file is not passed; same
+// preference order as `hexclave config push`'s pull-side resolution.
 const CONFIG_FILE_CANDIDATES = ["hexclave.config.ts", "hexclave.config.js", "stack.config.ts", "stack.config.js"];
 
+const RUN_POLL_INTERVAL_MS = 3_000;
+// Generous cap so a wedged remote build doesn't hang CI forever; Vercel's own
+// build timeout is 45 minutes on most plans.
+const RUN_POLL_TIMEOUT_MS = 60 * 60 * 1000;
+const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+
 export type DeployOptions = {
-  config?: string,
+  serviceId?: string,
+  configFile?: string,
   cloudProjectId?: string,
-  secret: string[],
-};
-
-const SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
-const ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
-// Must match the backend's connection value validation: `<serviceId>.<outputKey>`.
-const CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+$/;
-
-/**
- * Parses repeated `--secret KEY=VALUE` options. Values may contain `=` (only
- * the first one separates key from value). Keys are the secret keys named by
- * `type: "secret"` env vars in the config; values are never persisted by
- * Hexclave. Exported for unit tests.
- */
-export function parseSecretOptions(secretOptions: string[]): Map<string, string> {
-  const secrets = new Map<string, string>();
-  for (const option of secretOptions) {
-    const separatorIndex = option.indexOf("=");
-    if (separatorIndex <= 0) {
-      throw new CliError(`Invalid --secret value ${JSON.stringify(option)}. Expected the KEY=VALUE format.`);
-    }
-    const key = option.slice(0, separatorIndex);
-    const value = option.slice(separatorIndex + 1);
-    if (!SECRET_KEY_REGEX.test(key)) {
-      throw new CliError(`Invalid --secret key ${JSON.stringify(key)}. Secret keys must contain only letters, numbers, underscores, and hyphens.`);
-    }
-    if (secrets.has(key)) {
-      throw new CliError(`Duplicate --secret key ${JSON.stringify(key)}.`);
-    }
-    secrets.set(key, value);
-  }
-  return secrets;
-}
-
-// The top-level config section the Deployments app owns. The `-alpha` suffix is
-// part of the public key while the app is in alpha, and it must match the app id
-// in the backend's config schema — a mismatch here silently reads an empty
-// section rather than failing, so it is defined once and reused below.
-const DEPLOYMENTS_CONFIG_SECTION = "deployments-alpha";
-
-// The config-side shape of one env var. Mirrors the schema of
-// `deployments-alpha.services.<name>.env.<KEY>` and is sent to the deploy
-// endpoint verbatim.
-export type ServiceEnvVarConfig =
-  | { value: string }
-  | { type: "secret", key: string }
-  | { type: "connection", value: string };
-
-export type ServiceDefinition = {
-  framework?: string,
-  installCommand?: string,
-  buildCommand?: string,
-  outputDirectory?: string,
-  rootDirectory?: string,
-  env: Record<string, ServiceEnvVarConfig>,
+  // commander's --no-config-push flag: true unless --no-config-push is passed.
+  configPush: boolean,
 };
 
 /**
- * Extracts one service's definition from a loaded config module. The config
- * file holds it under `deployments-alpha.services.<name>` — the exact shape that
- * `hexclave config push` pushes as branch config. Exported for unit tests.
+ * Resolves the config file path: --config-file wins (and must exist);
+ * otherwise the first existing candidate in cwd. Unlike the pre-services CLI,
+ * a config file is REQUIRED — service definitions only exist in its `services`
+ * export. Exported for unit tests.
  */
-export function extractServiceDefinition(config: unknown, serviceName: string): ServiceDefinition {
-  if (config == null || typeof config !== "object") {
-    throw new CliError("Config file must export a plain `config` object.");
-  }
-  const section = (config as Record<string, unknown>)[DEPLOYMENTS_CONFIG_SECTION];
-  const services = section != null && typeof section === "object" ? (section as { services?: unknown }).services : undefined;
-  if (services == null || typeof services !== "object") {
-    throw new CliError(`The config file has no \`${DEPLOYMENTS_CONFIG_SECTION}.services\` section. Add one, e.g.:\n  export const config = {\n    "${DEPLOYMENTS_CONFIG_SECTION}": {\n      services: {\n        ${serviceName}: { type: "vercel", rootDirectory: "./", framework: "nextjs" },\n      },\n    },\n  };`);
-  }
-  const service = (services as Record<string, unknown>)[serviceName];
-  if (service == null || typeof service !== "object") {
-    const available = Object.keys(services);
-    throw new CliError(`No service named ${JSON.stringify(serviceName)} in the config file's \`${DEPLOYMENTS_CONFIG_SECTION}.services\`.${available.length > 0 ? ` Available services: ${available.join(", ")}` : ""}`);
-  }
-  const record = service as Record<string, unknown>;
-  if (record.type !== "vercel") {
-    throw new CliError(record.type === undefined
-      ? `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}\` has no \`type\`. Add \`type: "vercel"\`.`
-      : `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.type\` must be "vercel" (got ${JSON.stringify(record.type)}).`);
-  }
-  const readString = (key: string): string | undefined => {
-    const value = record[key];
-    if (value === undefined) return undefined;
-    if (typeof value !== "string") {
-      throw new CliError(`\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.${key}\` must be a string.`);
-    }
-    return value;
-  };
-  return {
-    framework: readString("framework"),
-    installCommand: readString("installCommand"),
-    buildCommand: readString("buildCommand"),
-    outputDirectory: readString("outputDirectory"),
-    rootDirectory: readString("rootDirectory"),
-    env: extractServiceEnv(record.env, serviceName),
-  };
-}
-
-function extractServiceEnv(env: unknown, serviceName: string): Record<string, ServiceEnvVarConfig> {
-  if (env === undefined) return {};
-  if (env == null || typeof env !== "object" || Array.isArray(env)) {
-    throw new CliError(`\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.env\` must be a record of env var entries, e.g. { MY_VAR: { value: "some-value" } }.`);
-  }
-  const result: Record<string, ServiceEnvVarConfig> = {};
-  for (const [envVarKey, entryValue] of Object.entries(env as Record<string, unknown>)) {
-    const path = `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.env.${envVarKey}\``;
-    if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
-      throw new CliError(`${path} has an invalid key. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
-    }
-    if (entryValue == null || typeof entryValue !== "object") {
-      throw new CliError(`${path} must be an object like { value: "..." }, { type: "secret", key: "..." }, or { type: "connection", value: "service.output" }.`);
-    }
-    const entry = entryValue as { type?: unknown, value?: unknown, key?: unknown };
-    switch (entry.type) {
-      case undefined: {
-        if (typeof entry.value !== "string") {
-          throw new CliError(`${path} must have a string \`value\` (or a \`type\` of "secret" or "connection").`);
-        }
-        if (entry.key !== undefined) {
-          throw new CliError(`${path} must not have a \`key\` — that's only for env vars with \`type: "secret"\`.`);
-        }
-        result[envVarKey] = { value: entry.value };
-        break;
-      }
-      case "secret": {
-        if (typeof entry.key !== "string" || !SECRET_KEY_REGEX.test(entry.key)) {
-          throw new CliError(`${path} has type "secret" and must have a \`key\` naming the secret to pass at deploy time (letters, numbers, underscores, and hyphens only).`);
-        }
-        if (entry.value !== undefined) {
-          throw new CliError(`${path} has type "secret" and must not have a \`value\` — pass it at deploy time with --secret ${entry.key}=<value> instead, so it is never committed.`);
-        }
-        result[envVarKey] = { type: "secret", key: entry.key };
-        break;
-      }
-      case "connection": {
-        if (typeof entry.value !== "string" || !CONNECTION_VALUE_REGEX.test(entry.value)) {
-          throw new CliError(`${path} has type "connection" and must have a \`value\` referencing a service output like "hexclave.projectId".`);
-        }
-        result[envVarKey] = { type: "connection", value: entry.value };
-        break;
-      }
-      default: {
-        throw new CliError(`${path} has an unknown \`type\` ${JSON.stringify(entry.type)}. Supported: "secret", "connection", or no type for a plain value.`);
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * Checks the provided secrets against the secret keys the env definitions
- * reference, so a missing or misspelled secret fails BEFORE packaging and
- * uploading. The backend re-checks this authoritatively. Exported for unit
- * tests.
- */
-export function assertSecretsMatchEnv(env: Record<string, ServiceEnvVarConfig>, secrets: ReadonlyMap<string, string>): void {
-  const referencedKeys = new Set(Object.values(env).flatMap((entry) => "type" in entry && entry.type === "secret" ? [entry.key] : []));
-  const missing = [...referencedKeys].filter((key) => !secrets.has(key));
-  if (missing.length > 0) {
-    throw new CliError(`Missing secret values for: ${missing.join(", ")}. This service's env vars reference these secrets — pass them with --secret <key>=<value>.`);
-  }
-  const unused = [...secrets.keys()].filter((key) => !referencedKeys.has(key));
-  if (unused.length > 0) {
-    throw new CliError(`Unknown --secret key(s): ${unused.join(", ")}. No env var of this service references them — check for typos, or add an env var with \`type: "secret"\` referencing them.`);
-  }
-}
-
-/**
- * Resolves the config file path: --config wins (and must exist); otherwise the
- * first existing candidate in cwd, or undefined when there is none — the
- * config file is optional, deploys then use the service's configuration as
- * stored on the backend (dashboard-configured). Exported for unit tests.
- */
-export function resolveDeployConfigPath(configOption: string | undefined, cwd: string): string | undefined {
+export function resolveDeployConfigPath(configOption: string | undefined, cwd: string): string {
   if (configOption != null && configOption !== "") {
     const resolved = path.resolve(cwd, configOption);
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
@@ -202,14 +46,30 @@ export function resolveDeployConfigPath(configOption: string | undefined, cwd: s
       return resolved;
     }
   }
-  return undefined;
+  throw new CliError(`No config file found in ${cwd}. \`hexclave deploy\` deploys the services defined by the \`services\` export of your hexclave.config.ts — create one, or pass --config-file <path>.`);
+}
+
+/**
+ * The secret keys that MUST have a stored value for these services to deploy:
+ * every secret referenced without a default value. Exported for unit tests.
+ */
+export function collectRequiredSecretKeys(services: EvaluatedService[]): string[] {
+  const requiredKeys = new Set<string>();
+  for (const service of services) {
+    for (const value of Object.values(service.env)) {
+      if (value.kind === "secret" && value.defaultValue === undefined) {
+        requiredKeys.add(value.secretKey);
+      }
+    }
+  }
+  return [...requiredKeys].sort();
 }
 
 // Returns a FACTORY rather than a fixed header object: the deploy flow can
-// span minutes (large uploads), and the refresh-token path's access token may
-// expire mid-flow. getTokens() transparently refreshes when needed, so calling
-// the factory per request always yields a valid token; the secret-server-key
-// path is static.
+// span minutes (large uploads, remote builds), and the refresh-token path's
+// access token may expire mid-flow. getTokens() transparently refreshes when
+// needed, so calling the factory per request always yields a valid token; the
+// secret-server-key path is static.
 async function buildAuthHeadersFactory(auth: ProjectAuth): Promise<() => Promise<Record<string, string>>> {
   if (isProjectAuthWithSecretServerKey(auth)) {
     const headers = {
@@ -298,110 +158,288 @@ async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8
   }
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+type ServiceDeployResult = {
+  serviceId: string,
+  status: "ready" | "error" | "canceled" | "skipped",
+  runId: string | null,
+  url: string | null,
+  error: string | null,
+};
+
+/**
+ * Deploys one service end-to-end: package, upload, start the deployment, then
+ * poll its run until the remote build finishes. Log lines are prefixed with
+ * the service id because services within one dependency level deploy
+ * concurrently and their output interleaves.
+ */
+async function deployService(options: {
+  auth: ProjectAuth,
+  authHeaders: () => Promise<Record<string, string>>,
+  service: EvaluatedService,
+  ignoreRootDirectory: string,
+}): Promise<ServiceDeployResult> {
+  const { auth, authHeaders, service, ignoreRootDirectory } = options;
+  const serviceId = service.serviceId;
+  const log = (message: string) => console.error(`[${serviceId}] ${message}`);
+
+  const packaged = packageSourceDirectory(service.absoluteRootDirectory, ignoreRootDirectory, {
+    includeFiles: service.includeFiles,
+    excludeFiles: service.excludeFiles,
+  });
+  log(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed) from ${service.absoluteRootDirectory}.`);
+
+  const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", { method: "POST" });
+  if (typeof upload?.id !== "string" || typeof upload?.upload_url !== "string" || typeof upload?.content_type !== "string") {
+    throw new CliError("Unexpected response from the Hexclave API when creating the upload.");
+  }
+  if (typeof upload.max_bytes === "number" && packaged.tarballGzipped.length > upload.max_bytes) {
+    throw new CliError(`The packaged source of ${JSON.stringify(serviceId)} is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.vercelignore — build outputs and large assets shouldn't be uploaded.`);
+  }
+  log("Uploading source...");
+  await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);
+
+  log("Starting deployment...");
+  const deployResponse = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(serviceId)}/deploy`, {
+    method: "POST",
+    jsonBody: { upload_id: upload.id },
+  });
+  if (typeof deployResponse?.run_id !== "string") {
+    throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
+  }
+  const runId = deployResponse.run_id;
+  log(`Run ${runId} started. Waiting for the remote build...`);
+
+  // Follow the remote build to its terminal status. Polling spans many
+  // minutes, so transient failures (a network blip, a 5xx from the API) must
+  // not kill the deploy — only several CONSECUTIVE failures do.
+  const startedAtMs = performance.now();
+  let lastLoggedStatus: string | null = null;
+  let consecutivePollFailures = 0;
+  let run: any;
+  while (true) {
+    try {
+      run = await deployApiFetch(auth, authHeaders, `/deployments/runs/${encodeURIComponent(runId)}`, { method: "GET" });
+      consecutivePollFailures = 0;
+    } catch (error) {
+      consecutivePollFailures += 1;
+      if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+        throw new CliError(`Polling the remote build of ${JSON.stringify(serviceId)} (run ${runId}) failed ${consecutivePollFailures} times in a row: ${errorMessage(error)}\nThe build may still be running — check the run's status in the dashboard.`);
+      }
+      log(`Polling the build status failed (attempt ${consecutivePollFailures}/${MAX_CONSECUTIVE_POLL_FAILURES}), retrying: ${errorMessage(error)}`);
+      await wait(RUN_POLL_INTERVAL_MS);
+      continue;
+    }
+    const status = typeof run?.status === "string" ? run.status : "unknown";
+    if (status !== lastLoggedStatus && (status === "queued" || status === "building")) {
+      log(`Build ${status}...`);
+      lastLoggedStatus = status;
+    }
+    if (status === "ready" || status === "error" || status === "canceled") {
+      break;
+    }
+    if (performance.now() - startedAtMs > RUN_POLL_TIMEOUT_MS) {
+      throw new CliError(`Timed out waiting for the remote build of ${JSON.stringify(serviceId)} (run ${runId}). Check the run's status in the dashboard.`);
+    }
+    await wait(RUN_POLL_INTERVAL_MS);
+  }
+
+  if (run.status !== "ready") {
+    const error = typeof run.error === "string" && run.error !== "" ? run.error : `Deployment ${run.status}.`;
+    log(`Deployment failed: ${error}`);
+    return { serviceId, status: run.status, runId, url: null, error };
+  }
+
+  // The run's URL is the immutable per-deployment URL; the service endpoint
+  // returns the canonical one (a verified custom domain when there is one).
+  const remoteService = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(serviceId)}`, { method: "GET" });
+  const url = typeof remoteService?.url === "string" ? remoteService.url : (typeof run.url === "string" ? run.url : null);
+  log(`Deployment succeeded${url != null ? `: ${url}` : "."}`);
+  return { serviceId, status: "ready", runId, url, error: null };
+}
+
+/** Transitive dependents of `failedServiceId`, by connection edges. */
+function collectTransitiveDependents(failedServiceId: string, services: Map<string, EvaluatedService>): Set<string> {
+  const directDependents = new Map<string, Set<string>>();
+  for (const [serviceId, service] of services) {
+    for (const value of Object.values(service.env)) {
+      if (value.kind !== "connection") continue;
+      const target = value.reference.split(".")[0];
+      if (services.has(target)) {
+        const dependents = directDependents.get(target) ?? new Set<string>();
+        dependents.add(serviceId);
+        directDependents.set(target, dependents);
+      }
+    }
+  }
+  const result = new Set<string>();
+  const queue = [failedServiceId];
+  while (queue.length > 0) {
+    const current = queue.shift() ?? "";
+    for (const dependent of directDependents.get(current) ?? []) {
+      if (!result.has(dependent)) {
+        result.add(dependent);
+        queue.push(dependent);
+      }
+    }
+  }
+  return result;
+}
+
 export function registerDeployCommand(program: Command) {
   program
-    .command("deploy <service>")
-    .description("Deploy a service defined under `deployments-alpha.services` in your hexclave.config.ts. Uploads the service's source directory, waits for Vercel to accept the deployment, then prints the run id without waiting for the remote build to finish.")
-    .option("--config <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
+    .command("deploy")
+    .description("Deploy the services defined by the `services` export of your hexclave.config.ts. Pushes the config file to the project (unless --no-config-push), syncs the service definitions, then deploys every service in dependency order and waits for the remote builds to finish.")
+    .option("--service-id <id>", "Deploy only this service (its connections resolve against already-deployed services)")
+    .option("--config-file <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
-    .option("--secret <KEY=VALUE>", "Value for a secret env var of this deploy (repeatable). KEY is the secret key named by a `type: \"secret\"` env var in the config; the value is pushed to the deployment target and never persisted by Hexclave.", (value: string, previous: string[]) => [...previous, value], [] as string[])
-    .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.")
-    .action(async (service: string, opts: DeployOptions) => {
+    .option("--no-config-push", "Skip pushing the config file's `config` export to the project before deploying")
+    .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.\nSecrets: values for secret() env vars are read from the dashboard (Project Settings > Secrets); the deploy fails up front if any secret has neither a stored value nor a default.")
+    .action(async (opts: DeployOptions) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
-      const secrets = parseSecretOptions(opts.secret);
       const authHeaders = await buildAuthHeadersFactory(auth);
 
-      const configPath = resolveDeployConfigPath(opts.config, process.cwd());
-      let definition: ServiceDefinition | undefined;
-      let rootDirectory: string;
-      let ignoreRootDirectory: string;
-      if (configPath != null) {
-        // Config-as-code mode: the config file's definition (build config and
-        // env vars) governs this deploy and is upserted into the service
-        // definition by the backend.
-        const { createJiti } = await import("jiti");
-        const jiti = createJiti(import.meta.url);
-        let configModule: { config?: unknown };
-        try {
-          configModule = await jiti.import(configPath);
-        } catch (err: unknown) {
-          throw new CliError(`Failed to load config file ${configPath}: ${errorMessage(err)}`);
+      const configPath = resolveDeployConfigPath(opts.configFile, process.cwd());
+      const configModule = await importConfigModule(configPath);
+      const { services } = evaluateServicesFunction({
+        configPath,
+        servicesExport: configModule.services,
+        mode: "deploy",
+      });
+
+      // The cycle check only matters when the whole graph deploys — a
+      // single-service deploy resolves its connections against already-
+      // deployed state, so a cycle elsewhere in the config must not block it.
+      let levels: string[][];
+      if (opts.serviceId != null) {
+        const service = services.get(opts.serviceId);
+        if (service == null) {
+          throw new CliError(`No service named ${JSON.stringify(opts.serviceId)} in the config file's services export. Available services: ${[...services.keys()].join(", ")}.`);
         }
-        if (configModule.config == null) {
-          throw new CliError(`Config file ${configPath} must export a \`config\` object (e.g. \`export const config = { "deployments-alpha": { services: { ... } } }\`).`);
-        }
-        definition = extractServiceDefinition(configModule.config, service);
-        // Fail on missing/misspelled secrets BEFORE packaging and uploading.
-        // The backend re-checks this authoritatively.
-        assertSecretsMatchEnv(definition.env, secrets);
-        // The source directory is the service's rootDirectory, resolved
-        // relative to the config file (not the cwd) so deploys behave the same
-        // from anywhere in the repo.
-        ignoreRootDirectory = path.dirname(configPath);
-        rootDirectory = path.resolve(ignoreRootDirectory, definition.rootDirectory ?? ".");
+        levels = [[opts.serviceId]];
       } else {
-        // Dashboard mode: no config file, so the service's definition as
-        // stored on the backend governs the deploy (the service must already
-        // exist there). The root directory decides what gets packaged and is
-        // resolved against the cwd; the stored env definitions let us check
-        // the provided secrets before uploading.
-        const remoteService = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(service)}`, { method: "GET" });
-        const remoteRootDirectory = typeof remoteService?.root_directory === "string" && remoteService.root_directory !== "" ? remoteService.root_directory : ".";
-        const remoteEnv: Record<string, ServiceEnvVarConfig> = {};
-        for (const envVar of Array.isArray(remoteService?.env) ? remoteService.env : []) {
-          if (envVar?.type === "secret" && typeof envVar.secret_key === "string" && typeof envVar.key === "string") {
-            remoteEnv[envVar.key] = { type: "secret", key: envVar.secret_key };
-          }
+        levels = computeDeploymentLevels(services);
+      }
+      const deploySet = levels.flat();
+
+      // Pre-flight: every secret without a default must have a stored value
+      // BEFORE anything is packaged or uploaded. The backend re-checks this
+      // authoritatively per deploy.
+      const requiredSecretKeys = collectRequiredSecretKeys(deploySet.map((serviceId) => services.get(serviceId) ?? (() => {
+        throw new CliError(`Internal error: deploy set contains unknown service ${JSON.stringify(serviceId)}.`);
+      })()));
+      if (requiredSecretKeys.length > 0) {
+        const storedSecrets = await deployApiFetch(auth, authHeaders, "/deployments/secrets", { method: "GET" });
+        const storedKeys = new Set<string>(
+          (Array.isArray(storedSecrets?.items) ? storedSecrets.items : [])
+            .map((item: any) => item?.key)
+            .filter((key: unknown): key is string => typeof key === "string"),
+        );
+        const missing = requiredSecretKeys.filter((key) => !storedKeys.has(key));
+        if (missing.length > 0) {
+          throw new CliError(`Missing values for secrets: ${missing.join(", ")}. Set them in the dashboard under Project Settings > Secrets, or give them a default value in the services export (e.g. secret(${JSON.stringify(missing[0])}, "some-default")).`);
         }
-        assertSecretsMatchEnv(remoteEnv, secrets);
-        ignoreRootDirectory = process.cwd();
-        rootDirectory = path.resolve(process.cwd(), remoteRootDirectory);
-        console.error(`No config file found — using the service configuration stored in Hexclave (root directory: ${remoteRootDirectory}).`);
       }
-      console.error(`Packaging ${rootDirectory}...`);
-      const packaged = packageSourceDirectory(rootDirectory, ignoreRootDirectory);
-      console.error(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed).`);
 
-      const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", { method: "POST" });
-      if (typeof upload?.id !== "string" || typeof upload?.upload_url !== "string" || typeof upload?.content_type !== "string") {
-        throw new CliError("Unexpected response from the Hexclave API when creating the upload.");
+      // Config push (default on): the config file is the source of truth for
+      // the project's configuration, so deploying also publishes it.
+      if (opts.configPush) {
+        if (configModule.config === undefined) {
+          console.error("Note: the config file has no `config` export, so there is no project config to push. (Pass --no-config-push to silence this.)");
+        } else {
+          const config = parseConfigOverride(configModule.config);
+          if (config == null) {
+            throw new CliError(`The \`config\` export of ${configPath} must be a plain object (or "show-onboarding"). Fix it, or pass --no-config-push to deploy without pushing the config.`);
+          }
+          console.error("Pushing config...");
+          // The GitHub-Actions auto-detection inside buildConfigPushSource
+          // records this path verbatim as the repo-relative config_file_path,
+          // so pass a cwd-relative posix path, not the resolved absolute one
+          // (which would bake the runner's filesystem layout into the source).
+          const relativeConfigPath = path.relative(process.cwd(), configPath).split(path.sep).join("/");
+          await pushConfigToProject(auth, config, buildConfigPushSource(relativeConfigPath, {}));
+        }
       }
-      if (typeof upload.max_bytes === "number" && packaged.tarballGzipped.length > upload.max_bytes) {
-        throw new CliError(`The packaged source is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.vercelignore — build outputs and large assets shouldn't be uploaded.`);
-      }
-      console.error(`Uploading source...`);
-      await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);
 
-      console.error(`Starting deployment of ${JSON.stringify(service)}...`);
-      // Without a config file, build_config and env are omitted entirely: the
-      // backend then uses the stored definition field-by-field. WITH a config
-      // file, absent build fields are sent as null ("unset") — the file is the
-      // whole truth, so deleting a field from it must actually remove the
-      // stored value instead of silently keeping it forever.
-      const deployResponse = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(service)}/deploy`, {
-        method: "POST",
+      // Sync ALL definitions (even for a --service-id deploy) so the dashboard
+      // always reflects the full services export.
+      console.error(`Syncing ${services.size} service definition${services.size === 1 ? "" : "s"}...`);
+      await deployApiFetch(auth, authHeaders, "/deployments/services", {
+        method: "PUT",
         jsonBody: {
-          upload_id: upload.id,
-          ...(definition !== undefined ? {
-            build_config: {
-              framework: definition.framework ?? null,
-              install_command: definition.installCommand ?? null,
-              build_command: definition.buildCommand ?? null,
-              output_directory: definition.outputDirectory ?? null,
-              root_directory: definition.rootDirectory ?? null,
-            },
-            env: definition.env,
-          } : {}),
-          ...(secrets.size > 0 ? { secrets: Object.fromEntries(secrets) } : {}),
+          services: Object.fromEntries([...services.values()].map((service) => [service.serviceId, service.definition])),
         },
       });
-      if (typeof deployResponse?.run_id !== "string") {
-        throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
+
+      // Deploy level by level: services in one level are independent and run
+      // concurrently; a failure skips every transitive dependent but lets
+      // independent branches finish.
+      const ignoreRootDirectory = path.dirname(configPath);
+      const results = new Map<string, ServiceDeployResult>();
+      const skipped = new Set<string>();
+      for (const level of levels) {
+        const toDeploy = level.filter((serviceId) => !skipped.has(serviceId));
+        for (const serviceId of level) {
+          if (skipped.has(serviceId)) {
+            console.error(`[${serviceId}] Skipped (a service it depends on failed to deploy).`);
+            results.set(serviceId, { serviceId, status: "skipped", runId: null, url: null, error: "Skipped because a dependency failed to deploy." });
+          }
+        }
+        // Every outcome — including thrown errors (packaging failures, upload
+        // errors, poll give-ups) — must become a RESULT: a rejection here
+        // would abandon sibling deploys mid-flight and skip both summaries,
+        // leaving CI with no machine-readable output at all.
+        const levelResults = await Promise.all(toDeploy.map(async (serviceId): Promise<ServiceDeployResult> => {
+          try {
+            return await deployService({
+              auth,
+              authHeaders,
+              service: services.get(serviceId) ?? (() => {
+                throw new CliError(`Internal error: deploy level contains unknown service ${JSON.stringify(serviceId)}.`);
+              })(),
+              ignoreRootDirectory,
+            });
+          } catch (error) {
+            const message = errorMessage(error);
+            console.error(`[${serviceId}] Deploy failed: ${message}`);
+            return { serviceId, status: "error", runId: null, url: null, error: message };
+          }
+        }));
+        for (const result of levelResults) {
+          results.set(result.serviceId, result);
+          if (result.status !== "ready") {
+            for (const dependent of collectTransitiveDependents(result.serviceId, services)) {
+              if (deploySet.includes(dependent) && !results.has(dependent)) {
+                skipped.add(dependent);
+              }
+            }
+          }
+        }
       }
 
-      // Source preparation is synchronous, but the remote build continues
-      // after this returns. CI therefore does NOT fail on a later build
-      // failure (a waiting/streaming flag is planned post-MVP).
-      console.log(JSON.stringify({ runId: deployResponse.run_id }, null, 2));
+      // Human summary on stderr, machine-readable summary on stdout.
+      console.error("");
+      for (const serviceId of deploySet) {
+        const result = results.get(serviceId) ?? (() => {
+          throw new CliError(`Internal error: no deploy result for service ${JSON.stringify(serviceId)}.`);
+        })();
+        const statusLabel = result.status === "ready" ? "deployed" : result.status;
+        console.error(`  ${serviceId}: ${statusLabel}${result.url != null ? ` — ${result.url}` : ""}${result.error != null && result.status !== "skipped" ? ` — ${result.error}` : ""}`);
+      }
+      console.log(JSON.stringify({
+        services: Object.fromEntries([...results.values()].map((result) => [result.serviceId, {
+          status: result.status,
+          runId: result.runId,
+          url: result.url,
+          error: result.error,
+        }])),
+      }, null, 2));
+
+      if ([...results.values()].some((result) => result.status !== "ready")) {
+        process.exitCode = 1;
+      }
     });
 }

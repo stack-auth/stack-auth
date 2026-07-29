@@ -48,26 +48,19 @@ export type AdminDeploymentRunJson = {
   finished_at_millis: number | null,
 };
 
-// One env var of a deployment service, normalized from the config-side
-// definition: "plain" vars carry their literal `value`, "connection" vars
-// carry the "serviceId.outputKey" reference they resolve to at deploy time,
-// and "secret" vars carry only the `secret_key` whose value is supplied via
-// `hexclave deploy --secret <key>=<value>` (never stored).
+// One env var of a deployment service, normalized from the definition (as
+// synced from the config file's `services` export): "plain" vars carry their
+// literal `value`, "connection" vars carry the "serviceId.outputKey" reference
+// they resolve to at deploy time, and "secret" vars carry only the
+// `secret_key` naming a per-project secret (values are write-only —
+// `secret_has_default` says whether the definition carries a fallback).
 export type AdminDeploymentEnvVarJson = {
   key: string,
   type: "plain" | "secret" | "connection",
   value: string | null,
   secret_key: string | null,
+  secret_has_default: boolean | null,
 };
-
-// The config-side shape of one env var, mirroring
-// `deployments-alpha.services.<id>.env.<KEY>` in hexclave.config.ts: no type means a
-// plain value, "secret" requires `key`, "connection" requires a
-// "serviceId.outputKey" `value`.
-export type AdminDeploymentEnvVarOptions =
-  | { type?: undefined, value: string }
-  | { type: "secret", key: string }
-  | { type: "connection", value: string };
 
 export type AdminDeploymentServiceJson = {
   id: string,
@@ -77,6 +70,7 @@ export type AdminDeploymentServiceJson = {
   build_command: string | null,
   output_directory: string | null,
   root_directory: string | null,
+  dev_command: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
@@ -86,14 +80,12 @@ export type AdminDeploymentServiceJson = {
   latest_run: AdminDeploymentRunJson | null,
 };
 
-// null means "unset this field" (falls back to platform auto-detection);
-// undefined means "leave unchanged".
-export type AdminDeploymentServiceBuildOptions = {
-  framework?: string | null,
-  install_command?: string | null,
-  build_command?: string | null,
-  output_directory?: string | null,
-  root_directory?: string | null,
+// A stored deployment secret. Values are write-only and never part of any
+// response shape.
+export type AdminDeploymentSecretJson = {
+  key: string,
+  created_at_millis: number,
+  updated_at_millis: number,
 };
 
 export type AdminDeploymentDomainJson = {
@@ -1283,42 +1275,32 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return (await response.json()).items;
   }
 
-  async createDeploymentService(id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson> {
+  async listDeploymentSecrets(): Promise<AdminDeploymentSecretJson[]> {
     const response = await this.sendAdminRequest(
-      "/deployments/services",
+      "/deployments/secrets",
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async setDeploymentSecret(key: string, value: string): Promise<void> {
+    await this.sendAdminRequest(
+      "/deployments/secrets",
       {
         method: "POST",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ id, ...build }),
+        body: JSON.stringify({ key, value }),
       },
       null,
     );
-    return await response.json();
   }
 
-  async updateDeploymentService(serviceId: string, update: AdminDeploymentServiceBuildOptions & {
-    // Replaces the service's whole env var set (config-side definition shape).
-    env?: Record<string, AdminDeploymentEnvVarOptions>,
-  }): Promise<AdminDeploymentServiceJson> {
-    const response = await this.sendAdminRequest(
-      urlString`/deployments/services/${serviceId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(update),
-      },
-      null,
-    );
-    return await response.json();
-  }
-
-  async deleteDeploymentService(serviceId: string): Promise<void> {
+  async deleteDeploymentSecret(key: string): Promise<void> {
     await this.sendAdminRequest(
-      urlString`/deployments/services/${serviceId}`,
+      urlString`/deployments/secrets/${key}`,
       { method: "DELETE" },
       null,
     );

@@ -145,6 +145,11 @@ const projectSettingsItem: AppSection = {
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
     },
     {
+      name: "Secrets",
+      href: "/project-settings/secrets",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/secrets(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
       name: "Project Keys",
       href: "/project-keys",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-keys(\/.*)?$/.test(fullUrl.pathname),

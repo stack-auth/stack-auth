@@ -1,11 +1,10 @@
 "use client";
 
-import { DesignButton, DesignInput } from "@/components/design-components";
-import { Popover, PopoverContent, PopoverTrigger, Spinner, cn } from "@/components/ui";
+import { Spinner, cn } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import type { AdminDeploymentServiceJson, PushedConfigSource } from "@hexclave/next";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { GitBranchIcon, LockSimpleIcon, MinusIcon, PlusIcon, TriangleIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import type { AdminDeploymentServiceJson } from "@hexclave/next";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { FileTsIcon, MinusIcon, PlusIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import {
@@ -48,17 +47,12 @@ export function BoardCanvas() {
   const project = adminApp.useProject();
 
   const [apiServices, setApiServices] = useState<AdminDeploymentServiceJson[] | null>(null);
-  const [configSource, setConfigSource] = useState<PushedConfigSource | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [services, source] = await Promise.all([
-        project.listDeploymentServices(),
-        project.getPushedConfigSource(),
-      ]);
+      const services = await project.listDeploymentServices();
       setApiServices(services);
-      setConfigSource(source);
       setLoadError(null);
     } catch (error) {
       // Keep whatever data we have; the board shows the error banner.
@@ -72,15 +66,8 @@ export function BoardCanvas() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  // Config definitions are read-only in the dashboard when the config is
-  // pushed from a config file or GitHub (deploy-time env vars still work).
-  const readOnly = configSource != null && configSource.type !== "unlinked";
-  const readOnlySourceLabel = configSource?.type === "pushed-from-github" ? "GitHub" : "a config file";
-
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [newServiceName, setNewServiceName] = useState("");
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
   // In-session drag positions, keyed by service id, on top of the
   // deterministic layout. Not persisted — a refresh resets the layout.
@@ -261,16 +248,6 @@ export function BoardCanvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const handleAddService = useCallback(async () => {
-    const name = newServiceName.trim().toLowerCase();
-    if (name === "") return;
-    await project.createDeploymentService(name, {});
-    setAddOpen(false);
-    setNewServiceName("");
-    await refresh();
-    setSelectedId(name);
-  }, [newServiceName, project, refresh]);
-
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-2xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
       {/* Infinite pan/zoom viewport. The blueprint grid is a CSS background so it
@@ -337,16 +314,14 @@ export function BoardCanvas() {
         )}
       </div>
 
-      {/* Read-only / error banners — top-left. */}
+      {/* Config-as-code hint / error banners — top-left. */}
       <div data-board-chrome onPointerDown={(e) => e.stopPropagation()} className="absolute left-3 top-3 z-20 flex max-w-[60%] flex-col gap-2">
-        {readOnly && (
-          <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-500/30 backdrop-blur-md dark:text-amber-300">
-            {configSource.type === "pushed-from-github" ? <GitBranchIcon className="h-4 w-4 shrink-0" /> : <LockSimpleIcon className="h-4 w-4 shrink-0" />}
-            <span>
-              This project&apos;s config is managed by {readOnlySourceLabel}. Edit your repo&apos;s <span className="font-mono">hexclave.config.ts</span> to change services.
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs text-muted-foreground ring-1 ring-black/[0.08] backdrop-blur-md dark:bg-background/70 dark:ring-white/[0.08]">
+          <FileTsIcon className="h-4 w-4 shrink-0" />
+          <span>
+            Services are defined by the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced by <span className="font-mono">hexclave deploy</span>.
+          </span>
+        </div>
         {loadError != null && (
           <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-700 ring-1 ring-red-500/30 backdrop-blur-md dark:text-red-300">
             <WarningCircleIcon className="h-4 w-4 shrink-0" />
@@ -366,53 +341,6 @@ export function BoardCanvas() {
         </button>
       </div>
 
-      {/* Add service — top-right. Disabled when the config is pushed from a
-          config file or GitHub (definitions are read-only then). */}
-      <div data-board-chrome onPointerDown={(e) => e.stopPropagation()} className="absolute right-3 top-3 z-20">
-        <Popover
-          open={addOpen}
-          onOpenChange={(open) => {
-            setAddOpen(open);
-            if (!open) setNewServiceName("");
-          }}
-        >
-          <PopoverTrigger asChild>
-            <DesignButton size="sm" variant="outline" disabled={readOnly || services == null}>
-              <PlusIcon className="mr-2 h-4 w-4" />
-              Add Service
-            </DesignButton>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-64 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
-              <TriangleIcon className="h-4 w-4 text-cyan-500" weight="fill" />
-              New Vercel service
-            </div>
-            <DesignInput
-              autoFocus
-              value={newServiceName}
-              size="sm"
-              placeholder="e.g. web, api, docs"
-              className="font-mono"
-              onChange={(e) => setNewServiceName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") runAsynchronouslyWithAlert(handleAddService());
-              }}
-            />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Lowercase letters, digits, hyphens, and underscores. This is the name you&apos;ll pass to <span className="font-mono">hexclave deploy</span>.
-            </p>
-            <DesignButton
-              size="sm"
-              className="mt-2 w-full"
-              disabled={newServiceName.trim() === ""}
-              onClick={handleAddService}
-            >
-              Create service
-            </DesignButton>
-          </PopoverContent>
-        </Popover>
-      </div>
-
       {/* Detail pane — slides over the right edge. */}
       <div
         data-board-chrome
@@ -427,12 +355,7 @@ export function BoardCanvas() {
             service={selected}
             services={services}
             project={project}
-            readOnly={readOnly}
             onClose={() => setSelectedId(null)}
-            onDeleted={() => {
-              setSelectedId(null);
-              runAsynchronously(refresh());
-            }}
             refresh={refresh}
           />
         )}

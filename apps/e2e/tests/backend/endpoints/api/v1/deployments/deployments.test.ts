@@ -8,6 +8,7 @@ import { InternalApiKey, Project, backendContext, niceBackendFetch } from "../..
 // These tests run against the vercel-mock docker service (see
 // docker/dependencies/vercel-mock) — the backend's .env.development points at
 // it via the mock HEXCLAVE_VERCEL_BEARER_TOKEN. CI never talks to real Vercel.
+// Secret values are KMS-encrypted server-side via the local-kms container.
 const VERCEL_MOCK_URL = `http://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}26`;
 
 function makeSourceTarball(files: Record<string, string> = { "index.html": "<h1>hello</h1>" }): Uint8Array {
@@ -41,13 +42,19 @@ async function createUpload(files?: Record<string, string>): Promise<{ uploadId:
   return { uploadId: (uploadResponse.body as any).id };
 }
 
-async function createServiceAndUpload(serviceId: string, files?: Record<string, string>): Promise<{ uploadId: string }> {
-  const createResponse = await niceBackendFetch("/api/v1/deployments/services", {
-    method: "POST",
+// Syncs service definitions the way `hexclave deploy` does (its first step
+// after evaluating the config file's `services` export).
+async function syncServices(services: Record<string, unknown>): Promise<void> {
+  const response = await niceBackendFetch("/api/v1/deployments/services", {
+    method: "PUT",
     accessType: "admin",
-    body: { id: serviceId },
+    body: { services },
   });
-  if (createResponse.status !== 201) throw new Error(`Failed to create service: ${JSON.stringify(createResponse.body)}`);
+  if (response.status !== 200) throw new Error(`Failed to sync services: ${JSON.stringify(response.body)}`);
+}
+
+async function syncServiceAndUpload(serviceId: string, definition: Record<string, unknown> = {}, files?: Record<string, string>): Promise<{ uploadId: string }> {
+  await syncServices({ [serviceId]: { type: "vercel", env: {}, ...definition } });
   return await createUpload(files);
 }
 
@@ -100,38 +107,98 @@ describe("access control", () => {
         },
       }
     `);
+    const secretsResponse = await niceBackendFetch("/api/v1/deployments/secrets", { accessType: "client" });
+    expect(secretsResponse.status).toBe(401);
   });
 
-  it("accepts secret-server-key access (the CLI's CI auth)", async ({ expect }) => {
+  it("accepts secret-server-key access for the whole CI deploy sequence", async ({ expect }) => {
     await Project.createAndSwitch();
     await InternalApiKey.createAndSetProjectKeys();
-    const response = await niceBackendFetch("/api/v1/deployments/services", { accessType: "server" });
-    expect(response).toMatchInlineSnapshot(`
+    // Every route the CLI hits in a server-key-only environment (CI) must
+    // accept server access, not just admin: list, sync, secrets pre-flight,
+    // and upload creation. (The deploy POST itself is covered with
+    // accessType: "server" in the end-to-end test below.)
+    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "server" });
+    expect(listResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
         "body": { "items": [] },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
+    const syncResponse = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "server",
+      body: { services: { web: { type: "vercel", env: {} } } },
+    });
+    expect(syncResponse.status).toBe(200);
+    const secretsResponse = await niceBackendFetch("/api/v1/deployments/secrets", { accessType: "server" });
+    expect(secretsResponse.status).toBe(200);
+    const uploadResponse = await niceBackendFetch("/api/v1/deployments/uploads", { method: "POST", accessType: "server" });
+    expect(uploadResponse.status).toBe(201);
   });
 });
 
-describe("service CRUD", () => {
-  it("creates, reads, updates, and deletes a service definition", async ({ expect }) => {
+describe("definition sync", () => {
+  it("syncs, lists, and reads service definitions (read-only otherwise)", async ({ expect }) => {
     await Project.createAndSwitch();
 
-    const createResponse = await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "api", framework: "nextjs", install_command: "pnpm install", build_command: "pnpm build", output_directory: ".next", root_directory: "./api" },
+    await syncServices({
+      api: {
+        type: "vercel",
+        framework: "nextjs",
+        install_command: "pnpm install",
+        build_command: "pnpm build",
+        output_directory: ".next",
+        root_directory: "api",
+        dev_command: "pnpm dev",
+        env: {
+          MY_ENV_VAR: { value: "true" },
+          DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
+          OPENAI_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" },
+          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+        },
+      },
     });
-    expect(createResponse).toMatchInlineSnapshot(`
+
+    const getResponse = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
+    expect(getResponse).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 201,
+        "status": 200,
         "body": {
           "build_command": "pnpm build",
+          "dev_command": "pnpm dev",
           "domains": [],
-          "env": [],
+          "env": [
+            {
+              "key": "DATABASE_CONNECTION_STRING",
+              "secret_has_default": false,
+              "secret_key": "db_connection",
+              "type": "secret",
+              "value": null,
+            },
+            {
+              "key": "MY_ENV_VAR",
+              "secret_has_default": null,
+              "secret_key": null,
+              "type": "plain",
+              "value": "true",
+            },
+            {
+              "key": "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID",
+              "secret_has_default": null,
+              "secret_key": null,
+              "type": "connection",
+              "value": "hexclave.projectId",
+            },
+            {
+              "key": "OPENAI_KEY",
+              "secret_has_default": true,
+              "secret_key": "OPENAI",
+              "type": "secret",
+              "value": null,
+            },
+          ],
           "framework": "nextjs",
           "has_successful_deploy": false,
           "id": "api",
@@ -139,7 +206,7 @@ describe("service CRUD", () => {
           "latest_run": null,
           "output_directory": ".next",
           "provisioned": false,
-          "root_directory": "./api",
+          "root_directory": "api",
           "status": "not_deployed",
           "type": "vercel",
           "url": null,
@@ -148,40 +215,146 @@ describe("service CRUD", () => {
       }
     `);
 
-    // Duplicate id is rejected.
-    const duplicateResponse = await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "api" },
-    });
-    expect(duplicateResponse.status).toBe(400);
+    // Re-syncing updates in place; syncing OTHER services is additive (an
+    // existing row is never removed by a sync that omits it — removal/cleanup
+    // is deliberately out of scope).
+    await syncServices({ web: { type: "vercel", env: {} } });
+    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
+    expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api", "web"]);
+    await syncServices({ api: { type: "vercel", build_command: "pnpm build:prod", env: {} } });
+    const updatedResponse = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
+    expect((updatedResponse.body as any).build_command).toBe("pnpm build:prod");
+    // Absent fields are unset, not kept (the config file is the whole truth).
+    expect((updatedResponse.body as any).framework).toBe(null);
+    expect((updatedResponse.body as any).env).toEqual([]);
 
-    // The reserved managed-service id is rejected.
-    const reservedResponse = await niceBackendFetch("/api/v1/deployments/services", {
+    // There are no create/edit/delete routes anymore.
+    const postResponse = await niceBackendFetch("/api/v1/deployments/services", {
       method: "POST",
       accessType: "admin",
-      body: { id: "hexclave" },
+      body: { id: "another" },
     });
-    expect(reservedResponse).toMatchInlineSnapshot(`
+    expect(postResponse.status).toBe(405);
+    const patchResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
+      method: "PATCH",
+      accessType: "admin",
+      body: { build_command: "x" },
+    });
+    expect(patchResponse.status).toBe(405);
+    const deleteResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
+      method: "DELETE",
+      accessType: "admin",
+    });
+    expect(deleteResponse.status).toBe(405);
+  });
+
+  it("rejects invalid definitions", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    // The reserved managed-service id.
+    const reservedResponse = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { hexclave: { type: "vercel", env: {} } } },
+    });
+    expect(reservedResponse.status).toBe(400);
+
+    // A secret with an inline value would defeat the point of secrets.
+    const secretWithValue = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } } },
+    });
+    expect(secretWithValue.status).toBe(400);
+
+    // default_value is only valid on secrets.
+    const plainWithDefault = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "vercel", env: { A: { value: "x", default_value: "y" } } } } },
+    });
+    expect(plainWithDefault.status).toBe(400);
+
+    // The legacy `{service.output}` interpolation syntax is not a connection.
+    const legacyReference = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } } },
+    });
+    expect(legacyReference.status).toBe(400);
+
+    // Env var keys must be valid env var names; a missing type is rejected.
+    const invalidKey = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "vercel", env: { "1-BAD-KEY": { value: "x" } } } } },
+    });
+    expect(invalidKey.status).toBe(400);
+    const missingType = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { env: {} } } },
+    });
+    expect(missingType.status).toBe(400);
+
+    // An empty sync is meaningless and gets a clear error.
+    const emptySync = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: {} },
+    });
+    expect(emptySync.status).toBe(400);
+  });
+});
+
+describe("secrets", () => {
+  it("sets, lists, overwrites, and deletes write-only secret values", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const setResponse = await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "db_connection", value: "postgres://user:hunter2@db.example.com/app" },
+    });
+    expect(setResponse).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 400,
-        "body": "The service id \\"hexclave\\" is reserved for the managed Hexclave service.",
+        "status": 200,
+        "body": {
+          "created": true,
+          "key": "db_connection",
+        },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
 
-    const patchResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
-      method: "PATCH",
+    // Overwriting reports created: false; the value is never echoed anywhere.
+    const overwriteResponse = await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
       accessType: "admin",
-      body: { build_command: "pnpm build:prod" },
+      body: { key: "db_connection", value: "postgres://user:hunter3@db.example.com/app" },
     });
-    expect(patchResponse.status).toBe(200);
-    expect((patchResponse.body as any).build_command).toBe("pnpm build:prod");
+    expect((overwriteResponse.body as any).created).toBe(false);
 
-    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
-    expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api"]);
+    const listResponse = await niceBackendFetch("/api/v1/deployments/secrets", { accessType: "admin" });
+    expect(listResponse.status).toBe(200);
+    expect((listResponse.body as any).items.map((item: any) => item.key)).toEqual(["db_connection"]);
+    expect(JSON.stringify(listResponse.body)).not.toContain("hunter");
 
-    const deleteResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
+    // Invalid keys and empty values are rejected.
+    const invalidKeyResponse = await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "bad key", value: "x" },
+    });
+    expect(invalidKeyResponse.status).toBe(400);
+    const emptyValueResponse = await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "some_key", value: "" },
+    });
+    expect(emptyValueResponse.status).toBe(400);
+
+    const deleteResponse = await niceBackendFetch("/api/v1/deployments/secrets/db_connection", {
       method: "DELETE",
       accessType: "admin",
     });
@@ -192,255 +365,72 @@ describe("service CRUD", () => {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
-
-    const getAfterDelete = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
-    expect(getAfterDelete.status).toBe(404);
-  });
-
-  it("manages definition env vars of all three types on an unprovisioned service", async ({ expect }) => {
-    await Project.createAndSwitch();
-    await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "web" },
-    });
-    const patchResponse = await niceBackendFetch("/api/v1/deployments/services/web", {
-      method: "PATCH",
-      accessType: "admin",
-      body: {
-        env: {
-          MY_ENV_VAR: { value: "true" },
-          DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
-          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
-        },
-      },
-    });
-    expect(patchResponse.status).toBe(200);
-    expect((patchResponse.body as any).env).toMatchInlineSnapshot(`
-      [
-        {
-          "key": "DATABASE_CONNECTION_STRING",
-          "secret_key": "db_connection",
-          "type": "secret",
-          "value": null,
-        },
-        {
-          "key": "MY_ENV_VAR",
-          "secret_key": null,
-          "type": "plain",
-          "value": "true",
-        },
-        {
-          "key": "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID",
-          "secret_key": null,
-          "type": "connection",
-          "value": "hexclave.projectId",
-        },
-      ]
-    `);
-
-    const invalidKeyResponse = await niceBackendFetch("/api/v1/deployments/services/web", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { "1-BAD-KEY": { value: "x" } } },
-    });
-    expect(invalidKeyResponse.status).toBe(400);
-
-    // A secret with an inline value would defeat the point of secrets.
-    const secretWithValueResponse = await niceBackendFetch("/api/v1/deployments/services/web", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { A: { type: "secret", key: "a", value: "leaked" } } },
-    });
-    expect(secretWithValueResponse.status).toBe(400);
-
-    // The legacy `{service.output}` interpolation syntax is not a connection.
-    const legacyReferenceResponse = await niceBackendFetch("/api/v1/deployments/services/web", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { A: { type: "connection", value: "{hexclave.projectId}" } } },
-    });
-    expect(legacyReferenceResponse.status).toBe(400);
-  });
-});
-
-describe("read-only enforcement for pushed config sources", () => {
-  it("blocks definition edits (including env vars) but allows domains when the config is pushed from GitHub", async ({ expect }) => {
-    await Project.createAndSwitch();
-    await Project.pushConfig({
-      "deployments-alpha": {
-        services: {
-          api: {
-            type: "vercel",
-            framework: "nextjs",
-            buildCommand: "pnpm build",
-            env: {
-              SOME_KEY: { value: "some-value" },
-            },
-          },
-        },
-      },
-    }, {
-      type: "pushed-from-github",
-      owner: "acme",
-      repo: "monorepo",
-      branch: "main",
-      commit_hash: "0000000000000000000000000000000000000000",
-      config_file_path: "hexclave.config.ts",
-    });
-
-    // The pushed definition is visible, including its env vars.
-    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
-    expect((listResponse.body as any).items.map((item: any) => ({ id: item.id, framework: item.framework, env: item.env }))).toEqual([{
-      id: "api",
-      framework: "nextjs",
-      env: [{ key: "SOME_KEY", type: "plain", value: "some-value", secret_key: null }],
-    }]);
-
-    const createResponse = await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "another" },
-    });
-    expect(createResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": "This project's configuration is managed by GitHub, so deployment services can't be edited here. Edit the \`deployments-alpha.services\` section of your hexclave.config.ts instead.",
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-
-    const patchBuildResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { build_command: "pnpm build:evil" },
-    });
-    expect(patchBuildResponse.status).toBe(400);
-
-    const deleteResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
+    const deleteAgainResponse = await niceBackendFetch("/api/v1/deployments/secrets/db_connection", {
       method: "DELETE",
       accessType: "admin",
     });
-    expect(deleteResponse.status).toBe(400);
-
-    // Env vars are part of the definition now, so they are read-only too.
-    const envPatchResponse = await niceBackendFetch("/api/v1/deployments/services/api", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { SOME_KEY: { value: "changed" } } },
-    });
-    expect(envPatchResponse.status).toBe(400);
-
-    // Domains are operational state (not part of the definition), so they stay
-    // manageable even for GitHub-sourced configs.
-    const addDomainResponse = await niceBackendFetch("/api/v1/deployments/services/api/domains", {
-      method: "POST",
-      accessType: "admin",
-      body: { hostname: "app.example.com" },
-    });
-    expect(addDomainResponse.status).toBe(201);
+    expect(deleteAgainResponse.status).toBe(404);
+    const emptyListResponse = await niceBackendFetch("/api/v1/deployments/secrets", { accessType: "admin" });
+    expect((emptyListResponse.body as any).items).toEqual([]);
   });
 
-  // Removing a service through a whole-config write is NOT a teardown: only the
-  // dashboard's DELETE route deletes the Vercel project. This pins the current
-  // (leaky) behaviour so it changes deliberately — see the "KNOWN GAP" note in
-  // the backend's lib/deployments, and the cron sweep that should replace it.
-  it("hides a service but keeps its Vercel project when a config push removes it", async ({ expect }) => {
+  it("scopes secrets per project", async ({ expect }) => {
     await Project.createAndSwitch();
-    const pushedSource = {
-      type: "pushed-from-github" as const,
-      owner: "acme",
-      repo: "monorepo",
-      branch: "main",
-      commit_hash: "0000000000000000000000000000000000000000",
-      config_file_path: "hexclave.config.ts",
-    };
-    await Project.pushConfig({
-      "deployments-alpha": {
-        services: {
-          orphan: { type: "vercel" },
-        },
-      },
-    }, pushedSource);
-    const { uploadId } = await createUpload();
-    const firstDeploy = await niceBackendFetch("/api/v1/deployments/services/orphan/deploy", {
+    await niceBackendFetch("/api/v1/deployments/secrets", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { key: "shared_key", value: "project-a-value" },
     });
-    expect(firstDeploy.status).toBe(200);
-
-    const provisionedProjectResponse = await fetch(`${VERCEL_MOCK_URL}/v9/projects/${encodeURIComponent(mockProjectName("orphan"))}?teamId=team_mock_hexclave`, {
-      headers: { authorization: "Bearer mock_hexclave_vercel_key" },
-    });
-    expect(provisionedProjectResponse.status).toBe(200);
-
-    await Project.pushConfig({ "deployments-alpha": { services: {} } }, pushedSource);
-
-    // The service is gone from the API, because listings are built from the
-    // config definitions and never from the leftover operational row.
-    const listAfterRemoval = await niceBackendFetch("/api/v1/deployments/services", {
-      accessType: "admin",
-    });
-    expect(listAfterRemoval.status).toBe(200);
-    expect((listAfterRemoval.body as any).items.map((item: any) => item.id)).not.toContain("orphan");
-
-    // ...but its Vercel project is still live. This is the leak.
-    const removedProjectResponse = await fetch(`${VERCEL_MOCK_URL}/v9/projects/${encodeURIComponent(mockProjectName("orphan"))}?teamId=team_mock_hexclave`, {
-      headers: { authorization: "Bearer mock_hexclave_vercel_key" },
-    });
-    expect(removedProjectResponse.status).toBe(200);
-
-    // Re-adding the same service id picks the surviving operational row back
-    // up and redeploys onto the same project instead of provisioning a new one.
-    await Project.pushConfig({
-      "deployments-alpha": {
-        services: {
-          orphan: { type: "vercel" },
-        },
-      },
-    }, pushedSource);
-    const { uploadId: secondUploadId } = await createUpload();
-    const secondDeploy = await niceBackendFetch("/api/v1/deployments/services/orphan/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: { upload_id: secondUploadId },
-    });
-    expect(secondDeploy.status).toBe(200);
+    await Project.createAndSwitch();
+    const otherProjectList = await niceBackendFetch("/api/v1/deployments/secrets", { accessType: "admin" });
+    expect((otherProjectList.body as any).items).toEqual([]);
   });
 });
 
 describe("deploys against the vercel-mock", () => {
-  it("deploys end to end: upload, provision, env resolution, status polling, and redacted logs", async ({ expect }) => {
+  it("deploys end to end: sync, upload, provision, env resolution from stored secrets, status polling, and redacted logs", async ({ expect }) => {
     await Project.createAndSwitch();
-    // The internal API key set also backs the {hexclave.secretServerKey} and
-    // {hexclave.publishableClientKey} env var references.
+    // The internal API key set also backs the hexclave.secretServerKey and
+    // hexclave.publishableClientKey connection outputs.
     await InternalApiKey.createAndSetProjectKeys();
     const projectKeys = backendContext.value.projectKeys;
     if (projectKeys === "no-project") throw new Error("No project in context");
 
-    const { uploadId } = await createServiceAndUpload("api");
+    // The secret value comes from the per-project store, not from the deploy
+    // request (there is no way to pass one in the request anymore).
+    await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "db_connection", value: "postgres://user:hunter2@db.example.com/app" },
+    });
+    // A stored value also beats the definition's default.
+    await niceBackendFetch("/api/v1/deployments/secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "OVERRIDDEN", value: "stored-wins" },
+    });
+
+    const { uploadId } = await syncServiceAndUpload("api", {
+      framework: "nextjs",
+      build_command: "pnpm build",
+      env: {
+        HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+        HEXCLAVE_SECRET_SERVER_KEY: { type: "connection", value: "hexclave.secretServerKey" },
+        PLAIN_VALUE: { value: "hello-world" },
+        DB_PASSWORD: { type: "secret", key: "db_connection" },
+        FROM_DEFAULT: { type: "secret", key: "UNSET_WITH_DEFAULT", default_value: "the-default" },
+        OVERRIDDEN_VALUE: { type: "secret", key: "OVERRIDDEN", default_value: "the-default" },
+        // Regression test for the removal of the `{service.output}`
+        // interpolation syntax: a plain value that LOOKS like the old
+        // reference syntax must be pushed verbatim, never resolved.
+        LOOKS_LIKE_A_REFERENCE: { value: "{hexclave.projectId}" },
+      },
+    });
 
     const deployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "server",
-      body: {
-        upload_id: uploadId,
-        build_config: { framework: "nextjs", build_command: "pnpm build" },
-        env: {
-          HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
-          HEXCLAVE_SECRET_SERVER_KEY: { type: "connection", value: "hexclave.secretServerKey" },
-          PLAIN_VALUE: { value: "hello-world" },
-          DB_PASSWORD: { type: "secret", key: "db_connection" },
-          // Regression test for the removal of the `{service.output}`
-          // interpolation syntax: a plain value that LOOKS like the old
-          // reference syntax must be pushed verbatim, never resolved.
-          LOOKS_LIKE_A_REFERENCE: { value: "{hexclave.projectId}" },
-        },
-        secrets: {
-          db_connection: "postgres://user:hunter2@db.example.com/app",
-        },
-      },
+      body: { upload_id: uploadId },
     });
     expect(deployResponse).toMatchInlineSnapshot(`
       NiceResponse {
@@ -453,28 +443,11 @@ describe("deploys against the vercel-mock", () => {
 
     // The mock advances one state per poll: queued -> building -> ready.
     const firstPoll = await niceBackendFetch(`/api/v1/deployments/runs/${runId}`, { accessType: "admin" });
-    expect((firstPoll.body as any).url).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
-    (firstPoll.body as any).url = "<deployment URL>";
-    expect(firstPoll).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "created_at_millis": <stripped field 'created_at_millis'>,
-          "error": null,
-          "finished_at_millis": null,
-          "id": "<stripped UUID>",
-          "service_id": "api",
-          "status": "building",
-          "target": "production",
-          "triggered_by": "server",
-          "url": "<deployment URL>",
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    expect((firstPoll.body as any).status).toBe("building");
     const secondPoll = await niceBackendFetch(`/api/v1/deployments/runs/${runId}`, { accessType: "admin" });
     expect((secondPoll.body as any).status).toBe("ready");
     expect((secondPoll.body as any).finished_at_millis).not.toBeNull();
+    expect((secondPoll.body as any).url).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
 
     // The service now reports as deployed & provisioned.
     const serviceResponse = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
@@ -483,22 +456,21 @@ describe("deploys against the vercel-mock", () => {
     expect((serviceResponse.body as any).has_successful_deploy).toBe(true);
 
     // Env vars were resolved server-side before being pushed to the target:
-    // connections resolve to outputs, secrets to the --secret values, and
-    // plain values pass through verbatim — even when they look like the old
-    // `{service.output}` interpolation syntax.
+    // connections resolve to outputs, secrets to the stored values (falling
+    // back to definition defaults), and plain values pass through verbatim.
     const envValues = await fetchMockEnvValues("api");
     expect(envValues.HEXCLAVE_PROJECT_ID).toBe(projectKeys.projectId);
     expect(envValues.HEXCLAVE_SECRET_SERVER_KEY).toBe(projectKeys.secretServerKey);
     expect(envValues.PLAIN_VALUE).toBe("hello-world");
     expect(envValues.DB_PASSWORD).toBe("postgres://user:hunter2@db.example.com/app");
+    expect(envValues.FROM_DEFAULT).toBe("the-default");
+    expect(envValues.OVERRIDDEN_VALUE).toBe("stored-wins");
     expect(envValues.LOOKS_LIKE_A_REFERENCE).toBe("{hexclave.projectId}");
 
     // The build logs echo the build environment (mock behavior); the secret
-    // server key must be redacted, non-secrets stay readable. Known
-    // limitation, pinned deliberately: --secret values are never persisted by
-    // Hexclave, so they CANNOT be redacted from later log reads — improving
-    // this requires a conscious design change (e.g. storing salted value
-    // hashes), not an accident.
+    // server key AND the stored secret values must be redacted — unlike the
+    // old `--secret` flow, stored secrets are persisted server-side, so we
+    // can (and must) keep them out of the logs.
     const logsResponse = await niceBackendFetch(`/api/v1/deployments/runs/${runId}/logs`, { accessType: "admin" });
     expect(logsResponse.status).toBe(200);
     const logsText = typeof logsResponse.body === "string" ? logsResponse.body : JSON.stringify(logsResponse.body);
@@ -506,206 +478,123 @@ describe("deploys against the vercel-mock", () => {
     expect(logsText).toContain(`HEXCLAVE_PROJECT_ID=${projectKeys.projectId}`);
     expect(logsText).toContain("HEXCLAVE_SECRET_SERVER_KEY=<redacted>");
     expect(logsText).not.toContain(projectKeys.secretServerKey);
-    expect(logsText).toContain("DB_PASSWORD=postgres://user:hunter2@db.example.com/app");
+    expect(logsText).toContain("DB_PASSWORD=<redacted>");
+    expect(logsText).not.toContain("hunter2");
   });
 
-  it("rejects deploys with missing, unknown, or dangling env references without consuming the upload", async ({ expect }) => {
+  it("rejects deploys with missing secrets or dangling connections without consuming the upload", async ({ expect }) => {
     await Project.createAndSwitch();
-    const { uploadId } = await createServiceAndUpload("strict");
 
-    // Secret env var without a matching secret value.
+    // Secret env var without a stored value or default.
+    const { uploadId } = await syncServiceAndUpload("strict", {
+      env: { DB_PASSWORD: { type: "secret", key: "db_connection" } },
+    });
     const missingSecretResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: { DB_PASSWORD: { type: "secret", key: "db_connection" } },
-      },
+      body: { upload_id: uploadId },
     });
-    expect(missingSecretResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": "Missing secret values for: db_connection. This service's env vars reference these secrets — pass them with \`--secret <key>=<value>\`.",
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-
-    // A secret that no env var references is a typo, not a no-op.
-    const unknownSecretResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: { PLAIN: { value: "x" } },
-        secrets: { db_connectoin: "oops" },
-      },
-    });
-    expect(unknownSecretResponse.status).toBe(400);
-    expect(unknownSecretResponse.body).toContain("Unknown secrets: db_connectoin");
+    expect(missingSecretResponse.status).toBe(400);
+    expect(missingSecretResponse.body).toContain("Missing values for secrets: db_connection");
+    expect(missingSecretResponse.body).toContain("Project Settings > Secrets");
 
     // A connection to a service that doesn't exist.
+    await syncServices({ strict: { type: "vercel", env: { OTHER_URL: { type: "connection", value: "nonexistent.url" } } } });
     const danglingConnectionResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: { OTHER_URL: { type: "connection", value: "nonexistent.url" } },
-      },
+      body: { upload_id: uploadId },
     });
     expect(danglingConnectionResponse.status).toBe(400);
     expect(danglingConnectionResponse.body).toContain("points to a service that doesn't exist");
 
+    // A connection to a defined-but-never-deployed service is also a deploy
+    // error (deploys resolve strictly; the CLI's topological ordering is what
+    // prevents this in practice).
+    await syncServices({
+      strict: { type: "vercel", env: { OTHER_URL: { type: "connection", value: "undeployed.url" } } },
+      undeployed: { type: "vercel", env: {} },
+    });
+    const pendingConnectionResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId },
+    });
+    expect(pendingConnectionResponse.status).toBe(400);
+    expect(pendingConnectionResponse.body).toContain("no successful production deployment yet");
+
+    // Self-references are typos that can never resolve.
+    await syncServices({ strict: { type: "vercel", env: { MY_URL: { type: "connection", value: "strict.url" } } } });
+    const selfRefResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId },
+    });
+    expect(selfRefResponse.status).toBe(400);
+    expect(selfRefResponse.body).toContain("cannot reference itself");
+
     // None of the failed attempts may have consumed the upload: the same
-    // upload id must still deploy fine once the request is valid.
+    // upload id must still deploy fine once the definition is valid.
+    await syncServices({ strict: { type: "vercel", env: { PLAIN: { value: "x" } } } });
     const validResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: { DB_PASSWORD: { type: "secret", key: "db_connection" } },
-        secrets: { db_connection: "hunter2" },
-      },
+      body: { upload_id: uploadId },
     });
     expect(validResponse.status).toBe(200);
   });
 
-  it("reconciles the Vercel env on redeploy and uses the stored definition when the request omits env", async ({ expect }) => {
+  it("deploying a service that was never synced is a 404", async ({ expect }) => {
     await Project.createAndSwitch();
-    const projectKeys = backendContext.value.projectKeys;
-    if (projectKeys === "no-project") throw new Error("No project in context");
+    const { uploadId } = await createUpload();
+    const response = await niceBackendFetch("/api/v1/deployments/services/never-synced/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId },
+    });
+    expect(response.status).toBe(404);
+    expect(response.body).toContain("hexclave deploy");
+  });
 
-    // First deploy: two plain vars and a secret, persisted config-as-code.
-    const { uploadId } = await createServiceAndUpload("recon");
+  it("reconciles the Vercel env when a redeploy's synced definition drops a key", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const { uploadId } = await syncServiceAndUpload("recon", {
+      env: {
+        KEEP_ME: { value: "kept" },
+        REMOVE_ME: { value: "stale" },
+      },
+    });
     const firstDeploy = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: {
-          KEEP_ME: { value: "kept" },
-          REMOVE_ME: { value: "stale" },
-          DB_PASSWORD: { type: "secret", key: "db_connection" },
-        },
-        secrets: { db_connection: "hunter2" },
-      },
+      body: { upload_id: uploadId },
     });
     expect(firstDeploy.status).toBe(200);
     expect((await fetchMockEnvValues("recon")).REMOVE_ME).toBe("stale");
 
-    // The persisted definition exposes the secret's NAME only — the value must
-    // not appear anywhere readable.
-    const serviceResponse = await niceBackendFetch("/api/v1/deployments/services/recon", { accessType: "admin" });
-    expect((serviceResponse.body as any).env).toEqual([
-      { key: "DB_PASSWORD", type: "secret", value: null, secret_key: "db_connection" },
-      { key: "KEEP_ME", type: "plain", value: "kept", secret_key: null },
-      { key: "REMOVE_ME", type: "plain", value: "stale", secret_key: null },
-    ]);
-    expect(JSON.stringify(serviceResponse.body)).not.toContain("hunter2");
-
-    // Redeploy WITHOUT env: the stored definition governs, so the secret is
-    // still demanded — this is exactly what the CLI's dashboard mode relies on.
-    const { uploadId: secondUploadId } = await createUpload();
-    const missingSecret = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
+    // A re-sync with a reduced env set + redeploy must delete the removed key
+    // from the Vercel project, not let it linger in future builds.
+    const { uploadId: secondUploadId } = await syncServiceAndUpload("recon", {
+      env: { KEEP_ME: { value: "kept" } },
+    });
+    const secondDeploy = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
       method: "POST",
       accessType: "admin",
       body: { upload_id: secondUploadId },
     });
-    expect(missingSecret.status).toBe(400);
-    expect(missingSecret.body).toContain("Missing secret values for: db_connection");
-
-    // Redeploy with a REDUCED env set: the removed key must be deleted from
-    // the Vercel project, not linger in future builds (deploys reconcile, not
-    // just upsert — CLI/GitHub-managed configs have no other removal path).
-    const reducedDeploy = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        upload_id: secondUploadId,
-        env: {
-          KEEP_ME: { value: "kept" },
-          DB_PASSWORD: { type: "secret", key: "db_connection" },
-        },
-        secrets: { db_connection: "hunter2" },
-      },
-    });
-    expect(reducedDeploy.status).toBe(200);
+    expect(secondDeploy.status).toBe(200);
     const envValues = await fetchMockEnvValues("recon");
     expect(envValues.KEEP_ME).toBe("kept");
-    expect(envValues.DB_PASSWORD).toBe("hunter2");
     expect(envValues.REMOVE_ME).toBeUndefined();
-  });
-
-  it("pushes dashboard env edits through to a provisioned service, deferring secrets and pending connections", async ({ expect }) => {
-    await Project.createAndSwitch();
-    const { uploadId } = await createServiceAndUpload("editable");
-    const deployResponse = await niceBackendFetch("/api/v1/deployments/services/editable/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: {
-          CHANGE_ME: { value: "before" },
-          REMOVE_ME: { value: "stale" },
-          DB_PASSWORD: { type: "secret", key: "db_connection" },
-        },
-        secrets: { db_connection: "hunter2" },
-      },
-    });
-    expect(deployResponse.status).toBe(200);
-
-    // A second service that exists but has never deployed — a connection to it
-    // is a legitimate PENDING state that must not fail the save (deploy order
-    // must not matter when wiring services up).
-    await niceBackendFetch("/api/v1/deployments/services", { method: "POST", accessType: "admin", body: { id: "undeployed" } });
-
-    const patchResponse = await niceBackendFetch("/api/v1/deployments/services/editable", {
-      method: "PATCH",
-      accessType: "admin",
-      body: {
-        env: {
-          CHANGE_ME: { value: "after" },
-          DB_PASSWORD: { type: "secret", key: "db_connection" },
-          PENDING_URL: { type: "connection", value: "undeployed.url" },
-        },
-      },
-    });
-    expect(patchResponse.status).toBe(200);
-
-    const envValues = await fetchMockEnvValues("editable");
-    expect(envValues.CHANGE_ME).toBe("after");
-    // Removed from the definition -> deleted from the Vercel project.
-    expect(envValues.REMOVE_ME).toBeUndefined();
-    // Secret entries are skipped by the write-through (no value exists at save
-    // time); the deploy-time value stays until the next deploy.
-    expect(envValues.DB_PASSWORD).toBe("hunter2");
-    // The pending connection is skipped, not pushed and not an error.
-    expect(envValues.PENDING_URL).toBeUndefined();
-
-    // Static typos, in contrast, must reject the save — they can never become
-    // resolvable later.
-    const danglingPatch = await niceBackendFetch("/api/v1/deployments/services/editable", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { OOPS: { type: "connection", value: "nonexistent.url" } } },
-    });
-    expect(danglingPatch.status).toBe(400);
-    expect(danglingPatch.body).toContain("points to a service that doesn't exist");
-    const selfRefPatch = await niceBackendFetch("/api/v1/deployments/services/editable", {
-      method: "PATCH",
-      accessType: "admin",
-      body: { env: { MY_URL: { type: "connection", value: "editable.url" } } },
-    });
-    expect(selfRefPatch.status).toBe(400);
-    expect(selfRefPatch.body).toContain("cannot reference itself");
   });
 
   it("resolves connections to another service's production url", async ({ expect }) => {
     await Project.createAndSwitch();
-    const projectKeys = backendContext.value.projectKeys;
-    if (projectKeys === "no-project") throw new Error("No project in context");
 
-    // Deploy the producer to READY first.
-    const { uploadId } = await createServiceAndUpload("api");
+    // Deploy the producer to READY first (this is what the CLI's topological
+    // deploy order guarantees).
+    const { uploadId } = await syncServiceAndUpload("api");
     const apiDeploy = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
@@ -714,109 +603,26 @@ describe("deploys against the vercel-mock", () => {
     expect(apiDeploy.status).toBe(200);
     await pollRunToReady((apiDeploy.body as any).run_id);
 
-    // The consumer's connection resolves to the producer's latest READY
-    // production deployment URL (the mock's URLs are deterministic).
-    const { uploadId: frontUploadId } = await createServiceAndUpload("front");
+    const { uploadId: frontUploadId } = await syncServiceAndUpload("front", {
+      env: { API_URL: { type: "connection", value: "api.url" } },
+    });
     const frontDeploy = await niceBackendFetch("/api/v1/deployments/services/front/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: frontUploadId,
-        env: { API_URL: { type: "connection", value: "api.url" } },
-      },
+      body: { upload_id: frontUploadId },
     });
     expect(frontDeploy.status).toBe(200);
     expect((await fetchMockEnvValues("front")).API_URL).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
   });
 
-  it("applies request build config and env to builds on GitHub-managed configs without persisting them", async ({ expect }) => {
-    await Project.createAndSwitch();
-    await Project.pushConfig({
-      "deployments-alpha": {
-        services: {
-          api: {
-            type: "vercel",
-            env: {
-              FROM_REPO: { value: "repo-value" },
-            },
-          },
-        },
-      },
-    }, {
-      type: "pushed-from-github",
-      owner: "acme",
-      repo: "monorepo",
-      branch: "main",
-      commit_hash: "0000000000000000000000000000000000000000",
-      config_file_path: "hexclave.config.ts",
-    });
-
-    // Deploying a service the repo doesn't define is rejected before anything
-    // is consumed.
-    const { uploadId } = await createUpload();
-    const unknownService = await niceBackendFetch("/api/v1/deployments/services/other/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: { upload_id: uploadId },
-    });
-    expect(unknownService.status).toBe(400);
-    expect(unknownService.body).toContain("managed by GitHub");
-
-    // The request's env governs THIS build (the CLI sends the same file
-    // content the repo holds) — but nothing is persisted: the rendered
-    // definition still shows the repo's env afterwards.
-    const deployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        env: { FROM_REQUEST: { value: "request-value" } },
-      },
-    });
-    expect(deployResponse.status).toBe(200);
-    expect((await fetchMockEnvValues("api")).FROM_REQUEST).toBe("request-value");
-    const serviceResponse = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
-    expect((serviceResponse.body as any).env).toEqual([
-      { key: "FROM_REPO", type: "plain", value: "repo-value", secret_key: null },
-    ]);
-  });
-
-  it("unsets stored build config fields when the deploy request sends null", async ({ expect }) => {
-    await Project.createAndSwitch();
-    await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "web", build_command: "pnpm build:custom", framework: "nextjs" },
-    });
-    // The CLI sends null for fields absent from the config file — deleting a
-    // field there must actually clear the stored value (fall back to platform
-    // auto-detection), not silently keep it forever.
-    const { uploadId } = await createUpload();
-    const deployResponse = await niceBackendFetch("/api/v1/deployments/services/web/deploy", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        build_config: { framework: "nextjs", build_command: null },
-      },
-    });
-    expect(deployResponse.status).toBe(200);
-    const serviceResponse = await niceBackendFetch("/api/v1/deployments/services/web", { accessType: "admin" });
-    expect((serviceResponse.body as any).build_command).toBe(null);
-    expect((serviceResponse.body as any).framework).toBe("nextjs");
-  });
-
   it("marks a failing build as errored", async ({ expect }) => {
     await Project.createAndSwitch();
-    const { uploadId } = await createServiceAndUpload("failing");
+    // The mock fails any build whose build command contains this marker.
+    const { uploadId } = await syncServiceAndUpload("failing", { build_command: "fail-this-build" });
     const deployResponse = await niceBackendFetch("/api/v1/deployments/services/failing/deploy", {
       method: "POST",
       accessType: "admin",
-      body: {
-        upload_id: uploadId,
-        // The mock fails any build whose build command contains this marker.
-        build_config: { build_command: "fail-this-build" },
-      },
+      body: { upload_id: uploadId },
     });
     expect(deployResponse.status).toBe(200);
     const runId = (deployResponse.body as any).run_id;
@@ -828,11 +634,7 @@ describe("deploys against the vercel-mock", () => {
 
   it("rejects invalid uploads and consumes each upload slot once", async ({ expect }) => {
     await Project.createAndSwitch();
-    await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "api" },
-    });
+    await syncServices({ api: { type: "vercel", env: {} } });
 
     // Deploy with a nonexistent upload.
     const missingUploadResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
@@ -888,11 +690,7 @@ describe("deploys against the vercel-mock", () => {
 describe("domains", () => {
   it("adds domains, reads back DNS records, and removes them", async ({ expect }) => {
     await Project.createAndSwitch();
-    await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "web" },
-    });
+    await syncServices({ web: { type: "vercel", env: {} } });
 
     // Before the first deploy: the domain is stored, DNS guidance is generic.
     const addResponse = await niceBackendFetch("/api/v1/deployments/services/web/domains", {

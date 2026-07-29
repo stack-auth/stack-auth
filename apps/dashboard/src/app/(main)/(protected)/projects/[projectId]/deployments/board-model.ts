@@ -15,17 +15,19 @@ export type ServiceStatus = "deployed" | "building" | "not_deployed" | "crashed"
 // Mirrors the API's normalized env var shape: "plain" vars carry their literal
 // value, "connection" vars carry the "serviceId.outputKey" reference they
 // resolve to at deploy time, and "secret" vars carry only the secret key whose
-// value is supplied via `hexclave deploy --secret` (never stored).
+// value lives in the write-only per-project secret store (Project Settings >
+// Secrets) — `secretHasDefault` says whether the definition has a fallback.
 export type EnvVar = {
   key: string,
   type: "plain" | "secret" | "connection",
   value: string | null,
   secretKey: string | null,
+  secretHasDefault: boolean | null,
 };
 
 export type BoardService = {
-  // The service id — the key under `deployments.services` in the config, or
-  // "hexclave" for the managed service.
+  // The service id — the key of the record returned by the config file's
+  // `services` export, or "hexclave" for the managed service.
   id: string,
   name: string,
   type: ServiceType,
@@ -66,7 +68,6 @@ const OUTPUTS_BY_TYPE = new Map<ServiceType, ServiceOutput[]>([
   ]],
   ["vercel", [
     { key: "url", label: "Production URL" },
-    { key: "previewUrl", label: "Preview URL" },
   ]],
 ]);
 
@@ -169,6 +170,7 @@ export function buildBoardServices(apiServices: AdminDeploymentServiceJson[], he
         type: envVar.type,
         value: envVar.value,
         secretKey: envVar.secret_key,
+        secretHasDefault: envVar.secret_has_default,
       })),
       api: apiService,
     });

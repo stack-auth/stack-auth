@@ -5,7 +5,7 @@
 // output) into the service that owns the env var (the target), so a
 // connection line is drawn source → target.
 
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX } from "@hexclave/shared/dist/config/schema";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX } from "@hexclave/shared/dist/deployments";
 import { NODE_HEIGHT, NODE_WIDTH, type BoardService, type EnvVar } from "./board-model";
 
 export type ParsedConnection = {

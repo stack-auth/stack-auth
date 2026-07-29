@@ -1,4 +1,4 @@
-import { computeDnsRecords, getServiceDefinitionOrThrow } from "@/lib/deployments";
+import { computeDnsRecords, getServiceRowOrThrow } from "@/lib/deployments";
 import { VercelApiError, getVercelDeploymentsClientOrThrow, sanitizeVercelError } from "@/lib/deployments/vercel-client";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, getPrismaClientForTenancy } from "@/prisma-client";
@@ -71,8 +71,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
     if (service.vercelProjectId == null) {
@@ -160,8 +160,8 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
     if (service.vercelProjectId != null) {

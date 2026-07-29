@@ -52,6 +52,7 @@ model Project {
   gtmActions                 GtmAction[]
   gtmNotes                   GtmNote[]
   gtmOnboardings             GtmOnboarding[]
+  deploymentSecrets          DeploymentSecret[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -1635,14 +1636,13 @@ model DeletedRow {
 }
 
 // ================== Deployments ==================
-// Operational state for the Deployments app. The service DEFINITIONS
-// (type, framework, build config, env vars) live in the environment config
-// under `deployments.services.<serviceId>` so they follow the project's config
-// source (dashboard / config file / GitHub); these tables only hold what the
-// config cannot: the lazily-provisioned Vercel project id, custom domains and
-// their verification state as reported by Vercel, and the deployment runs
-// themselves. Note that env vars are NOT stored here: their definitions live
-// in the config, and secret values only ever pass through at deploy time.
+// State for the Deployments app. Service definitions come from the `services`
+// export of hexclave.config.ts: `hexclave deploy` evaluates it and syncs the
+// serializable parts (build config, dev command, env var definitions) into
+// DeploymentService rows, which are the authoritative server-side copy — the
+// dashboard renders services from these rows and cannot edit them. Secret
+// VALUES are never part of a definition: env vars of type "secret" only name a
+// key into the per-project DeploymentSecret table below.
 
 model DeploymentService {
   tenancyId String @db.Uuid
@@ -1652,20 +1652,31 @@ model DeploymentService {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // The user-facing service id — the key under `deployments.services` in the
-  // environment config (e.g. "api").
+  // The user-facing service id — the key of the record returned by the
+  // config file's `services` export (e.g. "api").
   serviceId String
 
   // Set when the Vercel project is lazily provisioned on first deploy.
   vercelProjectId String?
 
-  // Build configuration as last sent to Vercel (operational cache — the
-  // authoritative definition lives in the environment config).
+  // The definition as last synced from the config file's `services` export.
+  // `definitionSyncedAt` is null only for rows that predate the services-export
+  // rework (their definitions lived in the branch config, which was dropped
+  // without backfill) — deploys refuse such rows so a legacy service can't be
+  // deployed with a spuriously empty env set (which would also wipe the env
+  // vars off its Vercel project via reconciliation).
+  definitionSyncedAt DateTime?
   framework       String?
   installCommand  String?
   buildCommand    String?
   outputDirectory String?
   rootDirectory   String?
+  devCommand      String?
+  // Record of env var key -> DeploymentEnvVarDefinition (see
+  // @hexclave/shared/dist/deployments): { value } for plain vars,
+  // { type: "secret", key, default_value? } for secrets (never their values),
+  // { type: "connection", value } for service-output references.
+  env Json @default("{}")
 
   tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   domains DeploymentServiceDomain[]
@@ -1673,6 +1684,31 @@ model DeploymentService {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, serviceId])
+}
+
+// Per-project values for the secrets referenced by `secret()` env vars in the
+// config file's `services` export. Values are write-only through the API
+// (set/overwrite/delete, never read back) and are envelope-encrypted with the
+// same KMS flow as the data vault's server-side layer (`encryptWithKms`), so
+// plaintext never touches this table; the backend decrypts them only at deploy
+// time to push them to the deployment target. Keyed by project (not tenancy):
+// secrets are infrastructure credentials that branches share by design.
+model DeploymentSecret {
+  projectId String
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  key String
+  // { edkBase64, ciphertextBase64 } from encryptWithKms()
+  encrypted Json
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, id])
+  @@unique([projectId, key])
 }
 
 model DeploymentServiceDomain {

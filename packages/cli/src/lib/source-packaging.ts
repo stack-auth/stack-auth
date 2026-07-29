@@ -55,6 +55,17 @@ export type PackagedSource = {
   totalBytes: number,
 };
 
+export type SourceFileFilters = {
+  // Both predicates receive the file's path relative to the packaged root
+  // directory (posix separators) and apply AFTER the ignore rules — they can
+  // only narrow the packaged set, never re-add an ignored file (re-adding
+  // would make `includeFiles: () => true` silently package node_modules).
+  // A file is kept iff includeFiles (when given) returns true AND excludeFiles
+  // (when given) returns false. Files only; directories are not filtered.
+  includeFiles?: (relativePath: string) => boolean,
+  excludeFiles?: (relativePath: string) => boolean,
+};
+
 function readIgnoreScopes(directory: string): IgnoreScope[] {
   const scopes: IgnoreScope[] = [];
   for (const ignoreFileName of IGNORE_FILE_NAMES) {
@@ -72,7 +83,7 @@ function readIgnoreScopes(directory: string): IgnoreScope[] {
  * a monorepo subdirectory inherits the repository-level .gitignore and
  * .vercelignore rules.
  */
-export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory): PackagedSource {
+export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory, filters: SourceFileFilters = {}): PackagedSource {
   const absoluteRootDirectory = path.resolve(rootDirectory);
   const absoluteIgnoreRootDirectory = path.resolve(ignoreRootDirectory);
   const rootStat = fs.statSync(absoluteRootDirectory, { throwIfNoEntry: false });
@@ -106,6 +117,8 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
         walk(absolutePath, relativePath, scopes);
       } else if (dirent.isFile()) {
         if (isIgnored(scopes, absolutePath, false)) continue;
+        if (filters.includeFiles != null && !filters.includeFiles(relativePath)) continue;
+        if (filters.excludeFiles != null && filters.excludeFiles(relativePath)) continue;
         const data = fs.readFileSync(absolutePath);
         totalBytes += data.length;
         entries.push({ path: relativePath, data });

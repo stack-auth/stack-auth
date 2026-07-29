@@ -1,4 +1,4 @@
-import { getServiceDefinitionOrThrow, isTerminalRunStatus, refreshRunFromVercel, runToApiShape } from "@/lib/deployments";
+import { getServiceRowOrThrow, isTerminalRunStatus, refreshRunFromVercel, runToApiShape } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -35,23 +35,8 @@ export const GET = createSmartRouteHandler({
     if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 100) {
       throw new StatusError(400, "limit must be an integer between 1 and 100");
     }
-    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const service = await prisma.deploymentService.findUnique({
-      where: {
-        tenancyId_serviceId: {
-          tenancyId: auth.tenancy.id,
-          serviceId: params.service_id,
-        },
-      },
-    });
-    if (service == null) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { items: [] },
-      } as const;
-    }
+    const service = await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const runs = await prisma.deploymentRun.findMany({
       where: {
         tenancyId: auth.tenancy.id,

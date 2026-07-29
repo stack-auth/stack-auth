@@ -1,7 +1,7 @@
 "use client";
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
-import { ActionDialog, Typography, cn } from "@/components/ui";
+import { Typography, cn } from "@/components/ui";
 import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
@@ -16,16 +16,15 @@ import {
 } from "./panel-content";
 import { STATUS_META, getAccentClasses } from "./variants";
 
+// Note: service definitions (name, build config, env vars) are read-only here
+// — they come from the config file's `services` export and are synced by
+// `hexclave deploy`. Domains are operational state and stay editable.
+
 type ServiceDetailPaneProps = {
   service: BoardService,
   services: BoardService[],
   project: AdminProject,
-  // True when the project's config is pushed from a config file or GitHub:
-  // service definitions (name, build config, env vars) can't be edited here.
-  // Domains are operational state and stay editable regardless.
-  readOnly: boolean,
   onClose: () => void,
-  onDeleted: () => void,
   refresh: () => Promise<void>,
 };
 
@@ -40,10 +39,9 @@ const TABS: { id: PanelTabId, label: string }[] = [
 ];
 
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
-  const { service, services, project, readOnly, refresh } = props;
+  const { service, services, project, refresh } = props;
   const [tab, setTab] = useState<PanelTabId>("overview");
   const [openRun, setOpenRun] = useState<AdminDeploymentRunJson | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isHexclave = service.type === "hexclave";
   const meta = getServiceTypeMeta(service.type);
@@ -52,11 +50,10 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const status = STATUS_META.get(service.status);
 
   // When a different service is selected, jump back to Overview and reset the
-  // drill-in / dialog.
+  // drill-in.
   useEffect(() => {
     setTab("overview");
     setOpenRun(null);
-    setDeleteOpen(false);
   }, [service.id]);
 
   const selectTab = (id: PanelTabId) => {
@@ -69,10 +66,10 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   ) : (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
+      case "variables": { return <VariablesContent service={service} services={services} isHexclave={isHexclave} />; }
       case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
-      case "settings": { return <SettingsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} onRequestDelete={() => setDeleteOpen(true)} />; }
+      case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} />; }
     }
   })();
 
@@ -114,22 +111,6 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
       </div>
 
       <div className="min-h-0 flex-1">{content}</div>
-
-      <ActionDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        danger
-        title="Delete service"
-        description={`This permanently removes "${service.name}", including its deployment target and all of its configuration. This can't be undone.`}
-        okButton={{
-          label: "Delete service",
-          onClick: async () => {
-            await project.deleteDeploymentService(service.id);
-            props.onDeleted();
-          },
-        }}
-        cancelButton
-      />
     </div>
   );
 }

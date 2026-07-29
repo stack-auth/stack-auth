@@ -21,12 +21,15 @@ function runCli(
   args: string[],
   envOverrides?: Record<string, string>,
   cwd?: string,
+  // `deploy` waits for remote builds (the vercel-mock advances one state per
+  // poll at a 3s interval), so it needs more than the default.
+  timeout = 30_000,
 ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
   return new Promise((resolve) => {
     execFile("node", [CLI_BIN, ...args], {
       env: { ...baseEnv, ...envOverrides },
       cwd,
-      timeout: 30_000,
+      timeout,
     }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout.toString(),
@@ -420,6 +423,99 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain(".ts extension");
   });
+
+  it("deploy deploys the services export in dependency order and waits for the builds", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-deploy-"));
+    try {
+      fs.mkdirSync(path.join(deployDir, "web"));
+      fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
+      fs.mkdirSync(path.join(deployDir, "db"));
+      fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
+      const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"), [
+        `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };`,
+        "export const services = ({ isDev, secret, service, hexclave }: any) => ({",
+        "  web: {",
+        '    type: "vercel",',
+        '    rootDirectory: "./web",',
+        '    devCommand: "npm run dev",',
+        "    env: {",
+        '      DB_URL: service("db").url,',
+        "      PROJECT_ID: hexclave.projectId,",
+        '      OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
+        "    },",
+        "  },",
+        '  db: { type: "vercel", rootDirectory: "./db" },',
+        "});",
+        "",
+      ].join("\n"));
+      writeConfigFile(true);
+      const { stdout, stderr, exitCode } = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "hexclave.config.ts")],
+        {},
+        deployDir,
+        90_000,
+      );
+      if (exitCode !== 0) {
+        throw new Error(`deploy exited ${exitCode}. stderr: ${stderr}\nstdout: ${stdout}`);
+      }
+      // stdout is the machine-readable summary; both services must have built
+      // to ready with a deployment URL.
+      const summary = JSON.parse(stdout);
+      expect(summary.services.db.status).toBe("ready");
+      expect(summary.services.web.status).toBe("ready");
+      expect(summary.services.db.url).toContain("https://");
+      expect(summary.services.web.url).toContain("https://");
+      // web's env connects to db.url, so db must have finished deploying
+      // before web even started (topological order, not just start order).
+      expect(stderr.indexOf("[db] Deployment succeeded")).toBeGreaterThanOrEqual(0);
+      expect(stderr.indexOf("[db] Deployment succeeded")).toBeLessThan(stderr.indexOf("[web] Starting deployment"));
+      // The definitions were synced server-side, including the dev command.
+      const execRes = await runCli([
+        "exec", "--cloud-project-id", createdProjectId,
+        "const p = await hexclaveServerApp.getProject(); const svc = (await p.listDeploymentServices()).find(s => s.id === 'web'); return JSON.stringify({ dev: svc.dev_command, keys: svc.env.map(e => e.key).sort() });",
+      ]);
+      if (execRes.exitCode !== 0) {
+        throw new Error(`exec exited ${execRes.exitCode}. stderr: ${execRes.stderr}`);
+      }
+      expect(JSON.parse(JSON.parse(execRes.stdout.trim()))).toEqual({
+        dev: "npm run dev",
+        keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
+      });
+
+      // The config export was pushed to the branch config by default.
+      const readBranchConfig = async () => {
+        const configRes = await runCli([
+          "exec", "--cloud-project-id", createdProjectId,
+          "const p = await hexclaveServerApp.getProject(); return JSON.stringify(await p.getConfigOverride('branch'));",
+        ]);
+        if (configRes.exitCode !== 0) {
+          throw new Error(`exec exited ${configRes.exitCode}. stderr: ${configRes.stderr}`);
+        }
+        return JSON.parse(JSON.parse(configRes.stdout.trim()));
+      };
+      expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
+
+      // --service-id deploys just that service, and --no-config-push leaves
+      // the (changed) config export unpushed.
+      writeConfigFile(false);
+      const singleRun = await runCli(
+        ["deploy", "--cloud-project-id", createdProjectId, "--config-file", path.join(deployDir, "hexclave.config.ts"), "--service-id", "db", "--no-config-push"],
+        {},
+        deployDir,
+        90_000,
+      );
+      if (singleRun.exitCode !== 0) {
+        throw new Error(`deploy --service-id exited ${singleRun.exitCode}. stderr: ${singleRun.stderr}\nstdout: ${singleRun.stdout}`);
+      }
+      const singleSummary = JSON.parse(singleRun.stdout);
+      expect(Object.keys(singleSummary.services)).toEqual(["db"]);
+      expect(singleSummary.services.db.status).toBe("ready");
+      expect(await readBranchConfig()).toMatchObject({ teams: { allowClientTeamCreation: true } });
+    } finally {
+      fs.rmSync(deployDir, { recursive: true, force: true });
+    }
+  }, 180_000);
 
   it("config push rejects array config export", async ({ expect }) => {
     const badConfigPath = path.join(tmpDir, "config-array.ts");
