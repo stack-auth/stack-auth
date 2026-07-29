@@ -10,6 +10,7 @@ const requestContext: ServerRequestSpanContext = {
   sessionReplayId: "44444444-4444-4444-8444-444444444444",
   sessionReplaySegmentId: "segment-a",
   pageViewSpanId: "66666666-6666-4666-8666-666666666666",
+  httpClientSpanId: "77777777-7777-4777-8777-777777777777",
   customParentSpanIds: ["55555555-5555-4555-8555-555555555555"],
 };
 
@@ -19,13 +20,14 @@ describe("withExplicitServerUser", () => {
     expect(withExplicitServerUser(requestContext, REQUEST_USER)).toEqual(requestContext);
   });
 
-  it("detaches all request ancestry when an explicit user differs", () => {
+  it("detaches all request ancestry (incl. the http-client bridge span) when an explicit user differs", () => {
     expect(withExplicitServerUser(requestContext, OTHER_USER)).toEqual({
       userId: OTHER_USER,
       refreshTokenId: null,
       sessionReplayId: null,
       sessionReplaySegmentId: null,
       pageViewSpanId: null,
+      httpClientSpanId: null,
       customParentSpanIds: [],
     });
   });
@@ -37,6 +39,7 @@ describe("withExplicitServerUser", () => {
       sessionReplayId: null,
       sessionReplaySegmentId: null,
       pageViewSpanId: null,
+      httpClientSpanId: null,
       customParentSpanIds: [],
     });
   });

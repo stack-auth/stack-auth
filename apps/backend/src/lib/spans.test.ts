@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SPAN_ID_PREFIXES, buildBatchSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId, wireSpanIdPrefix } from "./spans";
+import { SPAN_ID_PREFIXES, buildBatchSpanRows, buildEventSpanFields, getBatchParentPathError, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId, wireSpanIdPrefix } from "./spans";
 
 describe("toSpanId", () => {
   it("prefixes raw ids without touching the raw value", () => {
@@ -34,6 +34,44 @@ describe("toSessionReplaySegmentSpanId", () => {
   });
 });
 
+describe("getBatchParentPathError", () => {
+  const makeSpan = (spanId: string, parentSpanIds: string[]) => ({
+    span_id: spanId,
+    span_type: "test",
+    started_at_ms: 1,
+    ended_at_ms: null,
+    parent_span_ids: parentSpanIds,
+    data: {},
+    updated_at_ms: 1,
+  });
+
+  it("accepts one path and rejects a flattened sibling as event ancestry", () => {
+    const root = makeSpan("root", []);
+    const left = makeSpan("left", ["root"]);
+    const right = makeSpan("right", ["root"]);
+
+    expect(getBatchParentPathError(
+      [root, left, right],
+      [{ parent_span_ids: ["root", "right"] }],
+    )).toBeNull();
+    expect(getBatchParentPathError(
+      [root, left, right],
+      [{ parent_span_ids: ["root", "left", "right"] }],
+    )).toMatch(/one ancestry path/);
+  });
+
+  it("rejects duplicates and span self-parenting without database reads", () => {
+    expect(getBatchParentPathError(
+      [makeSpan("self", ["self"])],
+      [],
+    )).toMatch(/must not include itself/);
+    expect(getBatchParentPathError(
+      [],
+      [{ parent_span_ids: ["same", "same"] }],
+    )).toMatch(/must not contain duplicates/);
+  });
+});
+
 describe("buildEventSpanFields", () => {
   it("lists all known ancestors root-first: refresh-token, replay, segment", () => {
     expect(buildEventSpanFields({ sessionReplayId: "s1", sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
@@ -41,7 +79,7 @@ describe("buildEventSpanFields", () => {
     });
   });
 
-  it("omits the segment parent when there is no replay (segment spans only exist under a replay)", () => {
+  it("omits the segment parent when there is no replay to scope its identity", () => {
     expect(buildEventSpanFields({ sessionReplayId: null, sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
       parent_span_ids: ["rti-r1"],
     });
@@ -83,6 +121,11 @@ describe("insertSessionReplaySpans", () => {
       replayLastEventAt,
       segmentStartedAt,
       segmentLastEventAt,
+      resource: {
+        service: { namespace: "commerce", name: "storefront", version: "abc123", instanceId: "iad-1" },
+        deploymentEnvironmentName: "preview",
+        attributes: { region: "iad1" },
+      },
     });
 
     expect(client.insert).toHaveBeenCalledTimes(1);
@@ -99,7 +142,7 @@ describe("insertSessionReplaySpans", () => {
     expect(replaySpan).toMatchObject({
       trace_id: "rti-rt1",
       span_id: "sri-replay1",
-      name: "$session-replay",
+      span_type: "$session-replay",
       parent_span_ids: ["rti-rt1"],
       project_id: "p1",
       branch_id: "b1",
@@ -107,6 +150,12 @@ describe("insertSessionReplaySpans", () => {
       refresh_token_id: "rt1",
       session_replay_id: "replay1",
       session_replay_segment_id: null,
+      service_namespace: "commerce",
+      service_name: "storefront",
+      service_version: "abc123",
+      service_instance_id: "iad-1",
+      deployment_environment_name: "preview",
+      resource_attributes: JSON.stringify({ region: "iad1" }),
       // version is the span's own end (epoch ms) so the latest-end row wins in the
       // ReplacingMergeTree regardless of insert order.
       version: replayLastEventAt.getTime(),
@@ -117,7 +166,7 @@ describe("insertSessionReplaySpans", () => {
     expect(segmentSpan).toMatchObject({
       trace_id: "rti-rt1",
       span_id: "srsi-replay1:seg1",
-      name: "$session-replay-segment",
+      span_type: "$session-replay-segment",
       parent_span_ids: ["rti-rt1", "sri-replay1"],
       session_replay_id: "replay1",
       session_replay_segment_id: "seg1",
@@ -143,7 +192,11 @@ describe("wireSpanIdPrefix", () => {
     expect(wireSpanIdPrefix("checkout-flow")).toBe("cs-");
   });
 
-  it("asserts on $ types that are not client-writable (server-derived or unknown)", () => {
+  it("routes $lib-span into the cs- namespace (wire parent chains are type-blind, so a dedicated prefix would break lib→lib parent linkage)", () => {
+    expect(wireSpanIdPrefix("$lib-span")).toBe("cs-");
+  });
+
+  it("asserts on $ types that are not wire-writable (backend-derived or unknown)", () => {
     expect(() => wireSpanIdPrefix("$session-replay")).toThrowError(/not a writable system span type/);
     expect(() => wireSpanIdPrefix("$refresh-token")).toThrowError(/not a writable system span type/);
     expect(() => wireSpanIdPrefix("$made-up")).toThrowError(/not a writable system span type/);
@@ -159,6 +212,11 @@ describe("buildBatchSpanRows", () => {
     refreshTokenId: "rt1",
     sessionReplayId: "replay1",
     sessionReplaySegmentId: "seg1",
+    resource: {
+      service: { namespace: "commerce", name: "storefront", version: "abc123", instanceId: "iad-1" },
+      deploymentEnvironmentName: "preview",
+      attributes: { region: "iad1" },
+    },
     serverNowMs: NOW_MS,
   };
   const baseSpan = {
@@ -213,17 +271,47 @@ describe("buildBatchSpanRows", () => {
     expect(serverAuth[0].refresh_token_id).toBeNull();
   });
 
+  it("links nested $lib-span rows: a child's cs-prefixed parent reference matches the parent row's own span_id", () => {
+    // Server-auth shape (no session ancestry) — the only way $lib-span rows
+    // arrive in practice. The parent lib span ends AFTER the child, so the
+    // child's parent reference must resolve purely from the shared cs-
+    // namespace, never from batch-local type knowledge.
+    const parentLibSpanId = "0f000000-0000-4000-8000-00000000cccc";
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      userId: null,
+      refreshTokenId: null,
+      sessionReplayId: null,
+      sessionReplaySegmentId: null,
+      spans: [
+        { ...baseSpan, span_id: parentLibSpanId, span_type: "$lib-span", ended_at_ms: NOW_MS - 1_000 },
+        { ...baseSpan, span_type: "$lib-span", ended_at_ms: NOW_MS - 2_000, parent_span_ids: [parentLibSpanId] },
+      ],
+    });
+    expect(rows[0].span_id).toBe(`cs-${parentLibSpanId}`);
+    expect(rows[1].span_id).toBe(`cs-${baseSpan.span_id}`);
+    expect(rows[1].parent_span_ids).toEqual([`cs-${parentLibSpanId}`]);
+    expect(rows[1].trace_id).toBe(`cs-${parentLibSpanId}`);
+    expect(rows[1].span_type).toBe("$lib-span");
+  });
+
   it("keeps open intervals open and fills identity columns raw (unprefixed)", () => {
     const rows = buildBatchSpanRows({ ...baseOpts, spans: [baseSpan] });
     expect(rows[0]).toMatchObject({
       trace_id: "rti-rt1",
-      name: "checkout-flow",
+      span_type: "checkout-flow",
       ended_at: null,
       project_id: "p1",
       branch_id: "b1",
       user_id: "user1",
       team_id: null,
       refresh_token_id: "rt1",
+      service_namespace: "commerce",
+      service_name: "storefront",
+      service_version: "abc123",
+      service_instance_id: "iad-1",
+      deployment_environment_name: "preview",
+      resource_attributes: JSON.stringify({ region: "iad1" }),
       session_replay_id: "replay1",
       session_replay_segment_id: "seg1",
     });
@@ -249,7 +337,7 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [{ ...baseSpan, data: { label: "truncated \uD83D", count: 3 } }],
     });
-    expect(rows[0].attributes).toBe(JSON.stringify({ label: "truncated �", count: 3 }));
+    expect(rows[0].data).toBe(JSON.stringify({ label: "truncated �", count: 3 }));
   });
 
   it("closes the interval when ended_at_ms is set", () => {
@@ -278,9 +366,22 @@ describe("buildBatchSpanRows", () => {
       ],
     });
     expect(rows[0].span_id).toBe(`pv-${baseSpan.span_id}`);
-    expect(rows[0].name).toBe("$page-view");
+    expect(rows[0].span_type).toBe("$page-view");
     expect(rows[1].span_id).toBe("sas-0f000000-0000-4000-8000-000000000002");
-    expect(rows[1].name).toBe("$away");
+    expect(rows[1].span_type).toBe("$away");
+  });
+
+  it("classifies HTTP autocapture as a client span without guessing kinds for other SDK spans", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [
+        { ...baseSpan, span_type: "$http-client" },
+        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$page-view" },
+        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000003", span_type: "checkout-flow" },
+      ],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["client", "internal", "internal"]);
   });
 
   it("inserts the pv- ancestor between the system ancestry and the custom chain", () => {
@@ -305,11 +406,11 @@ describe("buildBatchSpanRows", () => {
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$page-view", page_view_span_id: "0f000000-0000-4000-8000-00000000cccc" }],
-    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
+    })).toThrowError(/must not itself carry page_view_span_id, http_client_span_id, or parent_span_ids/);
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$page-view", parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"] }],
-    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
+    })).toThrowError(/must not itself carry page_view_span_id, http_client_span_id, or parent_span_ids/);
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$away", page_view_span_id: baseSpan.span_id }],
