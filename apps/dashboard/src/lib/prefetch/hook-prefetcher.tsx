@@ -76,7 +76,7 @@ export function HookPrefetcher(props: {
   return <PrefetchMany callbacks={props.callbacks} />;
 }
 
-function HookPrefetcherErrorComponent(props: { error: Error }) {
+function HookPrefetcherErrorComponent(props: { error: unknown }) {
   useEffect(() => {
     captureError("hook-prefetcher", props.error);
   }, [props.error]);

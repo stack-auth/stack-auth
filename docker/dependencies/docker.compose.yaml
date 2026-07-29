@@ -251,6 +251,16 @@ services:
     volumes:
       - deno-cache:/deno-cache
 
+  # ================= Vercel mock =================
+
+  vercel-mock:
+    build:
+      context: ./vercel-mock
+      dockerfile: Dockerfile
+    image: vercel-mock
+    ports:
+      - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}26:8080"       # mock of the Vercel REST API for the Deployments app
+
   # ================= Stripe =================
   
   stripe-mock:

@@ -24,11 +24,13 @@ function createAppTestDouble(options: {
   signInWithTokens?: (tokens: { accessToken: string, refreshToken: string }) => Promise<void>,
   redirectToSignIn?: (options: { replace: true }) => Promise<void>,
   redirectToSignUp?: (options: { replace: true }) => Promise<void>,
+  redirectToOnboarding?: (options: { replace: true }) => Promise<void>,
 }) {
   const app = {
     useUser: () => options.user,
     redirectToSignIn: options.redirectToSignIn ?? vi.fn(async () => {}),
     redirectToSignUp: options.redirectToSignUp ?? vi.fn(async () => {}),
+    redirectToOnboarding: options.redirectToOnboarding ?? vi.fn(async () => {}),
     [hexclaveAppInternalsSymbol]: {
       sendRequest: options.sendRequest,
       signInWithTokens: options.signInWithTokens ?? vi.fn(async () => {}),
@@ -98,6 +100,7 @@ describe("useCliAuthConfirmation", () => {
     root = null;
     container = null;
     vi.restoreAllMocks();
+    sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
   });
@@ -126,6 +129,58 @@ describe("useCliAuthConfirmation", () => {
         "refresh_token": "refresh-token",
       }
     `);
+  });
+
+  it("redirects restricted users to onboarding without completing CLI auth", async () => {
+    window.history.replaceState({}, "", "/handler/cli-auth-confirm?login_code=login-code");
+    const redirectToOnboarding = vi.fn(async (_options: { replace: true }) => {});
+    const sendRequest = vi.fn(async (_path: string, _requestOptions: RequestInit) => new Response(null, { status: 200 }));
+    const app = createAppTestDouble({
+      user: {
+        isRestricted: true,
+        isAnonymous: false,
+        currentSession: {
+          getTokens: vi.fn(async () => ({ refreshToken: "restricted-refresh-token" })),
+        },
+      },
+      sendRequest,
+      redirectToOnboarding,
+    });
+
+    await renderWithApp(app);
+    await act(async () => {
+      getButton("authorize").click();
+    });
+
+    expect(redirectToOnboarding).toHaveBeenCalledWith({ replace: true });
+    expect(sessionStorage.getItem("hexclave-cli-auth-confirmed")).toBe("login-code");
+    expect(sendRequest).not.toHaveBeenCalled();
+  });
+
+  it("redirects anonymous users to sign-up without completing CLI auth", async () => {
+    window.history.replaceState({}, "", "/handler/cli-auth-confirm?login_code=login-code");
+    const redirectToSignUp = vi.fn(async (_options: { replace: true }) => {});
+    const sendRequest = vi.fn(async (_path: string, _requestOptions: RequestInit) => new Response(null, { status: 200 }));
+    const app = createAppTestDouble({
+      user: {
+        isRestricted: true,
+        isAnonymous: true,
+        currentSession: {
+          getTokens: vi.fn(async () => ({ refreshToken: "anonymous-refresh-token" })),
+        },
+      },
+      sendRequest,
+      redirectToSignUp,
+    });
+
+    await renderWithApp(app);
+    await act(async () => {
+      getButton("authorize").click();
+    });
+
+    expect(redirectToSignUp).toHaveBeenCalledWith({ replace: true });
+    expect(sessionStorage.getItem("hexclave-cli-auth-confirmed")).toBe("login-code");
+    expect(sendRequest).not.toHaveBeenCalled();
   });
 
   it("ignores duplicate authorize clicks before React re-renders", async () => {

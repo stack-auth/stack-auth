@@ -1,5 +1,7 @@
+import { callHexclaveAskAi, type HexclaveAskDiagnostic } from "../../../packages/shared/src/ai/hexclave-ask";
 import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 
@@ -8,58 +10,15 @@ import packageJson from "../package.json";
 
 function getBackendApiBaseUrl(): string {
   return (
+    getEnvVariable("NEXT_PUBLIC_SERVER_HEXCLAVE_API_URL", "") ||
     getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "") ||
     getEnvVariable("NEXT_PUBLIC_STACK_API_URL")
   ).replace(/\/$/, "");
 }
 
-type AiTextContent = {
-  type: "text",
-  text: string,
-};
-
-type AiQueryResponse = {
-  finalText?: string,
-  content?: AiTextContent[],
-  conversationId?: string,
-};
-
 const skillResourceUri = "https://skill.hexclave.com/full";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseAiQueryResponse(value: unknown): AiQueryResponse {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  const parsed: AiQueryResponse = {};
-
-  if (typeof value.finalText === "string") {
-    parsed.finalText = value.finalText;
-  }
-
-  if (typeof value.conversationId === "string") {
-    parsed.conversationId = value.conversationId;
-  }
-
-  if (Array.isArray(value.content)) {
-    parsed.content = value.content.flatMap((contentItem) => {
-      if (!isRecord(contentItem) || contentItem.type !== "text" || typeof contentItem.text !== "string") {
-        return [];
-      }
-
-      return [{
-        type: "text",
-        text: contentItem.text,
-      }];
-    });
-  }
-
-  return parsed;
-}
+const MAX_DIAGNOSTIC_BODY_LENGTH = 4_000;
 
 async function fetchSkill(): Promise<string> {
   const res = await fetch(skillResourceUri, {
@@ -69,6 +28,46 @@ async function fetchSkill(): Promise<string> {
     throw new Error(`Failed to fetch skill from ${skillResourceUri}: ${res.status} ${res.statusText}`);
   }
   return await res.text();
+}
+
+function getDiagnosticBody(body: string): string {
+  return body.length > MAX_DIAGNOSTIC_BODY_LENGTH
+    ? `${body.slice(0, MAX_DIAGNOSTIC_BODY_LENGTH)}…`
+    : body;
+}
+
+function logAskDiagnostic(diagnostic: HexclaveAskDiagnostic): void {
+  switch (diagnostic.event) {
+    case "timeout": {
+      captureError("mcp-ask-hexclave-timeout", new HexclaveAssertionError("Hexclave MCP ask_hexclave timed out", {
+        timeoutMs: diagnostic.timeoutMs,
+      }));
+      break;
+    }
+    case "upstream-error": {
+      captureError("mcp-ask-hexclave-upstream-error", new HexclaveAssertionError("Hexclave MCP ask_hexclave returned an upstream error", {
+        status: diagnostic.status,
+        body: getDiagnosticBody(diagnostic.body),
+      }));
+      break;
+    }
+    case "malformed-json": {
+      captureError("mcp-ask-hexclave-malformed-json", new HexclaveAssertionError("Hexclave MCP ask_hexclave returned malformed JSON", {
+        cause: diagnostic.error,
+      }));
+      break;
+    }
+    case "request-error": {
+      captureError("mcp-ask-hexclave-request-error", new HexclaveAssertionError("Hexclave MCP ask_hexclave request failed", {
+        cause: diagnostic.error,
+      }));
+      break;
+    }
+    default: {
+      const _exhaustive: never = diagnostic;
+      throw new Error(`Unhandled ask diagnostic: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: string }) {
@@ -138,36 +137,27 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             });
           });
 
-          const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              quality: "smart",
-              speed: "fast",
-              tools: ["docs"],
-              systemPrompt: "docs-ask-ai",
-              messages: [{ role: "user", content: question }],
-              mcpCallMetadata: { toolName: "ask_hexclave", reason, userPrompt, conversationId },
-            }),
+          const result = await callHexclaveAskAi({
+            backendApiBaseUrl: getBackendApiBaseUrl(),
+            question,
+            reason,
+            userPrompt,
+            conversationId,
+            onDiagnostic: logAskDiagnostic,
           });
 
-          if (!res.ok) {
-            const errText = await res.text();
+          if (result.status === "error") {
             return {
-              content: [{ type: "text", text: `Hexclave AI error (${res.status}): ${errText}` }],
+              content: [{ type: "text", text: result.message }],
               isError: true,
             };
           }
 
-          const body = parseAiQueryResponse(await res.json());
-
-          const contentText = body.content?.map((c) => c.text).join("\n\n");
-          const text = body.finalText ?? contentText ?? "";
-
-          const responseConversationId = body.conversationId ?? conversationId ?? "";
-
+          const continuation = result.conversationId == null
+            ? ""
+            : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]`;
           return {
-            content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]` }],
+            content: [{ type: "text", text: `${result.text}${continuation}` }],
           };
         },
       );

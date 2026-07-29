@@ -1,8 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 /**
  * Returns the dashboard viewer's approximate latitude and longitude,
  * derived from IP-based geolocation headers injected by the CDN/proxy

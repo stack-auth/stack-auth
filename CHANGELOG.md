@@ -2,6 +2,13 @@
 
 ---
 
+## 7/24/26
+
+![Analytics table search bar](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-analytics-search.webp)
+
+- Analytics tables now have an inline search bar that filters rows instantly, with AI-powered natural-language filters shown as removable chips.
+- Fixed a bug where the devtool indicator would sometimes not show during development.
+
 ## 7/17/26
 
 - Added "Continue in your own agent" links to AI chats.
@@ -41,7 +48,7 @@
 
 ## 6/12/26
 
-![Payments checkout page redesign](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-checkout.png)
+![Payments checkout page redesign](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-checkout.webp)
 - Redesigned Payments checkout page with navigation and UI polish.
 - Dashboard light-mode consistency pass and hosted-components account navigation fix.
 - Improved PKCE support and fixed nested cross-domain auth redirect chain.
@@ -65,42 +72,42 @@
 - Faster ClickHouse analytics for project metrics and previews.
 - Smoother cross-domain auth handoffs and hosted-domain trust.
 - Sharper Auth Methods and Users dashboard tables.
-![Auth method and user table polish](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-auth-methods.png)
+![Auth method and user table polish](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-auth-methods.webp)
 
 ## 5/15/26
 
 - Redesigned Team Management tables with cleaner action states.
 - New project transfer, session replay, and team payments screens.
 - Unified AI chat experience on assistant-ui threads.
-![Team management table](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-teams.png)
+![Team management table](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-teams.webp)
 
 ## 5/8/26
 
 - New TanStack Start SDK integration with refreshed OpenAPI schemas.
 - Weekly active users now appear on Project Overview.
 - Cleaner Project Permissions with upgraded data grids.
-![Project permissions dashboard](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-rbac.png)
+![Project permissions dashboard](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-rbac.webp)
 
 ## 5/1/26
 
 - Shareable Session Replay IDs across dashboard, backend, and SDKs.
 - Sleeker Data Vault and overview data-grid layouts.
 - Emulator updates can now auto-install dependencies.
-![Data Vault dashboard](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-data-vault.png)
+![Data Vault dashboard](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-data-vault.webp)
 
 ## 4/24/26
 
 - Redesigned Email Server settings and managed-domain setup.
 - Faster local emulator startup with RAM snapshots.
 - Live secret rotation plus a simpler sign-up rules tester.
-![Email server settings and logs](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-email-server.png)
+![Email server settings and logs](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-email-server.webp)
 
 ## 4/17/26
 
 - Redesigned Overview and onboarding experience.
 - Crisper dashboard sidebar styling and category navigation.
 - New Payments product setup flow.
-![Payments product setup](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-products.png)
+![Payments product setup](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-products.webp)
 
 ---
 

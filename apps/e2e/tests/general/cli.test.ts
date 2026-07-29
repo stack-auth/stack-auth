@@ -622,7 +622,7 @@ describe("Stack CLI", () => {
       "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
+    expect(stdout).toContain("HEXCLAVE SETUP INSTRUCTIONS");
   });
 });
 

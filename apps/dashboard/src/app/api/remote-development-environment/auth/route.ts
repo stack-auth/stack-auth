@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest } from "@/lib/remote-development-environment/security";
 
-export const runtime = "nodejs";
 
 const INTERNAL_PROJECT_ID = "internal";
 
@@ -30,6 +29,11 @@ function deleteInternalProjectAuthCookies(req: NextRequest, response: NextRespon
 }
 
 export async function GET(req: NextRequest) {
+  // Cache Components would otherwise evaluate this route while building the
+  // standalone dashboard without the runtime RDE flag and permanently bake
+  // the resulting "endpoints are disabled" 404 into the release.
+  await connection();
+
   const securityResponse = assertRemoteDevelopmentEnvironmentBrowserRequest(req);
   if (securityResponse != null) return securityResponse;
 

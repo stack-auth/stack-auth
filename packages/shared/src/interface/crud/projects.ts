@@ -127,6 +127,7 @@ export const projectsCrudAdminReadSchema = yupObject({
 export const projectsCrudClientReadSchema = yupObject({
   id: schemaFields.projectIdSchema.defined(),
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().defined(),
   pushed_config_error: pushedConfigErrorSchema.nullable().defined(),
   config_warnings: yupArray(configWarningSchema).defined(),
   config: yupObject({

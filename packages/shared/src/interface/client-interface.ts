@@ -1232,7 +1232,7 @@ export class HexclaveClientInterface {
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
     botChallenge?: BotChallengeInput,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["ContactChannelAlreadyUsedForAuthBySomeoneElse"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -1248,7 +1248,7 @@ export class HexclaveClientInterface {
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -1715,6 +1715,24 @@ export class HexclaveClientInterface {
   ) {
     await this.sendClientRequest(
       `/team-memberships/${teamId}/me`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+  }
+
+  async removeUserFromTeam(
+    teamId: string,
+    userId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      urlString`/team-memberships/${teamId}/${userId}`,
       {
         method: "DELETE",
         headers: {

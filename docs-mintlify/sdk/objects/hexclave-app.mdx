@@ -93,6 +93,10 @@ If you're building a client-only app and don't have a `HEXCLAVE_SECRET_SERVER_KE
       <ParamField body="noAutomaticPrefetch" type="boolean">
         Disable automatic prefetching.
       </ParamField>
+
+      <ParamField body="devTool" type='boolean | "auto"'>
+        Whether to show the [dev tool indicator](/guides/other/dev-tool) in browser-like environments. `"auto"` (the default) shows it only in development; `true` always shows it; `false` never does.
+      </ParamField>
     </ContentSection>
 
   </MethodContent>
@@ -112,6 +116,7 @@ If you're building a client-only app and don't have a `HEXCLAVE_SECRET_SERVER_KE
           urls?: object;
           analytics?: object;
           noAutomaticPrefetch?: boolean;
+          devTool?: boolean | "auto";
         });
       }
       ```

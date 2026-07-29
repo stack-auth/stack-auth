@@ -284,6 +284,40 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
         await app._interface.resetConfigOverrideKeys(level, keys);
         await app._refreshProjectConfig();
       },
+      async listDeploymentServices() {
+        return await app._interface.listDeploymentServices();
+      },
+      async createDeploymentService(id, build) {
+        const created = await app._interface.createDeploymentService(id, build);
+        await app._refreshProjectConfig();
+        return created;
+      },
+      async updateDeploymentService(serviceId, update) {
+        const updated = await app._interface.updateDeploymentService(serviceId, update);
+        await app._refreshProjectConfig();
+        return updated;
+      },
+      async deleteDeploymentService(serviceId) {
+        await app._interface.deleteDeploymentService(serviceId);
+        await app._refreshProjectConfig();
+      },
+      async listDeploymentRuns(serviceId, options) {
+        return await app._interface.listDeploymentRuns(serviceId, options);
+      },
+      async getDeploymentRunLogs(runId, options) {
+        return await app._interface.getDeploymentRunLogs(runId, options);
+      },
+      async addDeploymentServiceDomain(serviceId, hostname, options) {
+        await app._interface.addDeploymentServiceDomain(serviceId, hostname, options);
+        await app._refreshProjectConfig();
+      },
+      async getDeploymentServiceDomain(serviceId, hostname) {
+        return await app._interface.getDeploymentServiceDomain(serviceId, hostname);
+      },
+      async deleteDeploymentServiceDomain(serviceId, hostname) {
+        await app._interface.deleteDeploymentServiceDomain(serviceId, hostname);
+        await app._refreshProjectConfig();
+      },
       async getConfigOverride(level: "branch" | "environment"): Promise<Record<string, unknown>> {
         const result = await app._interface.getConfigOverride(level);
         return JSON.parse(result.config_string);

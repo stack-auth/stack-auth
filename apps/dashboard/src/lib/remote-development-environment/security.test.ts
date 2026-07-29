@@ -8,6 +8,7 @@ vi.mock("server-only", () => ({}));
 
 let tempDir: string | undefined;
 const remoteDevelopmentEnvironmentEnabledEnv = "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT";
+const hexclaveRemoteDevelopmentEnvironmentEnabledEnv = "NEXT_PUBLIC_HEXCLAVE_IS_REMOTE_DEVELOPMENT_ENVIRONMENT";
 
 function useTempStateFile(secret = "secret") {
   tempDir = mkdtempSync(join(tmpdir(), "stack-rde-security-"));
@@ -34,6 +35,7 @@ function request(headers: Record<string, string>, url = "http://127.0.0.1:26700/
 
 afterEach(() => {
   delete process.env[remoteDevelopmentEnvironmentEnabledEnv];
+  delete process.env[hexclaveRemoteDevelopmentEnvironmentEnabledEnv];
   delete process.env.STACK_DEV_ENVS_PATH;
   if (tempDir != null) {
     rmSync(tempDir, { recursive: true, force: true });
@@ -54,6 +56,18 @@ describe("remote development environment security", () => {
       authorization: "Bearer secret",
     }));
     expect(response?.status).toBe(404);
+  });
+
+  it("accepts the Hexclave remote development environment variable", async () => {
+    useTempStateFile();
+    delete process.env[remoteDevelopmentEnvironmentEnabledEnv];
+    process.env[hexclaveRemoteDevelopmentEnvironmentEnabledEnv] = "true";
+    const { assertRemoteDevelopmentEnvironmentRequest } = await import("./security");
+    const response = assertRemoteDevelopmentEnvironmentRequest(request({
+      host: "127.0.0.1:26700",
+      authorization: "Bearer secret",
+    }));
+    expect(response).toBeNull();
   });
 
   it("rejects missing or wrong bearer token", async () => {
