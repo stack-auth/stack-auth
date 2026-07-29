@@ -1,0 +1,316 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_9920d31b4c7d29 304-307
+  s_5b6ac9c07bf674::t_f07247348166e9 364
+  s_5b6ac9c07bf674::t_4c11df470c989b 330
+  s_5b6ac9c07bf674::t_5b222067b4f871 429-439
+  s_5ef28b6e31bc80::t_8484c00e557f04 1024
+  s_5ef28b6e31bc80::t_9b50699ae55594 427,440-525,531-553,555-566,568-628,633
+  s_5ef28b6e31bc80::t_d9879a7dd1577c 932-933,935-936,938,941-954,963,966-988,990-998,1001,1004,1006-1010
+  s_5ef28b6e31bc80::t_a2cf9f767bd1e5 999-1000,1002
+  s_5ef28b6e31bc80::t_f15cc5300547e3 99,102-108
+  s_5ef28b6e31bc80::t_2c142cfb5cf42c 123
+  s_5ef28b6e31bc80::t_14fa2084e98312 311-313,316-318
+  s_5ef28b6e31bc80::t_3d643b24e41171 567
+  s_5ef28b6e31bc80::t_ad570a67ac09ef 75
+  s_5ef28b6e31bc80::t_849fcdc7c8701d 915
+  s_5ef28b6e31bc80::t_65451f029d1e96 336-351
+  s_5ef28b6e31bc80::t_599eb065d39c1d 526-530
+  s_5ef28b6e31bc80::t_4d7101378e97f4 400,406-426
+  s_5ef28b6e31bc80::t_cc8ccb2128cc89 14-17,18-74,76-98,100-101,109-122,124,127-129,132-135,145-180,184-212
+  s_5ef28b6e31bc80::t_67723d1f2bc123 428
+  s_33f2afdacc8adb::t_96c5a230eef1f1 7
+  s_33f2afdacc8adb::t_eedcec479e96ea 125-126,130-131,136-144,181-183,554
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_256a4f817d1414 725-729,736,747
+  s_5b6ac9c07bf674::t_8b97044d517f99 4010-4016
+  s_5ef28b6e31bc80::t_9dad328bbb986c 263
+  s_5ef28b6e31bc80::t_cee78cf72bbbee 4054-4066,4069-4079,4081,4097-4111
+  s_33f2afdacc8adb::t_89ef9696105f6c 66,4067-4068,4080-4089,4091-4096
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_5b6ac9c07bf674::t_e82bb4aa111857 4,7
+  s_5b6ac9c07bf674::t_90c8775fbe1612 274-276,299
+  s_5b6ac9c07bf674::t_c9028e51b8990c 277
+  s_5b6ac9c07bf674::t_6d217aa5949634 8
+  s_5b6ac9c07bf674::t_d8c2b8a9408b63 278-282,283-286,288-289,294-298
+  s_698857c6c3dd28::t_1646ecaadc5a0a 6
+  s_698857c6c3dd28::t_e10d2a3d6c4bf4 262-268,272-273,292-293
+  s_5dc76ef9133451::t_42d30b8e096b03 13,161,163-168,170,191-200,202-203,205-210,212,269-271,287,290-291,306-307
+  s_ab2b6b8a3caaa2::t_4ba0761d4cadf1 158-170,187
+  s_ab2b6b8a3caaa2::t_6a43bbcc6ee969 176-182
+  s_ab2b6b8a3caaa2::t_9ee49e185d5bfa 257,260
+  s_ab2b6b8a3caaa2::t_5d8c1761f535a7 171-175,183-185,242-256,258
+  s_ab2b6b8a3caaa2::t_be4e3e7c2a2231 213-237,239-241
+apps/backend/scripts/clickhouse-migrations.ts
+  s_5b6ac9c07bf674::t_20beb758caca99 283
+  s_5b6ac9c07bf674::t_d032314b4cf046 333
+  s_5b6ac9c07bf674::t_1b76a7a8fe544e 36,44
+  s_5b6ac9c07bf674::t_416c9fe8731e39 66
+  s_5b6ac9c07bf674::t_5814daf7820e7e 272-273,275-282,284-307,332,334-378
+  s_5b6ac9c07bf674::t_2667a6de9963ad 267-268,270-271,274
+  s_5b6ac9c07bf674::t_d29292b2bd50ad 91
+  s_5b6ac9c07bf674::t_098eaa8bc0fab5 269
+  s_5dc76ef9133451::t_70e9e304f35d79 37,49,308-330
+  s_5dc76ef9133451::t_a019a540c0912f 331
+apps/backend/src/lib/events.tsx
+  s_5b6ac9c07bf674::t_85699b321fecb1 17
+  s_5b6ac9c07bf674::t_ffb1ff90d20689 402-403,405-406
+  s_5b6ac9c07bf674::t_40bbcdf7a28dd2 404
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_5f5979c6e5fd21::t_b5b6cdbb4b39ae 42-49
+  s_5f5979c6e5fd21::t_071c3cc6da2b63 41
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_5b6ac9c07bf674::t_946001aab7e0fd 269
+  s_5b6ac9c07bf674::t_51d76a1a417ab2 298
+  s_5b6ac9c07bf674::t_ff6a9a73f36fb6 312,320,323-326
+  s_5b6ac9c07bf674::t_e767e681399aa9 270-297,299-311,313-319,327-328
+  s_5dc76ef9133451::t_9ef42dcf282972 220-221,224-227
+  s_5dc76ef9133451::t_829bf8bf5639db 3,5-6,11-35,165-176,209-210,222-223,228,321-322
+  s_ab2b6b8a3caaa2::t_4ba0761d4cadf1 187-192,211,214-219
+  s_ab2b6b8a3caaa2::t_d327b8a51181d9 127
+  s_ab2b6b8a3caaa2::t_0b8c3eb10e008f 212-213
+  s_ab2b6b8a3caaa2::t_6a43bbcc6ee969 262,264-265
+  s_ab2b6b8a3caaa2::t_ec4643dc565619 263
+  s_ab2b6b8a3caaa2::t_5d8c1761f535a7 229-261,266
+apps/backend/src/lib/spans.tsx
+  s_5b6ac9c07bf674::t_c67cb6c8efdbbe 278,281-283,292
+  s_5b6ac9c07bf674::t_0f6079ed15d9ac 60-62,74-76,79-80,83
+  s_5b6ac9c07bf674::t_92e5dad92a642f 70
+  s_5b6ac9c07bf674::t_c03b93fb907c31 284-287
+  s_5b6ac9c07bf674::t_5b9ecc9afbf86f 234,253-254
+  s_5b6ac9c07bf674::t_fa1355d7576ef8 19-23,36
+  s_5b6ac9c07bf674::t_e22cc94ab58159 3-14,17-18,24,29-30,34-35,37-39,46-48,59,67-69,71,77-78,82,84-87,92-93,95-97,99-109,129-141,232-233,241-252,255-264,265-274,276-277,279,288,290-291,293
+  s_5b6ac9c07bf674::t_9d9a89efab1994 63-66
+  s_5b6ac9c07bf674::t_6ff3cc90c98e90 235-239
+  s_5ef28b6e31bc80::t_4bd62df3973bf9 2
+  s_5ef28b6e31bc80::t_f7c4b2e2a1e30c 215-226,228-229
+  s_5ef28b6e31bc80::t_1f2f3c7d6816c6 142-162,176-202,213-214,230-231
+  s_5ef28b6e31bc80::t_48ab9901b3390c 1
+  s_5ef28b6e31bc80::t_5158024dd14707 203-212
+  s_5ef28b6e31bc80::t_c1ba24d5c746f0 25-28
+  s_698857c6c3dd28::t_c608be792ac9bb 94,98
+  s_698857c6c3dd28::t_de1f2b1b5e14e9 110-128
+  s_698857c6c3dd28::t_a2f929f0a2d1c4 15-16,31-33,40-45
+  s_698857c6c3dd28::t_6cbe0d98f8034f 289
+  s_698857c6c3dd28::t_39c870c9d2cfe7 275
+  s_698857c6c3dd28::t_ef9897b6b8d19a 88-91
+  s_698857c6c3dd28::t_453d154fa511a4 72-73
+  s_698857c6c3dd28::t_3249fcfe3a857c 164-175
+  s_698857c6c3dd28::t_18146e5252d9bc 227
+  s_698857c6c3dd28::t_fdb5ab09f8d980 163
+  s_5dc76ef9133451::t_92177528941366 49-58,81,240,280
+apps/backend/src/lib/spans.test.ts
+  s_5b6ac9c07bf674::t_d2497e3fa91885 64-68
+  s_5b6ac9c07bf674::t_d97eecebd4649b 38,44
+  s_5b6ac9c07bf674::t_73f1c0b2574ecb 39,45,50-53,56-57
+  s_5b6ac9c07bf674::t_49ac159474450d 62,72-73,84-85,93,112,114,120-121
+  s_5b6ac9c07bf674::t_a8ab2ca5f9fc5f 1,3-6,8-9,35-37,41-43,46-49,54,59-61,63,69-71,74-83,86-92,94-104,108-111,116-117,119,122-130
+  s_5b6ac9c07bf674::t_c0e62807d46b10 115
+  s_5b6ac9c07bf674::t_ae9b0e822eba56 7
+  s_5b6ac9c07bf674::t_fa7939898039e5 55,58
+  s_5b6ac9c07bf674::t_4a3c0b0e00d06c 105-107,118
+  s_5ef28b6e31bc80::t_79c32d6fada890 131-165,167-248
+  s_698857c6c3dd28::t_091d1943210b80 10-25
+  s_5dc76ef9133451::t_ce8b24e1b5ceb4 28-36,40,113
+  s_5dc76ef9133451::t_70e9e304f35d79 166
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5b6ac9c07bf674::t_253aaa2bd0ef8a 623,634-635
+  s_5b6ac9c07bf674::t_d7768a20db6f23 596-622,624-633,636-640
+  s_5b6ac9c07bf674::t_8b87541a2fd1d6 595
+  s_5ef28b6e31bc80::t_54ec2bfd542652 508,513
+  s_5ef28b6e31bc80::t_522cfe5348a966 346,351
+  s_5ef28b6e31bc80::t_f5170708b45502 774,859-938,940-974,976-1059,1074-1126,1129-1139,1142-1165,1167-1301,1303-1342,1345-1382,1384-1387
+  s_33f2afdacc8adb::t_939333817b5c44 1060-1073,1343
+  s_698857c6c3dd28::t_b7059b2608b745 1140-1141
+  s_698857c6c3dd28::t_140c7ff879ca91 775-810,813-858
+  s_698857c6c3dd28::t_6d4e44dfb196fa 1127-1128
+  s_698857c6c3dd28::t_b2533b8103fa34 127,166,208,320,552,939,1166,1302,1383
+  s_698857c6c3dd28::t_e6670b688097e2 811-812
+  s_698857c6c3dd28::t_761736e0446a3e 714
+  s_698857c6c3dd28::t_d285f581c922cb 1344
+  s_698857c6c3dd28::t_ee685c6f405e3a 975
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_5b6ac9c07bf674::t_560b0f32244f4c 1230
+  s_5b6ac9c07bf674::t_632a4974eca092 598
+  s_5b6ac9c07bf674::t_b67e8b7ba9c088 671-672
+  s_5b6ac9c07bf674::t_dcefc5f8f82ecd 717
+  s_5b6ac9c07bf674::t_51fecebc8ac535 669-670
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5b6ac9c07bf674::t_f1362369aa3659 198-201
+  s_5b6ac9c07bf674::t_a01b9307bca295 250
+  s_5b6ac9c07bf674::t_86cb558e4ffe41 240
+  s_5b6ac9c07bf674::t_63f8c0bb0ef8bc 287-297
+  s_670b967f0b9f0f::t_5c48976e9759ef 328-331,372
+apps/backend/src/lib/clickhouse.tsx
+  s_5ef28b6e31bc80::t_cd6380d2f0e3bf 10-13,15-31
+  s_5ef28b6e31bc80::t_b36353f426a53f 14
+packages/template/src/index.ts
+  s_5ef28b6e31bc80::t_09de07c547687b 9-12
+packages/shared/src/interface/server-interface.ts
+  s_5ef28b6e31bc80::t_fe423f28fa3db7 64-95
+  s_5ef28b6e31bc80::t_b21cfabda316ed 12
+packages/shared/src/interface/client-interface.ts
+  s_5ef28b6e31bc80::t_3b8a44a1084e6e 133
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5ef28b6e31bc80::t_bb6a79c901d910 110
+  s_5ef28b6e31bc80::t_5f09b4b3baff29 137
+  s_5ef28b6e31bc80::t_1abdd673b2c937 97-98
+  s_5ef28b6e31bc80::t_a27b9854d9bd54 69-70,85,91,94-96,99,102-103,105-106,108-109,111-120,122-123,125-130,132-136,138
+  s_5ef28b6e31bc80::t_a52dba5e0d745c 1,4-5,12,19-20,22,26-27
+  s_5ef28b6e31bc80::t_9c5eeb2d57da1c 131
+  s_5ef28b6e31bc80::t_a6b65518a33c57 169-180,184-190,191-208,320-324,331,332-333,344-346,350-352
+  s_33f2afdacc8adb::t_48c8de303fce0e 14,28-35,104,107,121,124,334-343
+  s_33f2afdacc8adb::t_7da8b4d934d39f 13
+  s_698857c6c3dd28::t_eaa838cbe27bd3 231-234,244-249,251-256,259-261
+  s_698857c6c3dd28::t_df6198674933e0 82-84,88-90
+  s_698857c6c3dd28::t_26995aec82a236 181-183
+  s_698857c6c3dd28::t_1efa12d0bff33b 139-151
+  s_698857c6c3dd28::t_8686317bb7a996 156-160,162
+  s_698857c6c3dd28::t_aee5503637b3f9 235-239,242,262
+  s_698857c6c3dd28::t_bfaabac8558eca 325-330,347,349,357
+  s_5dc76ef9133451::t_a1223d486a2eed 225-226
+  s_5dc76ef9133451::t_073f049d777533 215-224,227-229,241,250,257-258,266-271,273-281,283-298,300-319,348
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5ef28b6e31bc80::t_7d6d46110bc512 42
+  s_5ef28b6e31bc80::t_f8dfbb138079c4 1735-1903,1905-1914,1916-2000,2002-2025
+  s_5ef28b6e31bc80::t_d4484119037401 1915
+  s_33f2afdacc8adb::t_441c6689fe3a3d 41,1904
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5ef28b6e31bc80::t_346c0b30a47963 116-147
+  s_5ef28b6e31bc80::t_0e69e103af5f81 10
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5ef28b6e31bc80::t_12ef181c68f9c6 423-470,472-474,476-528,558-573,575-612,614-631,634-766
+  s_5ef28b6e31bc80::t_2c832c9d7959e2 475,574,613,632-633
+  s_33f2afdacc8adb::t_152b161256f25a 544,546
+  s_33f2afdacc8adb::t_c62896516e5226 471,529-543,545,547-554
+  s_33f2afdacc8adb::t_19fa64049ac884 555-557
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_5ef28b6e31bc80::t_0699afe2487c00 12
+  s_5ef28b6e31bc80::t_671c4846cbd983 42-55
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_670b967f0b9f0f::t_5c48976e9759ef 330-383
+packages/shared/src/utils/telemetry.tsx
+  s_33f2afdacc8adb::t_366b12c835ea89 7-14
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_698857c6c3dd28::t_9397b04f4acf8f 1-2,6-24
+  s_201bcb48228b05::t_7a955f2d0e2503 3-5
+apps/backend/prisma/schema.prisma
+  s_698857c6c3dd28::t_868e22b6008db1 527-528
+  s_698857c6c3dd28::t_7b87046b9adf65 173-175
+  s_698857c6c3dd28::t_9181dfa6ef16ec 573-574,578-596
+  s_698857c6c3dd28::t_314aab6f1afeec 597-598
+  s_201bcb48228b05::t_630f1f6dc9101a 575-577
+apps/backend/src/lib/session-replays.tsx
+  s_698857c6c3dd28::t_e6e5f66177bb0b 25-86,90
+  s_698857c6c3dd28::t_2a6453493f7882 87-89
+  s_698857c6c3dd28::t_e249d498ae4ab9 3
+  s_698857c6c3dd28::t_664a975c7df29d 91
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/tests/bounds-upsert-and-cascade.ts
+  s_698857c6c3dd28::t_c794abba7731ba 41-45,48-50,54-55,59-60,64-65
+  s_698857c6c3dd28::t_eff65fb233094f 1-40,46-47,51-53,56-58,61-63,66-77
+packages/shared/src/plans.ts
+  s_698857c6c3dd28::t_9a4287f5ca19fd 76
+  s_698857c6c3dd28::t_b4d48195ed0644 67
+  s_698857c6c3dd28::t_a6afe97be2492f 56-58
+  s_698857c6c3dd28::t_336223cdfd07e1 38
+  s_698857c6c3dd28::t_337e89a3695eff 19-22
+apps/backend/prisma/seed.ts
+  s_698857c6c3dd28::t_fd3288189fcf2b 165,188,212,245
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/usage/page-client.tsx
+  s_698857c6c3dd28::t_a2bc9c8e8a1709 38
+  s_698857c6c3dd28::t_0992aa22594b07 79
+  s_698857c6c3dd28::t_e5c8715867ea59 80-82
+  s_698857c6c3dd28::t_53e57562471214 83
+apps/backend/src/lib/plan-usage.ts
+  s_698857c6c3dd28::t_25d01fb14fefb0 471,475
+  s_698857c6c3dd28::t_564d4c825d9e4f 43
+  s_698857c6c3dd28::t_75d823e7026dfe 388
+  s_698857c6c3dd28::t_b8338067b97fb9 422-426
+  s_698857c6c3dd28::t_d44f0841050b61 357-365,367-369,370-381
+  s_698857c6c3dd28::t_c3394196381d4d 493
+  s_698857c6c3dd28::t_82e015e28483ef 421
+  s_698857c6c3dd28::t_cd1b547e9a5bd4 427
+  s_5dc76ef9133451::t_70e9e304f35d79 354-356,366
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_698857c6c3dd28::t_3b8731decc3466 403
+  s_698857c6c3dd28::t_9a9cc45b34a701 301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "eeb8f372c2a826a837baf81f98a3a73ecbb5a4dc",
+  "prompts": {},
+  "sessions": {
+    "s_201bcb48228b05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f86e3-2b24-7593-9417-18916e7de584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_33f2afdacc8adb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ccb9e114-91f6-4069-b791-6f97eb2192de",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5ef28b6e31bc80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b238aad0-909c-4ac5-8f7b-800597210478",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5f5979c6e5fd21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4ba08984-b616-4d52-8851-cf51d71521c8",
+        "model": "composer-2.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_670b967f0b9f0f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2298fffe-dc74-486a-a4b1-1067cb9272a9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
