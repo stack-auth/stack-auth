@@ -153,7 +153,13 @@ type ScheduledDefinitionRow = {
   deployedAt: Date,
 };
 
-async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>): Promise<boolean> {
+// A schedule that has fallen far behind (bounded only by MAX_CATCHUP_WINDOW_MS)
+// can owe an enormous number of occurrences at once — an every-minute cron 92
+// days behind owes ~132k. A single createMany of that size risks exceeding
+// query/parameter limits and failing wholesale, so inserts are chunked.
+const SCHEDULE_EVENT_INSERT_CHUNK_SIZE = 1000;
+
+async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
   const definitions = await retryTransaction(globalPrismaClient, async (tx) => {
     return await tx.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
       SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
@@ -166,49 +172,87 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
 
   let didWork = false;
   for (const definition of definitions) {
-    const tenancy = await getCachedTenancy(definition.tenancyId, tenancyCache);
-    if (tenancy == null) continue;
-    // One `now` per definition so every schedule on the same workflow
-    // materializes against an identical window boundary.
-    const now = new Date();
+    // This phase runs first in the tick and scans every scheduled definition
+    // across all tenancies, so without a deadline it could starve event
+    // processing and run execution for the whole step. Breaking here is safe:
+    // already-processed schedules have advanced cursors, which makes
+    // re-scanning them cheap, so later passes drain the remainder (the
+    // definitions list has no inherent order — resumption is emergent from
+    // cursor state, not positional).
+    if (Date.now() >= deadlineMs) break;
+    try {
+      didWork = await materializeDefinitionSchedules(definition, tenancyCache, deadlineMs) || didWork;
+    } catch (error) {
+      // One tenancy's failing schedule (a transient DB error, a poisoned
+      // manifest) must not abort materialization for every other tenancy —
+      // and since this phase runs first, an uncaught throw here would also
+      // take down event processing and run execution for the entire tick,
+      // every tick, until the underlying row is fixed. Mirrors the per-event
+      // isolation in processWorkflowEvents.
+      captureError("workflow-schedule-materialization", error);
+    }
+  }
+  return didWork;
+}
 
-    for (const trigger of definition.manifest.triggers) {
-      if (trigger.type !== "schedule") continue;
-      const scheduleKey = `${trigger.cron}|${trigger.timezone}`;
-      const cronResult = parseCronExpression(trigger.cron);
-      if (cronResult.status === "error") {
-        // Sync validates cron expressions, so this is a platform bug.
-        captureError("workflow-schedule-invalid-cron", new HexclaveAssertionError(`Stored workflow schedule has invalid cron: ${cronResult.error}`, { definition }));
-        continue;
-      }
+/** Returns whether any occurrence events were inserted. */
+async function materializeDefinitionSchedules(definition: ScheduledDefinitionRow, tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+  const tenancy = await getCachedTenancy(definition.tenancyId, tenancyCache);
+  if (tenancy == null) return false;
+  // One `now` per definition so every schedule on the same workflow
+  // materializes against an identical window boundary. Best-effort: a
+  // deadline break below defers the remaining triggers to a later pass with
+  // a later `now`, which is fine because schedules are independent
+  // per-cursor and occurrence ids are deterministic.
+  const now = new Date();
+  let didWork = false;
 
-      let cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
-        where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
+  for (const trigger of definition.manifest.triggers) {
+    if (trigger.type !== "schedule") continue;
+    // Checked between schedules but deliberately NOT between insert chunks:
+    // the cursor only advances after a schedule's full window is inserted, so
+    // abandoning a started schedule mid-burst would re-list and re-insert the
+    // same window every tick without ever advancing — a livelock. Finishing
+    // the schedule we started keeps progress monotonic, and a worst-case
+    // catch-up burst is ~132 chunked inserts, well within a tick.
+    if (Date.now() >= deadlineMs) break;
+    const scheduleKey = `${trigger.cron}|${trigger.timezone}`;
+    const cronResult = parseCronExpression(trigger.cron);
+    if (cronResult.status === "error") {
+      // Sync validates cron expressions, so this is a platform bug.
+      captureError("workflow-schedule-invalid-cron", new HexclaveAssertionError(`Stored workflow schedule has invalid cron: ${cronResult.error}`, { definition }));
+      continue;
+    }
+
+    let cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
+      where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
+    });
+    if (cursor == null) {
+      // Compatibility/self-healing path for schedules deployed before
+      // cursor-at-sync existed: begin at deployment time so the first
+      // occurrence is not silently lost.
+      await globalPrismaClient.workflowScheduleCursor.createMany({
+        data: [{ tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey, lastMaterializedAt: definition.deployedAt }],
+        skipDuplicates: true,
       });
-      if (cursor == null) {
-        // Compatibility/self-healing path for schedules deployed before
-        // cursor-at-sync existed: begin at deployment time so the first
-        // occurrence is not silently lost.
-        await globalPrismaClient.workflowScheduleCursor.createMany({
-          data: [{ tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey, lastMaterializedAt: definition.deployedAt }],
-          skipDuplicates: true,
-        });
-        cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
-          where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
-        }) ?? throwErr("Workflow schedule cursor disappeared immediately after creation");
-      }
+      cursor = await globalPrismaClient.workflowScheduleCursor.findUnique({
+        where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
+      }) ?? throwErr("Workflow schedule cursor disappeared immediately after creation");
+    }
 
-      const windowStart = new Date(Math.max(cursor.lastMaterializedAt.getTime(), now.getTime() - MAX_CATCHUP_WINDOW_MS));
-      const occurrences = listCronOccurrences(cronResult.data, trigger.timezone, windowStart, now);
-      if (occurrences.length > 0) {
-        // Deterministic per-occurrence event ids make this crash-safe
-        // without a transaction: re-running after a crash between insert and
-        // cursor update re-inserts the same ids, which no-op. Missed
-        // occurrences CATCH UP (delayed, never skipped): each gets its
-        // nominal scheduledAt, and the outbox processes in ascending
-        // scheduledAt order.
+    const windowStart = new Date(Math.max(cursor.lastMaterializedAt.getTime(), now.getTime() - MAX_CATCHUP_WINDOW_MS));
+    const occurrences = listCronOccurrences(cronResult.data, trigger.timezone, windowStart, now);
+    if (occurrences.length > 0) {
+      // Deterministic per-occurrence event ids make this crash-safe
+      // without a transaction: re-running after a crash between insert and
+      // cursor update re-inserts the same ids, which no-op. Missed
+      // occurrences CATCH UP (delayed, never skipped): each gets its
+      // nominal scheduledAt, and the outbox processes in ascending
+      // scheduledAt order.
+      for (let chunkStart = 0; chunkStart < occurrences.length; chunkStart += SCHEDULE_EVENT_INSERT_CHUNK_SIZE) {
+        const chunk = occurrences.slice(chunkStart, chunkStart + SCHEDULE_EVENT_INSERT_CHUNK_SIZE);
         await globalPrismaClient.workflowEvent.createMany({
-          data: occurrences.map((occurrence) => ({
+          data: chunk.map((occurrence) => ({
             tenancyId: definition.tenancyId,
             // Keyed by the NOMINAL wall-clock occurrence, not the UTC
             // instant: during DST fall-back the repeated wall hour matches
@@ -226,13 +270,13 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
           })),
           skipDuplicates: true,
         });
-        didWork = true;
       }
-      await globalPrismaClient.workflowScheduleCursor.update({
-        where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
-        data: { lastMaterializedAt: now },
-      });
+      didWork = true;
     }
+    await globalPrismaClient.workflowScheduleCursor.update({
+      where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
+      data: { lastMaterializedAt: now },
+    });
   }
   return didWork;
 }
@@ -339,7 +383,7 @@ async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, defi
     if (keyResult.status === "error") {
       // Platform failure: leave the event unprocessed (the throw aborts
       // marking it processed) so a later tick retries.
-      throw new HexclaveAssertionError(`Workflow run-key invocation failed: ${keyResult.error.message}`, { tenancyId: tenancy.id, eventId: event.id, workflowId: definition.workflowId });
+      throw new HexclaveAssertionError(`Workflow run-key invocation failed: ${keyResult.error.message}`, { tenancyId: tenancy.id, eventId: event.id, workflowId: definition.workflowId, invocationId: keyResult.error.invocationId });
     }
     const outcome = keyResult.data;
     if (outcome.type === "handler-failed") {
@@ -882,12 +926,13 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     const lifecycleRun = { id: run.id, workflowId: run.workflowId, runKey: run.runKey, version: currentVersion, triggerType: run.triggerType };
 
     if (invocationResult.status === "error") {
-      // Platform channel: report to our monitoring with full detail, retry
-      // with the normal backoff, and never show users more than a generic
-      // platform-error state.
+      // Platform channel: report to our monitoring, retry with the normal
+      // backoff, and never show users more than a generic platform-error
+      // state. The failure message is generic by construction; the raw
+      // detail lives in the invoke-level captures, joined by invocationId.
       captureError("workflow-invocation-failed", new HexclaveAssertionError(
         `Workflow sandbox invocation failed (${invocationResult.error.kind}): ${invocationResult.error.message}`,
-        { tenancyId: run.tenancyId, runId: run.id, workflowId: run.workflowId },
+        { tenancyId: run.tenancyId, runId: run.id, workflowId: run.workflowId, invocationId: invocationResult.error.invocationId },
       ));
       const attempt = currentStepAttempt + 1;
       await recordStepAttempt({
@@ -1385,7 +1430,7 @@ let stepCounter = 0;
 export async function runWorkflowEngineStep(options: { deadlineMs: number }): Promise<{ didWork: boolean }> {
   const tenancyCache = new Map<string, Tenancy | null>();
   let didWork = false;
-  didWork = await materializeScheduleOccurrences(tenancyCache) || didWork;
+  didWork = await materializeScheduleOccurrences(tenancyCache, options.deadlineMs) || didWork;
   didWork = await processWorkflowEvents(tenancyCache, options.deadlineMs) || didWork;
   didWork = await executeDueRuns(tenancyCache, options.deadlineMs) || didWork;
   // Retention pruning is cheap but pointless to run every second.
