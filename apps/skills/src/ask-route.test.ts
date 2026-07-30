@@ -12,6 +12,14 @@ function restoreEnvVariable(name: string, value: string | undefined) {
   }
 }
 
+function normalizeReminders(responseText: string): string {
+  const remindersSuffix = `\n\n---\n\n${remindersPrompt}`;
+  if (!responseText.endsWith(remindersSuffix)) {
+    throw new Error("Expected ask response to end with the reminders prompt.");
+  }
+  return `${responseText.slice(0, -remindersSuffix.length)}\n\n<reminders>`;
+}
+
 describe("skill-site ask route", () => {
   beforeEach(() => {
     globalVar.hexclaveCapturedErrors = [];
@@ -80,9 +88,13 @@ describe("skill-site ask route", () => {
       const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?query=How%20do%20I%20add%20Hexclave%3F&context=Installing%20Hexclave%20in%20a%20static%20HTML%20app&conversationId=conversation-123&reason=caller-controlled"));
       expect(response.status).toBe(200);
       const responseText = await response.text();
-      expect(responseText).toContain("Use the JS SDK or REST API.");
-      expect(responseText).toContain("[conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]");
-      expect(responseText.endsWith(`\n\n---\n\n${remindersPrompt}`)).toBe(true);
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
+        "Use the JS SDK or REST API.
+
+        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]
+
+        <reminders>"
+      `);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       globalThis.fetch = previousFetch;
@@ -215,9 +227,13 @@ describe("skill-site ask route", () => {
       const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
       expect(response.status).toBe(200);
       const responseText = await response.text();
-      expect(responseText).toContain("(empty response)");
-      expect(responseText).toContain("[conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]");
-      expect(responseText.endsWith(`\n\n---\n\n${remindersPrompt}`)).toBe(true);
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
+        "(empty response)
+
+        [conversationId: conversation-123 - pass this value as the conversationId parameter in your next /ask request to continue this conversation]
+
+        <reminders>"
+      `);
     } finally {
       globalThis.fetch = previousFetch;
     }
@@ -234,8 +250,11 @@ describe("skill-site ask route", () => {
       const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
       expect(response.status).toBe(200);
       const responseText = await response.text();
-      expect(responseText.startsWith("Start with the JavaScript SDK.")).toBe(true);
-      expect(responseText.endsWith(`\n\n---\n\n${remindersPrompt}`)).toBe(true);
+      expect(normalizeReminders(responseText)).toMatchInlineSnapshot(`
+        "Start with the JavaScript SDK.
+
+        <reminders>"
+      `);
     } finally {
       globalThis.fetch = previousFetch;
     }
