@@ -20,10 +20,9 @@ export class AppleProvider extends OAuthBaseProvider {
   }) {
     const { redirectUri, clientSecret, teamId, keyId, privateKey, ...rest } = options;
     let resolvedClientSecret = clientSecret;
-    if (resolvedClientSecret == null) {
-      if (teamId == null || keyId == null || privateKey == null) {
-        throw new StatusError(StatusError.BadRequest, "Apple OAuth requires a client secret or Team ID, Key ID, and private key.");
-      }
+    if (teamId != null && keyId != null && privateKey != null) {
+      // Key credentials take precedence so rotation takes effect even when an old
+      // static secret is still stored in the dashboard.
       try {
         const signingKey = await importPKCS8(privateKey, "ES256");
         const now = Math.floor(Date.now() / 1000);
@@ -40,6 +39,10 @@ export class AppleProvider extends OAuthBaseProvider {
       } catch (error) {
         captureError("apple-oauth-client-secret-minting-failed", error);
         throw new StatusError(StatusError.BadRequest, "The Apple private key is invalid. Please provide the original .p8 key contents.");
+      }
+    } else if (resolvedClientSecret == null) {
+      if (teamId != null || keyId != null || privateKey != null) {
+        throw new StatusError(StatusError.BadRequest, "Apple OAuth requires a client secret or Team ID, Key ID, and private key.");
       }
     }
     return new AppleProvider(
@@ -91,6 +94,7 @@ import.meta.vitest?.test("AppleProvider mints short-lived ES256 client secrets",
   const privateKeyPem = await exportPKCS8(privateKey);
   const provider = await AppleProvider.create({
     clientId: "com.example.web",
+    clientSecret: "old-static-secret",
     teamId: "TEAM123",
     keyId: "KEY123",
     privateKey: privateKeyPem,

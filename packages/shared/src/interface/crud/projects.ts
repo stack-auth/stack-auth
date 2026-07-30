@@ -27,11 +27,16 @@ const oauthProviderReadSchema = yupObject({
 }).test(
   "apple-credentials",
   "client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set",
-  (provider) => provider.type !== "standard"
-    || (provider.id === "apple"
-      ? (provider.client_secret != null && provider.client_secret !== "")
-        || [provider.apple_team_id, provider.apple_key_id, provider.apple_private_key].every(value => value != null && value !== "")
-      : provider.client_secret != null && provider.client_secret !== ""),
+  (provider) => {
+    if (provider.type !== "standard") return true;
+    const hasClientSecret = provider.client_secret != null && provider.client_secret !== "";
+    const keyFields = [provider.apple_team_id, provider.apple_key_id, provider.apple_private_key];
+    const hasAnyKeyField = keyFields.some(value => value != null && value !== "");
+    const hasAllKeyFields = keyFields.every(value => value != null && value !== "");
+    return provider.id === "apple"
+      ? (hasClientSecret || hasAllKeyFields) && (!hasAnyKeyField || hasAllKeyFields)
+      : hasClientSecret;
+  },
 );
 
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
