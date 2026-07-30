@@ -36,7 +36,8 @@ function messageContentToText(content: unknown): string {
 export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () => void }) {
   const messages: MessageIn[] = useMemo(() => {
     try {
-      return JSON.parse(row.messagesJson) as MessageIn[];
+      const parsed = JSON.parse(row.messagesJson);
+      return Array.isArray(parsed) ? parsed as MessageIn[] : [];
     } catch {
       return [];
     }
@@ -44,7 +45,8 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
 
   const steps: StepEntry[] = useMemo(() => {
     try {
-      return JSON.parse(row.stepsJson) as StepEntry[];
+      const parsed = JSON.parse(row.stepsJson);
+      return Array.isArray(parsed) ? parsed as StepEntry[] : [];
     } catch {
       return [];
     }
@@ -52,7 +54,8 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
 
   const requestedTools: string[] = useMemo(() => {
     try {
-      return JSON.parse(row.requestedToolsJson) as string[];
+      const parsed = JSON.parse(row.requestedToolsJson);
+      return Array.isArray(parsed) ? parsed as string[] : [];
     } catch {
       return [];
     }

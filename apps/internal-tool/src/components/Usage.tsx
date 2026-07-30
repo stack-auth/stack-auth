@@ -210,11 +210,14 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
       seriesEnd = now;
     }
     const spanMs = Math.max(0, seriesEnd - seriesStart);
-    const bucketMs = spanMs <= 24 * 60 * 60 * 1000 ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    let bucketMs = spanMs <= 24 * 60 * 60 * 1000 ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const bucketCount = Math.min(48, Math.max(1, Math.ceil(spanMs / bucketMs)));
+    if (spanMs > bucketCount * bucketMs) {
+      bucketMs = Math.ceil(spanMs / bucketCount);
+    }
     const bucketLabelFmt: Intl.DateTimeFormatOptions = bucketMs === 60 * 60 * 1000
       ? { hour: "numeric" }
       : { month: "short", day: "numeric" };
-    const bucketCount = Math.min(48, Math.max(1, Math.ceil(spanMs / bucketMs)));
     const bucketStart = seriesEnd - bucketCount * bucketMs;
     const timeBuckets: Array<{ label: string, start: number, calls: number, inputTokens: number, outputTokens: number, cachedInputTokens: number }> = [];
     for (let i = 0; i < bucketCount; i++) {
@@ -230,8 +233,10 @@ export function Usage({ rows, connectionState, connectionErrorMessage, onSelect,
     }
     for (const r of filtered) {
       const ts = toDate(r.createdAt).getTime();
-      const idx = Math.floor((ts - bucketStart) / bucketMs);
-      if (idx >= 0 && idx < bucketCount) {
+      // Clamp the top boundary: a row at exactly seriesEnd computes idx === bucketCount
+      // and would otherwise be dropped (the newest call always disappeared from charts).
+      const idx = Math.min(Math.floor((ts - bucketStart) / bucketMs), bucketCount - 1);
+      if (idx >= 0) {
         timeBuckets[idx].calls++;
         timeBuckets[idx].inputTokens += r.inputTokens ?? 0;
         timeBuckets[idx].outputTokens += r.outputTokens ?? 0;

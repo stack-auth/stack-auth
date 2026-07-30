@@ -164,6 +164,7 @@ export default function App() {
             {currentSelectedRow && (
               <aside className="w-[480px] shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
                 <CallLogDetail
+                  key={String(currentSelectedRow.id)}
                   row={currentSelectedRow}
                   allRows={rows}
                   qaEntries={qaRows}
