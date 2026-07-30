@@ -96,9 +96,17 @@ describe("error handling", () => {
 
     const config = await project.getConfig();
     const apple = config.auth.oauth.providers.apple;
-    expect(apple.appleTeamId).toBe('TEAM123');
-    expect(apple.appleKeyId).toBe('KEY123');
-    expect(apple.applePrivateKey).toContain('BEGIN PRIVATE KEY');
+    expect({
+      appleTeamId: apple.appleTeamId,
+      appleKeyId: apple.appleKeyId,
+      hasPrivateKey: apple.applePrivateKey?.includes('BEGIN PRIVATE KEY'),
+    }).toMatchInlineSnapshot(`
+      {
+        "appleKeyId": "KEY123",
+        "appleTeamId": "TEAM123",
+        "hasPrivateKey": true,
+      }
+    `);
   });
 
   it("pushConfig rejects environment-only fields at branch level", async ({ expect }) => {

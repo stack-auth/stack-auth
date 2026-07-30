@@ -23,11 +23,17 @@ export class AppleProvider extends OAuthBaseProvider {
     if (teamId != null && keyId != null && privateKey != null) {
       // Key credentials take precedence so rotation takes effect even when an old
       // static secret is still stored in the dashboard.
+      let signingKey;
       try {
-        const signingKey = await importPKCS8(privateKey, "ES256");
-        const now = Math.floor(Date.now() / 1000);
-        // getProvider() constructs AppleProvider for each request, so a five-minute
-        // secret is sufficient and avoids storing a long-lived JWT in config.
+        signingKey = await importPKCS8(privateKey, "ES256");
+      } catch (error) {
+        captureError("apple-oauth-client-secret-minting-failed", error);
+        throw new StatusError(StatusError.BadRequest, "The Apple private key is invalid. Please provide the original .p8 key contents.");
+      }
+      const now = Math.floor(Date.now() / 1000);
+      // getProvider() constructs AppleProvider for each request, so a five-minute
+      // secret is sufficient and avoids storing a long-lived JWT in config.
+      try {
         resolvedClientSecret = await new SignJWT({})
           .setProtectedHeader({ alg: "ES256", kid: keyId })
           .setIssuer(teamId)
@@ -37,13 +43,10 @@ export class AppleProvider extends OAuthBaseProvider {
           .setExpirationTime(now + 5 * 60)
           .sign(signingKey);
       } catch (error) {
-        captureError("apple-oauth-client-secret-minting-failed", error);
-        throw new StatusError(StatusError.BadRequest, "The Apple private key is invalid. Please provide the original .p8 key contents.");
+        throw new HexclaveAssertionError("Failed to mint Apple OAuth client secret", { cause: error });
       }
-    } else if (resolvedClientSecret == null) {
-      if (teamId != null || keyId != null || privateKey != null) {
-        throw new StatusError(StatusError.BadRequest, "Apple OAuth requires a client secret or Team ID, Key ID, and private key.");
-      }
+    } else if (resolvedClientSecret == null || resolvedClientSecret === "") {
+      throw new StatusError(StatusError.BadRequest, "Apple OAuth requires a client secret or Team ID, Key ID, and private key.");
     }
     return new AppleProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
