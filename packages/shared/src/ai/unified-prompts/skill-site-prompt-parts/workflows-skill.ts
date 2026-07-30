@@ -63,7 +63,7 @@ export const workflowsSkillSection = deindent`
 
   Per step: results cap at 1 MiB, logs at 64 KiB, timeout defaults to 2 minutes and cannot exceed 10 minutes. Event payloads cap at 256 KiB. Sleeps under a minute may run inline rather than suspending.
 
-  \`hexclaveApp\` is a real server SDK instance already authenticated to the workflow's own project — use it to read and mutate users, teams, and everything else the server SDK exposes. Its credential is scoped to server access, so admin-only surfaces (project configuration, API keys, workflow management) are not reachable from inside a workflow.
+  \`hexclaveApp\` is a real server SDK instance already authenticated to the workflow's own project — use it to read and mutate users, teams, and everything else the server SDK exposes.
 
   ## Operating
 
