@@ -1,16 +1,22 @@
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { type Tenancy } from "@/lib/tenancies";
+import {
+  evaluateTvEventsIfDue,
+  resolveTvEventPresentation,
+  type TvEventPresentation,
+} from "@/lib/tv-mode/events";
+import { resolveTvProfile } from "@/lib/tv-mode/profiles";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import {
   calculateTvEmailRates,
   calculateTvPaymentSuccessPercent,
-  getTvBuiltInProfile,
   TV_MINIMUM_FINISHED_SENDS,
   TV_MINIMUM_PAYMENT_ATTEMPTS,
   TV_SNAPSHOT_STALE_AFTER_MS,
   type TvAudienceMomentumScreen,
   type TvEmailHealthScreen,
   type TvLivePulseScreen,
+  type TvProfileResource,
   type TvReportingWindow,
   type TvRevenuePaymentsScreen,
   type TvScreenSnapshot,
@@ -37,6 +43,10 @@ type TvWindowBounds = {
 type TvAdapterResult<TScreen extends TvScreenSnapshot> =
   | { status: "success", screen: TScreen }
   | { status: "error", screen: TScreen };
+
+export function getTvOperationalMetricsClient<T>(prisma: { $replica: () => T }): T {
+  return prisma.$replica();
+}
 
 function roundPercent(value: number): number {
   return Math.round(value * 10) / 10;
@@ -174,22 +184,59 @@ function errorScreen<TScreen extends TvScreenSnapshot>(
   };
 }
 
+export function createTvLivePulseErrorScreen(now: Date): TvLivePulseScreen {
+  return {
+    id: "live-pulse",
+    sourceStatus: "error",
+    sourceLabel: "Hexclave activity",
+    observedAt: now.toISOString(),
+    window: currentDayWindow(now),
+    diagnosticCode: "source-query-failed",
+    data: null,
+    insight: null,
+  };
+}
+
+export function createReadyTvLivePulseScreen(options: {
+  now: Date,
+  liveUsers: number,
+  todayActiveUsers: number,
+  hourlyActivity: TvTrendPoint[],
+}): TvLivePulseScreen {
+  const currentHour = new Date(options.now);
+  currentHour.setUTCMinutes(0, 0, 0);
+  return {
+    id: "live-pulse",
+    sourceStatus: "ready",
+    sourceLabel: "Hexclave activity",
+    observedAt: options.now.toISOString(),
+    window: currentDayWindow(options.now),
+    diagnosticCode: null,
+    data: {
+      liveUsers: options.liveUsers,
+      todayActiveUsers: options.todayActiveUsers,
+      hourlyActivity: options.hourlyActivity.length > 0 ? options.hourlyActivity : [{
+        label: currentHour.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "UTC",
+        }),
+        value: 0,
+      }],
+      sourceHealth: [],
+    },
+    insight: null,
+  };
+}
+
 async function loadActivityScreens(
   tenancy: Tenancy,
   now: Date,
 ): Promise<{ livePulse: TvAdapterResult<TvLivePulseScreen>, audience: TvAdapterResult<TvAudienceMomentumScreen> }> {
   const observedAt = now.toISOString();
   const sevenDayBounds = getRollingWindow(now, 7);
-  const emptyLive: TvLivePulseScreen = {
-    id: "live-pulse",
-    sourceStatus: "error",
-    sourceLabel: "Hexclave activity",
-    observedAt,
-    window: currentDayWindow(now),
-    diagnosticCode: "source-query-failed",
-    data: null,
-    insight: null,
-  };
+  const emptyLive = createTvLivePulseErrorScreen(now);
   const emptyAudience: TvAudienceMomentumScreen = {
     id: "audience-momentum",
     sourceStatus: "error",
@@ -397,8 +444,6 @@ async function loadActivityScreens(
       tertiary: Number(row.reactivated_count),
     }]));
     const todayActivity = lifecycleByDate.get(todayKey)?.total ?? 0;
-    const currentHour = new Date(now);
-    currentHour.setUTCMinutes(0, 0, 0);
     const todayHourly = hourlyRows.map((point) => ({
       label: new Date(point.hour).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
       value: Number(point.active_users),
@@ -423,21 +468,15 @@ async function loadActivityScreens(
       ? roundPercent((Number(users.verified_users) / totalUsers) * 100)
       : 0;
 
-    const hasLiveActivity = liveUsers > 0 || todayActivity > 0;
-    const livePulse: TvLivePulseScreen = {
-      ...emptyLive,
-      sourceStatus: hasLiveActivity ? "ready" : "empty",
-      diagnosticCode: null,
-      data: hasLiveActivity ? {
-        liveUsers,
-        todayActiveUsers: todayActivity,
-        hourlyActivity: todayHourly.length > 0 ? todayHourly : [{
-          label: currentHour.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }),
-          value: 0,
-        }],
-        sourceHealth: [],
-      } : null,
-    };
+    // A successful zero is an observed operational value, not an empty source.
+    // Live Pulse has no minimum sample, so its content remains useful even when
+    // no signed-in users refreshed during either activity window.
+    const livePulse = createReadyTvLivePulseScreen({
+      now,
+      liveUsers,
+      todayActiveUsers: todayActivity,
+      hourlyActivity: todayHourly,
+    });
     const hasAudience = totalUsers > 0;
     const audience: TvAudienceMomentumScreen = {
       ...emptyAudience,
@@ -556,7 +595,11 @@ async function loadAnalyticsIntoAudience(
   }
 }
 
-async function loadRevenueScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterResult<TvRevenuePaymentsScreen>> {
+async function loadRevenueScreen(
+  tenancy: Tenancy,
+  now: Date,
+  financialVisibility: "redacted" | "exact",
+): Promise<TvAdapterResult<TvRevenuePaymentsScreen>> {
   const observedAt = now.toISOString();
   const bounds = getRollingWindow(now, 30);
   const emptyScreen: TvRevenuePaymentsScreen = {
@@ -579,9 +622,10 @@ async function loadRevenueScreen(tenancy: Tenancy, now: Date): Promise<TvAdapter
   try {
     const schema = await getPrismaSchemaForTenancy(tenancy);
     const prisma = await getPrismaClientForTenancy(tenancy);
+    const metricsPrisma = getTvOperationalMetricsClient(prisma);
     const successfulStatuses = PAID_INVOICE_STATUSES;
     const [summaryRows, trendRows] = await Promise.all([
-      prisma.$replica().$queryRaw<[{
+      metricsPrisma.$queryRaw<[{
         current_revenue: bigint,
         previous_revenue: bigint,
         applicable_attempts: number,
@@ -620,7 +664,7 @@ async function loadRevenueScreen(tenancy: Tenancy, now: Date): Promise<TvAdapter
           AND "createdAt" >= ${bounds.comparisonStartsAt}
           AND "createdAt" < ${bounds.currentEndsAt}
       `,
-      prisma.$replica().$queryRaw<{ day: string, revenue: bigint }[]>`
+      metricsPrisma.$queryRaw<{ day: string, revenue: bigint }[]>`
         SELECT TO_CHAR("createdAt"::date, 'YYYY-MM-DD') AS day,
           COALESCE(SUM("amountTotal"), 0)::bigint AS revenue
         FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
@@ -647,7 +691,12 @@ async function loadRevenueScreen(tenancy: Tenancy, now: Date): Promise<TvAdapter
       sourceStatus: !hasPaymentData ? "empty" : attempts < TV_MINIMUM_PAYMENT_ATTEMPTS ? "insufficient-data" : "ready",
       diagnosticCode: null,
       data: hasPaymentData ? {
-        financials: {
+        financials: financialVisibility === "exact" ? {
+          visibility: "exact",
+          paidRevenueCents: currentRevenue,
+          mrrProxyCents: currentRevenue,
+          revenueTrend,
+        } : {
           visibility: "redacted",
           direction: revenueChangePercent > 0 ? "up" : revenueChangePercent < 0 ? "down" : "flat",
           normalizedRevenueTrend: normalizeTrend(revenueTrend),
@@ -698,8 +747,9 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
   try {
     const schema = await getPrismaSchemaForTenancy(tenancy);
     const prisma = await getPrismaClientForTenancy(tenancy);
+    const metricsPrisma = getTvOperationalMetricsClient(prisma);
     const [summaryRows, trendRows] = await Promise.all([
-      prisma.$replica().$queryRaw<[{
+      metricsPrisma.$queryRaw<[{
         current_finished: number,
         previous_finished: number,
         delivered: number,
@@ -739,7 +789,7 @@ async function loadEmailScreen(tenancy: Tenancy, now: Date): Promise<TvAdapterRe
             OR "simpleStatus" = 'IN_PROGRESS'::"EmailOutboxSimpleStatus"
           )
       `,
-      prisma.$replica().$queryRaw<{ day: string, ok: number, error: number, in_progress: number }[]>`
+      metricsPrisma.$queryRaw<{ day: string, ok: number, error: number, in_progress: number }[]>`
         SELECT
           TO_CHAR("createdAt"::date, 'YYYY-MM-DD') AS day,
           COUNT(*) FILTER (WHERE "simpleStatus" = 'OK'::"EmailOutboxSimpleStatus")::int AS ok,
@@ -829,22 +879,47 @@ function sourceHealthFact(
   return { label, status: "unavailable", value: "Unavailable", detail: "Source unavailable" };
 }
 
+export function addTvSourceHealth(
+  livePulse: TvLivePulseScreen,
+  sources: {
+    email: TvEmailHealthScreen,
+    revenue: TvRevenuePaymentsScreen,
+    audience: TvAudienceMomentumScreen,
+  },
+): TvLivePulseScreen {
+  if (livePulse.data == null) return livePulse;
+  return {
+    ...livePulse,
+    data: {
+      ...livePulse.data,
+      sourceHealth: [
+        sourceHealthFact("Email delivery", sources.email),
+        sourceHealthFact("Payment collection", sources.revenue),
+        sourceHealthFact("Analytics", sources.audience),
+      ],
+    },
+  };
+}
+
 export function assembleTvSnapshot(options: {
   project: { id: string, displayName: string },
-  profileId: string,
+  profile: TvProfileResource,
   now: Date,
+  includeScreenDurations?: boolean,
   screens: {
     livePulse: TvLivePulseScreen,
     audience: TvAudienceMomentumScreen,
     revenue: TvRevenuePaymentsScreen,
     email: TvEmailHealthScreen,
   },
-}): TvSnapshot | null {
-  const profile = getTvBuiltInProfile(options.profileId);
-  if (profile == null) return null;
-  if (options.screens.revenue.data?.financials.visibility === "exact") {
-    throw new HexclaveAssertionError("Live TV snapshots must redact exact financial values until profile privacy settings are persisted.");
+  presentation?: TvEventPresentation,
+}): TvSnapshot {
+  const configuration = options.profile.configuration;
+  const exactFinancialsAllowed = configuration.financialVisibility === "exact";
+  if (options.screens.revenue.data?.financials.visibility === "exact" && !exactFinancialsAllowed) {
+    throw new HexclaveAssertionError("Live TV snapshots must not expose exact financial values for a redacted profile.");
   }
+  const playlist = configuration.playlist.map((entry) => entry.screenId);
   return {
     generatedAt: options.now.toISOString(),
     staleAfter: new Date(options.now.getTime() + TV_SNAPSHOT_STALE_AFTER_MS).toISOString(),
@@ -854,11 +929,17 @@ export function assembleTvSnapshot(options: {
       displayName: options.project.displayName,
     },
     profile: {
-      id: profile.id,
-      displayName: profile.displayName,
+      id: options.profile.id,
+      displayName: configuration.displayName,
       mode: "general",
-      defaultDurationSeconds: profile.defaultDurationSeconds,
-      playlist: profile.playlist,
+      defaultDurationSeconds: configuration.defaultDurationSeconds,
+      playlist,
+      ...(options.includeScreenDurations ? {
+        screenDurations: configuration.playlist.map((entry) => ({
+          screenId: entry.screenId,
+          durationSeconds: entry.durationSecondsOverride ?? configuration.defaultDurationSeconds,
+        })),
+      } : {}),
     },
     screens: [
       options.screens.livePulse,
@@ -866,7 +947,7 @@ export function assembleTvSnapshot(options: {
       options.screens.revenue,
       options.screens.email,
     ],
-    presentation: { banner: null, takeover: null },
+    presentation: options.presentation ?? { highlight: null, takeover: null },
     fatalErrorMessage: null,
   };
 }
@@ -875,35 +956,51 @@ export async function buildLiveTvSnapshot(options: {
   tenancy: Tenancy,
   profileId: string,
   now?: Date,
+  includeScreenDurations?: boolean,
 }): Promise<TvSnapshot | null> {
   const now = options.now ?? new Date();
-  if (getTvBuiltInProfile(options.profileId) == null) return null;
+  const profile = await resolveTvProfile(options.tenancy, options.profileId);
+  if (profile == null) return null;
 
   const [activity, revenue, email] = await Promise.all([
     loadActivityScreens(options.tenancy, now),
-    loadRevenueScreen(options.tenancy, now),
+    loadRevenueScreen(options.tenancy, now, profile.configuration.financialVisibility),
     loadEmailScreen(options.tenancy, now),
   ]);
   const audience = await loadAnalyticsIntoAudience(options.tenancy, now, activity.audience);
-  const livePulse = activity.livePulse.screen.data == null ? activity.livePulse.screen : {
-    ...activity.livePulse.screen,
-    data: {
-      ...activity.livePulse.screen.data,
-      sourceHealth: [
-        sourceHealthFact("Email delivery", email.screen),
-        sourceHealthFact("Payment collection", revenue.screen),
-        sourceHealthFact("Analytics", audience.screen),
-      ],
-    },
-  };
+  const livePulse = addTvSourceHealth(activity.livePulse.screen, {
+    email: email.screen,
+    revenue: revenue.screen,
+    audience: audience.screen,
+  });
+  await evaluateTvEventsIfDue({
+    tenancy: options.tenancy,
+    now,
+    totalUsers: audience.screen.data?.totalUsers ?? null,
+  });
+  let presentation: TvEventPresentation = { highlight: null, takeover: null };
+  try {
+    presentation = await resolveTvEventPresentation({
+      tenancy: options.tenancy,
+      profile,
+      now,
+    });
+  } catch (cause) {
+    captureError("tv-event-presentation-resolution-failed", new HexclaveAssertionError(
+      "TV event presentation resolution failed without affecting the operational snapshot.",
+      { cause, tenancyId: options.tenancy.id, profileId: profile.id },
+    ));
+  }
 
   return assembleTvSnapshot({
     project: {
       id: options.tenancy.project.id,
       displayName: options.tenancy.project.display_name,
     },
-    profileId: options.profileId,
+    profile,
     now,
+    presentation,
+    includeScreenDurations: options.includeScreenDurations,
     screens: {
       livePulse,
       audience: audience.screen,

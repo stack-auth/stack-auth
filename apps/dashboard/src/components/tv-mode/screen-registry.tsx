@@ -6,6 +6,7 @@ import {
   CheckCircleIcon,
   CurrencyDollarIcon,
   EnvelopeSimpleIcon,
+  InfoIcon,
   ShieldWarningIcon,
 } from "@phosphor-icons/react";
 import { useId, type ComponentType, type ReactNode } from "react";
@@ -107,24 +108,28 @@ function TvMetric({ label, value, detail, hero = false }: {
   );
 }
 
-function TvScreenFrame({ eyebrow, title, description, icon, accentClassName, children }: {
+function TvScreenFrame({ eyebrow, title, description, icon, accentClassName, headerAccessory, children }: {
   eyebrow: string,
   title: string,
   description: string,
   icon: ReactNode,
   accentClassName: string,
+  headerAccessory?: ReactNode,
   children: ReactNode,
 }) {
   return (
     <section className="flex h-full min-h-0 flex-col px-[clamp(2rem,5vw,14rem)] pb-[clamp(3rem,6vh,12rem)] pt-[clamp(5rem,8vh,16rem)]">
-      <header className="shrink-0">
-        <div>
+      <header className="flex shrink-0 items-start justify-between gap-[clamp(2rem,4vw,8rem)]">
+        <div className="min-w-0 flex-1">
           <div className={`mb-3 flex items-center gap-3 text-[clamp(0.7rem,0.82vw,2rem)] font-semibold uppercase tracking-[0.22em] ${accentClassName}`}>
             {icon}{eyebrow}
           </div>
           <h1 className="text-[clamp(2.2rem,4vw,10rem)] font-semibold leading-none tracking-[-0.05em] text-white">{title}</h1>
           <p className="mt-[clamp(0.55rem,1.2vh,1.5rem)] max-w-[clamp(32rem,42vw,84rem)] text-[clamp(0.8rem,1vw,2.5rem)] leading-relaxed text-white/46">{description}</p>
         </div>
+        {headerAccessory == null ? null : (
+          <div className="w-[clamp(28rem,36vw,72rem)] shrink-0">{headerAccessory}</div>
+        )}
       </header>
       <div className="mt-[clamp(1.5rem,4vh,8rem)] min-h-0 flex-1">{children}</div>
     </section>
@@ -228,9 +233,11 @@ function TvStackedBars({ points, colors, labels }: {
 
 function Insight({
   tone,
+  explanatory,
   children,
 }: {
   tone: "cyan" | "violet" | "emerald" | "amber",
+  explanatory?: boolean,
   children: ReactNode,
 }) {
   const toneClass = {
@@ -241,9 +248,68 @@ function Insight({
   }[tone];
   return (
     <div className={`flex items-start gap-[clamp(0.75rem,0.8vw,2rem)] rounded-[clamp(1rem,1vw,2.5rem)] border px-[clamp(1.25rem,1.3vw,3rem)] py-[clamp(1rem,1.1vw,2.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] backdrop-blur-sm ${toneClass}`}>
-      <CheckCircleIcon className="mt-0.5 h-[clamp(1.25rem,1.1vw,2.5rem)] w-[clamp(1.25rem,1.1vw,2.5rem)] shrink-0" weight="fill" />
+      {explanatory
+        ? <InfoIcon className="mt-0.5 h-[clamp(1.25rem,1.1vw,2.5rem)] w-[clamp(1.25rem,1.1vw,2.5rem)] shrink-0" weight="fill" />
+        : <CheckCircleIcon className="mt-0.5 h-[clamp(1.25rem,1.1vw,2.5rem)] w-[clamp(1.25rem,1.1vw,2.5rem)] shrink-0" weight="fill" />}
       <p className="text-[clamp(0.78rem,0.95vw,2.24rem)] leading-relaxed text-white/76">{children}</p>
     </div>
+  );
+}
+
+const TV_INSIGHT_FALLBACKS = new Map<TvScreenId, {
+  ready: string,
+  insufficient: string,
+}>([
+  ["live-pulse", {
+    ready: "Comparable live-activity analysis will appear when a validated recent baseline is available.",
+    insufficient: "Live activity remains visible without a minimum sample; comparable-baseline analysis is not yet available.",
+  }],
+  ["audience-momentum", {
+    ready: "No evidence-qualified audience lifecycle insight was identified for this seven-day window.",
+    insufficient: "More qualifying audience activity is required before a reliable lifecycle insight can be identified.",
+  }],
+  ["revenue-payments", {
+    ready: "No evidence-qualified revenue or payment insight was identified for this 30-day window.",
+    insufficient: "At least 10 applicable payment attempts are required before payment health can be assessed.",
+  }],
+  ["email-health", {
+    ready: "No evidence-qualified email delivery insight was identified for this seven-day window.",
+    insufficient: "At least 20 finished sends are required before delivery health can be assessed.",
+  }],
+]);
+
+export function getTvInsightPresentation(options: {
+  screenId: TvScreenId,
+  sourceStatus: TvScreenSnapshot["sourceStatus"],
+  insight: TvScreenSnapshot["insight"],
+}): { message: string, explanatory: boolean } {
+  if (options.insight != null) {
+    return { message: options.insight.message, explanatory: false };
+  }
+  const fallback = TV_INSIGHT_FALLBACKS.get(options.screenId);
+  if (fallback == null) throw new Error(`Missing TV insight fallback for "${options.screenId}"`);
+  return {
+    message: options.sourceStatus === "insufficient-data" ? fallback.insufficient : fallback.ready,
+    explanatory: true,
+  };
+}
+
+function TvInsightArea({
+  screenId,
+  sourceStatus,
+  insight,
+  tone,
+}: {
+  screenId: TvScreenId,
+  sourceStatus: TvScreenSnapshot["sourceStatus"],
+  insight: TvScreenSnapshot["insight"],
+  tone: "cyan" | "violet" | "emerald" | "amber",
+}) {
+  const presentation = getTvInsightPresentation({ screenId, sourceStatus, insight });
+  return (
+    <Insight tone={tone} explanatory={presentation.explanatory}>
+      {presentation.message}
+    </Insight>
   );
 }
 
@@ -273,12 +339,16 @@ function GlassPanel({
 function LivePulseScreen({
   data,
   insight,
+  sourceStatus,
+  headerAccessory,
 }: {
   data: NonNullable<TvLivePulseScreen["data"]>,
   insight: TvLivePulseScreen["insight"],
+  sourceStatus: TvLivePulseScreen["sourceStatus"],
+  headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Right now" title="Live Pulse" description="Current activity and source-level signals Hexclave can verify." icon={<ActivityIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-cyan-300">
+    <TvScreenFrame eyebrow="Right now" title="Live Pulse" description="Current activity and source-level signals Hexclave can verify." icon={<ActivityIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-cyan-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.75fr_1.25fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="cyan" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.5vw,6rem)]">
@@ -300,7 +370,7 @@ function LivePulseScreen({
               />
               <TvMetric label="Monitored sources" value={data.sourceHealth.length.toString()} detail="Reporting now" />
             </div>
-            {insight == null ? null : <Insight tone="cyan">{insight.message}</Insight>}
+            <TvInsightArea screenId="live-pulse" sourceStatus={sourceStatus} insight={insight} tone="cyan" />
           </div>
         </GlassPanel>
         <GlassPanel tone="cyan" className="h-full">
@@ -338,12 +408,16 @@ function LivePulseScreen({
 function AudienceMomentumScreen({
   data,
   insight,
+  sourceStatus,
+  headerAccessory,
 }: {
   data: NonNullable<TvAudienceMomentumScreen["data"]>,
   insight: TvAudienceMomentumScreen["insight"],
+  sourceStatus: TvAudienceMomentumScreen["sourceStatus"],
+  headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Seven-day audience" title="Audience Momentum" description="Whether new attention is becoming sustained, returning activity." icon={<ChartLineUpIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-violet-300">
+    <TvScreenFrame eyebrow="Seven-day audience" title="Audience Momentum" description="Whether new attention is becoming sustained, returning activity." icon={<ChartLineUpIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-violet-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.72fr_1.28fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="violet" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
@@ -354,7 +428,7 @@ function AudienceMomentumScreen({
               <TvMetric label="Visitors · 7d" value={formatCompact(data.visitors)} />
               <TvMetric label="Avg session · 7d" value={formatDuration(data.averageSessionSeconds)} detail={`${data.verificationRatePercent}% verified`} />
             </div>
-            {insight == null ? null : <Insight tone="violet">{insight.message}</Insight>}
+            <TvInsightArea screenId="audience-momentum" sourceStatus={sourceStatus} insight={insight} tone="violet" />
           </div>
         </GlassPanel>
         <GlassPanel tone="violet" className="h-full">
@@ -375,14 +449,18 @@ function AudienceMomentumScreen({
 function RevenuePaymentsScreen({
   data,
   insight,
+  sourceStatus,
+  headerAccessory,
 }: {
   data: NonNullable<TvRevenuePaymentsScreen["data"]>,
   insight: TvRevenuePaymentsScreen["insight"],
+  sourceStatus: TvRevenuePaymentsScreen["sourceStatus"],
+  headerAccessory?: ReactNode,
 }) {
   const financials = data.financials;
   const trend = financials.visibility === "exact" ? financials.revenueTrend : financials.normalizedRevenueTrend;
   return (
-    <TvScreenFrame eyebrow="Trailing 30 days" title="Revenue & Payments" description="Commercial momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300">
+    <TvScreenFrame eyebrow="Trailing 30 days" title="Revenue & Payments" description="Commercial momentum and whether applicable payments are collecting." icon={<CurrencyDollarIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-emerald-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.78fr_1.22fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="emerald" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
@@ -393,7 +471,7 @@ function RevenuePaymentsScreen({
               <TvMetric label="Active subscriptions" value={data.activeSubscriptions.toLocaleString()} />
               <TvMetric label="New subscriptions" value={`+${data.newSubscriptions}`} detail={`${data.pastDueSubscriptions} past due`} />
             </div>
-            {insight == null ? null : <Insight tone="emerald">{insight.message}</Insight>}
+            <TvInsightArea screenId="revenue-payments" sourceStatus={sourceStatus} insight={insight} tone="emerald" />
           </div>
         </GlassPanel>
         <GlassPanel tone="emerald" className="h-full">
@@ -414,12 +492,16 @@ function RevenuePaymentsScreen({
 function EmailHealthScreen({
   data,
   insight,
+  sourceStatus,
+  headerAccessory,
 }: {
   data: NonNullable<TvEmailHealthScreen["data"]>,
   insight: TvEmailHealthScreen["insight"],
+  sourceStatus: TvEmailHealthScreen["sourceStatus"],
+  headerAccessory?: ReactNode,
 }) {
   return (
-    <TvScreenFrame eyebrow="Seven-day delivery" title="Email Health" description="Whether customer messages are reaching recipients reliably." icon={<EnvelopeSimpleIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-amber-300">
+    <TvScreenFrame eyebrow="Seven-day delivery" title="Email Health" description="Whether customer messages are reaching recipients reliably." icon={<EnvelopeSimpleIcon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-amber-300" headerAccessory={headerAccessory}>
       <div className="grid h-full min-h-0 grid-cols-[0.76fr_1.24fr] gap-[clamp(2rem,5vw,12rem)]">
         <GlassPanel tone="amber" className="h-full">
           <div className="flex h-full min-h-0 flex-col justify-between p-[clamp(1.5rem,2.3vw,5.5rem)]">
@@ -430,7 +512,7 @@ function EmailHealthScreen({
               <TvMetric label="Errors" value={formatCompact(data.errors)} />
               <TvMetric label="In progress" value={formatCompact(data.inProgress)} detail="Current sending state" />
             </div>
-            {insight == null ? null : <Insight tone="amber">{insight.message}</Insight>}
+            <TvInsightArea screenId="email-health" sourceStatus={sourceStatus} insight={insight} tone="amber" />
           </div>
         </GlassPanel>
         <GlassPanel tone="amber" className="h-full">
@@ -502,14 +584,16 @@ export function getTvSourceStatePresentation(
 function SourceStateScreen({
   screen,
   presentation,
+  headerAccessory,
 }: {
   screen: TvScreenSnapshot,
   presentation: Extract<TvSourceStatePresentation, { type: "terminal" }>,
+  headerAccessory?: ReactNode,
 }) {
   const definition = getTvScreenDefinition(screen.id);
   const Icon = definition.icon;
   return (
-    <TvScreenFrame eyebrow={presentation.eyebrow} title={definition.displayName} description={definition.description} icon={<Icon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-rose-300">
+    <TvScreenFrame eyebrow={presentation.eyebrow} title={definition.displayName} description={definition.description} icon={<Icon className="h-[1.3em] w-[1.3em]" weight="fill" />} accentClassName="text-rose-300" headerAccessory={headerAccessory}>
       <div className="flex h-full items-center justify-center rounded-[2rem] border border-white/[0.08] bg-white/[0.025]">
         <div className="max-w-3xl text-center">
           <ShieldWarningIcon className="mx-auto h-12 w-12 text-white/25" weight="duotone" />
@@ -521,26 +605,26 @@ function SourceStateScreen({
   );
 }
 
-export function renderTvScreen(screen: TvScreenSnapshot): ReactNode {
+export function renderTvScreen(screen: TvScreenSnapshot, headerAccessory?: ReactNode): ReactNode {
   const presentation = getTvSourceStatePresentation(screen.sourceStatus);
   if (presentation.type === "terminal") {
-    return <SourceStateScreen screen={screen} presentation={presentation} />;
+    return <SourceStateScreen screen={screen} presentation={presentation} headerAccessory={headerAccessory} />;
   }
   if (screen.data == null) {
     throw new Error(`TV source "${screen.id}" is "${screen.sourceStatus}" but has no renderable data`);
   }
   switch (screen.id) {
     case "live-pulse": {
-      return <LivePulseScreen data={screen.data} insight={screen.insight} />;
+      return <LivePulseScreen data={screen.data} insight={screen.insight} sourceStatus={screen.sourceStatus} headerAccessory={headerAccessory} />;
     }
     case "audience-momentum": {
-      return <AudienceMomentumScreen data={screen.data} insight={screen.insight} />;
+      return <AudienceMomentumScreen data={screen.data} insight={screen.insight} sourceStatus={screen.sourceStatus} headerAccessory={headerAccessory} />;
     }
     case "revenue-payments": {
-      return <RevenuePaymentsScreen data={screen.data} insight={screen.insight} />;
+      return <RevenuePaymentsScreen data={screen.data} insight={screen.insight} sourceStatus={screen.sourceStatus} headerAccessory={headerAccessory} />;
     }
     case "email-health": {
-      return <EmailHealthScreen data={screen.data} insight={screen.insight} />;
+      return <EmailHealthScreen data={screen.data} insight={screen.insight} sourceStatus={screen.sourceStatus} headerAccessory={headerAccessory} />;
     }
   }
 }

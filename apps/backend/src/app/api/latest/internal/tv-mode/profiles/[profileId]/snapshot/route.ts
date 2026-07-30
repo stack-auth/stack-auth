@@ -26,8 +26,13 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: TvSnapshotSchema,
   }),
-  handler: async ({ auth: { tenancy }, params: { profileId } }) => {
-    const snapshot = await buildLiveTvSnapshot({ tenancy, profileId });
+  handler: async ({ auth: { tenancy }, params: { profileId } }, fullRequest) => {
+    const snapshotContract = fullRequest.headers["x-hexclave-tv-snapshot-contract"]?.at(0);
+    const snapshot = await buildLiveTvSnapshot({
+      tenancy,
+      profileId,
+      includeScreenDurations: snapshotContract === "2",
+    });
     if (snapshot == null) {
       throw new StatusError(StatusError.NotFound, "No TV presentation profile found with the given ID.");
     }

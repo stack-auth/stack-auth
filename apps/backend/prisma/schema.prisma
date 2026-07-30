@@ -73,12 +73,150 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  tvPresentationProfiles TvPresentationProfile[]
+  tvEventOccurrences TvEventOccurrence[]
+  tvEventEvaluatorStates TvEventEvaluatorState[]
+  tvProfileEventPresentations TvProfileEventPresentation[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+}
+
+enum TvPresentationMode {
+  GENERAL
+}
+
+enum TvFinancialVisibility {
+  REDACTED
+  EXACT
+}
+
+model TvPresentationProfile {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  displayName           String @db.VarChar(80)
+  normalizedDisplayName String @db.VarChar(80)
+  description           String @default("") @db.VarChar(240)
+  mode                  TvPresentationMode @default(GENERAL)
+
+  defaultDurationSeconds  Int
+  playlist                Json
+  interruptionPreferences Json
+  financialVisibility     TvFinancialVisibility @default(REDACTED)
+
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenancyId, normalizedDisplayName], name: "TvPresentationProfile_tenancy_name_key")
+  @@index([tenancyId, updatedAt(sort: Desc), id], name: "TvPresentationProfile_tenancy_updatedAt_id_idx")
+}
+
+enum TvEventType {
+  EMAIL_DELIVERY_DEGRADATION
+  USER_MILESTONE
+}
+
+enum TvEventPresentationClass {
+  CELEBRATION
+  INCIDENT
+  CRITICAL_INCIDENT
+}
+
+enum TvEventOccurrenceLifecycle {
+  OCCURRED
+  ACTIVE
+  RESOLVED
+}
+
+enum TvPresentationSupersededReason {
+  NEWER_CELEBRATION
+  EXPIRED_BEFORE_PRESENTATION
+  POLICY_DISABLED
+  OCCURRENCE_REPLACED
+}
+
+model TvEventOccurrence {
+  id        String @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  eventType         TvEventType
+  presentationClass TvEventPresentationClass
+  lifecycle         TvEventOccurrenceLifecycle
+  deduplicationKey  String @db.VarChar(200)
+
+  title         String @db.VarChar(160)
+  summary       String @db.VarChar(480)
+  metricLabel   String @db.VarChar(80)
+  metricValue   String @db.VarChar(120)
+  expectedRange String? @db.VarChar(160)
+  sourceLabel   String @db.VarChar(120)
+
+  aggregateEvidence Json
+
+  occurredAt  DateTime
+  detectedAt  DateTime
+  activatedAt DateTime?
+  escalatedAt DateTime?
+  resolvedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluatorStates TvEventEvaluatorState[] @relation("TvEvaluatorActiveOccurrence")
+  profilePresentations TvProfileEventPresentation[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deduplicationKey], map: "TvEventOccurrence_tenancy_deduplication_key")
+  @@index([tenancyId, lifecycle, presentationClass, activatedAt(sort: Desc), id], name: "TvEventOccurrence_active_lookup_idx")
+}
+
+model TvEventEvaluatorState {
+  tenancyId    String @db.Uuid
+  evaluatorKey String @db.VarChar(100)
+  tenancy      Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  nextEvaluationAt    DateTime
+  breachCount         Int @default(0)
+  criticalBreachCount Int @default(0)
+  recoveryCount       Int @default(0)
+  milestoneBaseline   BigInt?
+  typedState          Json
+
+  activeOccurrenceId String? @db.Uuid
+  activeOccurrence   TvEventOccurrence? @relation("TvEvaluatorActiveOccurrence", fields: [tenancyId, activeOccurrenceId], references: [tenancyId, id], onDelete: Cascade, onUpdate: Cascade, map: "TvEventEvaluatorState_activeOccurrence_fkey")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, evaluatorKey])
+}
+
+model TvProfileEventPresentation {
+  tenancyId    String @db.Uuid
+  profileId    String @db.VarChar(128)
+  occurrenceId String @db.Uuid
+  tenancy      Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  occurrence   TvEventOccurrence @relation(fields: [tenancyId, occurrenceId], references: [tenancyId, id], onDelete: Cascade, onUpdate: Cascade, map: "TvProfileEventPresentation_occurrence_fkey")
+
+  takeoverStartedAt  DateTime?
+  takeoverEndsAt     DateTime?
+  highlightExpiresAt DateTime?
+  animationExpiresAt DateTime?
+  supersededAt       DateTime?
+  supersededReason   TvPresentationSupersededReason?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, profileId, occurrenceId])
+  @@index([tenancyId, profileId, supersededAt, highlightExpiresAt], name: "TvProfileEventPresentation_active_lookup_idx")
 }
 
 enum ManagedEmailDomainStatus {

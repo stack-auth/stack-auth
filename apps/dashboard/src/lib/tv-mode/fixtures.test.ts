@@ -176,11 +176,77 @@ describe("TV Mode centralized fixtures", () => {
   });
 
   it("builds each interruption treatment centrally", () => {
-    const variants: TvFixtureVariant[] = ["banner", "temporary-takeover", "critical-takeover"];
+    const variants: TvFixtureVariant[] = [
+      "celebration-highlight",
+      "celebration-takeover",
+      "incident-takeover",
+      "critical-takeover",
+      "critical-recovery",
+    ];
     expect(variants.map((variant) => {
       const presentation = createTvFixtureSnapshot("project-fixture", getProfile(), variant).presentation;
-      return presentation.banner?.decision.treatment ?? presentation.takeover?.decision.treatment;
-    })).toEqual(["banner", "temporary-takeover", "persistent-takeover"]);
+      return presentation.takeover?.variant ?? presentation.highlight?.variant;
+    })).toEqual([
+      "celebration",
+      "celebration",
+      "incident",
+      "critical-incident",
+      "recovery-confirmation",
+    ]);
+  });
+
+  it("models celebration suspension, resumption, replacement, and expiry without resetting deadlines", () => {
+    const suspended = createTvFixtureSnapshot("project-fixture", getProfile(), "celebration-suspended");
+    expect(suspended.presentation).toMatchObject({
+      takeover: { variant: "incident" },
+      highlight: {
+        variant: "celebration",
+        animationExpiresAt: "2026-07-23T15:30:00.000Z",
+      },
+    });
+    expect(createTvFixtureSnapshot(
+      "project-fixture",
+      getProfile(),
+      "celebration-resumed",
+    ).presentation).toMatchObject({
+      takeover: null,
+      highlight: { variant: "celebration" },
+    });
+    expect(createTvFixtureSnapshot(
+      "project-fixture",
+      getProfile(),
+      "celebration-animation-expired",
+    ).presentation.highlight).toMatchObject({
+      variant: "celebration",
+      animationExpiresAt: "2026-07-23T14:31:00.000Z",
+    });
+    expect(createTvFixtureSnapshot(
+      "project-fixture",
+      getProfile(),
+      "celebration-highlight-expired",
+    ).presentation).toEqual({
+      takeover: null,
+      highlight: null,
+    });
+    expect(createTvFixtureSnapshot(
+      "project-fixture",
+      getProfile(),
+      "celebration-replaced",
+    ).presentation.highlight?.event.id).toBe("fixture-user-milestone-1000");
+  });
+
+  it("keeps celebration deadlines anchored to the occurrence", () => {
+    const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "celebration-takeover");
+    expect(snapshot.presentation).toMatchObject({
+      takeover: {
+        startedAt: "2026-07-23T14:32:00.000Z",
+      },
+      highlight: {
+        event: { occurredAt: "2026-07-23T14:30:00.000Z" },
+        expiresAt: "2026-07-23T20:30:00.000Z",
+        animationExpiresAt: "2026-07-23T15:30:00.000Z",
+      },
+    });
   });
 
   it("keeps long-name stress data centralized", () => {

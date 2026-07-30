@@ -2,7 +2,9 @@
 
 import {
   ArrowLeftIcon,
+  ArrowDownIcon,
   ArrowSquareOutIcon,
+  ArrowUpIcon,
   BroadcastIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -14,8 +16,10 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
   DesignAlert,
   DesignButton,
@@ -30,10 +34,24 @@ import { Typography } from "@/components/ui";
 import { TvPresentation } from "@/components/tv-mode/tv-presentation";
 import { useTvPresentationLauncher } from "@/components/tv-mode/presentation-window";
 import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
-import { createTvFixtureSnapshot, getTvProfileFixture } from "@/lib/tv-mode/fixtures";
+import { createTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
+import {
+  createTvProfileOrThrow,
+  deleteTvProfileOrThrow,
+  duplicateTvProfileOrThrow,
+  fetchTvProfileOrThrow,
+  TvProfileRequestError,
+  updateTvProfileOrThrow,
+} from "@/lib/hexclave-app-internals";
+import {
+  editorDraftToProfileConfiguration,
+  profileResourceToEditorDraft,
+} from "@/lib/tv-mode/profile-editor-model";
+import { getTvProfileEditorCopy } from "@/lib/tv-mode/profile-editor-copy";
 import type { TvProfileFixture, TvScreenId } from "@/lib/tv-mode/types";
 import { PageLayout } from "../../../page-layout";
-import { useProjectId } from "../../../use-admin-app";
+import { useAdminApp, useProjectId } from "../../../use-admin-app";
+import { TvProfileDeleteDialog } from "./tv-profile-delete-dialog";
 
 function getProfileIdFromPath(pathname: string): string {
   const segments = pathname.split("/");
@@ -72,6 +90,82 @@ function parseDurationOption(value: string): number {
   }
 }
 
+function parseTakeoverSeconds(value: string): 30 | 60 | 90 | 120 {
+  switch (value) {
+    case "30": {
+      return 30;
+    }
+    case "60": {
+      return 60;
+    }
+    case "90": {
+      return 90;
+    }
+    case "120": {
+      return 120;
+    }
+    default: {
+      throw new Error(`Unexpected TV takeover duration "${value}"`);
+    }
+  }
+}
+
+function parseAnimationSeconds(value: string): 600 | 1800 | 3600 | 7200 {
+  switch (value) {
+    case "600": {
+      return 600;
+    }
+    case "1800": {
+      return 1800;
+    }
+    case "3600": {
+      return 3600;
+    }
+    case "7200": {
+      return 7200;
+    }
+    default: {
+      throw new Error(`Unexpected TV animation duration "${value}"`);
+    }
+  }
+}
+
+function parseHighlightSeconds(value: string): 3600 | 21600 | 43200 | 86400 {
+  switch (value) {
+    case "3600": {
+      return 3600;
+    }
+    case "21600": {
+      return 21600;
+    }
+    case "43200": {
+      return 43200;
+    }
+    case "86400": {
+      return 86400;
+    }
+    default: {
+      throw new Error(`Unexpected TV Event Highlight duration "${value}"`);
+    }
+  }
+}
+
+function retainValidHighlight(
+  currentHighlightSeconds: number,
+  animationSeconds: 600 | 1800 | 3600 | 7200,
+): 3600 | 21600 | 43200 | 86400 {
+  const validatedHighlightSeconds = parseHighlightSeconds(currentHighlightSeconds.toString());
+  return animationSeconds > validatedHighlightSeconds ? 21600 : validatedHighlightSeconds;
+}
+
+function retainValidAnimation(
+  currentAnimationSeconds: number,
+  highlightSeconds: 3600 | 21600 | 43200 | 86400,
+): 600 | 1800 | 3600 | 7200 {
+  const validatedAnimationSeconds = parseAnimationSeconds(currentAnimationSeconds.toString());
+  return validatedAnimationSeconds > highlightSeconds ? 3600 : validatedAnimationSeconds;
+}
+
 function updatePlaylistEntry(
   profile: TvProfileFixture,
   screenId: TvScreenId,
@@ -81,6 +175,19 @@ function updatePlaylistEntry(
     ...profile,
     playlist: profile.playlist.map((entry) => entry.screenId === screenId ? update(entry) : entry),
   };
+}
+
+function movePlaylistEntry(profile: TvProfileFixture, index: number, offset: -1 | 1): TvProfileFixture {
+  const targetIndex = index + offset;
+  if (targetIndex < 0 || targetIndex >= profile.playlist.length) return profile;
+  const playlist = [...profile.playlist];
+  const current = playlist[index];
+  const target = playlist[targetIndex];
+  // Both positions are bounded above before indexing, so the swap preserves
+  // the complete playlist and cannot introduce a missing entry.
+  playlist[index] = target;
+  playlist[targetIndex] = current;
+  return { ...profile, playlist };
 }
 
 function settingRow({
@@ -105,14 +212,45 @@ function settingRow({
 
 export default function PageClient() {
   const projectId = useProjectId();
+  const adminApp = useAdminApp();
   const profileId = getProfileIdFromPath(usePathname());
-  const fixtureProfile = getTvProfileFixture(profileId);
-  const [draft, setDraft] = useState<TvProfileFixture | null>(() => fixtureProfile == null ? null : cloneProfile(fixtureProfile));
-  const [saved, setSaved] = useState<TvProfileFixture | null>(() => fixtureProfile == null ? null : cloneProfile(fixtureProfile));
+  const createFromTemplate = useSearchParams().get("create") === "1";
+  const [resource, setResource] = useState<TvProfileResource | null>(null);
+  const [draft, setDraft] = useState<TvProfileFixture | null>(null);
+  const [saved, setSaved] = useState<TvProfileFixture | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [savedNoticeVisible, setSavedNoticeVisible] = useState(false);
   const { setNeedConfirm } = useRouterConfirm();
   const { launchPresentation, popupBlocked } = useTvPresentationLauncher(projectId);
+
+  useEffect(() => {
+    let active = true;
+    runAsynchronously(async () => {
+      try {
+        const loaded = await fetchTvProfileOrThrow(adminApp, profileId);
+        if (!active) return;
+        const editorDraft = profileResourceToEditorDraft(loaded);
+        const savedDraft = cloneProfile(editorDraft);
+        if (createFromTemplate) {
+          editorDraft.displayName = `${editorDraft.displayName} copy`;
+        }
+        setResource(loaded);
+        setDraft(cloneProfile(editorDraft));
+        setSaved(savedDraft);
+      } catch {
+        if (active) setLoadError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adminApp, createFromTemplate, profileId]);
 
   const hasChanges = draft != null && saved != null && JSON.stringify(draft) !== JSON.stringify(saved);
   const previewSnapshot = useMemo(
@@ -125,10 +263,18 @@ export default function PageClient() {
     return () => setNeedConfirm(false);
   }, [hasChanges, setNeedConfirm]);
 
-  if (draft == null || saved == null) {
+  if (loading) {
+    return (
+      <PageLayout title="TV profile" description="Loading project presentation configuration…">
+        <DesignAlert variant="info" title="Loading profile" description="Resolving the project-scoped profile configuration." />
+      </PageLayout>
+    );
+  }
+
+  if (loadError || draft == null || saved == null || resource == null) {
     return (
       <PageLayout title="TV profile not found" description="The requested fixture profile does not exist.">
-        <DesignAlert variant="error" title="Unknown profile" description={`No centralized TV fixture exists for "${profileId}".`} />
+        <DesignAlert variant="error" title="Unknown profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
         <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
           <ArrowLeftIcon className="h-4 w-4" />
           Back to TV Mode
@@ -138,15 +284,26 @@ export default function PageClient() {
   }
 
   const enabledCount = draft.playlist.filter((entry) => entry.enabled).length;
+  const editorCopy = getTvProfileEditorCopy(resource.origin, createFromTemplate);
 
   return (
     <>
       <PageLayout
         title={draft.displayName}
-        description="Configure this named General Mode presentation profile."
+        description={editorCopy.pageDescription}
         allowContentOverflow
         actions={
           <div className="flex gap-2">
+            <DesignButton variant="outline" size="sm" onClick={async () => {
+              const duplicated = await duplicateTvProfileOrThrow(
+                adminApp,
+                resource,
+                `${resource.configuration.displayName} copy`,
+              );
+              window.location.assign(`/projects/${projectId}/tv-mode/profiles/${duplicated.id}`);
+            }}>
+              Duplicate
+            </DesignButton>
             <DesignButton variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
               <EyeIcon className="h-4 w-4" />
               Preview changes
@@ -169,13 +326,13 @@ export default function PageClient() {
             All profiles
           </Link>
           <span className="text-muted-foreground/40">/</span>
-          <span className="text-xs text-muted-foreground">Fixture profile</span>
+          <span className="text-xs text-muted-foreground">{editorCopy.breadcrumb}</span>
         </div>
 
         <DesignAlert
           variant="info"
-          title="Fixture-only configuration"
-          description="Save validates the experience locally for this session. Persistence to project configuration is deliberately deferred to the live snapshot slice."
+          title={editorCopy.alertTitle}
+          description={editorCopy.alertDescription}
         />
         {popupBlocked ? (
           <DesignAlert
@@ -185,8 +342,9 @@ export default function PageClient() {
           />
         ) : null}
         {savedNoticeVisible ? (
-          <DesignAlert variant="success" title="Fixture profile saved locally" description="The saved baseline was updated for this page session. Reloading restores the centralized fixture." />
+          <DesignAlert variant="success" title="Profile saved" description="The project profile and its optimistic-concurrency version were updated." />
         ) : null}
+        {saveError != null ? <DesignAlert variant="error" title="Profile was not saved" description={saveError} /> : null}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
           <div className="space-y-4">
@@ -249,6 +407,26 @@ export default function PageClient() {
                           { value: "30", label: "30 sec" },
                         ]}
                       />
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => setDraft(movePlaylistEntry(draft, index, -1))}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-30"
+                          aria-label={`Move ${definition.displayName} earlier`}
+                        >
+                          <ArrowUpIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === draft.playlist.length - 1}
+                          onClick={() => setDraft(movePlaylistEntry(draft, index, 1))}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/[0.06] disabled:opacity-30"
+                          aria-label={`Move ${definition.displayName} later`}
+                        >
+                          <ArrowDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                       <Switch
                         checked={entry.enabled}
                         disabled={entry.enabled && enabledCount === 1}
@@ -275,46 +453,12 @@ export default function PageClient() {
             <DesignCard title="Interruption policy" subtitle="How important events take over this TV" icon={WarningCircleIcon} gradient="orange" glassmorphic>
               <div>
                 {settingRow({
-                  title: "Critical incidents",
-                  description: "Persistent takeover until the incident recovers.",
-                  control: <DesignSelectorDropdown value={draft.incidentLevels.critical} onValueChange={(critical) => setDraft({ ...draft, incidentLevels: { ...draft.incidentLevels, critical: critical === "disabled" ? "disabled" : "persistent-takeover" } })} options={[
-                    { value: "persistent-takeover", label: "Persistent takeover" },
-                    { value: "disabled", label: "Disabled" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "High priority",
-                  description: "A bounded full-screen interruption.",
-                  control: <DesignSelectorDropdown value={draft.incidentLevels.high} onValueChange={(high) => setDraft({
-                    ...draft,
-                    incidentLevels: {
-                      ...draft.incidentLevels,
-                      high: high === "disabled" ? "disabled" : high === "banner" ? "banner" : "temporary-takeover",
-                    },
-                  })} options={[
-                    { value: "temporary-takeover", label: "Temporary takeover" },
-                    { value: "banner", label: "Banner" },
-                    { value: "disabled", label: "Disabled" },
-                  ]} />,
-                })}
-                {settingRow({
-                  title: "Medium priority",
-                  description: "A small notification over the ambient playlist.",
-                  control: <DesignSelectorDropdown value={draft.incidentLevels.medium} onValueChange={(medium) => setDraft({
-                    ...draft,
-                    incidentLevels: { ...draft.incidentLevels, medium: medium === "disabled" ? "disabled" : "banner" },
-                  })} options={[
-                    { value: "banner", label: "Banner" },
-                    { value: "disabled", label: "Disabled" },
-                  ]} />,
-                })}
-                {settingRow({
                   title: "Email delivery degradation",
-                  description: "Preview the first planned negative detector.",
+                  description: "Temporary Incident takeover, escalating to a persistent Critical Incident when required.",
                   control: <Switch checked={draft.incidentTypes.emailDeliveryDegradation} onCheckedChange={(emailDeliveryDegradation) => setDraft({
                     ...draft,
                     incidentTypes: { emailDeliveryDegradation },
-                  })} />,
+                  })} aria-label="Enable email delivery degradation interruptions" />,
                 })}
               </div>
             </DesignCard>
@@ -335,6 +479,123 @@ export default function PageClient() {
                 ]}
               />
               <Typography variant="secondary" className="mt-3 text-xs">Individual playlist screens may override this value.</Typography>
+              <div className="mt-4 border-t border-foreground/[0.06] pt-2">
+                {settingRow({
+                  title: "Celebration takeover",
+                  description: "Full-screen milestone moment.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      celebration: { ...draft.interruptionTiming.celebration, takeoverSeconds: parseTakeoverSeconds(value) },
+                    },
+                  })} options={[
+                    { value: "30", label: "30 seconds" },
+                    { value: "60", label: "60 seconds" },
+                    { value: "90", label: "90 seconds" },
+                    { value: "120", label: "2 minutes" },
+                  ]} />,
+                })}
+                {settingRow({
+                  title: "Celebration effects",
+                  description: "Fireworks over the rotating screens.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.animationSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      celebration: {
+                        ...draft.interruptionTiming.celebration,
+                        animationSeconds: parseAnimationSeconds(value),
+                        highlightSeconds: retainValidHighlight(
+                          draft.interruptionTiming.celebration.highlightSeconds,
+                          parseAnimationSeconds(value),
+                        ),
+                      },
+                    },
+                  })} options={[
+                    { value: "600", label: "10 minutes" },
+                    { value: "1800", label: "30 minutes" },
+                    { value: "3600", label: "1 hour" },
+                    { value: "7200", label: "2 hours" },
+                  ]} />,
+                })}
+                {settingRow({
+                  title: "Celebration Highlight",
+                  description: "How long the milestone remains in rotation.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.highlightSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      celebration: {
+                        ...draft.interruptionTiming.celebration,
+                        highlightSeconds: parseHighlightSeconds(value),
+                        animationSeconds: retainValidAnimation(
+                          draft.interruptionTiming.celebration.animationSeconds,
+                          parseHighlightSeconds(value),
+                        ),
+                      },
+                    },
+                  })} options={[
+                    { value: "3600", label: "1 hour" },
+                    { value: "21600", label: "6 hours" },
+                    { value: "43200", label: "12 hours" },
+                    { value: "86400", label: "24 hours" },
+                  ]} />,
+                })}
+                {settingRow({
+                  title: "Incident takeover",
+                  description: "Temporary attention period before rotation resumes.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      incident: { ...draft.interruptionTiming.incident, takeoverSeconds: parseTakeoverSeconds(value) },
+                    },
+                  })} options={[
+                    { value: "30", label: "30 seconds" },
+                    { value: "60", label: "60 seconds" },
+                    { value: "90", label: "90 seconds" },
+                    { value: "120", label: "2 minutes" },
+                  ]} />,
+                })}
+                {settingRow({
+                  title: "Incident resolved Highlight",
+                  description: "How long an ordinary resolved incident remains visible.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      incident: {
+                        ...draft.interruptionTiming.incident,
+                        resolvedHighlightSeconds: parseHighlightSeconds(value),
+                      },
+                    },
+                  })} options={[
+                    { value: "3600", label: "1 hour" },
+                    { value: "21600", label: "6 hours" },
+                    { value: "43200", label: "12 hours" },
+                    { value: "86400", label: "24 hours" },
+                  ]} />,
+                })}
+                {settingRow({
+                  title: "Critical resolved Highlight",
+                  description: "How long a resolved Critical Incident remains visible.",
+                  control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
+                    ...draft,
+                    interruptionTiming: {
+                      ...draft.interruptionTiming,
+                      criticalIncident: {
+                        resolvedHighlightSeconds: parseHighlightSeconds(value),
+                      },
+                    },
+                  })} options={[
+                    { value: "3600", label: "1 hour" },
+                    { value: "21600", label: "6 hours" },
+                    { value: "43200", label: "12 hours" },
+                    { value: "86400", label: "24 hours" },
+                  ]} />,
+                })}
+              </div>
             </DesignCard>
 
             <DesignCard title="Celebrations" subtitle="Positive moments worth sharing" icon={ConfettiIcon} gradient="purple" glassmorphic>
@@ -345,7 +606,7 @@ export default function PageClient() {
                   control: <Switch checked={draft.celebrations.userMilestone} onCheckedChange={(userMilestone) => setDraft({
                     ...draft,
                     celebrations: { ...draft.celebrations, userMilestone },
-                  })} />,
+                  })} aria-label="Enable user milestone celebrations" />,
                 })}
                 {settingRow({
                   title: "Revenue milestones",
@@ -353,7 +614,7 @@ export default function PageClient() {
                   control: <Switch checked={draft.celebrations.revenueMilestone} disabled={!draft.showExactFinancialValues} onCheckedChange={(revenueMilestone) => setDraft({
                     ...draft,
                     celebrations: { ...draft.celebrations, revenueMilestone },
-                  })} />,
+                  })} aria-label="Enable revenue milestone celebrations" />,
                 })}
                 {settingRow({
                   title: "Successful launches",
@@ -373,23 +634,55 @@ export default function PageClient() {
                   celebrations: showExactFinancialValues
                     ? draft.celebrations
                     : { ...draft.celebrations, revenueMilestone: false },
-                })} />,
+                })} aria-label="Show exact financial values on this TV" />,
               })}
               <DesignAlert variant="success" title="Aggregate-only foundation" description="No user identity, email subject, recipient, support message, or session replay content exists in the fixture snapshot." />
             </DesignCard>
 
-            <DesignCard title="Event previews" subtitle="Exercise every interruption treatment" icon={BroadcastIcon} gradient="cyan" glassmorphic>
+            <DesignCard title="Event previews" subtitle="Exercise the final interruption lifecycle" icon={BroadcastIcon} gradient="cyan" glassmorphic>
               <div className="grid gap-2">
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=banner`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  User milestone banner
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-highlight`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  User milestone Highlight
                   <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=temporary-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
                   User milestone takeover
                   <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=incident-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Email degradation · Incident
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
                 <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=critical-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Email degradation · critical
+                  Email degradation · Critical Incident
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-suspended`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Celebration suspended by Incident
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-resumed`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Celebration resumed
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-animation-expired`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Celebration · animation expired
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-replaced`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Newer celebration replacement
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=event-long-content`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Long Event Highlight content
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=incident-recovery`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Incident recovery
+                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=critical-recovery`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
+                  Critical Incident recovery
                   <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
                 </button>
               </div>
@@ -426,7 +719,7 @@ export default function PageClient() {
         <div className="sticky bottom-4 z-20 flex items-center justify-between rounded-2xl border border-foreground/[0.09] bg-background/90 p-3 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 text-sm">
             {hasChanges ? <WarningCircleIcon className="h-4 w-4 text-amber-500" weight="fill" /> : <CheckCircleIcon className="h-4 w-4 text-emerald-500" weight="fill" />}
-            <span className="text-muted-foreground">{hasChanges ? "Unsaved fixture changes" : "Fixture profile is up to date"}</span>
+            <span className="text-muted-foreground">{hasChanges ? "Unsaved profile changes" : "Profile is up to date"}</span>
           </div>
           <div className="flex gap-2">
             <DesignButton variant="outline" size="sm" disabled={!hasChanges} onClick={() => {
@@ -435,15 +728,49 @@ export default function PageClient() {
             }}>
               Reset
             </DesignButton>
-            <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={() => {
-              setSaved(cloneProfile(draft));
-              setSavedNoticeVisible(true);
+            {resource.origin === "saved" ? (
+              <DesignButton variant="outline" size="sm" onClick={() => setDeleteConfirmationOpen(true)}>
+                Delete profile
+              </DesignButton>
+            ) : null}
+            <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
+              setSaveError(null);
+              try {
+                const configuration = editorDraftToProfileConfiguration(draft);
+                const savedResource = resource.origin === "saved" && !createFromTemplate
+                  ? await updateTvProfileOrThrow(adminApp, resource.id, resource.version, configuration)
+                  : await createTvProfileOrThrow(adminApp, configuration);
+                const nextDraft = profileResourceToEditorDraft(savedResource);
+                setResource(savedResource);
+                setDraft(cloneProfile(nextDraft));
+                setSaved(cloneProfile(nextDraft));
+                setSavedNoticeVisible(true);
+                if (savedResource.id !== profileId) {
+                  window.location.assign(`/projects/${projectId}/tv-mode/profiles/${savedResource.id}`);
+                }
+              } catch (error) {
+                setSaveError(error instanceof TvProfileRequestError && error.status === 409
+                  ? "This profile changed elsewhere or its name conflicts with another profile. Reload before retrying."
+                  : "Profile storage is unavailable. Your unsaved changes remain on this page.");
+              }
             }}>
-              Save fixture profile
+              {editorCopy.saveLabel}
             </DesignButton>
           </div>
         </div>
       </PageLayout>
+
+      {resource.origin === "saved" ? (
+        <TvProfileDeleteDialog
+          open={deleteConfirmationOpen}
+          onOpenChange={setDeleteConfirmationOpen}
+          profileName={resource.configuration.displayName}
+          onConfirm={async () => {
+            await deleteTvProfileOrThrow(adminApp, resource);
+            window.location.assign(`/projects/${projectId}/tv-mode`);
+          }}
+        />
+      ) : null}
 
       {previewOpen && previewSnapshot != null ? (
         <div className="fixed inset-0 z-[200] bg-black">

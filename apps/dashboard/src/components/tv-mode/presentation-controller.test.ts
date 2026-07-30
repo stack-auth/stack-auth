@@ -25,36 +25,22 @@ describe("TV presentation controller", () => {
 
   it("prioritizes a persistent takeover over the playlist", () => {
     const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "critical-takeover");
-    expect(selectTvPresentationView(snapshot, 2, false)).toMatchInlineSnapshot(`
-      {
-        "presentedEvent": {
-          "decision": {
-            "displayForSeconds": null,
-            "eventId": "fixture-email-delivery-degradation",
-            "preemptible": false,
-            "priority": 3,
-            "treatment": "persistent-takeover",
-          },
-          "event": {
-            "id": "fixture-email-delivery-degradation",
-            "kind": "incident",
-            "metricLabel": "Delivery rate",
-            "metricValue": "82.4%",
-            "severity": "critical",
-            "sourceLabel": "Hexclave email",
-            "startedAt": "2026-07-23T14:28:00.000Z",
-            "summary": "Delivery failures are above the configured threshold.",
-            "title": "Email delivery degraded",
-            "type": "email-delivery-degradation",
-          },
+    expect(selectTvPresentationView(snapshot, 2, false)).toMatchObject({
+      type: "takeover",
+      presentedTakeover: {
+        variant: "critical-incident",
+        endsAt: null,
+        event: {
+          id: "fixture-email-delivery-degradation",
+          presentationClass: "critical-incident",
+          status: "active",
         },
-        "type": "takeover",
-      }
-    `);
+      },
+    });
   });
 
   it("returns to the playlist after a temporary takeover is dismissed", () => {
-    const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "temporary-takeover");
+    const snapshot = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-takeover");
     expect(selectTvPresentationView(snapshot, 2, true)).toEqual({ type: "screen", screenIndex: 2 });
   });
 

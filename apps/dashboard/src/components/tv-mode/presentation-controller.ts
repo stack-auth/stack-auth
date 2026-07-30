@@ -1,8 +1,8 @@
-import type { TvPresentedEvent, TvSnapshot } from "@/lib/tv-mode/types";
+import type { TvPresentedTakeover, TvSnapshot } from "@/lib/tv-mode/types";
 
 export type TvPresentationView =
   | { type: "fatal-error", message: string }
-  | { type: "takeover", presentedEvent: TvPresentedEvent }
+  | { type: "takeover", presentedTakeover: TvPresentedTakeover }
   | { type: "empty" }
   | { type: "screen", screenIndex: number };
 
@@ -14,7 +14,7 @@ export function getNextTvScreenIndex(currentIndex: number, screenCount: number):
 export function selectTvPresentationView(
   snapshot: TvSnapshot,
   screenIndex: number,
-  temporaryTakeoverDismissed: boolean,
+  boundedTakeoverCompleted: boolean,
 ): TvPresentationView {
   if (snapshot.fatalErrorMessage != null) {
     return { type: "fatal-error", message: snapshot.fatalErrorMessage };
@@ -23,9 +23,9 @@ export function selectTvPresentationView(
   const takeover = snapshot.presentation.takeover;
   if (
     takeover != null
-    && !(takeover.decision.treatment === "temporary-takeover" && temporaryTakeoverDismissed)
+    && !(takeover.endsAt != null && boundedTakeoverCompleted)
   ) {
-    return { type: "takeover", presentedEvent: takeover };
+    return { type: "takeover", presentedTakeover: takeover };
   }
 
   const playlistScreens = snapshot.profile.playlist

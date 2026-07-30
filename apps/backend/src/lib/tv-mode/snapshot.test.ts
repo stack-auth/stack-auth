@@ -5,8 +5,13 @@ import type {
   TvLivePulseScreen,
   TvRevenuePaymentsScreen,
 } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { getTvBuiltInProfile } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import {
+  addTvSourceHealth,
   assembleTvSnapshot,
+  createReadyTvLivePulseScreen,
+  createTvLivePulseErrorScreen,
+  getTvOperationalMetricsClient,
   isTvEmailInsightEligible,
   isTvReturningInsightEligible,
 } from "./snapshot";
@@ -70,11 +75,16 @@ const screens = {
   } satisfies TvEmailHealthScreen,
 };
 
+const companyPulseProfile = getTvBuiltInProfile("company-pulse");
+if (companyPulseProfile == null) {
+  throw new Error("The Company Pulse TV profile must exist.");
+}
+
 describe("assembleTvSnapshot", () => {
   it("keeps each source state isolated in one authoritative snapshot", () => {
     const snapshot = assembleTvSnapshot({
       project: { id: "project-a", displayName: "Project A" },
-      profileId: "company-pulse",
+      profile: companyPulseProfile,
       now: new Date(observedAt),
       screens,
     });
@@ -93,19 +103,27 @@ describe("assembleTvSnapshot", () => {
     });
   });
 
-  it("rejects unknown non-persisted profile IDs before querying", () => {
-    expect(assembleTvSnapshot({
+  it("places resolved per-screen timing under the snapshot profile", () => {
+    const snapshot = assembleTvSnapshot({
       project: { id: "project-a", displayName: "Project A" },
-      profileId: "unknown",
+      profile: companyPulseProfile,
       now: new Date(observedAt),
+      includeScreenDurations: true,
       screens,
-    })).toBeNull();
+    });
+
+    expect(snapshot.profile.screenDurations).toEqual([
+      { screenId: "live-pulse", durationSeconds: 15 },
+      { screenId: "audience-momentum", durationSeconds: 20 },
+      { screenId: "revenue-payments", durationSeconds: 18 },
+      { screenId: "email-health", durationSeconds: 18 },
+    ]);
   });
 
   it("returns redacted live financial data supplied by the payments adapter", () => {
     const snapshot = assembleTvSnapshot({
       project: { id: "project-a", displayName: "Project A" },
-      profileId: "company-pulse",
+      profile: companyPulseProfile,
       now: new Date(observedAt),
       screens: {
         ...screens,
@@ -124,7 +142,7 @@ describe("assembleTvSnapshot", () => {
         },
       },
     });
-    const revenueScreen = snapshot?.screens.find((screen) => screen.id === "revenue-payments");
+    const revenueScreen = snapshot.screens.find((screen) => screen.id === "revenue-payments");
     expect(revenueScreen?.data?.financials).toEqual({
       visibility: "redacted",
       direction: "up",
@@ -135,7 +153,7 @@ describe("assembleTvSnapshot", () => {
   it("rejects exact financial values at the live snapshot assembly boundary", () => {
     expect(() => assembleTvSnapshot({
       project: { id: "project-a", displayName: "Project A" },
-      profileId: "company-pulse",
+      profile: companyPulseProfile,
       now: new Date(observedAt),
       screens: {
         ...screens,
@@ -158,7 +176,95 @@ describe("assembleTvSnapshot", () => {
           },
         },
       },
-    })).toThrow("must redact exact financial values");
+    })).toThrow("must not expose exact financial values");
+  });
+});
+
+describe("Live Pulse activity source states", () => {
+  it("keeps a successful all-zero activity observation ready", () => {
+    expect(createReadyTvLivePulseScreen({
+      now: new Date(observedAt),
+      liveUsers: 0,
+      todayActiveUsers: 0,
+      hourlyActivity: [],
+    })).toMatchObject({
+      sourceStatus: "ready",
+      diagnosticCode: null,
+      data: {
+        liveUsers: 0,
+        todayActiveUsers: 0,
+        hourlyActivity: [{ value: 0 }],
+      },
+    });
+  });
+
+  it("keeps zero live users with positive current-day activity ready", () => {
+    expect(createReadyTvLivePulseScreen({
+      now: new Date(observedAt),
+      liveUsers: 0,
+      todayActiveUsers: 12,
+      hourlyActivity: [{ label: "11:00", value: 12 }],
+    })).toMatchObject({
+      sourceStatus: "ready",
+      data: {
+        liveUsers: 0,
+        todayActiveUsers: 12,
+        hourlyActivity: [{ label: "11:00", value: 12 }],
+      },
+    });
+  });
+
+  it("keeps Live Pulse ready when Email and Payments have limited samples", () => {
+    const livePulse = addTvSourceHealth(
+      createReadyTvLivePulseScreen({
+        now: new Date(observedAt),
+        liveUsers: 0,
+        todayActiveUsers: 0,
+        hourlyActivity: [],
+      }),
+      {
+        email: screens.email,
+        revenue: {
+          ...screens.revenue,
+          sourceStatus: "insufficient-data",
+          diagnosticCode: null,
+          data: {
+            financials: { visibility: "redacted", direction: "flat", normalizedRevenueTrend: [] },
+            revenueChangePercent: 0,
+            activeSubscriptions: 0,
+            newSubscriptions: 0,
+            pastDueSubscriptions: 0,
+            paymentSuccess: { applicableAttempts: 4, percent: null },
+          },
+        },
+        audience: screens.audience,
+      },
+    );
+
+    expect(livePulse.sourceStatus).toBe("ready");
+    expect(livePulse.data?.sourceHealth.slice(0, 2)).toEqual([
+      {
+        label: "Email delivery",
+        status: "insufficient-data",
+        value: "Limited",
+        detail: "Insufficient data",
+      },
+      {
+        label: "Payment collection",
+        status: "insufficient-data",
+        value: "Limited",
+        detail: "Insufficient data",
+      },
+    ]);
+  });
+
+  it("keeps an activity query failure in the error state", () => {
+    expect(createTvLivePulseErrorScreen(new Date(observedAt))).toMatchObject({
+      sourceStatus: "error",
+      diagnosticCode: "source-query-failed",
+      data: null,
+      insight: null,
+    });
   });
 });
 
@@ -174,5 +280,21 @@ describe("TV deterministic insight eligibility", () => {
     expect(isTvEmailInsightEligible(98.9, 25)).toBe(false);
     expect(isTvEmailInsightEligible(99, 20)).toBe(false);
     expect(isTvEmailInsightEligible(99, 20.1)).toBe(true);
+  });
+});
+
+describe("TV operational metric routing", () => {
+  it("uses the configured replica client for stale-tolerant operational metrics", () => {
+    const replicaClient = { role: "replica" };
+    let replicaSelections = 0;
+    const selected = getTvOperationalMetricsClient({
+      $replica: () => {
+        replicaSelections += 1;
+        return replicaClient;
+      },
+    });
+
+    expect(selected).toBe(replicaClient);
+    expect(replicaSelections).toBe(1);
   });
 });

@@ -23,6 +23,7 @@ const corsAllowedRequestHeaders = [
   'x-stack-random-nonce',  // used to forcefully disable some caches
   'x-stack-client-version',
   'x-stack-disable-artificial-development-delay',
+  'x-stack-tv-snapshot-contract',
 
   // Project auth
   'x-stack-access-type',

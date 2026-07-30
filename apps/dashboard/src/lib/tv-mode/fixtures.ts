@@ -12,7 +12,8 @@ import type {
   TvEvent,
   TvFixtureVariant,
   TvLivePulseScreen,
-  TvPresentedEvent,
+  TvPresentedEventHighlight,
+  TvPresentedTakeover,
   TvProfileFixture,
   TvRevenuePaymentsScreen,
   TvScreenSnapshot,
@@ -192,61 +193,131 @@ const emailHealthScreen: TvEmailHealthScreen = {
 export const TV_PROFILE_FIXTURES = [
   {
     id: "engineering-office",
-    displayName: engineeringProfile.displayName,
+    displayName: engineeringProfile.configuration.displayName,
     description: "A broad company pulse for the engineering workspace.",
     mode: "general",
-    defaultDurationSeconds: engineeringProfile.defaultDurationSeconds,
+    defaultDurationSeconds: engineeringProfile.configuration.defaultDurationSeconds,
     playlist: [
-      { screenId: "live-pulse", enabled: engineeringProfile.playlist.includes("live-pulse"), durationSecondsOverride: 15 },
-      { screenId: "audience-momentum", enabled: engineeringProfile.playlist.includes("audience-momentum"), durationSecondsOverride: 20 },
-      { screenId: "revenue-payments", enabled: engineeringProfile.playlist.includes("revenue-payments"), durationSecondsOverride: 18 },
-      { screenId: "email-health", enabled: engineeringProfile.playlist.includes("email-health"), durationSecondsOverride: 18 },
+      { screenId: "live-pulse", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "live-pulse"), durationSecondsOverride: 15 },
+      { screenId: "audience-momentum", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "audience-momentum"), durationSecondsOverride: 20 },
+      { screenId: "revenue-payments", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
+      { screenId: "email-health", enabled: engineeringProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentLevels: { critical: "persistent-takeover", high: "temporary-takeover", medium: "banner" },
     incidentTypes: { emailDeliveryDegradation: true },
     celebrations: { userMilestone: true, revenueMilestone: false },
+    interruptionTiming: engineeringProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: false,
   },
   {
     id: "company-pulse",
-    displayName: companyPulseProfile.displayName,
+    displayName: companyPulseProfile.configuration.displayName,
     description: "The complete General Mode rotation for shared office spaces.",
     mode: "general",
-    defaultDurationSeconds: companyPulseProfile.defaultDurationSeconds,
+    defaultDurationSeconds: companyPulseProfile.configuration.defaultDurationSeconds,
     playlist: [
-      { screenId: "live-pulse", enabled: companyPulseProfile.playlist.includes("live-pulse"), durationSecondsOverride: 15 },
-      { screenId: "audience-momentum", enabled: companyPulseProfile.playlist.includes("audience-momentum"), durationSecondsOverride: 20 },
-      { screenId: "revenue-payments", enabled: companyPulseProfile.playlist.includes("revenue-payments"), durationSecondsOverride: 18 },
-      { screenId: "email-health", enabled: companyPulseProfile.playlist.includes("email-health"), durationSecondsOverride: 18 },
+      { screenId: "live-pulse", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "live-pulse"), durationSecondsOverride: 15 },
+      { screenId: "audience-momentum", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "audience-momentum"), durationSecondsOverride: 20 },
+      { screenId: "revenue-payments", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "revenue-payments"), durationSecondsOverride: 18 },
+      { screenId: "email-health", enabled: companyPulseProfile.configuration.playlist.some((entry) => entry.screenId === "email-health"), durationSecondsOverride: 18 },
     ],
-    incidentLevels: { critical: "persistent-takeover", high: "temporary-takeover", medium: "banner" },
     incidentTypes: { emailDeliveryDegradation: true },
     celebrations: { userMilestone: true, revenueMilestone: true },
+    interruptionTiming: companyPulseProfile.configuration.interruptionPreferences.timing,
     showExactFinancialValues: true,
   },
 ] satisfies readonly TvProfileFixture[];
 
 const userMilestoneEvent: TvEvent = {
-  id: "fixture-user-milestone-500", kind: "celebration", type: "user-milestone",
-  severity: "info", title: "500 users", summary: "A new community milestone, reached together.",
-  metricLabel: "Total users", metricValue: "512", sourceLabel: "Hexclave users", startedAt: FIXTURE_NOW,
+  id: "fixture-user-milestone-500",
+  type: "user-milestone",
+  presentationClass: "celebration",
+  status: "active",
+  title: "500 users",
+  summary: "A new community milestone, reached together.",
+  metricLabel: "Total users",
+  metricValue: "512",
+  expectedRange: null,
+  sourceLabel: "Hexclave users",
+  occurredAt: "2026-07-23T14:30:00.000Z",
+  updatedAt: FIXTURE_NOW,
+};
+
+const newerUserMilestoneEvent: TvEvent = {
+  ...userMilestoneEvent,
+  id: "fixture-user-milestone-1000",
+  title: "1K users",
+  metricValue: "1,024",
+  occurredAt: "2026-07-23T14:31:00.000Z",
+};
+
+const longContentMilestoneEvent: TvEvent = {
+  ...newerUserMilestoneEvent,
+  id: "fixture-user-milestone-long-content",
+  title: "One hundred thousand customers now building with Acme International",
+  summary: "Teams across every region helped the company reach a meaningful new community milestone today.",
 };
 
 const emailDegradationEvent: TvEvent = {
-  id: "fixture-email-delivery-degradation", kind: "incident", type: "email-delivery-degradation",
-  severity: "critical", title: "Email delivery degraded",
-  summary: "Delivery failures are above the configured threshold.", metricLabel: "Delivery rate",
-  metricValue: "82.4%", sourceLabel: "Hexclave email", startedAt: "2026-07-23T14:28:00.000Z",
+  id: "fixture-email-delivery-degradation",
+  type: "email-delivery-degradation",
+  presentationClass: "critical-incident",
+  status: "active",
+  title: "Email delivery degraded",
+  summary: "Delivery performance is below its expected operating range.",
+  metricLabel: "Delivery rate",
+  metricValue: "78.4%",
+  expectedRange: "Expected 95% or higher",
+  sourceLabel: "Hexclave email",
+  occurredAt: "2026-07-23T14:28:00.000Z",
+  updatedAt: FIXTURE_NOW,
 };
 
-function presentedEvent(event: TvEvent, priority: 1 | 2 | 3, treatment: "banner" | "temporary-takeover" | "persistent-takeover"): TvPresentedEvent {
+const ordinaryEmailIncidentEvent: TvEvent = {
+  ...emailDegradationEvent,
+  id: "fixture-email-delivery-incident",
+  presentationClass: "incident",
+  metricValue: "92.1%",
+};
+
+const resolvedEmailEvent: TvEvent = {
+  ...emailDegradationEvent,
+  status: "resolved",
+  metricValue: "98.2%",
+  summary: "Email delivery has returned to its expected operating range.",
+};
+
+function presentedTakeover(
+  event: TvEvent,
+  variant: TvPresentedTakeover["variant"],
+  endsAt: string | null,
+): TvPresentedTakeover {
   return {
     event,
-    decision: {
-      eventId: event.id, priority, treatment,
-      displayForSeconds: treatment === "banner" ? 12 : treatment === "temporary-takeover" ? 20 : null,
-      preemptible: treatment !== "persistent-takeover",
-    },
+    variant,
+    startedAt: FIXTURE_NOW,
+    endsAt,
+  };
+}
+
+function celebrationHighlight(): TvPresentedEventHighlight {
+  return {
+    event: userMilestoneEvent,
+    variant: "celebration",
+    expiresAt: "2026-07-23T20:30:00.000Z",
+    animationExpiresAt: "2026-07-23T15:30:00.000Z",
+  };
+}
+
+function celebrationHighlightWith(options: {
+  event?: TvEvent,
+  expiresAt?: string,
+  animationExpiresAt?: string,
+}): TvPresentedEventHighlight {
+  return {
+    event: options.event ?? userMilestoneEvent,
+    variant: "celebration",
+    expiresAt: options.expiresAt ?? "2026-07-23T20:30:00.000Z",
+    animationExpiresAt: options.animationExpiresAt ?? "2026-07-23T15:30:00.000Z",
   };
 }
 
@@ -304,12 +375,33 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
     }
   }
 
-  const banner = variant === "banner" ? presentedEvent(userMilestoneEvent, 1, "banner") : null;
-  const takeover = variant === "temporary-takeover"
-    ? presentedEvent(userMilestoneEvent, 2, "temporary-takeover")
-    : variant === "critical-takeover"
-      ? presentedEvent(emailDegradationEvent, 3, "persistent-takeover")
-      : null;
+  const highlight = variant === "celebration-highlight"
+      || variant === "celebration-takeover"
+      || variant === "celebration-suspended"
+      || variant === "celebration-resumed"
+    ? celebrationHighlight()
+    : variant === "celebration-animation-expired"
+      ? celebrationHighlightWith({ animationExpiresAt: "2026-07-23T14:31:00.000Z" })
+      : variant === "celebration-replaced"
+        ? celebrationHighlightWith({ event: newerUserMilestoneEvent })
+        : variant === "event-long-content"
+          ? celebrationHighlightWith({ event: longContentMilestoneEvent })
+          : null;
+  const takeover = variant === "celebration-takeover"
+    ? presentedTakeover(userMilestoneEvent, "celebration", "2026-07-23T14:33:00.000Z")
+    : variant === "celebration-suspended" || variant === "incident-takeover"
+      ? presentedTakeover(ordinaryEmailIncidentEvent, "incident", "2026-07-23T14:33:00.000Z")
+      : variant === "critical-takeover"
+        ? presentedTakeover(emailDegradationEvent, "critical-incident", null)
+        : variant === "incident-recovery"
+          ? presentedTakeover({
+            ...resolvedEmailEvent,
+            id: "fixture-resolved-email-incident",
+            presentationClass: "incident",
+          }, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+          : variant === "critical-recovery"
+            ? presentedTakeover(resolvedEmailEvent, "recovery-confirmation", "2026-07-23T14:32:30.000Z")
+            : null;
   const configuredPlaylist = profile.playlist.filter((entry) => entry.enabled).map((entry) => entry.screenId);
   const playlist: TvProfileFixture["playlist"][number]["screenId"][] = variant === "partial-failure" && configuredPlaylist.includes("email-health")
     ? ["email-health", ...configuredPlaylist.filter((id) => id !== "email-health")]
@@ -330,9 +422,19 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
       displayName: variant === "long-names"
         ? "Global Engineering, Revenue, Customer Success, and Operations Office Display"
         : profile.displayName,
-      mode: "general", defaultDurationSeconds: profile.defaultDurationSeconds, playlist,
+      mode: "general",
+      defaultDurationSeconds: profile.defaultDurationSeconds,
+      playlist,
+      screenDurations: playlist.map((screenId) => {
+        const entry = profile.playlist.find((candidate) => candidate.screenId === screenId)
+          ?? throwErr(`TV fixture playlist is missing "${screenId}"`);
+        return {
+          screenId,
+          durationSeconds: entry.durationSecondsOverride ?? profile.defaultDurationSeconds,
+        };
+      }),
     },
-    screens, presentation: { banner, takeover },
+    screens, presentation: { highlight, takeover },
     fatalErrorMessage: variant === "error" ? "The presentation snapshot could not be prepared." : null,
   };
 }

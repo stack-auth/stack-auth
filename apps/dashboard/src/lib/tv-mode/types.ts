@@ -1,4 +1,7 @@
-import type { TvScreenId } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import type {
+  TvInterruptionPreferences,
+  TvScreenId,
+} from "@hexclave/shared/dist/interface/admin-tv-mode";
 
 export {
   TV_SCREEN_IDS,
@@ -11,7 +14,8 @@ export type {
   TvEmailHealthScreen,
   TvEvent,
   TvLivePulseScreen,
-  TvPresentedEvent,
+  TvPresentedEventHighlight,
+  TvPresentedTakeover,
   TvProfileSnapshot,
   TvReportingWindow,
   TvRevenuePaymentsScreen,
@@ -30,9 +34,18 @@ function defineTvFixtureVariants<const TVariants extends readonly string[]>(vari
 
 export const TV_FIXTURE_VARIANTS = defineTvFixtureVariants([
   "default",
-  "banner",
-  "temporary-takeover",
+  "celebration-highlight",
+  "celebration-takeover",
+  "celebration-suspended",
+  "celebration-resumed",
+  "celebration-animation-expired",
+  "celebration-highlight-expired",
+  "celebration-replaced",
+  "event-long-content",
+  "incident-takeover",
   "critical-takeover",
+  "incident-recovery",
+  "critical-recovery",
   "stale",
   "offline",
   "loading",
@@ -47,13 +60,6 @@ export const TV_FIXTURE_VARIANTS = defineTvFixtureVariants([
 export type TvFixtureVariant = typeof TV_FIXTURE_VARIANTS[number];
 
 export type TvConnectionStatus = "online" | "stale" | "offline";
-export type TvEventKind = "incident" | "celebration";
-export type TvEventSeverity = "info" | "warning" | "critical";
-export type TvPresentationTreatment =
-  | "banner"
-  | "temporary-takeover"
-  | "persistent-takeover";
-
 export type TvProfileFixture = {
   id: string,
   displayName: string,
@@ -65,11 +71,6 @@ export type TvProfileFixture = {
     enabled: boolean,
     durationSecondsOverride: number | null,
   }>,
-  incidentLevels: {
-    critical: "persistent-takeover" | "disabled",
-    high: "temporary-takeover" | "banner" | "disabled",
-    medium: "banner" | "disabled",
-  },
   incidentTypes: {
     emailDeliveryDegradation: boolean,
   },
@@ -77,5 +78,6 @@ export type TvProfileFixture = {
     userMilestone: boolean,
     revenueMilestone: boolean,
   },
+  interruptionTiming: TvInterruptionPreferences["timing"],
   showExactFinancialValues: boolean,
 };

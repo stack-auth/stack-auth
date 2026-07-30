@@ -1,12 +1,16 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { TvPresentation } from "@/components/tv-mode/tv-presentation";
 import {
   exitStandaloneTvPresentation,
   getBrowserTvPresentationExitEnvironment,
 } from "@/components/tv-mode/presentation-window";
-import { getTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
+import { createTvFixtureSnapshot } from "@/lib/tv-mode/fixtures";
+import { fetchTvProfileOrThrow } from "@/lib/hexclave-app-internals";
+import { profileResourceToEditorDraft } from "@/lib/tv-mode/profile-editor-model";
+import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
 import { useTvLiveSnapshot } from "@/lib/tv-mode/live-snapshot";
 import {
   TV_FIXTURE_VARIANTS,
@@ -14,7 +18,7 @@ import {
   type TvFixtureVariant,
   type TvScreenId,
 } from "@/lib/tv-mode/types";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useAdminApp } from "../../../use-admin-app";
 
 const TV_FIXTURE_VARIANT_SET = new Set<string>(TV_FIXTURE_VARIANTS);
@@ -52,20 +56,46 @@ export default function PageClient() {
   const screenParam = useSearchParams().get("screen");
   const fixtureVariant = isTvFixtureVariant(fixtureParam) ? fixtureParam : null;
   const adminApp = useAdminApp();
+  const [fixtureProfile, setFixtureProfile] = useState<TvProfileResource | null>(null);
+  const [fixtureLoadFailed, setFixtureLoadFailed] = useState(false);
+  useEffect(() => {
+    if (fixtureVariant == null) return;
+    let active = true;
+    runAsynchronously(async () => {
+      try {
+        const profile = await fetchTvProfileOrThrow(adminApp, profileId);
+        if (active) setFixtureProfile(profile);
+      } catch {
+        if (active) setFixtureLoadFailed(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adminApp, fixtureVariant, profileId]);
   const liveSnapshot = useTvLiveSnapshot({
     adminApp,
     profileId,
     enabled: fixtureVariant == null,
   });
-  const snapshot = fixtureVariant == null
-    ? liveSnapshot.snapshot
-    : getTvFixtureSnapshot(projectId, profileId, fixtureVariant);
+  const fixtureSnapshot = useMemo(() => fixtureProfile == null || fixtureVariant == null
+    ? null
+    : createTvFixtureSnapshot(projectId, profileResourceToEditorDraft(fixtureProfile), fixtureVariant), [
+      fixtureProfile,
+      fixtureVariant,
+      projectId,
+    ]);
+  const snapshot = fixtureVariant == null ? liveSnapshot.snapshot : fixtureSnapshot;
 
   return (
     <TvPresentation
       snapshot={snapshot}
-      loading={fixtureVariant === "loading" || (fixtureVariant == null && liveSnapshot.loading)}
-      unavailableReason={fixtureVariant == null ? liveSnapshot.unavailableReason : null}
+      loading={fixtureVariant === "loading" || (fixtureVariant != null && fixtureProfile == null && !fixtureLoadFailed) || (fixtureVariant == null && liveSnapshot.loading)}
+      unavailableReason={fixtureVariant == null
+        ? liveSnapshot.unavailableReason
+        : fixtureLoadFailed
+          ? "error"
+          : null}
       onExit={() => runAsynchronouslyWithAlert(exitStandaloneTvPresentation({
         fallbackHref: `/projects/${projectId}/tv-mode`,
         environment: getBrowserTvPresentationExitEnvironment(),

@@ -9,14 +9,18 @@ import {
   PlusIcon,
   StackIcon,
 } from "@phosphor-icons/react";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import type { TvProfileResource } from "@hexclave/shared/dist/interface/admin-tv-mode";
+import { useEffect, useState } from "react";
 import { DesignAlert, DesignBadge, DesignCard } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { useTvPresentationLauncher } from "@/components/tv-mode/presentation-window";
 import { Typography } from "@/components/ui";
-import { TV_PROFILE_FIXTURES } from "@/lib/tv-mode/fixtures";
+import { fetchTvProfilesOrThrow } from "@/lib/hexclave-app-internals";
 import { getTvScreenDefinition } from "@/components/tv-mode/screen-registry";
+import { getTvProfileOverviewAction } from "@/lib/tv-mode/profile-editor-copy";
 import { PageLayout } from "../page-layout";
-import { useProjectId } from "../use-admin-app";
+import { useAdminApp, useProjectId } from "../use-admin-app";
 
 function actionLinkClass(variant: "primary" | "secondary"): string {
   return variant === "primary"
@@ -26,7 +30,28 @@ function actionLinkClass(variant: "primary" | "secondary"): string {
 
 export default function PageClient() {
   const projectId = useProjectId();
+  const adminApp = useAdminApp();
   const { launchPresentation, popupBlocked } = useTvPresentationLauncher(projectId);
+  const [profiles, setProfiles] = useState<TvProfileResource[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [persistenceReady, setPersistenceReady] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    runAsynchronously(async () => {
+      try {
+        const result = await fetchTvProfilesOrThrow(adminApp);
+        if (!active) return;
+        setProfiles([...result.savedProfiles, ...result.templates]);
+        setPersistenceReady(result.persistenceReady);
+      } catch {
+        if (active) setLoadError(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adminApp]);
 
   return (
     <PageLayout
@@ -34,17 +59,19 @@ export default function PageClient() {
       description="Ambient, full-screen project awareness built for shared displays."
       allowContentOverflow
       actions={
-        <span className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-xl border border-foreground/[0.08] px-4 text-sm text-muted-foreground opacity-60" title="Profile creation will be connected after fixture validation">
+        <Link href={`/projects/${projectId}/tv-mode/profiles/company-pulse?create=1`} className={actionLinkClass("secondary")}>
           <PlusIcon className="h-4 w-4" weight="bold" />
           New profile
-        </span>
+        </Link>
       }
     >
       <DesignAlert
         variant="info"
-        title="Fixture-driven foundation"
-        description="This slice uses centralized, typed snapshots only. Profile changes and previews are intentionally not connected to project metrics or persisted configuration yet."
+        title="Project presentation profiles"
+        description="Saved profiles are project-scoped. Built-in profiles remain available as safe templates and defaults."
       />
+      {!persistenceReady ? <DesignAlert variant="error" title="Profile storage is not ready" description="The additive TV profile migration must complete before profiles can be saved." /> : null}
+      {loadError ? <DesignAlert variant="error" title="Profiles could not be loaded" description="Refresh the page to retry. Existing presentations have not been changed." /> : null}
       {popupBlocked ? (
         <DesignAlert
           variant="error"
@@ -55,8 +82,14 @@ export default function PageClient() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.55fr)]">
         <div className="space-y-4">
-          {TV_PROFILE_FIXTURES.map((profile) => {
-            const enabledScreens = profile.playlist.filter((entry) => entry.enabled);
+          {profiles == null && !loadError ? (
+            <DesignCard gradient="default" glassmorphic>
+              <Typography variant="secondary">Loading presentation profiles…</Typography>
+            </DesignCard>
+          ) : null}
+          {profiles?.map((profile) => {
+            const configuration = profile.configuration;
+            const enabledScreens = configuration.playlist;
             return (
               <DesignCard key={profile.id} gradient="default" glassmorphic>
                 <div className="flex flex-col gap-5 p-1">
@@ -67,16 +100,20 @@ export default function PageClient() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Typography className="text-base font-semibold text-foreground">{profile.displayName}</Typography>
+                          <Typography className="text-base font-semibold text-foreground">{configuration.displayName}</Typography>
                           <DesignBadge label="General Mode" color="cyan" size="sm" />
+                          <DesignBadge label={profile.origin === "built-in" ? "Template" : "Saved"} color={profile.origin === "built-in" ? "blue" : "green"} size="sm" />
                         </div>
-                        <Typography variant="secondary" className="mt-1 text-sm">{profile.description}</Typography>
+                        <Typography variant="secondary" className="mt-1 text-sm">{configuration.description}</Typography>
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <Link href={`/projects/${projectId}/tv-mode/profiles/${profile.id}`} className={actionLinkClass("secondary")}>
+                      <Link
+                        href={`/projects/${projectId}/tv-mode/profiles/${profile.id}${profile.origin === "built-in" ? "?create=1" : ""}`}
+                        className={actionLinkClass("secondary")}
+                      >
                         <GearSixIcon className="h-4 w-4" />
-                        Configure
+                        {getTvProfileOverviewAction(profile.origin)}
                       </Link>
                       <button
                         type="button"
@@ -97,7 +134,7 @@ export default function PageClient() {
                     </div>
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Rotation</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">{profile.defaultDurationSeconds}s default</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">{configuration.defaultDurationSeconds}s default</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Interruptions</p>
@@ -131,10 +168,10 @@ export default function PageClient() {
             <div className="space-y-3">
               {[
                 "4 registered TV screens",
-                "2 named General Mode profiles",
+                "Multiple project-scoped profiles",
                 "2 event preview types",
                 "13 presentation states",
-                "No live project data",
+                "Live project snapshots",
               ].map((item) => (
                 <div key={item} className="flex items-center gap-2 text-sm text-foreground">
                   <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" weight="fill" />
@@ -144,9 +181,9 @@ export default function PageClient() {
             </div>
           </DesignCard>
 
-          <DesignCard title="Next data boundary" subtitle="Intentionally deferred" icon={StackIcon} gradient="blue" glassmorphic>
+          <DesignCard title="Safe defaults" subtitle="No setup required" icon={StackIcon} gradient="blue" glassmorphic>
             <Typography variant="secondary" className="text-sm leading-relaxed">
-              The next slice will connect this approved four-screen contract to one validated TV snapshot assembled from project metrics.
+              Company Pulse remains available virtually when a project has no saved profiles. Duplicate any template to create an editable project profile.
             </Typography>
           </DesignCard>
         </div>
