@@ -77,6 +77,30 @@ describe("error handling", () => {
     } as any)).rejects.toThrow(/type must be one of the following values/);
   });
 
+  it("updateConfig accepts Apple key-based OAuth credentials", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    await project.updateConfig({
+      'auth.oauth.providers.apple': {
+        type: 'apple',
+        isShared: false,
+        clientId: 'com.example.web',
+        appleTeamId: 'TEAM123',
+        appleKeyId: 'KEY123',
+        applePrivateKey: '-----BEGIN PRIVATE KEY-----\\nexample\\n-----END PRIVATE KEY-----',
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      },
+    } as any);
+
+    const config = await project.getConfig();
+    const apple = config.auth.oauth.providers.apple;
+    expect(apple.appleTeamId).toBe('TEAM123');
+    expect(apple.appleKeyId).toBe('KEY123');
+    expect(apple.applePrivateKey).toContain('BEGIN PRIVATE KEY');
+  });
+
   it("pushConfig rejects environment-only fields at branch level", async ({ expect }) => {
     const { adminApp } = await createApp();
     const project = await adminApp.getProject();

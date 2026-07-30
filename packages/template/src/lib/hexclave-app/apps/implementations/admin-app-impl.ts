@@ -229,9 +229,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
           id: p.id,
           type: 'standard',
           clientId: p.client_id ?? throwErr("Client ID is missing"),
-          clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
+          clientSecret: p.client_secret,
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleTeamId: p.apple_team_id,
+          appleKeyId: p.apple_key_id,
+          applePrivateKey: p.apple_private_key,
           appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {

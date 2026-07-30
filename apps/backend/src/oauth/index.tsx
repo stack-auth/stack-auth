@@ -146,7 +146,16 @@ export async function getProvider(
   } else {
     return await _providers[providerType].create({
       clientId: provider.clientId || throwErr("Client ID is required for standard providers"),
-      clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
+      ...(providerType === "apple"
+        ? {
+          clientSecret: provider.clientSecret,
+          teamId: provider.appleTeamId,
+          keyId: provider.appleKeyId,
+          privateKey: provider.applePrivateKey,
+        }
+        : {
+          clientSecret: provider.clientSecret || throwErr("Client secret is required for standard providers"),
+        }),
       facebookConfigId: provider.facebookConfigId,
       microsoftTenantId: provider.microsoftTenantId,
       redirectUri,

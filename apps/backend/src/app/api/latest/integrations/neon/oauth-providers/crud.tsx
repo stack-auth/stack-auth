@@ -14,15 +14,23 @@ const oauthProviderReadSchema = yupObject({
     when: 'type',
     is: 'standard',
   }),
-  client_secret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, {
-    when: 'type',
-    is: 'standard',
-  }),
+  client_secret: schemaFields.oauthClientSecretSchema.optional(),
 
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
-});
+  apple_team_id: schemaFields.oauthAppleTeamIdSchema.optional(),
+  apple_key_id: schemaFields.oauthAppleKeyIdSchema.optional(),
+  apple_private_key: schemaFields.oauthApplePrivateKeySchema.optional(),
+}).test(
+  "apple-credentials",
+  "client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set",
+  (provider) => provider.type !== "standard"
+    || (provider.id === "apple"
+      ? (provider.client_secret != null && provider.client_secret !== "")
+        || [provider.apple_team_id, provider.apple_key_id, provider.apple_private_key].every(value => value != null && value !== "")
+      : provider.client_secret != null && provider.client_secret !== ""),
+);
 
 const oauthProviderUpdateSchema = yupObject({
   type: schemaFields.oauthTypeSchema.optional(),
@@ -30,19 +38,27 @@ const oauthProviderUpdateSchema = yupObject({
     when: 'type',
     is: 'standard',
   }).optional(),
-  client_secret: schemaFields.yupDefinedAndNonEmptyWhen(schemaFields.oauthClientSecretSchema, {
-    when: 'type',
-    is: 'standard',
-  }).optional(),
+  client_secret: schemaFields.oauthClientSecretSchema.optional(),
 
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+  apple_team_id: schemaFields.oauthAppleTeamIdSchema.optional(),
+  apple_key_id: schemaFields.oauthAppleKeyIdSchema.optional(),
+  apple_private_key: schemaFields.oauthApplePrivateKeySchema.optional(),
 });
 
 const oauthProviderCreateSchema = oauthProviderUpdateSchema.defined().concat(yupObject({
   id: schemaFields.oauthIdSchema.defined(),
-}));
+})).test(
+  "apple-credentials",
+  "client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set",
+  (provider) => provider.type !== "standard"
+    || (provider.id === "apple"
+      ? (provider.client_secret != null && provider.client_secret !== "")
+        || [provider.apple_team_id, provider.apple_key_id, provider.apple_private_key].every(value => value != null && value !== "")
+      : provider.client_secret != null && provider.client_secret !== ""),
+);
 
 const oauthProviderDeleteSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
@@ -89,6 +105,9 @@ function oauthProviderConfigToLegacyConfig(provider: Tenancy['config']['auth']['
     client_secret: provider.clientSecret,
     facebook_config_id: provider.facebookConfigId,
     microsoft_tenant_id: provider.microsoftTenantId,
+    apple_team_id: provider.appleTeamId,
+    apple_key_id: provider.appleKeyId,
+    apple_private_key: provider.applePrivateKey,
   } as const;
 }
 
@@ -122,6 +141,9 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
               type: data.type ?? 'shared',
               client_id: data.client_id,
               client_secret: data.client_secret,
+              apple_team_id: data.apple_team_id,
+              apple_key_id: data.apple_key_id,
+              apple_private_key: data.apple_private_key,
             }
           ]
         }
