@@ -229,7 +229,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
           id: p.id,
           type: 'standard',
           clientId: p.client_id ?? throwErr("Client ID is missing"),
-              clientSecret: p.id === "apple" ? p.client_secret : p.client_secret ?? throwErr("Client secret is missing"),
+          clientSecret: p.id === "apple" ? p.client_secret : p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
           appleTeamId: p.apple_team_id,
