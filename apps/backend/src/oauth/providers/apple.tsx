@@ -23,13 +23,14 @@ export class AppleProvider extends OAuthBaseProvider {
     if (teamId != null && keyId != null && privateKey != null) {
       // Key credentials take precedence so rotation takes effect even when an old
       // static secret is still stored in the dashboard.
-      let signingKey;
-      try {
-        signingKey = await importPKCS8(privateKey, "ES256");
-      } catch (error) {
-        captureError("apple-oauth-client-secret-minting-failed", error);
-        throw new StatusError(StatusError.BadRequest, "The Apple private key is invalid. Please provide the original .p8 key contents.");
-      }
+      const signingKey = await (async () => {
+        try {
+          return await importPKCS8(privateKey, "ES256");
+        } catch (error) {
+          captureError("apple-oauth-client-secret-minting-failed", error);
+          throw new StatusError(StatusError.BadRequest, "The Apple private key is invalid. Please provide the original .p8 key contents.");
+        }
+      })();
       const now = Math.floor(Date.now() / 1000);
       // getProvider() constructs AppleProvider for each request, so a five-minute
       // secret is sufficient and avoids storing a long-lived JWT in config.
