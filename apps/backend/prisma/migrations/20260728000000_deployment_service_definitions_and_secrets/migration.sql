@@ -15,12 +15,20 @@
 -- sentinel is needed here.
 
 -- AlterTable
--- definitionSyncedAt stays NULL for pre-existing rows on purpose: their
--- definitions lived in the (now-dropped) branch config section and are NOT
--- backfilled here, so deploys must refuse them until a `hexclave deploy`
--- syncs a real definition.
+-- definitionSyncedAt and definitionSyncId stay NULL for pre-existing rows on
+-- purpose: their definitions lived in the (now-dropped) branch config section
+-- and are NOT backfilled here, so deploys must refuse them until a
+-- `hexclave deploy` syncs a real definition.
 ALTER TABLE "DeploymentService" ADD COLUMN "definitionSyncedAt" TIMESTAMP(3),
+ADD COLUMN     "definitionSyncId" UUID,
 ADD COLUMN     "env" JSONB NOT NULL DEFAULT '{}';
+
+-- A run-specific, KMS-encrypted list of the sensitive values injected into the
+-- build. Build logs are fetched from Vercel on demand, so current project
+-- secrets are insufficient for redaction after a value is rotated/deleted, and
+-- request-only secret defaults never enter the project secret store at all.
+-- Existing runs stay NULL and fail closed when logs are requested.
+ALTER TABLE "DeploymentRun" ADD COLUMN "redactionSecretsEncrypted" JSONB;
 
 -- CreateTable
 CREATE TABLE "ProjectSecret" (

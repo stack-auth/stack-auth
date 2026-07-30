@@ -1,4 +1,4 @@
-import { HEXCLAVE_SERVICE_ID, MAX_UPLOAD_BYTES, definitionFromServiceRow, getServiceRowOrThrow, resolveEnvVars, startDeployment } from "@/lib/deployments";
+import { HEXCLAVE_SERVICE_ID, MAX_UPLOAD_BYTES, definitionFromServiceRow, encryptDeploymentRedactionSecrets, getServiceRowOrThrow, resolveEnvVars, startDeployment } from "@/lib/deployments";
 import { getVercelDeploymentsConfigOrNull } from "@/lib/deployments/vercel-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -38,6 +38,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       upload_id: yupString().uuid().defined(),
+      definition_sync_id: yupString().uuid().defined(),
       target: yupString().oneOf(["production", "preview"]).optional(),
       // The `secret(key, default)` defaults from the config file, keyed by env
       // var key. Request-scoped: used only to fill secrets that have no stored
@@ -70,20 +71,27 @@ export const POST = createSmartRouteHandler({
     // Deploying one would build with no env vars AND reconcile the Vercel
     // project's env down to nothing — refuse until a sync stored the actual
     // definition.
-    if (row.definitionSyncedAt == null) {
+    if (row.definitionSyncedAt == null || row.definitionSyncId == null) {
       throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no synced definition (it predates config-file-defined services). Add it to the \`services\` export of your hexclave.config.ts and run \`hexclave deploy\` with an up-to-date CLI.`);
+    }
+    if (row.definitionSyncId !== body.definition_sync_id) {
+      throw new StatusError(409, `The deployment service ${JSON.stringify(params.service_id)} changed after this deploy synced its definitions. Another deploy is using a newer config; restart this deploy so its source and definition come from the same config revision.`);
     }
     const definition = definitionFromServiceRow(row);
 
     // Resolve env vars BEFORE consuming the upload: a missing secret or a
     // dangling connection must not spend the upload.
-    const resolvedEnvVars = await resolveEnvVars({
+    const { resolvedEnvVars, redactionSecrets } = await resolveEnvVars({
       tenancy: auth.tenancy,
       prisma,
       serviceId: params.service_id,
       env: definition.env,
       secretDefaults: body.secret_defaults ?? {},
     });
+    // Encrypt the complete per-run redaction set before consuming the upload
+    // or starting any Vercel-side work. A KMS failure must fail closed here:
+    // otherwise this build could exist without a safe way to serve its logs.
+    const redactionSecretsEncrypted = await encryptDeploymentRedactionSecrets(redactionSecrets);
 
     // Consume the upload before doing anything slow: this makes replaying the
     // same deploy request fail fast instead of deploying twice.
@@ -148,6 +156,7 @@ export const POST = createSmartRouteHandler({
         serviceId: params.service_id,
         definition,
         resolvedEnvVars,
+        redactionSecretsEncrypted,
         target: body.target ?? "production",
         tarballGzipped,
         // Informational only: which access type triggered the run ("server" =

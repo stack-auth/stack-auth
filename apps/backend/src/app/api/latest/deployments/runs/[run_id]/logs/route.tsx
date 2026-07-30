@@ -1,4 +1,4 @@
-import { collectLogRedactionSecrets, isTerminalRunStatus, mapVercelReadyState, redactSecrets } from "@/lib/deployments";
+import { decryptDeploymentRedactionSecrets, isTerminalRunStatus, mapVercelReadyState, redactSecrets } from "@/lib/deployments";
 import { getVercelDeploymentsClientOrThrow, sanitizeVercelError } from "@/lib/deployments/vercel-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { SmartResponse } from "@/route-handlers/smart-response";
@@ -49,11 +49,12 @@ export const GET = createSmartRouteHandler({
     }
     const client = getVercelDeploymentsClientOrThrow();
 
-    // Builds run user code that may print env values, so redact everything we
-    // know to be secret (see collectLogRedactionSecrets).
-    const secretValues = await collectLogRedactionSecrets({
-      tenancy: auth.tenancy,
-    });
+    // Builds run user code that may print env values. Use the exact encrypted
+    // snapshot captured for THIS run: current project secrets cannot cover
+    // request-only defaults or values that were rotated/deleted afterwards.
+    // Decryption and validation happen before the response starts, so any
+    // failure closes the endpoint rather than serving partially-redacted logs.
+    const secretValues = await decryptDeploymentRedactionSecrets(run.redactionSecretsEncrypted);
 
     const encoder = new TextEncoder();
     let isRunTerminal = isTerminalRunStatus(run.status);

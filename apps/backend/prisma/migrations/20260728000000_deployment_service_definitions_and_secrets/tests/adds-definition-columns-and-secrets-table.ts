@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
 
@@ -6,6 +6,7 @@ export const preMigration = async (sql: Sql) => {
   const projectId = `test-${randomUUID()}`;
   const tenancyId = randomUUID();
   const serviceId = randomUUID();
+  const runId = randomUUID();
 
   await sql`
     INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode")
@@ -21,32 +22,57 @@ export const preMigration = async (sql: Sql) => {
     INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "framework")
     VALUES (${tenancyId}::uuid, ${serviceId}::uuid, NOW(), 'api', 'nextjs')
   `;
+  await sql`
+    INSERT INTO "DeploymentRun" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "target", "triggeredBy")
+    VALUES (${tenancyId}::uuid, ${runId}::uuid, NOW(), ${serviceId}::uuid, 'production', 'migration-test')
+  `;
 
-  return { projectId, tenancyId, serviceId };
+  return { projectId, tenancyId, serviceId, runId };
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
   // The pre-existing row got the new columns with their defaults. In
-  // particular definitionSyncedAt must be NULL: legacy rows have no synced
-  // definition (their env lived in the dropped config section), and the
-  // deploy route uses exactly this NULL to refuse deploying them with an
+  // particular the definition fencing fields must be NULL: legacy rows have
+  // no synced definition (their env lived in the dropped config section), and
+  // the deploy route uses exactly these NULLs to refuse deploying them with an
   // empty env set.
-  const services = await sql<{ env: unknown, definitionSyncedAt: Date | null }[]>`
-    SELECT "env", "definitionSyncedAt" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
+  const services = await sql<{ env: unknown, definitionSyncedAt: Date | null, definitionSyncId: string | null }[]>`
+    SELECT "env", "definitionSyncedAt", "definitionSyncId" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  expect(services[0]).toEqual({ env: {}, definitionSyncedAt: null });
+  expect(services[0]).toEqual({ env: {}, definitionSyncedAt: null, definitionSyncId: null });
 
   // The new columns are writable.
+  const definitionSyncId = randomUUID();
   await sql`
     UPDATE "DeploymentService"
-    SET "env" = ${sql.json({ API_KEY: { type: "secret", key: "API_KEY", default_value: "dev" } })}, "definitionSyncedAt" = NOW()
+    SET "env" = ${sql.json({ API_KEY: { type: "secret", key: "API_KEY" } })},
+        "definitionSyncedAt" = NOW(),
+        "definitionSyncId" = ${definitionSyncId}::uuid
     WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  const updated = await sql<{ env: any, definitionSyncedAt: Date | null }[]>`
-    SELECT "env", "definitionSyncedAt" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
+  const updated = await sql<{ env: { API_KEY?: { key?: unknown } }, definitionSyncedAt: Date | null, definitionSyncId: string | null }[]>`
+    SELECT "env", "definitionSyncedAt", "definitionSyncId" FROM "DeploymentService" WHERE "id" = ${ctx.serviceId}::uuid
   `;
-  expect(updated[0].env.API_KEY.key).toBe("API_KEY");
+  expect(updated[0].env.API_KEY?.key).toBe("API_KEY");
   expect(updated[0].definitionSyncedAt).not.toBeNull();
+  expect(updated[0].definitionSyncId).toBe(definitionSyncId);
+
+  // Existing runs start without redaction material and can receive the
+  // encrypted snapshot shape used by newly-created runs.
+  const preExistingRuns = await sql<{ redactionSecretsEncrypted: unknown | null }[]>`
+    SELECT "redactionSecretsEncrypted" FROM "DeploymentRun" WHERE "id" = ${ctx.runId}::uuid
+  `;
+  expect(preExistingRuns[0]).toEqual({ redactionSecretsEncrypted: null });
+  const encryptedRedactionSecrets = { edkBase64: "redaction-edk", ciphertextBase64: "redaction-ciphertext" };
+  await sql`
+    UPDATE "DeploymentRun"
+    SET "redactionSecretsEncrypted" = ${sql.json(encryptedRedactionSecrets)}
+    WHERE "id" = ${ctx.runId}::uuid
+  `;
+  const updatedRuns = await sql<{ redactionSecretsEncrypted: unknown | null }[]>`
+    SELECT "redactionSecretsEncrypted" FROM "DeploymentRun" WHERE "id" = ${ctx.runId}::uuid
+  `;
+  expect(updatedRuns[0]).toEqual({ redactionSecretsEncrypted: encryptedRedactionSecrets });
 
   // The dev command is a config-file-only field, so the migration must NOT
   // have added a column for it (a stray column would invite a write path that

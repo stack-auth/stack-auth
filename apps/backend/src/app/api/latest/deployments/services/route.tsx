@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { deploymentServiceDefinitionSchema } from "@hexclave/shared/dist/deployments";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { randomUUID } from "node:crypto";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -65,6 +66,7 @@ export const PUT = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
+      sync_id: yupString().uuid().defined(),
       items: yupArray(yupMixed().defined()).defined(),
     }).defined(),
   }),
@@ -73,7 +75,8 @@ export const PUT = createSmartRouteHandler({
       throw new StatusError(400, "The services record must contain at least one service. (Nothing to sync — the config file's `services` export is empty.)");
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    await syncServiceDefinitions(prisma, auth.tenancy, body.services);
+    const syncId = randomUUID();
+    await syncServiceDefinitions(prisma, auth.tenancy, body.services, syncId);
     const rows = await listServiceRows(prisma, auth.tenancy);
     const items = await Promise.all(rows.map(async (row) => await serviceToApiShape({
       prisma,
@@ -83,7 +86,7 @@ export const PUT = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { items },
+      body: { sync_id: syncId, items },
     };
   },
 });

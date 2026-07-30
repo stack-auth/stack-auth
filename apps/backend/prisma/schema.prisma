@@ -1700,12 +1700,14 @@ model DeploymentService {
   vercelProjectId String?
 
   // The definition as last synced from the config file's `services` export.
-  // `definitionSyncedAt` is null only for rows that predate the services-export
-  // rework (their definitions lived in the branch config, which was dropped
-  // without backfill) — deploys refuse such rows so a legacy service can't be
-  // deployed with a spuriously empty env set (which would also wipe the env
-  // vars off its Vercel project via reconciliation).
+  // Both fields are null only for rows that predate the services-export rework
+  // (their definitions lived in the branch config, which was dropped without
+  // backfill). `definitionSyncId` is regenerated once per whole-definition
+  // sync and fenced by every subsequent deploy request, so two CLIs cannot
+  // silently combine one checkout's source/defaults with another checkout's
+  // stored build settings and env definition.
   definitionSyncedAt DateTime?
+  definitionSyncId   String?   @db.Uuid
   framework       String?
   installCommand  String?
   buildCommand    String?
@@ -1782,6 +1784,15 @@ model DeploymentRun {
 
   error      String?
   finishedAt DateTime?
+
+  // `{ edkBase64, ciphertextBase64 }`, encrypting a JSON string array of the
+  // exact sensitive values injected into this run. Logs are fetched from
+  // Vercel on demand, potentially after the project secret was rotated or
+  // deleted; keeping the encrypted snapshot on the run lets those historical
+  // logs remain redacted without retaining the old value in ProjectSecret.
+  // Null only for runs created before this column existed; their logs fail
+  // closed because there is no complete redaction set.
+  redactionSecretsEncrypted Json?
 
   service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
 

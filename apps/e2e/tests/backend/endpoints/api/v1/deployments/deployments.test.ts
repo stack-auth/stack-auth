@@ -1,5 +1,5 @@
 import { createTar } from "@hexclave/shared/dist/utils/tar";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
@@ -44,18 +44,21 @@ async function createUpload(files?: Record<string, string>): Promise<{ uploadId:
 
 // Syncs service definitions the way `hexclave deploy` does (its first step
 // after evaluating the config file's `services` export).
-async function syncServices(services: Record<string, unknown>): Promise<void> {
+async function syncServices(services: Record<string, unknown>): Promise<string> {
   const response = await niceBackendFetch("/api/v1/deployments/services", {
     method: "PUT",
     accessType: "admin",
     body: { services },
   });
   if (response.status !== 200) throw new Error(`Failed to sync services: ${JSON.stringify(response.body)}`);
+  const syncId = (response.body as any).sync_id;
+  if (typeof syncId !== "string") throw new Error(`Sync response is missing sync_id: ${JSON.stringify(response.body)}`);
+  return syncId;
 }
 
-async function syncServiceAndUpload(serviceId: string, definition: Record<string, unknown> = {}, files?: Record<string, string>): Promise<{ uploadId: string }> {
-  await syncServices({ [serviceId]: { type: "vercel", env: {}, ...definition } });
-  return await createUpload(files);
+async function syncServiceAndUpload(serviceId: string, definition: Record<string, unknown> = {}, files?: Record<string, string>): Promise<{ uploadId: string, definitionSyncId: string }> {
+  const definitionSyncId = await syncServices({ [serviceId]: { type: "vercel", env: {}, ...definition } });
+  return { ...await createUpload(files), definitionSyncId };
 }
 
 // The mock advances a deployment one state per read (queued -> building ->
@@ -143,7 +146,7 @@ describe("definition sync", () => {
   it("syncs, lists, and reads service definitions (read-only otherwise)", async ({ expect }) => {
     await Project.createAndSwitch();
 
-    await syncServices({
+    const initialSyncId = await syncServices({
       api: {
         type: "vercel",
         framework: "nextjs",
@@ -215,7 +218,8 @@ describe("definition sync", () => {
     await syncServices({ web: { type: "vercel", env: {} } });
     const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
     expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api", "web"]);
-    await syncServices({ api: { type: "vercel", build_command: "pnpm build:prod", env: {} } });
+    const updatedSyncId = await syncServices({ api: { type: "vercel", build_command: "pnpm build:prod", env: {} } });
+    expect(updatedSyncId).not.toBe(initialSyncId);
     const updatedResponse = await niceBackendFetch("/api/v1/deployments/services/api", { accessType: "admin" });
     expect((updatedResponse.body as any).build_command).toBe("pnpm build:prod");
     // Absent fields are unset, not kept (the config file is the whole truth).
@@ -420,7 +424,7 @@ describe("deploys against the vercel-mock", () => {
       body: { key: "OVERRIDDEN", value: "stored-wins" },
     });
 
-    const { uploadId } = await syncServiceAndUpload("api", {
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload("api", {
       framework: "nextjs",
       build_command: "pnpm build",
       env: {
@@ -445,6 +449,7 @@ describe("deploys against the vercel-mock", () => {
       // definition above mentions them.
       body: {
         upload_id: uploadId,
+        definition_sync_id: definitionSyncId,
         secret_defaults: { FROM_DEFAULT: "the-default", OVERRIDDEN_VALUE: "the-default" },
       },
     });
@@ -483,6 +488,21 @@ describe("deploys against the vercel-mock", () => {
     expect(envValues.OVERRIDDEN_VALUE).toBe("stored-wins");
     expect(envValues.LOOKS_LIKE_A_REFERENCE).toBe("{hexclave.projectId}");
 
+    // Log redaction belongs to this run, not to the mutable project secret
+    // store. Rotating and deleting values after deployment must neither retain
+    // deleted project secrets nor expose the exact values used by this build.
+    const deleteSecretResponse = await niceBackendFetch("/api/v1/project-secrets/db_connection", {
+      method: "DELETE",
+      accessType: "admin",
+    });
+    expect(deleteSecretResponse.status).toBe(200);
+    const rotateSecretResponse = await niceBackendFetch("/api/v1/project-secrets", {
+      method: "POST",
+      accessType: "admin",
+      body: { key: "OVERRIDDEN", value: "new-stored-value" },
+    });
+    expect(rotateSecretResponse.status).toBe(200);
+
     // The build logs echo the build environment (mock behavior); the secret
     // server key AND the stored secret values must be redacted — unlike the
     // old `--secret` flow, stored secrets are persisted server-side, so we
@@ -496,6 +516,10 @@ describe("deploys against the vercel-mock", () => {
     expect(logsText).not.toContain(projectKeys.secretServerKey);
     expect(logsText).toContain("DB_PASSWORD=<redacted>");
     expect(logsText).not.toContain("hunter2");
+    expect(logsText).toContain("FROM_DEFAULT=<redacted>");
+    expect(logsText).not.toContain("the-default");
+    expect(logsText).toContain("OVERRIDDEN_VALUE=<redacted>");
+    expect(logsText).not.toContain("stored-wins");
   });
 
   it("rejects deploys with missing secrets or dangling connections without consuming the upload", async ({ expect }) => {
@@ -505,7 +529,7 @@ describe("deploys against the vercel-mock", () => {
     // deploy request. EVERY missing key must be listed at once: fixing them
     // means a trip to the dashboard, so learning about the second one only
     // after setting the first would be a round trip per secret.
-    const { uploadId } = await syncServiceAndUpload("strict", {
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload("strict", {
       env: {
         DB_PASSWORD: { type: "secret", key: "db_connection" },
         API_TOKEN: { type: "secret", key: "api_token" },
@@ -514,7 +538,7 @@ describe("deploys against the vercel-mock", () => {
     const missingSecretResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(missingSecretResponse.status).toBe(400);
     expect(missingSecretResponse.body).toContain("Missing values for secrets: api_token, db_connection");
@@ -525,17 +549,17 @@ describe("deploys against the vercel-mock", () => {
     const partiallyDefaultedResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId, secret_defaults: { API_TOKEN: "from-config" } },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId, secret_defaults: { API_TOKEN: "from-config" } },
     });
     expect(partiallyDefaultedResponse.status).toBe(400);
     expect(partiallyDefaultedResponse.body).toContain("Missing values for secret: db_connection");
 
     // A connection to a service that doesn't exist.
-    await syncServices({ strict: { type: "vercel", env: { OTHER_URL: { type: "connection", value: "nonexistent.url" } } } });
+    const danglingSyncId = await syncServices({ strict: { type: "vercel", env: { OTHER_URL: { type: "connection", value: "nonexistent.url" } } } });
     const danglingConnectionResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: danglingSyncId },
     });
     expect(danglingConnectionResponse.status).toBe(400);
     expect(danglingConnectionResponse.body).toContain("points to a service that doesn't exist");
@@ -543,37 +567,65 @@ describe("deploys against the vercel-mock", () => {
     // A connection to a defined-but-never-deployed service is also a deploy
     // error (deploys resolve strictly; the CLI's topological ordering is what
     // prevents this in practice).
-    await syncServices({
+    const pendingSyncId = await syncServices({
       strict: { type: "vercel", env: { OTHER_URL: { type: "connection", value: "undeployed.url" } } },
       undeployed: { type: "vercel", env: {} },
     });
     const pendingConnectionResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: pendingSyncId },
     });
     expect(pendingConnectionResponse.status).toBe(400);
     expect(pendingConnectionResponse.body).toContain("no successful production deployment yet");
 
     // Self-references are typos that can never resolve.
-    await syncServices({ strict: { type: "vercel", env: { MY_URL: { type: "connection", value: "strict.url" } } } });
+    const selfRefSyncId = await syncServices({ strict: { type: "vercel", env: { MY_URL: { type: "connection", value: "strict.url" } } } });
     const selfRefResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: selfRefSyncId },
     });
     expect(selfRefResponse.status).toBe(400);
     expect(selfRefResponse.body).toContain("cannot reference itself");
 
     // None of the failed attempts may have consumed the upload: the same
     // upload id must still deploy fine once the definition is valid.
-    await syncServices({ strict: { type: "vercel", env: { PLAIN: { value: "x" } } } });
+    const validSyncId = await syncServices({ strict: { type: "vercel", env: { PLAIN: { value: "x" } } } });
     const validResponse = await niceBackendFetch("/api/v1/deployments/services/strict/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: validSyncId },
     });
     expect(validResponse.status).toBe(200);
+  });
+
+  it("rejects a deploy from a stale definition sync without consuming the upload", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const { uploadId, definitionSyncId: staleSyncId } = await syncServiceAndUpload("racy", {
+      env: { SOURCE: { value: "first" } },
+    });
+    const currentSyncId = await syncServices({
+      racy: { type: "vercel", env: { SOURCE: { value: "second" } } },
+    });
+
+    const staleResponse = await niceBackendFetch("/api/v1/deployments/services/racy/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId, definition_sync_id: staleSyncId },
+    });
+    expect(staleResponse.status).toBe(409);
+    expect(staleResponse.body).toContain("changed after this deploy synced its definitions");
+
+    // The stale request is rejected before the upload slot is consumed, so
+    // the CLI can retry after evaluating and syncing the current definition.
+    const currentResponse = await niceBackendFetch("/api/v1/deployments/services/racy/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId, definition_sync_id: currentSyncId },
+    });
+    expect(currentResponse.status).toBe(200);
+    expect((await fetchMockEnvValues("racy")).SOURCE).toBe("second");
   });
 
   it("deploying a service that was never synced is a 404", async ({ expect }) => {
@@ -582,7 +634,7 @@ describe("deploys against the vercel-mock", () => {
     const response = await niceBackendFetch("/api/v1/deployments/services/never-synced/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: randomUUID() },
     });
     expect(response.status).toBe(404);
     expect(response.body).toContain("hexclave deploy");
@@ -591,7 +643,7 @@ describe("deploys against the vercel-mock", () => {
   it("reconciles the Vercel env when a redeploy's synced definition drops a key", async ({ expect }) => {
     await Project.createAndSwitch();
 
-    const { uploadId } = await syncServiceAndUpload("recon", {
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload("recon", {
       env: {
         KEEP_ME: { value: "kept" },
         REMOVE_ME: { value: "stale" },
@@ -600,20 +652,20 @@ describe("deploys against the vercel-mock", () => {
     const firstDeploy = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(firstDeploy.status).toBe(200);
     expect((await fetchMockEnvValues("recon")).REMOVE_ME).toBe("stale");
 
     // A re-sync with a reduced env set + redeploy must delete the removed key
     // from the Vercel project, not let it linger in future builds.
-    const { uploadId: secondUploadId } = await syncServiceAndUpload("recon", {
+    const { uploadId: secondUploadId, definitionSyncId: secondDefinitionSyncId } = await syncServiceAndUpload("recon", {
       env: { KEEP_ME: { value: "kept" } },
     });
     const secondDeploy = await niceBackendFetch("/api/v1/deployments/services/recon/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: secondUploadId },
+      body: { upload_id: secondUploadId, definition_sync_id: secondDefinitionSyncId },
     });
     expect(secondDeploy.status).toBe(200);
     const envValues = await fetchMockEnvValues("recon");
@@ -626,22 +678,22 @@ describe("deploys against the vercel-mock", () => {
 
     // Deploy the producer to READY first (this is what the CLI's topological
     // deploy order guarantees).
-    const { uploadId } = await syncServiceAndUpload("api");
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload("api");
     const apiDeploy = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(apiDeploy.status).toBe(200);
     await pollRunToReady((apiDeploy.body as any).run_id);
 
-    const { uploadId: frontUploadId } = await syncServiceAndUpload("front", {
+    const { uploadId: frontUploadId, definitionSyncId: frontDefinitionSyncId } = await syncServiceAndUpload("front", {
       env: { API_URL: { type: "connection", value: "api.url" } },
     });
     const frontDeploy = await niceBackendFetch("/api/v1/deployments/services/front/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: frontUploadId },
+      body: { upload_id: frontUploadId, definition_sync_id: frontDefinitionSyncId },
     });
     expect(frontDeploy.status).toBe(200);
     expect((await fetchMockEnvValues("front")).API_URL).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
@@ -650,11 +702,11 @@ describe("deploys against the vercel-mock", () => {
   it("marks a failing build as errored", async ({ expect }) => {
     await Project.createAndSwitch();
     // The mock fails any build whose build command contains this marker.
-    const { uploadId } = await syncServiceAndUpload("failing", { build_command: "fail-this-build" });
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload("failing", { build_command: "fail-this-build" });
     const deployResponse = await niceBackendFetch("/api/v1/deployments/services/failing/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(deployResponse.status).toBe(200);
     const runId = (deployResponse.body as any).run_id;
@@ -666,13 +718,13 @@ describe("deploys against the vercel-mock", () => {
 
   it("rejects invalid uploads and consumes each upload slot once", async ({ expect }) => {
     await Project.createAndSwitch();
-    await syncServices({ api: { type: "vercel", env: {} } });
+    const definitionSyncId = await syncServices({ api: { type: "vercel", env: {} } });
 
     // Deploy with a nonexistent upload.
     const missingUploadResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: "00000000-0000-4000-8000-000000000001" },
+      body: { upload_id: "00000000-0000-4000-8000-000000000001", definition_sync_id: definitionSyncId },
     });
     expect(missingUploadResponse.status).toBe(404);
 
@@ -693,7 +745,7 @@ describe("deploys against the vercel-mock", () => {
     const badDeployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: (badUploadResponse.body as any).id },
+      body: { upload_id: (badUploadResponse.body as any).id, definition_sync_id: definitionSyncId },
     });
     expect(badDeployResponse).toMatchInlineSnapshot(`
       NiceResponse {
@@ -707,13 +759,13 @@ describe("deploys against the vercel-mock", () => {
     const deployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(deployResponse.status).toBe(200);
     const replayResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(replayResponse.status).toBe(404);
   });
@@ -722,7 +774,7 @@ describe("deploys against the vercel-mock", () => {
 describe("domains", () => {
   it("adds domains, reads back DNS records, and removes them", async ({ expect }) => {
     await Project.createAndSwitch();
-    await syncServices({ web: { type: "vercel", env: {} } });
+    const definitionSyncId = await syncServices({ web: { type: "vercel", env: {} } });
 
     // Before the first deploy: the domain is stored, DNS guidance is generic.
     const addResponse = await niceBackendFetch("/api/v1/deployments/services/web/domains", {
@@ -782,7 +834,7 @@ describe("domains", () => {
     await niceBackendFetch("/api/v1/deployments/services/web/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: uploadId },
+      body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
 
     const postDeployDetails = await niceBackendFetch("/api/v1/deployments/services/web/domains/app.example.com", { accessType: "admin" });

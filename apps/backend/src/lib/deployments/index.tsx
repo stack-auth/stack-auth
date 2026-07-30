@@ -27,8 +27,9 @@
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
-import { decryptProjectSecret, listEncryptedProjectSecrets, readProjectSecretValue } from "@/lib/project-secrets";
+import { readProjectSecretValue } from "@/lib/project-secrets";
 import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS } from "@hexclave/shared/dist/deployments";
+import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -147,10 +148,11 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
  * absent from `services` are left untouched (see the KNOWN GAP note at the
  * top of this file).
  */
-export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
+export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
   for (const [serviceId, definition] of Object.entries(services)) {
     const definitionColumns = {
       definitionSyncedAt: new Date(),
+      definitionSyncId,
       framework: definition.framework ?? null,
       installCommand: definition.install_command ?? null,
       buildCommand: definition.build_command ?? null,
@@ -365,7 +367,10 @@ export async function resolveEnvVars(options: {
   // Deploy-request-only fallbacks for `secret()` env vars, keyed by ENV VAR
   // key (see deploymentSecretDefaultsSchema). Never read from the database.
   secretDefaults: Record<string, string>,
-}): Promise<{ key: string, value: string }[]> {
+}): Promise<{
+  resolvedEnvVars: { key: string, value: string }[],
+  redactionSecrets: string[],
+}> {
   const { tenancy, prisma, serviceId, env, secretDefaults } = options;
   const existingServiceIds = new Set((await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
@@ -400,6 +405,7 @@ export async function resolveEnvVars(options: {
 
   const missingSecretKeys: string[] = [];
   const resolved: { key: string, value: string }[] = [];
+  const redactionSecrets = new Set<string>();
   for (const [envVarKey, config] of Object.entries(env)) {
     if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
       throw new StatusError(400, `Invalid env var key: ${JSON.stringify(envVarKey)}. Keys must match ${ENV_VAR_KEY_REGEX.toString()}.`);
@@ -422,6 +428,7 @@ export async function resolveEnvVars(options: {
           break;
         }
         resolved.push({ key: envVarKey, value: secretValue });
+        if (secretValue.length > 0) redactionSecrets.add(secretValue);
         break;
       }
       case "connection": {
@@ -444,6 +451,7 @@ export async function resolveEnvVars(options: {
         }
         const output = await resolveOutput(normalized.serviceId, normalized.outputKey, raw);
         resolved.push({ key: envVarKey, value: output.value });
+        if (output.secret && output.value.length > 0) redactionSecrets.add(output.value);
         break;
       }
     }
@@ -454,7 +462,10 @@ export async function resolveEnvVars(options: {
     throw new StatusError(400, `Missing values for ${uniqueMissing.length === 1 ? "secret" : "secrets"}: ${uniqueMissing.join(", ")}. All of these must be set in the dashboard under Project Settings > Secrets before this service can deploy.`);
   }
 
-  return resolved;
+  return {
+    resolvedEnvVars: resolved,
+    redactionSecrets: [...redactionSecrets],
+  };
 }
 
 async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> {
@@ -536,41 +547,55 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
   return { value: `https://${latestReadyRun.vercelDeploymentUrl}`, secret: false };
 }
 
+export type EncryptedDeploymentRedactionSecrets = {
+  edkBase64: string,
+  ciphertextBase64: string,
+};
+
 /**
- * Everything we can re-derive as secret for a service's build logs: every
- * secret API key of the project (covers the `hexclave.secretServerKey`
- * connection output), plus the project's CURRENTLY-stored project secret
- * values. Note the limit of that last part: a value that was later
- * overwritten or deleted is no longer known here, so old logs that captured
- * it are only redacted while it is still stored — rotation does not
- * retroactively scrub earlier runs' logs.
+ * Encrypts the exact sensitive values injected into one run. The snapshot is
+ * run-scoped rather than project-scoped: request-only defaults never enter the
+ * project secret store, and rotating/deleting a stored secret must not make its
+ * earlier build logs unsafe to read.
  */
-export async function collectLogRedactionSecrets(options: {
-  tenancy: Tenancy,
-}): Promise<string[]> {
-  const { tenancy } = options;
-  const secretValues: string[] = [];
-  const apiKeySets = await globalPrismaClient.apiKeySet.findMany({
-    where: { projectId: tenancy.project.id },
-    select: { secretServerKey: true, superSecretAdminKey: true },
+export async function encryptDeploymentRedactionSecrets(secretValues: string[]): Promise<EncryptedDeploymentRedactionSecrets> {
+  const uniqueNonEmptyValues = [...new Set(secretValues)].filter((value) => value.length > 0);
+  return await encryptWithKms(JSON.stringify(uniqueNonEmptyValues));
+}
+
+/**
+ * Decrypts a run's complete redaction set. Missing or malformed material fails
+ * closed: returning a partial set would turn a KMS/data problem into plaintext
+ * credential disclosure through the logs endpoint.
+ */
+export async function decryptDeploymentRedactionSecrets(encrypted: Prisma.JsonValue | null): Promise<string[]> {
+  if (encrypted == null) {
+    throw new StatusError(409, "Build logs for this deployment are unavailable because it predates secure per-run secret redaction.");
+  }
+  if (!isRecord(encrypted) || typeof encrypted.edkBase64 !== "string" || typeof encrypted.ciphertextBase64 !== "string") {
+    throw new HexclaveAssertionError("Stored deployment-run redaction material has an invalid encrypted payload; the deploy route should have written { edkBase64, ciphertextBase64 }");
+  }
+  const decrypted = await decryptWithKms({
+    edkBase64: encrypted.edkBase64,
+    ciphertextBase64: encrypted.ciphertextBase64,
   });
-  for (const keySet of apiKeySets) {
-    if (keySet.secretServerKey != null) secretValues.push(keySet.secretServerKey);
-    if (keySet.superSecretAdminKey != null) secretValues.push(keySet.superSecretAdminKey);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decrypted);
+  } catch (error) {
+    throw new HexclaveAssertionError("Stored deployment-run redaction material did not decrypt to valid JSON", { cause: error });
   }
-  const secretRows = await listEncryptedProjectSecrets(tenancy.project.id);
-  for (const row of secretRows) {
-    try {
-      secretValues.push(await decryptProjectSecret(row.encrypted, row.key));
-    } catch (error) {
-      // One corrupt/undecryptable row must not 500 every log read of the
-      // whole project. Skipping it is safe for redaction: a value we cannot
-      // decrypt was never resolved into a build either (its deploys would
-      // have failed the same way), so it cannot appear in any log.
-      captureError("deployments-log-redaction-secret", error);
+  if (!Array.isArray(parsed)) {
+    throw new HexclaveAssertionError("Stored deployment-run redaction material did not decrypt to an array");
+  }
+  const result = new Set<string>();
+  for (const value of parsed) {
+    if (typeof value !== "string") {
+      throw new HexclaveAssertionError("Stored deployment-run redaction material contains a non-string value");
     }
+    if (value.length > 0) result.add(value);
   }
-  return secretValues;
+  return [...result];
 }
 
 export function redactSecrets(text: string, secretValues: string[]): string {
@@ -624,11 +649,12 @@ export async function startDeployment(options: {
   // consumed, so a missing secret or dangling connection fails the request
   // without spending the upload.
   resolvedEnvVars: { key: string, value: string }[],
+  redactionSecretsEncrypted: EncryptedDeploymentRedactionSecrets,
   target: "production" | "preview",
   tarballGzipped: Uint8Array,
   triggeredBy: string,
 }): Promise<StartDeploymentResult> {
-  const { tenancy, prisma, serviceId, definition, resolvedEnvVars, target, tarballGzipped, triggeredBy } = options;
+  const { tenancy, prisma, serviceId, definition, resolvedEnvVars, redactionSecretsEncrypted, target, tarballGzipped, triggeredBy } = options;
   const client = getVercelDeploymentsClientOrThrow();
 
   const service = await getOrCreateOperationalService(prisma, tenancy, serviceId);
@@ -750,6 +776,7 @@ export async function startDeployment(options: {
       status: mapVercelReadyState(deployment.readyState),
       target,
       triggeredBy,
+      redactionSecretsEncrypted,
     },
   });
 

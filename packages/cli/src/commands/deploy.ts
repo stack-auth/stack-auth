@@ -176,13 +176,14 @@ type ServiceDeployResult = {
  * the service id because services within one dependency level deploy
  * concurrently and their output interleaves.
  */
-async function deployService(options: {
+export async function deployService(options: {
   auth: ProjectAuth,
   authHeaders: () => Promise<Record<string, string>>,
   service: EvaluatedService,
+  definitionSyncId: string,
   ignoreRootDirectory: string,
 }): Promise<ServiceDeployResult> {
-  const { auth, authHeaders, service, ignoreRootDirectory } = options;
+  const { auth, authHeaders, service, definitionSyncId, ignoreRootDirectory } = options;
   const serviceId = service.serviceId;
   const log = (message: string) => console.error(`[${serviceId}] ${message}`);
 
@@ -209,7 +210,11 @@ async function deployService(options: {
     // synced with the definition: they are a config-file concept, and storing
     // them would make the dashboard's secrets page report a value that isn't
     // actually stored anywhere.
-    jsonBody: { upload_id: upload.id, secret_defaults: collectSecretDefaults(service) },
+    jsonBody: {
+      upload_id: upload.id,
+      definition_sync_id: definitionSyncId,
+      secret_defaults: collectSecretDefaults(service),
+    },
   });
   if (typeof deployResponse?.run_id !== "string") {
     throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
@@ -257,10 +262,11 @@ async function deployService(options: {
     return { serviceId, status: run.status, runId, url: null, error };
   }
 
-  // The run's URL is the immutable per-deployment URL; the service endpoint
-  // returns the canonical one (a verified custom domain when there is one).
-  const remoteService = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(serviceId)}`, { method: "GET" });
-  const url = typeof remoteService?.url === "string" ? remoteService.url : (typeof run.url === "string" ? run.url : null);
+  // The run's immutable per-deployment URL is sufficient to report success.
+  // Do not make a second, cosmetic service lookup for a custom-domain URL here:
+  // a transient failure after the build is already READY must not turn the
+  // successful deploy into an error and skip its transitive dependents.
+  const url = typeof run.url === "string" ? run.url : null;
   log(`Deployment succeeded${url != null ? `: ${url}` : "."}`);
   return { serviceId, status: "ready", runId, url, error: null };
 }
@@ -380,12 +386,16 @@ export function registerDeployCommand(program: Command) {
       // Sync ALL definitions (even for a --service-id deploy) so the dashboard
       // always reflects the full services export.
       console.error(`Syncing ${services.size} service definition${services.size === 1 ? "" : "s"}...`);
-      await deployApiFetch(auth, authHeaders, "/deployments/services", {
+      const syncResponse = await deployApiFetch(auth, authHeaders, "/deployments/services", {
         method: "PUT",
         jsonBody: {
           services: Object.fromEntries([...services.values()].map((service) => [service.serviceId, service.definition])),
         },
       });
+      if (typeof syncResponse?.sync_id !== "string") {
+        throw new CliError("Unexpected response from the Hexclave API when syncing service definitions.");
+      }
+      const definitionSyncId = syncResponse.sync_id;
 
       // Deploy level by level: services in one level are independent and run
       // concurrently; a failure skips every transitive dependent but lets
@@ -413,6 +423,7 @@ export function registerDeployCommand(program: Command) {
               service: services.get(serviceId) ?? (() => {
                 throw new CliError(`Internal error: deploy level contains unknown service ${JSON.stringify(serviceId)}.`);
               })(),
+              definitionSyncId,
               ignoreRootDirectory,
             });
           } catch (error) {

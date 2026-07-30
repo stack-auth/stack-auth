@@ -72,15 +72,3 @@ export async function listProjectSecrets(projectId: string): Promise<{ key: stri
     orderBy: { key: "asc" },
   });
 }
-
-/**
- * Every stored secret of the project, still encrypted. For consumers that need
- * all values at once (log redaction); decrypt each with decryptProjectSecret so
- * one undecryptable row can be handled without failing the rest.
- */
-export async function listEncryptedProjectSecrets(projectId: string): Promise<{ key: string, encrypted: Prisma.JsonValue }[]> {
-  return await globalPrismaClient.projectSecret.findMany({
-    where: { projectId },
-    select: { key: true, encrypted: true },
-  });
-}
