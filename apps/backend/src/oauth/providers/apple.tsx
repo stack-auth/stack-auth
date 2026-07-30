@@ -100,9 +100,10 @@ import.meta.vitest?.test("AppleProvider mints short-lived ES256 client secrets",
     privateKey: privateKeyPem,
     redirectUri: "https://example.com/callback",
   });
-  const clientSecret = provider.oauthClient.metadata.client_secret;
-  const header = JSON.parse(Buffer.from(clientSecret!.split(".")[0], "base64url").toString());
-  const claims = decodeJwt(clientSecret!);
+  const clientSecret = provider.oauthClient.metadata.client_secret
+    ?? throwErr("AppleProvider must set a client secret");
+  const header = JSON.parse(Buffer.from(clientSecret.split(".")[0], "base64url").toString());
+  const claims = decodeJwt(clientSecret);
   expect(header).toMatchObject({ alg: "ES256", kid: "KEY123" });
   expect(claims).toMatchObject({
     iss: "TEAM123",

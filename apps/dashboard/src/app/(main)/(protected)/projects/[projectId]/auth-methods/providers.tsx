@@ -10,7 +10,7 @@ import {
   DesignInput,
   DesignPillToggle,
 } from "@hexclave/dashboard-ui-components";
-import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, EyeIcon, EyeSlashIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@hexclave/next";
 import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
@@ -169,6 +169,8 @@ function RedirectInline({ providerId }: { providerId: string }) {
 }
 
 function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFormValues>, providerId: string }) {
+  const [showApplePrivateKey, setShowApplePrivateKey] = useState(false);
+
   const clientIdLabel = providerId === 'apple' ? "Service ID (Client ID)" : "Client ID";
   return (
     <>
@@ -258,7 +260,26 @@ function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFo
             render={({ field }) => (
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Apple private key (.p8)</FormLabel>
-                <FormControl><textarea {...field} value={field.value ?? ""} placeholder="-----BEGIN PRIVATE KEY-----" autoComplete="off" rows={6} className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs" /></FormControl>
+                <FormControl>
+                  <div className="relative">
+                    <textarea
+                      {...field}
+                      value={field.value ?? ""}
+                      placeholder="-----BEGIN PRIVATE KEY-----"
+                      autoComplete="off"
+                      rows={6}
+                      className={`w-full rounded-md border border-input bg-background px-3 py-2 pr-10 font-mono text-xs ${showApplePrivateKey ? "" : "[-webkit-text-security:disc]"}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApplePrivateKey(value => !value)}
+                      aria-label={showApplePrivateKey ? "Hide Apple private key" : "Show Apple private key"}
+                      className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      {showApplePrivateKey ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+                    </button>
+                  </div>
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

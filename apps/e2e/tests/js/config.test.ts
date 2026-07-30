@@ -92,7 +92,7 @@ describe("error handling", () => {
         allowSignIn: true,
         allowConnectedAccounts: true,
       },
-    } as any);
+    });
 
     const config = await project.getConfig();
     const apple = config.auth.oauth.providers.apple;
