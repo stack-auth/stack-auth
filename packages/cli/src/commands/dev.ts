@@ -754,13 +754,18 @@ child.on("error", (error) => {
 });
 `;
 
-function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+// `cwd` is undefined when no service is selected (a bare `hexclave dev --
+// <command>` keeps the caller's directory). On POSIX it is handed to the
+// wrapper process, whose own inner spawn inherits it — so the app command
+// lands in the same directory on both platforms.
+function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv, cwd: string | undefined): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env, shell: command.shell ?? false })
+      ? spawn(command.command, command.args, { stdio: "inherit", env, cwd, shell: command.shell ?? false })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
+        cwd,
         env: {
           ...env,
           [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
@@ -914,9 +919,9 @@ export function registerDevCommand(program: Command) {
   program
     .command("dev")
     .usage("--config-file <path> [--service-id <id>] [-- <command> [args...]]")
-    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the config file's `services` export is run and its env vars are injected (secrets resolve to their default values; service() connections resolve to null and are omitted).")
+    .description("Run a command with Hexclave development-environment credentials. With --service-id, the service's devCommand from the config file's `services` export is run in the service's rootDirectory and its env vars are injected (secrets resolve to their default values; `service()` returns null, so guard connection values with isDev — reading an output off it, e.g. `service(\"api\").url`, throws).")
     .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
-    .option("--service-id <id>", "Run the devCommand of this service from the config file's `services` export, with the service's env vars injected")
+    .option("--service-id <id>", "Run the devCommand of this service from the config file's `services` export, in its rootDirectory and with the service's env vars injected")
     .argument("[command...]", "Command and arguments to run after -- (overrides the service's devCommand)")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
@@ -944,6 +949,21 @@ export function registerDevCommand(program: Command) {
         }
         if (commandArgs.length === 0 && devService.devCommand == null) {
           throw new CliError(`The service ${JSON.stringify(opts.serviceId)} has no devCommand in the config file's services export. Add one (e.g. devCommand: "npm run dev"), or pass a command after --.`);
+        }
+        // The service's rootDirectory becomes the child's cwd below, so check it
+        // HERE rather than letting spawn fail: spawn reports a bad cwd as an
+        // ENOENT naming the EXECUTABLE ("spawn pnpm ENOENT" — reads as "pnpm is
+        // not installed"), and a cwd that points at a file makes it throw
+        // synchronously, escaping the CliError wrapping in runChildProcess.
+        const rootDirectoryStats = (() => {
+          try {
+            return statSync(devService.absoluteRootDirectory);
+          } catch {
+            return null;
+          }
+        })();
+        if (rootDirectoryStats == null || !rootDirectoryStats.isDirectory()) {
+          throw new CliError(`The rootDirectory of the service ${JSON.stringify(opts.serviceId)} is ${devService.absoluteRootDirectory}, which ${rootDirectoryStats == null ? "does not exist" : "is not a directory"}. Fix \`rootDirectory\` in the config file's services export — it is where the service's devCommand runs.`);
         }
       }
       // An explicit `-- <command>` always overrides the service's devCommand.
@@ -989,7 +1009,12 @@ export function registerDevCommand(program: Command) {
           process.env,
           devService != null ? resolveDevEnv(devService, sessionState.session.env) : {},
           sessionState.session.env,
-        ));
+        // A selected service runs in its own rootDirectory, which is where its
+        // code lives (`pnpm dev` at a monorepo root would otherwise start the
+        // ROOT package, not the service). Applied for an explicit `--
+        // <command>` too when a service is selected: its env vars are already
+        // injected above, so the directory should match the same service.
+        ), devService?.absoluteRootDirectory);
       } finally {
         stopped = true;
         await Promise.all([heartbeat, browserSecretCodePolling]);

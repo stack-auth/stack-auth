@@ -53,6 +53,13 @@ export const ENV_VAR_KEY_REGEX = DEPLOYMENT_ENV_VAR_KEY_REGEX;
 
 export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include: { domains: true } }>;
 
+// Every read of a service's domains goes through this, because the
+// "primary verified domain, else ANY verified domain" fallback below (and in
+// serializeServiceRow) is order-sensitive: with two verified non-primary
+// domains, an unordered include would let the URL we bake into a consumer's
+// build — and the one the API reports — flip between reads.
+const DOMAINS_INCLUDE_ORDER = { orderBy: { hostname: "asc" } } as const satisfies Prisma.DeploymentService$domainsArgs;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -113,7 +120,7 @@ export function definitionFromServiceRow(row: {
 export async function listServiceRows(prisma: PrismaClientTransaction, tenancy: Tenancy): Promise<DeploymentServiceRow[]> {
   return await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
-    include: { domains: true },
+    include: { domains: DOMAINS_INCLUDE_ORDER },
     orderBy: { serviceId: "asc" },
   });
 }
@@ -126,7 +133,7 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
         serviceId,
       },
     },
-    include: { domains: true },
+    include: { domains: DOMAINS_INCLUDE_ORDER },
   });
   if (row == null) {
     throw new StatusError(404, `No deployment service with id ${JSON.stringify(serviceId)} exists in this project. Add it to the \`services\` export of your hexclave.config.ts and run \`hexclave deploy\`.`);
@@ -499,7 +506,7 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
       },
     },
     include: {
-      domains: true,
+      domains: DOMAINS_INCLUDE_ORDER,
     },
   });
   const primaryDomain = service?.domains.find((d) => d.isPrimary && d.verified) ?? service?.domains.find((d) => d.verified);

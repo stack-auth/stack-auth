@@ -1718,7 +1718,9 @@ model DeploymentService {
   // from the config file.
   // Record of env var key -> DeploymentEnvVarDefinition (see
   // @hexclave/shared/dist/deployments): { value } for plain vars,
-  // { type: "secret", key, default_value? } for secrets (never their values),
+  // { type: "secret", key } for secrets (never their values, and never their
+  // `secret(key, default)` fallbacks — those travel with the deploy request
+  // and are rejected by deploymentEnvVarSchema on every write path),
   // { type: "connection", value } for service-output references.
   env Json @default("{}")
 

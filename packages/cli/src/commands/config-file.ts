@@ -172,7 +172,7 @@ async function pushConfigWithSecretServerKey(
   const message = responseText.length > 0
     ? responseText
     : `Request failed with status ${response.status}.`;
-  throw new CliError(`Failed to push config with STACK_SECRET_SERVER_KEY: ${message}`);
+  throw new CliError(`Failed to push config with HEXCLAVE_SECRET_SERVER_KEY: ${message}`);
 }
 
 /**
@@ -185,7 +185,7 @@ export async function pushConfigToProject(auth: ProjectAuth, config: Environment
     await pushConfigWithSecretServerKey(auth, config, source);
   } else {
     if (!isProjectAuthWithRefreshToken(auth)) {
-      throw new CliError("Pushing the config requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
+      throw new CliError("Pushing the config requires either HEXCLAVE_SECRET_SERVER_KEY or `hexclave login`.");
     }
     const project = await getAdminProject(auth);
     await project.pushConfig(config, {
@@ -261,13 +261,13 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
+    .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the HEXCLAVE_PROJECT_ID env var)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
     .option("--overwrite", "Replace the config file if one already exists at the target path")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
-        throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+        throw new CliError("`hexclave config pull` requires `hexclave login`. Unset HEXCLAVE_SECRET_SERVER_KEY (or the legacy STACK_SECRET_SERVER_KEY) and try again.");
       }
       // Resolve and validate the target file before any network work so we fail fast (e.g. when the
       // target already exists without --overwrite) instead of paying for a wasted round-trip.
@@ -292,7 +292,7 @@ export function registerConfigCommand(program: Command) {
   config
     .command("push")
     .description("Push a local config file to branch config")
-    .option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the STACK_PROJECT_ID env var)")
+    .option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the HEXCLAVE_PROJECT_ID env var)")
     .requiredOption("--config-file <path>", "Path to config file (.js or .ts)")
     .option("--source <type>", "Explicit source type for this push. Only 'github' is supported.")
     .option("--source-repo <owner/repo>", "GitHub repository in 'owner/repo' format. Only allowed with --source github.")

@@ -35,7 +35,7 @@ export const deploymentsSkillSection = deindent`
       env: {
         MY_ENV_VAR: "true",
         OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
-        API_URL: service("api").url,
+        API_URL: isDev ? "http://localhost:3001" : service("api").url,
         NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
       },
     },
