@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("fs", async () => {
-  const actual = await vi.importActual("fs");
+  const actual = await vi.importActual<typeof import("fs")>("fs");
   return {
     ...actual,
     chmodSync: vi.fn(actual.chmodSync),
