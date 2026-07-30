@@ -13,7 +13,7 @@ import {
   authenticateWorkflowRunToken,
   authenticateWorkflowRunTokenRequestOrThrow,
   createWorkflowRunToken,
-  getWorkflowRunTokenFromHeaders,
+  getWorkflowRunTokenForRequest,
   isWorkflowRunToken,
   verifyWorkflowRunTokenClaims,
   WORKFLOW_RUN_TOKEN_PREFIX,
@@ -80,7 +80,7 @@ describe("workflow run token — cryptographic layer", () => {
     // `decodeAccessToken` parses an access-token audience positionally as
     // aud.split(":")[0]. If a run token were ever replayed in the access-token
     // header, that parse must not yield a real project id — otherwise the
-    // issuer claim would be the only thing separating a project-admin
+    // issuer claim would be the only thing separating a project-server
     // credential from an end-user one.
     const token = await mint();
     const aud = String(jose.decodeJwt(token.slice(WORKFLOW_RUN_TOKEN_PREFIX.length)).aud);
@@ -279,25 +279,32 @@ describe("workflow run token — live state check", () => {
   });
 });
 
-describe("workflow run token — header routing", () => {
-  test("returns null when neither header holds a run token", () => {
-    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: null, superSecretAdminKey: null })).toBeNull();
-    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "ssk_abc123", superSecretAdminKey: "sak_abc123" })).toBeNull();
+describe("workflow run token — request routing (server scope)", () => {
+  test("authenticates server-type requests", () => {
+    expect(getWorkflowRunTokenForRequest({ requestType: "server", secretServerKey: "wrt_x" })).toBe("wrt_x");
   });
 
-  test("routes a token in the admin header", () => {
-    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "ssk_abc123", superSecretAdminKey: "wrt_x" }))
-      .toEqual({ token: "wrt_x", fromAdminHeader: true });
+  test("authenticates client-type requests, which are strictly weaker", () => {
+    expect(getWorkflowRunTokenForRequest({ requestType: "client", secretServerKey: "wrt_x" })).toBe("wrt_x");
   });
 
-  test("routes a token in the server header", () => {
-    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "wrt_x", superSecretAdminKey: null }))
-      .toEqual({ token: "wrt_x", fromAdminHeader: false });
+  test("NEVER authenticates admin-type requests — this is the token's scope boundary", () => {
+    // The whole point of the credential being server-scoped. An admin-type
+    // request must fall through to the ordinary admin-key path instead.
+    expect(getWorkflowRunTokenForRequest({ requestType: "admin", secretServerKey: "wrt_x" })).toBeNull();
   });
 
-  test("prefers the admin header when both hold tokens", () => {
-    expect(getWorkflowRunTokenFromHeaders({ secretServerKey: "wrt_server", superSecretAdminKey: "wrt_admin" }))
-      .toEqual({ token: "wrt_admin", fromAdminHeader: true });
+  test("ignores real keys and absent credentials", () => {
+    expect(getWorkflowRunTokenForRequest({ requestType: "server", secretServerKey: "ssk_abc123" })).toBeNull();
+    expect(getWorkflowRunTokenForRequest({ requestType: "server", secretServerKey: null })).toBeNull();
+    expect(getWorkflowRunTokenForRequest({ requestType: "client", secretServerKey: "pck_abc123" })).toBeNull();
+  });
+
+  test("only reads the server-key header — a token in the admin slot is not routed here", () => {
+    // A `wrt_` value in the admin header must be left to the ApiKeySet lookup,
+    // which cannot match it. Routing it here would hand admin scope back.
+    expect(getWorkflowRunTokenForRequest({ requestType: "admin", secretServerKey: null })).toBeNull();
+    expect(getWorkflowRunTokenForRequest({ requestType: "server", secretServerKey: null })).toBeNull();
   });
 });
 
@@ -310,9 +317,9 @@ describe("workflow run token — auth-path entry point", () => {
     consoleLogSpy.mockClear();
   });
 
-  const authenticateRequest = async (overrides?: { token?: string, fromAdminHeader?: boolean, tenancyId?: string | null }) => {
+  const authenticateRequest = async (overrides?: { token?: string, tenancyId?: string | null }) => {
     return await authenticateWorkflowRunTokenRequestOrThrow({
-      credential: { token: overrides?.token ?? await mint(), fromAdminHeader: overrides?.fromAdminHeader ?? true },
+      token: overrides?.token ?? await mint(),
       projectId: PROJECT_ID,
       branchId: CLAIMS.branchId,
       tenancyId: overrides && "tenancyId" in overrides ? overrides.tenancyId ?? null : CLAIMS.tenancyId,
@@ -325,30 +332,25 @@ describe("workflow run token — auth-path entry point", () => {
     expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 
-  test("maps a rejection to the invalid-admin-key error when the token rode in the admin header", async () => {
+  test("maps a rejection to the invalid-server-key error — the token is a server credential, never an admin one", async () => {
     findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
-    await expect(authenticateRequest({ fromAdminHeader: true })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
-  });
-
-  test("maps a rejection to the invalid-server-key error when the token rode in the server header", async () => {
-    findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
-    await expect(authenticateRequest({ fromAdminHeader: false })).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
+    await expect(authenticateRequest()).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
   });
 
   test("treats an unresolved tenancy as an authentication failure, without a log line or a DB read", async () => {
-    await expect(authenticateRequest({ tenancyId: null })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    await expect(authenticateRequest({ tenancyId: null })).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
     expect(consoleLogSpy).not.toHaveBeenCalled();
     expect(findUniqueMock).not.toHaveBeenCalled();
   });
 
   test("does not log rejections reachable by unauthenticated callers (forged signature)", async () => {
-    await expect(authenticateRequest({ token: await mintRaw({ expirationTime: "-60s" }) })).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    await expect(authenticateRequest({ token: await mintRaw({ expirationTime: "-60s" }) })).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
     expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 
   test("logs when a GENUINE engine-minted token is rejected (canceled run still calling out)", async () => {
     findUniqueMock.mockResolvedValue({ state: "CANCELED", leaseToken: CLAIMS.leaseToken, workflowId: CLAIMS.workflowId });
-    await expect(authenticateRequest()).rejects.toThrow(KnownErrors.InvalidSuperSecretAdminKey);
+    await expect(authenticateRequest()).rejects.toThrow(KnownErrors.InvalidSecretServerKey);
     expect(consoleLogSpy).toHaveBeenCalledTimes(1);
     expect(consoleLogSpy.mock.calls[0][0]).toContain("run-not-running");
   });

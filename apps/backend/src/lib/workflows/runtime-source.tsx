@@ -22,7 +22,7 @@
 export const WORKFLOWS_RUNTIME_PACKAGE_SOURCE = `
 // Virtual module "@hexclave/workflows" (workflow runtime, executes in the sandbox).
 
-import { HexclaveAdminApp } from "@hexclave/js";
+import { HexclaveServerApp } from "@hexclave/js";
 
 type SandboxTrigger = { type: "event", eventType: string } | { type: "schedule", cron: string, timezone: string };
 type SandboxStepBagEntry = { kind: "run" | "sleep", stepId: string, result: unknown };
@@ -40,7 +40,7 @@ type SandboxInput = {
   event?: { id: string, type: string, tsMillis: number, data: unknown },
   steps?: Record<string, SandboxStepBagEntry>,
   run?: { id: string, workflowId: string, version: number },
-  credentials?: { apiUrl: string, projectId: string, branchId: string, secretServerKey: string, superSecretAdminKey: string },
+  credentials?: { apiUrl: string, projectId: string, branchId: string, secretServerKey: string },
 };
 
 function getInput(): SandboxInput {
@@ -452,13 +452,16 @@ class StepTimeoutMarker {
 const appCredentials = getInput().credentials;
 
 /**
- * The complete admin SDK, authenticated with a short-lived token minted for
- * this run (it occupies the SDK's key options, but it is a signed run-scoped
- * credential, not an API key — see lib/workflows/run-token.tsx).
+ * The server SDK, authenticated with a short-lived token minted for this run
+ * (it occupies the SDK's secret-server-key option, but it is a signed
+ * run-scoped credential, not an API key — see lib/workflows/run-token.tsx).
+ * Deliberately the ServerApp and not the AdminApp: a workflow reads and writes
+ * project data, it does not administer the project's own configuration, and
+ * the run token is not accepted on admin-type requests.
  * Manifest/run-key/probe imports receive inert credentials;
  * noAutomaticPrefetch guarantees those modes never make a request.
  */
-export const hexclaveApp = new HexclaveAdminApp({
+export const hexclaveApp = new HexclaveServerApp({
   baseUrl: appCredentials?.apiUrl ?? "http://workflow-manifest.invalid",
   // SDK construction validates project IDs before any request is made. The
   // manifest identity must therefore use the one reserved non-UUID project
@@ -467,7 +470,6 @@ export const hexclaveApp = new HexclaveAdminApp({
   projectId: appCredentials?.projectId ?? "internal",
   tokenStore: null,
   secretServerKey: appCredentials?.secretServerKey ?? "ssk_workflow_manifest",
-  superSecretAdminKey: appCredentials?.superSecretAdminKey ?? "sak_workflow_manifest",
   extraRequestHeaders: {
     "x-stack-branch-id": appCredentials?.branchId ?? "main",
   },
