@@ -174,11 +174,7 @@ describe.skipIf(!canRun)("internal tool ingest validation", () => {
     scope.trackMcpQuestion(marker);
     const res = await postIngest("/api/backend/log-mcp-call", validMcpCallBody(marker));
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.body)).toMatchInlineSnapshot(`
-      {
-        "success": true,
-      }
-    `);
+    expect(JSON.parse(res.body)).toMatchInlineSnapshot(`{ "success": true }`);
   });
 
   it("log-ai-query rejects malformed JSON payload fields", async ({ expect }) => {
@@ -211,10 +207,6 @@ describe.skipIf(!canRun)("internal tool ingest validation", () => {
     scope.trackAiQueryCorrelationId(correlationId);
     const res = await postIngest("/api/backend/log-ai-query", validAiQueryBody(correlationId));
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.body)).toMatchInlineSnapshot(`
-      {
-        "success": true,
-      }
-    `);
+    expect(JSON.parse(res.body)).toMatchInlineSnapshot(`{ "success": true }`);
   });
 });
