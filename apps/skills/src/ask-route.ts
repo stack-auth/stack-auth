@@ -1,4 +1,5 @@
 import { callHexclaveAskAi, type HexclaveAskDiagnostic } from "../../../packages/shared/src/ai/hexclave-ask";
+import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const ASK_ROUTE_HEADERS = {
@@ -138,7 +139,7 @@ async function callUnifiedAiEndpoint(req: Request): Promise<Response> {
   const continuationGuidance = result.conversationId == null
     ? ""
     : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next /ask request to continue this conversation]`;
-  return textResponse(`${result.text}${continuationGuidance}`);
+  return textResponse(`${result.text}${continuationGuidance}\n\n---\n\n${remindersPrompt}`);
 }
 
 export async function handleAskToolRoute(req: Request): Promise<Response> {
