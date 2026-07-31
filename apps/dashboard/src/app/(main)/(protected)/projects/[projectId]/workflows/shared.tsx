@@ -544,7 +544,7 @@ export function configureWorkflowsMonaco(monaco: Monaco) {
   monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_DTS, "file:///node_modules/@hexclave/workflows/index.d.ts");
   monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_AMBIENT_DTS, "file:///ambient-workflows-stdlib.d.ts");
   // Use the same generated SDK source bundle as the dashboard's AI editor,
-  // so hexclaveApp exposes the complete HexclaveAdminApp surface rather than
+  // so hexclaveApp exposes the complete HexclaveServerApp surface rather than
   // another hand-maintained subset that will drift.
   for (const file of BUNDLED_TYPE_DEFINITIONS) {
     monaco.languages.typescript.typescriptDefaults.addExtraLib(

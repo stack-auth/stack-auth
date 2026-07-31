@@ -69,15 +69,15 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
   test("enforces the allowlist through esbuild module resolution", async () => {
     // The quote is inside a comment and deliberately confuses the
     // best-effort source scanner; esbuild still parses and canonicalizes it.
-    const result = await compileWorkflowBundle(`import/*"*/{HexclaveAdminApp}from"@hexclave/js";export default HexclaveAdminApp;`);
+    const result = await compileWorkflowBundle(`import/*"*/{HexclaveServerApp}from"@hexclave/js";export default HexclaveServerApp;`);
     expect(result.status).toBe("error");
     if (result.status === "error") expect(result.error).toContain("@hexclave/js");
   });
 
   test("rejects attempts to import or embed the trusted runtime module marker", async () => {
     for (const source of [
-      `if (false) {} import/*"*/{ HexclaveAdminApp }from"@hexclave/workflows-internal-admin-runtime"; export default HexclaveAdminApp;`,
-      `export default "@hexclave/workflows-internal-admin-runtime";`,
+      `if (false) {} import/*"*/{ HexclaveServerApp }from"@hexclave/workflows-internal-server-runtime"; export default HexclaveServerApp;`,
+      `export default "@hexclave/workflows-internal-server-runtime";`,
     ]) {
       const result = await compileWorkflowBundle(source);
       expect(result.status).toBe("error");
@@ -115,13 +115,13 @@ describe("getUsedStdlibPackages", () => {
 });
 
 describe("workflow runtime dependencies", () => {
-  test("pins the published Hexclave AdminApp package", () => {
+  test("pins the published Hexclave SDK package", () => {
     expect(getWorkflowsRuntimeEnv(WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION).runtimeNodeModules).toEqual({
       "@hexclave/js": "1.0.52",
     });
   });
 
-  test("keeps the real admin SDK as a sandbox-resolved import", async () => {
+  test("keeps the real server SDK as a sandbox-resolved import", async () => {
     const result = await compileWorkflowBundle(`
 import { workflow } from "@hexclave/workflows";
 export default workflow("x", { on: ["user.created"] }, async () => {});
@@ -129,13 +129,22 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.data.compiledBundle).toContain("@hexclave/js");
-      expect(result.data.compiledBundle).toContain("HexclaveAdminApp");
+      expect(result.data.compiledBundle).toContain("HexclaveServerApp");
     }
   });
 
-  test("constructs the inert manifest AdminApp with the reserved internal project ID", () => {
+  test("constructs the inert manifest ServerApp with the reserved internal project ID", () => {
     expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).toContain('projectId: appCredentials?.projectId ?? "internal"');
     expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).not.toContain('projectId: appCredentials?.projectId ?? "workflow-manifest"');
+  });
+
+  test("hands the sandbox a server credential and no admin one", () => {
+    // The run token is server-scoped (run-token.tsx) and the auth path refuses
+    // it on admin-type requests, so a shim that constructed an AdminApp — or
+    // filled an admin key slot — would only produce runtime auth failures.
+    expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).toContain("new HexclaveServerApp({");
+    expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).not.toContain("HexclaveAdminApp");
+    expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).not.toContain("superSecretAdminKey");
   });
 });
 

@@ -1,10 +1,10 @@
 // Type definitions injected into Monaco for workflow authoring. The event
 // catalog mirrors packages/shared/src/interface/workflows.ts, while
-// hexclaveApp is the actual HexclaveAdminApp type from @hexclave/js.
+// hexclaveApp is the actual HexclaveServerApp type from @hexclave/js.
 
 export const WORKFLOWS_EDITOR_DTS = `
 declare module "@hexclave/workflows" {
-  import type { HexclaveAdminApp } from "@hexclave/js";
+  import type { HexclaveServerApp } from "@hexclave/js";
 
   export type UserEventData = {
     id: string,
@@ -118,8 +118,8 @@ declare module "@hexclave/workflows" {
     constructor(message: string);
   }
 
-  /** A real admin SDK instance, authenticated to this workflow's environment. */
-  export const hexclaveApp: HexclaveAdminApp<false>;
+  /** A real server SDK instance, authenticated to this workflow's environment. */
+  export const hexclaveApp: HexclaveServerApp<false>;
 }
 `;
 

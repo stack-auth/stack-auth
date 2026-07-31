@@ -765,11 +765,28 @@ export default workflow("${workflowId}", {
     });
   });
 
+  it("does not let a run-token credential authenticate an admin-type request", async ({ expect }) => {
+    // The token is scoped to SERVER access. On an admin-type request it must
+    // be ignored entirely rather than accepted, so the request succeeds or
+    // fails purely on the strength of the real admin credential beside it.
+    // Before the credential was re-scoped, the run-token path ran first and
+    // this returned 401.
+    await inFreshWorkflowsProject(async () => {
+      const response = await niceBackendFetch("/api/v1/users", {
+        method: "GET",
+        accessType: "admin",
+        headers: { "x-stack-secret-server-key": "wrt_eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJmb3JnZWQifQ.bm90LWEtc2lnbmF0dXJl" },
+      });
+      expect(response.status).toBe(200);
+    });
+  });
+
   it("rejects a forged run-token credential without leaking why", async ({ expect }) => {
-    // The run token rides in the ordinary project-credential headers, keyed on
-    // the `wrt_` prefix. A forged one must fail closed with the same error a
-    // garbage key produces — never a 500, and never a rejection reason that
-    // discloses run ids, run state or lease details.
+    // The run token rides in the secret-server-key header, keyed on the `wrt_`
+    // prefix; the admin header is covered too because a `wrt_` value there is
+    // just a key that matches no row. A forged one must fail closed with the
+    // same error a garbage key produces — never a 500, and never a rejection
+    // reason that discloses run ids, run state or lease details.
     await inFreshWorkflowsProject(async () => {
       for (const header of ["x-stack-secret-server-key", "x-stack-super-secret-admin-key"] as const) {
         const response = await niceBackendFetch("/api/v1/users", {
