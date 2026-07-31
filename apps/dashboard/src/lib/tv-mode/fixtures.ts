@@ -282,6 +282,7 @@ const ordinaryEmailIncidentEvent: TvEvent = {
 const resolvedEmailEvent: TvEvent = {
   ...emailDegradationEvent,
   status: "resolved",
+  title: "Email Delivery Restored",
   metricValue: "98.2%",
   summary: "Email delivery has returned to its expected operating range.",
 };
@@ -318,6 +319,19 @@ function celebrationHighlightWith(options: {
     variant: "celebration",
     expiresAt: options.expiresAt ?? "2026-07-23T20:30:00.000Z",
     animationExpiresAt: options.animationExpiresAt ?? "2026-07-23T15:30:00.000Z",
+  };
+}
+
+function incidentHighlight(
+  event: TvEvent,
+  variant: "active-incident" | "resolved-incident",
+  expiresAt: string | null,
+): TvPresentedEventHighlight {
+  return {
+    event,
+    variant,
+    expiresAt,
+    animationExpiresAt: null,
   };
 }
 
@@ -386,7 +400,15 @@ export function createTvFixtureSnapshot(projectId: string, profile: TvProfileFix
         ? celebrationHighlightWith({ event: newerUserMilestoneEvent })
         : variant === "event-long-content"
           ? celebrationHighlightWith({ event: longContentMilestoneEvent })
-          : null;
+          : variant === "incident-highlight"
+            ? incidentHighlight(ordinaryEmailIncidentEvent, "active-incident", null)
+            : variant === "incident-recovery-highlight"
+              ? incidentHighlight({
+                ...resolvedEmailEvent,
+                id: "fixture-resolved-email-highlight",
+                presentationClass: "incident",
+              }, "resolved-incident", "2026-07-23T20:30:00.000Z")
+              : null;
   const takeover = variant === "celebration-takeover"
     ? presentedTakeover(userMilestoneEvent, "celebration", "2026-07-23T14:33:00.000Z")
     : variant === "celebration-suspended" || variant === "incident-takeover"

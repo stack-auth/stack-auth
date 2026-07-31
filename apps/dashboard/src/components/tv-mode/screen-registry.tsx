@@ -128,7 +128,7 @@ function TvScreenFrame({ eyebrow, title, description, icon, accentClassName, hea
           <p className="mt-[clamp(0.55rem,1.2vh,1.5rem)] max-w-[clamp(32rem,42vw,84rem)] text-[clamp(0.8rem,1vw,2.5rem)] leading-relaxed text-white/46">{description}</p>
         </div>
         {headerAccessory == null ? null : (
-          <div className="w-[clamp(28rem,36vw,72rem)] shrink-0">{headerAccessory}</div>
+          <div className="shrink-0">{headerAccessory}</div>
         )}
       </header>
       <div className="mt-[clamp(1.5rem,4vh,8rem)] min-h-0 flex-1">{children}</div>

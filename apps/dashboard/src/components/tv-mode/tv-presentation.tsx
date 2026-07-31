@@ -76,6 +76,7 @@ function PresentationStatus({ snapshot }: { snapshot: TvSnapshot }) {
 function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight }) {
   const isCelebration = highlight.variant === "celebration";
   const isResolved = highlight.variant === "resolved-incident";
+  const usesWideLayout = highlight.event.title.length > 52 || highlight.event.summary.length > 88;
   const tone = isCelebration
     ? "border-amber-200/20 bg-[radial-gradient(circle_at_10%_10%,rgba(251,191,36,0.18),transparent_55%),rgba(24,18,9,0.84)] text-amber-100"
     : isResolved
@@ -86,7 +87,9 @@ function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight })
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
-      className={`pointer-events-none w-full rounded-[clamp(1rem,1.2vw,2.5rem)] border p-[clamp(1rem,1.3vw,2.7rem)] shadow-2xl backdrop-blur-2xl ${tone}`}
+      className={`pointer-events-none rounded-[clamp(1rem,1.2vw,2.5rem)] border p-[clamp(0.8rem,1vw,2.2rem)] shadow-2xl backdrop-blur-2xl ${
+        usesWideLayout ? "w-[clamp(34rem,44vw,88rem)]" : "w-[clamp(28rem,36vw,72rem)]"
+      } ${tone}`}
     >
       <div className="flex items-start gap-4">
         <div className="flex h-[clamp(2.5rem,3vw,6rem)] w-[clamp(2.5rem,3vw,6rem)] shrink-0 items-center justify-center rounded-xl bg-current/10">
@@ -97,11 +100,14 @@ function EventHighlight({ highlight }: { highlight: TvPresentedEventHighlight })
             <span>{isCelebration ? "Event Highlight" : isResolved ? "Resolved" : "Active Incident"}</span>
             <span className="text-white/35">{formatFixtureTime(highlight.event.updatedAt)}</span>
           </div>
-          <h2 className="mt-2 line-clamp-2 text-[clamp(1rem,1.35vw,3.2rem)] font-semibold leading-tight text-white">{highlight.event.title}</h2>
-          <p className="mt-2 line-clamp-2 text-[clamp(0.72rem,0.82vw,1.9rem)] leading-relaxed text-white/55">{highlight.event.summary}</p>
-          <div className="mt-3 flex items-center justify-between gap-4 border-t border-white/10 pt-3 text-[clamp(0.68rem,0.76vw,1.8rem)]">
-            <span className="text-white/40">{highlight.event.sourceLabel}</span>
-            <span className="font-semibold tabular-nums text-white/85">{highlight.event.metricLabel} · {highlight.event.metricValue}</span>
+          <h2 className="mt-[clamp(0.4rem,0.55vw,1rem)] line-clamp-2 text-[clamp(1rem,1.28vw,3rem)] font-semibold leading-[1.08] text-white">{highlight.event.title}</h2>
+          <p className="mt-[clamp(0.35rem,0.5vw,0.9rem)] line-clamp-2 text-[clamp(0.72rem,0.8vw,1.85rem)] leading-snug text-white/55">{highlight.event.summary}</p>
+          <div className="mt-[clamp(0.55rem,0.7vw,1.25rem)] flex items-end justify-between gap-4 border-t border-white/10 pt-[clamp(0.55rem,0.7vw,1.25rem)] text-[clamp(0.68rem,0.76vw,1.8rem)]">
+            <span className="truncate text-white/40">{highlight.event.sourceLabel}</span>
+            <span className="shrink-0 text-right font-semibold tabular-nums text-white/85">
+              {highlight.event.metricLabel} · {highlight.event.metricValue}
+              {highlight.event.expectedRange == null ? null : <span className="ml-2 font-normal text-white/38">· {highlight.event.expectedRange}</span>}
+            </span>
           </div>
         </div>
       </div>
@@ -116,12 +122,18 @@ function EventTakeover({ takeover }: { takeover: TvPresentedTakeover }) {
   return (
     <section className={`relative flex h-full flex-col overflow-hidden px-[clamp(2rem,6vw,8rem)] py-[clamp(2rem,6vh,6rem)] ${
       isCelebration
-        ? "bg-[radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.3),transparent_45%),linear-gradient(145deg,#241807,#070912_60%)]"
+        ? "bg-[radial-gradient(circle_at_12%_42%,rgba(245,158,11,0.2),transparent_28%),radial-gradient(circle_at_88%_38%,rgba(251,191,36,0.18),transparent_30%),radial-gradient(circle_at_50%_0%,rgba(251,191,36,0.36),transparent_46%),linear-gradient(145deg,#2b1b06,#070912_62%)]"
         : isRecovery
           ? "bg-[radial-gradient(circle_at_50%_0%,rgba(52,211,153,0.25),transparent_45%),linear-gradient(145deg,#082019,#070912_60%)]"
           : "bg-[radial-gradient(circle_at_50%_0%,rgba(244,63,94,0.28),transparent_45%),linear-gradient(145deg,#240a12,#090910_60%)]"
     }`}>
       <div className={`absolute left-1/2 top-0 h-[45vw] w-[45vw] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl ${isCelebration ? "bg-amber-300/10" : isRecovery ? "bg-emerald-300/10" : "bg-rose-400/10"}`} />
+      {isCelebration ? (
+        <>
+          <div className="absolute -left-[8vw] top-[18%] h-[32vw] w-[32vw] rounded-full bg-amber-400/[0.08] blur-[clamp(4rem,8vw,14rem)]" />
+          <div className="absolute -right-[10vw] top-[24%] h-[34vw] w-[34vw] rounded-full bg-orange-300/[0.07] blur-[clamp(4rem,8vw,14rem)]" />
+        </>
+      ) : null}
       <div className="relative flex items-center justify-between">
         <div className={`flex items-center gap-3 text-[clamp(0.7rem,0.9vw,1.05rem)] font-semibold uppercase tracking-[0.25em] ${isCelebration ? "text-amber-200" : isRecovery ? "text-emerald-200" : "text-rose-200"}`}>
           {isCelebration ? <ConfettiIcon className="h-[1.4em] w-[1.4em]" weight="fill" /> : isRecovery ? <CheckCircleIcon className="h-[1.4em] w-[1.4em]" weight="fill" /> : <BroadcastIcon className="h-[1.4em] w-[1.4em]" weight="fill" />}
@@ -168,6 +180,8 @@ function EventTakeover({ takeover }: { takeover: TvPresentedTakeover }) {
 type FireworkParticle = {
   x: number,
   y: number,
+  previousX: number,
+  previousY: number,
   velocityX: number,
   velocityY: number,
   age: number,
@@ -176,16 +190,35 @@ type FireworkParticle = {
   color: string,
 };
 
+type FireworkRocket = {
+  x: number,
+  y: number,
+  previousX: number,
+  previousY: number,
+  targetY: number,
+  velocityY: number,
+  color: string,
+  burstSize: number,
+};
+
+type ConfettiParticle = FireworkParticle & {
+  width: number,
+  rotation: number,
+  rotationVelocity: number,
+};
+
 function CelebrationFireworks({
   ambientActive,
   eventId,
   entryBurst,
   foreground = false,
+  takeoverActive = false,
 }: {
   ambientActive: boolean,
   eventId: string | null,
   entryBurst: boolean,
   foreground?: boolean,
+  takeoverActive?: boolean,
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -197,10 +230,12 @@ function CelebrationFireworks({
     let animationFrame = 0;
     let previousFrameAt = performance.now();
     let nextBurstAt = ambientActive
-      ? previousFrameAt + (foreground ? 4_500 : 900)
+      ? previousFrameAt + (takeoverActive ? 250 : foreground ? 3_800 : 650)
       : Number.POSITIVE_INFINITY;
     let visible = document.visibilityState === "visible";
     const particles: FireworkParticle[] = [];
+    const rockets: FireworkRocket[] = [];
+    const confetti: ConfettiParticle[] = [];
     const colors = ["#fef3c7", "#fde68a", "#fbbf24", "#f59e0b", "#fff7ed"];
 
     const resize = () => {
@@ -209,27 +244,75 @@ function CelebrationFireworks({
       canvas.height = Math.max(1, Math.floor(canvas.clientHeight * ratio));
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
     };
-    const burst = (x: number, y: number, count: number) => {
-      const available = Math.max(0, (foreground ? 24 : 180) - particles.length);
+    const getViewportScale = () => Math.min(2, Math.max(1, canvas.clientWidth / 1920));
+    const burst = (x: number, y: number, count: number, scale = 1) => {
+      const particleCap = takeoverActive ? 260 : foreground ? 42 : 220;
+      const available = Math.max(0, particleCap - particles.length);
+      const visualScale = scale * getViewportScale();
       for (let index = 0; index < Math.min(count, available); index += 1) {
         const angle = (Math.PI * 2 * index) / count + Math.random() * 0.18;
-        const speed = 22 + Math.random() * 52;
+        const speed = (34 + Math.random() * 74) * visualScale;
         particles.push({
           x,
           y,
+          previousX: x,
+          previousY: y,
           velocityX: Math.cos(angle) * speed,
           velocityY: Math.sin(angle) * speed,
           age: 0,
-          lifetime: 1.7 + Math.random() * 1.2,
-          radius: 0.7 + Math.random() * 1.5,
+          lifetime: 1.9 + Math.random() * 1.35,
+          radius: (1.15 + Math.random() * 2.1) * visualScale,
+          color: colors[Math.floor(Math.random() * colors.length)] ?? "#fde68a",
+        });
+      }
+    };
+    const launchRocket = (x: number, targetY: number, burstSize: number) => {
+      if (rockets.length >= (takeoverActive ? 7 : foreground ? 3 : 5)) return;
+      const visualScale = getViewportScale();
+      const color = colors[Math.floor(Math.random() * colors.length)] ?? "#fde68a";
+      rockets.push({
+        x,
+        y: canvas.clientHeight * (0.96 + Math.random() * 0.08),
+        previousX: x,
+        previousY: canvas.clientHeight,
+        targetY,
+        velocityY: -(260 + Math.random() * 90) * visualScale,
+        color,
+        burstSize,
+      });
+    };
+    const launchConfetti = (side: "left" | "right") => {
+      const visualScale = getViewportScale();
+      const direction = side === "left" ? 1 : -1;
+      const x = side === "left" ? canvas.clientWidth * 0.025 : canvas.clientWidth * 0.975;
+      const available = Math.max(0, 150 - confetti.length);
+      for (let index = 0; index < Math.min(68, available); index += 1) {
+        const y = canvas.clientHeight * (0.48 + Math.random() * 0.32);
+        confetti.push({
+          x,
+          y,
+          previousX: x,
+          previousY: y,
+          velocityX: direction * (125 + Math.random() * 240) * visualScale,
+          velocityY: -(170 + Math.random() * 300) * visualScale,
+          age: 0,
+          lifetime: 2.8 + Math.random() * 1.6,
+          radius: 1,
+          width: (5 + Math.random() * 8) * visualScale,
+          rotation: Math.random() * Math.PI,
+          rotationVelocity: (Math.random() - 0.5) * 12,
           color: colors[Math.floor(Math.random() * colors.length)] ?? "#fde68a",
         });
       }
     };
     resize();
     if (entryBurst) {
-      burst(canvas.clientWidth * 0.18, canvas.clientHeight * 0.3, 52);
-      burst(canvas.clientWidth * 0.82, canvas.clientHeight * 0.3, 52);
+      launchConfetti("left");
+      launchConfetti("right");
+      launchRocket(canvas.clientWidth * 0.14, canvas.clientHeight * 0.28, 72);
+      launchRocket(canvas.clientWidth * 0.32, canvas.clientHeight * 0.18, 64);
+      launchRocket(canvas.clientWidth * 0.68, canvas.clientHeight * 0.2, 64);
+      launchRocket(canvas.clientWidth * 0.86, canvas.clientHeight * 0.3, 72);
     }
 
     const handleVisibility = () => {
@@ -243,18 +326,49 @@ function CelebrationFireworks({
       previousFrameAt = now;
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
+      const viewportScale = getViewportScale();
       context.clearRect(0, 0, width, height);
       if (now >= nextBurstAt) {
-        burst(
-          width * (0.12 + Math.random() * 0.76),
-          height * (0.18 + Math.random() * 0.48),
-          foreground ? 4 + Math.floor(Math.random() * 4) : 28 + Math.floor(Math.random() * 24),
+        const edgeBiasedX = takeoverActive
+          ? width * (Math.random() < 0.5 ? 0.08 + Math.random() * 0.28 : 0.64 + Math.random() * 0.28)
+          : width * (0.08 + Math.random() * 0.84);
+        launchRocket(
+          edgeBiasedX,
+          height * (0.12 + Math.random() * 0.48),
+          takeoverActive ? 60 + Math.floor(Math.random() * 34) : foreground ? 12 + Math.floor(Math.random() * 10) : 42 + Math.floor(Math.random() * 28),
         );
+        if (!takeoverActive && !foreground) {
+          launchRocket(
+            width * (0.08 + Math.random() * 0.84),
+            height * (0.12 + Math.random() * 0.48),
+            42 + Math.floor(Math.random() * 28),
+          );
+        }
         nextBurstAt = now + (foreground
-          ? 8_000 + Math.random() * 6_000
-          : 3_200 + Math.random() * 4_800);
+          ? takeoverActive ? 1_350 + Math.random() * 2_250 : 6_000 + Math.random() * 5_000
+          : 2_100 + Math.random() * 3_900);
       }
       context.globalCompositeOperation = "lighter";
+      for (let index = rockets.length - 1; index >= 0; index -= 1) {
+        const rocket = rockets[index];
+        rocket.previousX = rocket.x;
+        rocket.previousY = rocket.y;
+        rocket.y += rocket.velocityY * elapsed;
+        rocket.velocityY += 55 * viewportScale * elapsed;
+        context.beginPath();
+        context.strokeStyle = rocket.color;
+        context.globalAlpha = takeoverActive ? 0.8 : foreground ? 0.35 : 0.62;
+        context.lineWidth = (takeoverActive ? 2.8 : 1.8) * getViewportScale();
+        context.shadowColor = rocket.color;
+        context.shadowBlur = takeoverActive ? 18 : 10;
+        context.moveTo(rocket.previousX, rocket.previousY + 18);
+        context.lineTo(rocket.x, rocket.y);
+        context.stroke();
+        if (rocket.y <= rocket.targetY || rocket.velocityY >= -25) {
+          burst(rocket.x, rocket.y, rocket.burstSize, takeoverActive ? 1.22 : 1);
+          rockets.splice(index, 1);
+        }
+      }
       for (let index = particles.length - 1; index >= 0; index -= 1) {
         const particle = particles[index];
         particle.age += elapsed;
@@ -262,15 +376,50 @@ function CelebrationFireworks({
           particles.splice(index, 1);
           continue;
         }
-        particle.velocityY += 24 * elapsed;
+        particle.velocityY += 24 * viewportScale * elapsed;
+        particle.previousX = particle.x;
+        particle.previousY = particle.y;
         particle.x += particle.velocityX * elapsed;
         particle.y += particle.velocityY * elapsed;
-        const opacity = Math.max(0, 1 - particle.age / particle.lifetime) * (foreground ? 0.12 : 0.42);
+        particle.velocityX *= 0.992;
+        const opacity = Math.max(0, 1 - particle.age / particle.lifetime) * (takeoverActive ? 0.78 : foreground ? 0.22 : 0.58);
+        context.beginPath();
+        context.strokeStyle = particle.color;
+        context.globalAlpha = opacity * 0.45;
+        context.lineWidth = Math.max(0.75, particle.radius * 0.62);
+        context.moveTo(particle.previousX, particle.previousY);
+        context.lineTo(particle.x, particle.y);
+        context.stroke();
         context.beginPath();
         context.fillStyle = particle.color;
         context.globalAlpha = opacity;
+        context.shadowColor = particle.color;
+        context.shadowBlur = takeoverActive ? 16 : 9;
         context.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
         context.fill();
+      }
+      context.globalCompositeOperation = "source-over";
+      context.shadowBlur = 0;
+      for (let index = confetti.length - 1; index >= 0; index -= 1) {
+        const particle = confetti[index];
+        particle.age += elapsed;
+        if (particle.age >= particle.lifetime) {
+          confetti.splice(index, 1);
+          continue;
+        }
+        particle.velocityY += 190 * viewportScale * elapsed;
+        particle.velocityX *= 0.986;
+        particle.x += particle.velocityX * elapsed;
+        particle.y += particle.velocityY * elapsed;
+        particle.rotation += particle.rotationVelocity * elapsed;
+        const opacity = Math.max(0, 1 - particle.age / particle.lifetime);
+        context.save();
+        context.translate(particle.x, particle.y);
+        context.rotate(particle.rotation);
+        context.fillStyle = particle.color;
+        context.globalAlpha = opacity * 0.88;
+        context.fillRect(-particle.width / 2, -2, particle.width, 4);
+        context.restore();
       }
       context.globalAlpha = 1;
       context.globalCompositeOperation = "source-over";
@@ -285,9 +434,19 @@ function CelebrationFireworks({
       document.removeEventListener("visibilitychange", handleVisibility);
       context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     };
-  }, [ambientActive, entryBurst, eventId, foreground]);
+  }, [ambientActive, entryBurst, eventId, foreground, takeoverActive]);
 
-  return <canvas ref={canvasRef} aria-hidden className={`pointer-events-none absolute inset-0 h-full w-full ${foreground ? "z-[15] opacity-60" : "z-[5] opacity-90"}`} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      data-celebration-layer={foreground ? "foreground" : "background"}
+      data-ambient-effects={ambientActive ? "active" : "inactive"}
+      data-entry-burst={entryBurst ? "active" : "inactive"}
+      data-takeover-effects={takeoverActive ? "active" : "inactive"}
+      className={`pointer-events-none absolute inset-0 h-full w-full ${foreground ? "z-[15] opacity-80" : "z-[5] opacity-100"}`}
+    />
+  );
 }
 
 function useAuthoritativeDeadlineActive(
@@ -506,15 +665,16 @@ export function TvPresentation({
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(99,102,241,0.09),transparent_32%),radial-gradient(circle_at_85%_75%,rgba(34,211,238,0.06),transparent_30%)]" />
       <CelebrationFireworks
-        ambientActive={celebrationAnimationActive}
+        ambientActive={celebrationAnimationActive && !takeoverIsCelebration}
         eventId={takeoverIsCelebration ? takeoverEventId : highlight?.event.id ?? null}
-        entryBurst={reducedMotion !== true && takeoverIsCelebration}
+        entryBurst={false}
       />
       <CelebrationFireworks
         ambientActive={celebrationAnimationActive}
         eventId={takeoverIsCelebration ? takeoverEventId : highlight?.event.id ?? null}
-        entryBurst={false}
+        entryBurst={reducedMotion !== true && takeoverIsCelebration}
         foreground
+        takeoverActive={takeoverIsCelebration}
       />
       <AnimatePresence mode="wait">
         <motion.div

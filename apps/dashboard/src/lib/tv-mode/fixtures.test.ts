@@ -179,8 +179,10 @@ describe("TV Mode centralized fixtures", () => {
     const variants: TvFixtureVariant[] = [
       "celebration-highlight",
       "celebration-takeover",
+      "incident-highlight",
       "incident-takeover",
       "critical-takeover",
+      "incident-recovery-highlight",
       "critical-recovery",
     ];
     expect(variants.map((variant) => {
@@ -189,10 +191,31 @@ describe("TV Mode centralized fixtures", () => {
     })).toEqual([
       "celebration",
       "celebration",
+      "active-incident",
       "incident",
       "critical-incident",
+      "resolved-incident",
       "recovery-confirmation",
     ]);
+  });
+
+  it("uses recovery-specific copy for resolved incident fixtures", () => {
+    const recoveryScreen = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-recovery");
+    const recoveryHighlight = createTvFixtureSnapshot("project-fixture", getProfile(), "incident-recovery-highlight");
+
+    expect(recoveryScreen.presentation.takeover?.event).toMatchObject({
+      title: "Email Delivery Restored",
+      status: "resolved",
+      metricValue: "98.2%",
+      expectedRange: "Expected 95% or higher",
+    });
+    expect(recoveryHighlight.presentation.highlight).toMatchObject({
+      variant: "resolved-incident",
+      event: {
+        title: "Email Delivery Restored",
+        status: "resolved",
+      },
+    });
   });
 
   it("models celebration suspension, resumption, replacement, and expiry without resetting deadlines", () => {

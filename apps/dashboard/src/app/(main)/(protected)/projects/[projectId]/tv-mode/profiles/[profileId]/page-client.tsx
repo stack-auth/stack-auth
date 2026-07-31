@@ -47,7 +47,10 @@ import {
   editorDraftToProfileConfiguration,
   profileResourceToEditorDraft,
 } from "@/lib/tv-mode/profile-editor-model";
-import { getTvProfileEditorCopy } from "@/lib/tv-mode/profile-editor-copy";
+import {
+  getTvProfileEditorCopy,
+  TV_EVENT_PREVIEW_GROUPS,
+} from "@/lib/tv-mode/profile-editor-copy";
 import type { TvProfileFixture, TvScreenId } from "@/lib/tv-mode/types";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
@@ -265,16 +268,16 @@ export default function PageClient() {
 
   if (loading) {
     return (
-      <PageLayout title="TV profile" description="Loading project presentation configuration…">
-        <DesignAlert variant="info" title="Loading profile" description="Resolving the project-scoped profile configuration." />
+      <PageLayout title="TV Profile" description="Loading project presentation configuration…">
+        <DesignAlert variant="info" title="Loading Profile" description="Resolving the project-scoped profile configuration." />
       </PageLayout>
     );
   }
 
   if (loadError || draft == null || saved == null || resource == null) {
     return (
-      <PageLayout title="TV profile not found" description="The requested fixture profile does not exist.">
-        <DesignAlert variant="error" title="Unknown profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
+      <PageLayout title="TV Profile Not Found" description="The requested fixture profile does not exist.">
+        <DesignAlert variant="error" title="Unknown Profile" description={`No TV presentation profile exists for "${profileId}", or it could not be loaded.`} />
         <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
           <ArrowLeftIcon className="h-4 w-4" />
           Back to TV Mode
@@ -306,7 +309,7 @@ export default function PageClient() {
             </DesignButton>
             <DesignButton variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
               <EyeIcon className="h-4 w-4" />
-              Preview changes
+              Preview Changes
             </DesignButton>
             <button
               type="button"
@@ -323,7 +326,7 @@ export default function PageClient() {
         <div className="flex items-center gap-2">
           <Link href={`/projects/${projectId}/tv-mode`} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="h-3.5 w-3.5" />
-            All profiles
+            All Profiles
           </Link>
           <span className="text-muted-foreground/40">/</span>
           <span className="text-xs text-muted-foreground">{editorCopy.breadcrumb}</span>
@@ -337,21 +340,21 @@ export default function PageClient() {
         {popupBlocked ? (
           <DesignAlert
             variant="error"
-            title="TV presentation was blocked"
+            title="TV Presentation Was Blocked"
             description="Allow popups for this dashboard, then launch the presentation again. Your profile changes remain on this page."
           />
         ) : null}
         {savedNoticeVisible ? (
-          <DesignAlert variant="success" title="Profile saved" description="The project profile and its optimistic-concurrency version were updated." />
+          <DesignAlert variant="success" title="Profile Saved" description="The project profile and its optimistic-concurrency version were updated." />
         ) : null}
-        {saveError != null ? <DesignAlert variant="error" title="Profile was not saved" description={saveError} /> : null}
+        {saveError != null ? <DesignAlert variant="error" title="Profile Was Not Saved" description={saveError} /> : null}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
           <div className="space-y-4">
             <DesignCard title="Profile" subtitle="Identity and presentation mode" icon={MonitorPlayIcon} gradient="cyan" glassmorphic>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="tv-profile-name" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">TV name</label>
+                  <label htmlFor="tv-profile-name" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">TV Name</label>
                   <DesignInput
                     id="tv-profile-name"
                     value={draft.displayName}
@@ -450,23 +453,8 @@ export default function PageClient() {
               </div>
             </DesignCard>
 
-            <DesignCard title="Interruption policy" subtitle="How important events take over this TV" icon={WarningCircleIcon} gradient="orange" glassmorphic>
-              <div>
-                {settingRow({
-                  title: "Email delivery degradation",
-                  description: "Temporary Incident takeover, escalating to a persistent Critical Incident when required.",
-                  control: <Switch checked={draft.incidentTypes.emailDeliveryDegradation} onCheckedChange={(emailDeliveryDegradation) => setDraft({
-                    ...draft,
-                    incidentTypes: { emailDeliveryDegradation },
-                  })} aria-label="Enable email delivery degradation interruptions" />,
-                })}
-              </div>
-            </DesignCard>
-          </div>
-
-          <div className="space-y-4">
             <DesignCard title="Timing" subtitle="Default pacing for the room" icon={ClockIcon} gradient="purple" glassmorphic>
-              <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation speed</label>
+              <label htmlFor="tv-default-duration" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rotation Speed</label>
               <DesignSelectorDropdown
                 triggerId="tv-default-duration"
                 value={draft.defaultDurationSeconds.toString()}
@@ -481,7 +469,7 @@ export default function PageClient() {
               <Typography variant="secondary" className="mt-3 text-xs">Individual playlist screens may override this value.</Typography>
               <div className="mt-4 border-t border-foreground/[0.06] pt-2">
                 {settingRow({
-                  title: "Celebration takeover",
+                  title: "Celebration Takeover",
                   description: "Full-screen milestone moment.",
                   control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
                     ...draft,
@@ -497,7 +485,7 @@ export default function PageClient() {
                   ]} />,
                 })}
                 {settingRow({
-                  title: "Celebration effects",
+                  title: "Celebration Effect",
                   description: "Fireworks over the rotating screens.",
                   control: <DesignSelectorDropdown value={draft.interruptionTiming.celebration.animationSeconds.toString()} onValueChange={(value) => setDraft({
                     ...draft,
@@ -543,7 +531,7 @@ export default function PageClient() {
                   ]} />,
                 })}
                 {settingRow({
-                  title: "Incident takeover",
+                  title: "Incident Takeover",
                   description: "Temporary attention period before rotation resumes.",
                   control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.takeoverSeconds.toString()} onValueChange={(value) => setDraft({
                     ...draft,
@@ -559,7 +547,7 @@ export default function PageClient() {
                   ]} />,
                 })}
                 {settingRow({
-                  title: "Incident resolved Highlight",
+                  title: "Incident Resolved Highlight",
                   description: "How long an ordinary resolved incident remains visible.",
                   control: <DesignSelectorDropdown value={draft.interruptionTiming.incident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
                     ...draft,
@@ -578,7 +566,7 @@ export default function PageClient() {
                   ]} />,
                 })}
                 {settingRow({
-                  title: "Critical resolved Highlight",
+                  title: "Critical Resolved Highlight",
                   description: "How long a resolved Critical Incident remains visible.",
                   control: <DesignSelectorDropdown value={draft.interruptionTiming.criticalIncident.resolvedHighlightSeconds.toString()} onValueChange={(value) => setDraft({
                     ...draft,
@@ -598,10 +586,26 @@ export default function PageClient() {
               </div>
             </DesignCard>
 
+          </div>
+
+          <div className="space-y-4">
+            <DesignCard title="Interruption Policy" subtitle="How important events take over this TV" icon={WarningCircleIcon} gradient="orange" glassmorphic>
+              <div>
+                {settingRow({
+                  title: "Email Delivery Degradation",
+                  description: "Temporary Incident takeover, escalating to a persistent Critical Incident when required.",
+                  control: <Switch checked={draft.incidentTypes.emailDeliveryDegradation} onCheckedChange={(emailDeliveryDegradation) => setDraft({
+                    ...draft,
+                    incidentTypes: { emailDeliveryDegradation },
+                  })} aria-label="Enable email delivery degradation interruptions" />,
+                })}
+              </div>
+            </DesignCard>
+
             <DesignCard title="Celebrations" subtitle="Positive moments worth sharing" icon={ConfettiIcon} gradient="purple" glassmorphic>
               <div>
                 {settingRow({
-                  title: "User milestones",
+                  title: "User Milestones",
                   description: "500, 1K, 10K, and future growth moments.",
                   control: <Switch checked={draft.celebrations.userMilestone} onCheckedChange={(userMilestone) => setDraft({
                     ...draft,
@@ -609,7 +613,7 @@ export default function PageClient() {
                   })} aria-label="Enable user milestone celebrations" />,
                 })}
                 {settingRow({
-                  title: "Revenue milestones",
+                  title: "Revenue Milestones",
                   description: "Requires exact financial visibility.",
                   control: <Switch checked={draft.celebrations.revenueMilestone} disabled={!draft.showExactFinancialValues} onCheckedChange={(revenueMilestone) => setDraft({
                     ...draft,
@@ -617,16 +621,16 @@ export default function PageClient() {
                   })} aria-label="Enable revenue milestone celebrations" />,
                 })}
                 {settingRow({
-                  title: "Successful launches",
+                  title: "Successful Launches",
                   description: "Unavailable · deployment integration required.",
                   control: <Switch checked={false} disabled />,
                 })}
               </div>
             </DesignCard>
 
-            <DesignCard title="Office-safe privacy" subtitle="Control what a shared room can see" icon={ShieldCheckIcon} gradient="green" glassmorphic>
+            <DesignCard title="Privacy" subtitle="Control what a shared room can see" icon={ShieldCheckIcon} gradient="green" glassmorphic>
               {settingRow({
-                title: "Show exact financial values",
+                title: "Show Exact Financial Values",
                 description: "Shows exact currency in Revenue & Payments. Operational counts and direction remain visible when off.",
                 control: <Switch checked={draft.showExactFinancialValues} onCheckedChange={(showExactFinancialValues) => setDraft({
                   ...draft,
@@ -636,70 +640,44 @@ export default function PageClient() {
                     : { ...draft.celebrations, revenueMilestone: false },
                 })} aria-label="Show exact financial values on this TV" />,
               })}
-              <DesignAlert variant="success" title="Aggregate-only foundation" description="No user identity, email subject, recipient, support message, or session replay content exists in the fixture snapshot." />
+              <DesignAlert variant="success" title="Aggregate-Only Foundation" description="No user identity, email subject, recipient, support message, or session replay content exists in the fixture snapshot." />
             </DesignCard>
 
-            <DesignCard title="Event previews" subtitle="Exercise the final interruption lifecycle" icon={BroadcastIcon} gradient="cyan" glassmorphic>
-              <div className="grid gap-2">
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-highlight`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  User milestone Highlight
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  User milestone takeover
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=incident-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Email degradation · Incident
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=critical-takeover`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Email degradation · Critical Incident
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-suspended`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Celebration suspended by Incident
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-resumed`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Celebration resumed
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-animation-expired`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Celebration · animation expired
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=celebration-replaced`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Newer celebration replacement
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=event-long-content`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Long Event Highlight content
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=incident-recovery`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Incident recovery
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
-                <button type="button" onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=critical-recovery`)} className="flex items-center justify-between rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-foreground/[0.04]">
-                  Critical Incident recovery
-                  <ArrowSquareOutIcon className="h-4 w-4 text-muted-foreground" />
-                </button>
+            <DesignCard title="Event Previews" subtitle="Preview milestone and incident presentations" icon={BroadcastIcon} gradient="cyan" glassmorphic>
+              <div className="grid gap-4 2xl:grid-cols-2">
+                {TV_EVENT_PREVIEW_GROUPS.map((group) => (
+                  <div key={group.title} className="min-w-0">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.title}</p>
+                    <div className="grid gap-2">
+                      {group.previews.map((preview) => (
+                        <button
+                          type="button"
+                          key={preview.fixture}
+                          onClick={() => launchPresentation(`/projects/${projectId}/tv-mode/present/${profileId}?fixture=${preview.fixture}`)}
+                          className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] px-3 py-2.5 text-left text-xs font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
+                        >
+                          <span className="min-w-0">{preview.label}</span>
+                          <ArrowSquareOutIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </DesignCard>
 
-            <DesignCard title="State previews" subtitle="Validate honest failure and freshness behavior" icon={WarningCircleIcon} gradient="orange" glassmorphic>
+            <DesignCard title="State Previews" subtitle="Validate honest failure and freshness behavior" icon={WarningCircleIcon} gradient="orange" glassmorphic>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: "stale", label: "Stale" },
                   { id: "offline", label: "Offline" },
                   { id: "loading", label: "Loading" },
                   { id: "empty", label: "Empty" },
-                  { id: "insufficient-data", label: "Insufficient data" },
-                  { id: "unavailable", label: "Unavailable source" },
-                  { id: "partial-failure", label: "Partial failure" },
-                  { id: "financial-redacted", label: "Financial redaction" },
-                  { id: "error", label: "Fatal error" },
+                  { id: "insufficient-data", label: "Insufficient Data" },
+                  { id: "unavailable", label: "Unavailable Source" },
+                  { id: "partial-failure", label: "Partial Failure" },
+                  { id: "financial-redacted", label: "Financial Redaction" },
+                  { id: "error", label: "Fatal Error" },
                 ].map((state) => (
                   <button
                     type="button"
@@ -730,7 +708,7 @@ export default function PageClient() {
             </DesignButton>
             {resource.origin === "saved" ? (
               <DesignButton variant="outline" size="sm" onClick={() => setDeleteConfirmationOpen(true)}>
-                Delete profile
+                Delete Profile
               </DesignButton>
             ) : null}
             <DesignButton size="sm" disabled={!hasChanges || draft.displayName.trim().length === 0} onClick={async () => {
@@ -779,7 +757,7 @@ export default function PageClient() {
             type="button"
             className="absolute right-5 top-5 z-[250] flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/60 text-white/80 backdrop-blur-xl"
             onClick={() => setPreviewOpen(false)}
-            aria-label="Close preview"
+            aria-label="Close Preview"
           >
             <XIcon className="h-5 w-5" weight="bold" />
           </button>
