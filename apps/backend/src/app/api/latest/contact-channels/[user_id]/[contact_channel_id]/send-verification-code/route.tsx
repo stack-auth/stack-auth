@@ -59,16 +59,15 @@ export const POST = createSmartRouteHandler({
 
     const contactChannel = await prisma.contactChannel.findUnique({
       where: {
-        tenancyId_projectUserId_id: {
+        tenancyId_id: {
           tenancyId: auth.tenancy.id,
-          projectUserId: user.id,
           id: params.contact_channel_id,
         },
         type: "EMAIL",
       },
     });
 
-    if (!contactChannel) {
+    if (!contactChannel || contactChannel.contactId !== user.id) {
       throw new StatusError(StatusError.NotFound, "Contact channel not found");
     }
 

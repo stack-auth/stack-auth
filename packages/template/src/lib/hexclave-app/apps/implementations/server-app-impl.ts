@@ -1,6 +1,10 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
+import type { CommsDelivery as CommsDeliveryCrud } from "@hexclave/shared/dist/interface/comms";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
+import { CommsConversationsCrud } from "@hexclave/shared/dist/interface/crud/comms-conversations";
+import { CommsMessagesCrud } from "@hexclave/shared/dist/interface/crud/comms-messages";
+import { ContactsCrud } from "@hexclave/shared/dist/interface/crud/contacts";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@hexclave/shared/dist/interface/crud/oauth-providers";
@@ -28,6 +32,47 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
+import {
+  ServerContact,
+  ServerCommunicationChannelCreateOptions,
+  ServerCommunicationChannelUpdateOptions,
+  ServerContactCreateOptions,
+  ServerContactListOptions,
+  ServerContactMergeOptions,
+  ServerContactUpdateOptions,
+  serverContactCreateOptionsToCrud,
+  serverContactChannelCreateOptionsToCrud as contactOwnedChannelCreateOptionsToCrud,
+  serverContactChannelFromCrud,
+  serverContactChannelUpdateOptionsToCrud as contactOwnedChannelUpdateOptionsToCrud,
+  serverContactFromCrud,
+  serverContactUpdateOptionsToCrud,
+} from "../../contacts";
+import {
+  ServerCommsConversation,
+  ServerCommsConversationCreateOptions,
+  ServerCommsConversationListOptions,
+  ServerCommsConversationMergeOptions,
+  ServerCommsConversationSplitOptions,
+  ServerCommsConversationUpdateOptions,
+  ServerCommsDelivery,
+  ServerCommsDeliveryAttemptCreateOptions,
+  ServerCommsDeliveryCreateOptions,
+  ServerCommsDeliveryStatusUpdateOptions,
+  ServerCommsMessage,
+  ServerCommsMessageCreateOptions,
+  ServerCommsMessageListOptions,
+  ServerCommsConversationReassignOptions,
+  serverCommsConversationCreateOptionsToCrud,
+  serverCommsConversationFromCrud,
+  serverCommsConversationUpdateOptionsToCrud,
+  serverCommsDeliveryAttemptCreateOptionsToCrud,
+  serverCommsDeliveryAttemptFromCrud,
+  serverCommsDeliveryCreateOptionsToCrud,
+  serverCommsDeliveryFromCrud,
+  serverCommsDeliveryStatusUpdateOptionsToCrud,
+  serverCommsMessageCreateOptionsToCrud,
+  serverCommsMessageFromCrud,
+} from "../../comms";
 import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
@@ -1689,6 +1734,224 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
     return await this._interface.queryAnalytics(options);
+  }
+
+  protected _serverContactFromCrud(crud: ContactsCrud['Server']['Read']): ServerContact {
+    const app = this;
+    const contactChannelFromCrud = (channel: ContactsCrud["Server"]["Read"]["channels"][number]) => {
+      return serverContactChannelFromCrud(channel, {
+        async update(data: ServerCommunicationChannelUpdateOptions) {
+          await app._interface.updateServerChannelOnContact(
+            crud.id,
+            channel.id,
+            contactOwnedChannelUpdateOptionsToCrud(data),
+          );
+        },
+        async delete() {
+          await app._interface.deleteServerChannelOnContact(crud.id, channel.id);
+        },
+      });
+    };
+    return serverContactFromCrud(crud, {
+      async update(data: ServerContactUpdateOptions) {
+        await app._interface.updateServerContact(crud.id, serverContactUpdateOptionsToCrud(data));
+      },
+      async delete() {
+        await app._interface.deleteServerContact(crud.id);
+      },
+      async mergeInto(options: ServerContactMergeOptions) {
+        const result = await app._interface.mergeServerContacts({
+          sourceContactId: crud.id,
+          targetContactId: options.targetContactId,
+          idempotencyKey: options.idempotencyKey,
+          actorUserId: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        });
+        return {
+          operationId: result.operation_id,
+          replayed: result.replayed,
+          contact: app._serverContactFromCrud(result.contact),
+        };
+      },
+      async listContactChannels() {
+        const result = await app._interface.listServerChannelsOnContact(crud.id);
+        return result.items.map(contactChannelFromCrud);
+      },
+      async createContactChannel(data: ServerCommunicationChannelCreateOptions) {
+        const channel = await app._interface.createServerChannelOnContact(
+          crud.id,
+          contactOwnedChannelCreateOptionsToCrud(data),
+        );
+        return contactChannelFromCrud(channel);
+      },
+    }, crud.channels.map(contactChannelFromCrud));
+  }
+
+  protected _serverCommsDeliveryFromCrud(crud: CommsDeliveryCrud): ServerCommsDelivery {
+    const app = this;
+    return serverCommsDeliveryFromCrud(crud, {
+      async updateStatus(data: ServerCommsDeliveryStatusUpdateOptions) {
+        await app._interface.updateServerCommsDeliveryStatus(
+          crud.id,
+          serverCommsDeliveryStatusUpdateOptionsToCrud(data),
+        );
+      },
+      async recordAttempt(data: ServerCommsDeliveryAttemptCreateOptions) {
+        const result = await app._interface.recordServerCommsDeliveryAttempt(
+          crud.id,
+          serverCommsDeliveryAttemptCreateOptionsToCrud(data),
+        );
+        return serverCommsDeliveryAttemptFromCrud(result.attempt);
+      },
+    });
+  }
+
+  protected _serverCommsMessageFromCrud(crud: CommsMessagesCrud["Server"]["Read"]): ServerCommsMessage {
+    const app = this;
+    return serverCommsMessageFromCrud(crud, {
+      async listDeliveries() {
+        const result = await app._interface.listServerCommsDeliveries(crud.id);
+        return result.items.map((delivery) => app._serverCommsDeliveryFromCrud(delivery));
+      },
+      async createDelivery(data: ServerCommsDeliveryCreateOptions) {
+        const delivery = await app._interface.createServerCommsDelivery(
+          crud.id,
+          serverCommsDeliveryCreateOptionsToCrud(data),
+        );
+        return app._serverCommsDeliveryFromCrud(delivery);
+      },
+    });
+  }
+
+  protected _serverCommsConversationFromCrud(crud: CommsConversationsCrud['Server']['Read']): ServerCommsConversation {
+    const app = this;
+    return serverCommsConversationFromCrud(crud, {
+      async update(data: ServerCommsConversationUpdateOptions) {
+        await app._interface.updateServerCommsConversation(
+          crud.id,
+          serverCommsConversationUpdateOptionsToCrud(data),
+        );
+      },
+      async mergeInto(options: ServerCommsConversationMergeOptions) {
+        const result = await app._interface.mergeServerCommsConversations({
+          sourceConversationId: crud.id,
+          targetConversationId: options.targetConversationId,
+          idempotencyKey: options.idempotencyKey,
+          actorUserId: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        });
+        return {
+          operationId: result.operation_id,
+          replayed: result.replayed,
+          conversation: app._serverCommsConversationFromCrud(result.conversation),
+        };
+      },
+      async split(options: ServerCommsConversationSplitOptions) {
+        const result = await app._interface.splitServerCommsConversation({
+          sourceConversationId: crud.id,
+          messageIds: options.messageIds,
+          idempotencyKey: options.idempotencyKey,
+          title: options.title,
+          actorUserId: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        });
+        return {
+          operationId: result.operation_id,
+          replayed: result.replayed,
+          conversation: app._serverCommsConversationFromCrud(result.conversation),
+        };
+      },
+      async reassignMessages(options: ServerCommsConversationReassignOptions) {
+        const result = await app._interface.reassignServerCommsMessages({
+          targetConversationId: crud.id,
+          messageIds: options.messageIds,
+          idempotencyKey: options.idempotencyKey,
+          actorUserId: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        });
+        return {
+          operationId: result.operation_id,
+          replayed: result.replayed,
+          conversation: app._serverCommsConversationFromCrud(result.conversation),
+        };
+      },
+      async listMessages(options?: ServerCommsMessageListOptions) {
+        const result = await app._interface.listServerCommsMessages({
+          conversationId: crud.id,
+          cursor: options?.cursor,
+          limit: options?.limit,
+        });
+        const messages = result.items.map((message) => app._serverCommsMessageFromCrud(message));
+        return Object.assign(messages, {
+          nextCursor: result.pagination?.next_cursor ?? null,
+        });
+      },
+    });
+  }
+
+  async createContact(options: ServerContactCreateOptions): Promise<ServerContact> {
+    const crud = await this._interface.createServerContact(serverContactCreateOptionsToCrud(options));
+    return this._serverContactFromCrud(crud);
+  }
+
+  async getContact(contactId: string): Promise<ServerContact> {
+    const crud = await this._interface.getServerContact(contactId);
+    return this._serverContactFromCrud(crud);
+  }
+
+  async listContacts(options?: ServerContactListOptions): Promise<ServerContact[] & { nextCursor: string | null }> {
+    const crud = await this._interface.listServerContacts(options);
+    const result = crud.items.map((item) => this._serverContactFromCrud(item)) as ServerContact[] & { nextCursor: string | null };
+    result.nextCursor = crud.pagination?.next_cursor ?? null;
+    return result;
+  }
+
+  async createCommsMessage(options: ServerCommsMessageCreateOptions): Promise<ServerCommsMessage> {
+    const crud = await this._interface.ingestServerCommsMessage(
+      serverCommsMessageCreateOptionsToCrud(options, contactOwnedChannelCreateOptionsToCrud),
+    );
+    return this._serverCommsMessageFromCrud(crud);
+  }
+
+  async getCommsMessage(messageId: string): Promise<ServerCommsMessage> {
+    const crud = await this._interface.getServerCommsMessage(messageId);
+    return this._serverCommsMessageFromCrud(crud);
+  }
+
+  async listCommsMessages(options?: ServerCommsMessageListOptions): Promise<ServerCommsMessage[] & { nextCursor: string | null }> {
+    const result = await this._interface.listServerCommsMessages(options ?? {});
+    return Object.assign(
+      result.items.map((message) => this._serverCommsMessageFromCrud(message)),
+      { nextCursor: result.pagination?.next_cursor ?? null },
+    );
+  }
+
+  async createCommsConversation(options?: ServerCommsConversationCreateOptions): Promise<ServerCommsConversation> {
+    const crud = await this._interface.createServerCommsConversation(
+      serverCommsConversationCreateOptionsToCrud(options ?? {}),
+    );
+    return this._serverCommsConversationFromCrud(crud);
+  }
+
+  async getCommsConversation(conversationId: string): Promise<ServerCommsConversation> {
+    const crud = await this._interface.getServerCommsConversation(conversationId);
+    return this._serverCommsConversationFromCrud(crud);
+  }
+
+  async listCommsConversations(options?: ServerCommsConversationListOptions): Promise<ServerCommsConversation[] & { nextCursor: string | null }> {
+    const crud = await this._interface.listServerCommsConversations(options);
+    const result = crud.items.map((item) => this._serverCommsConversationFromCrud(item)) as ServerCommsConversation[] & { nextCursor: string | null };
+    result.nextCursor = crud.pagination?.next_cursor ?? null;
+    return result;
+  }
+
+  async getCommsDelivery(deliveryId: string): Promise<ServerCommsDelivery> {
+    const delivery = await this._interface.getServerCommsDelivery(deliveryId);
+    return this._serverCommsDeliveryFromCrud(delivery);
   }
 
   protected override async _refreshSession(session: InternalSession) {

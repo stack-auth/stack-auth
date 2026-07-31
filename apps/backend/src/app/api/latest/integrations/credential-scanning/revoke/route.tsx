@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
           },
         },
         include: {
-          contactChannels: true,
+          contact: { include: { contactChannels: true } },
         },
       });
 
@@ -105,7 +105,7 @@ export const POST = createSmartRouteHandler({
       }
       // We might have other types besides email, so we disable this rule
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      const primaryEmail = projectUser.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary === 'TRUE')?.value ?? undefined;
+      const primaryEmail = projectUser.contact.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary === 'TRUE')?.value ?? undefined;
       if (primaryEmail) {
         affectedEmails.add(primaryEmail);
       }
@@ -142,14 +142,14 @@ export const POST = createSmartRouteHandler({
           },
         },
         include: {
-          contactChannels: true,
+          contact: { include: { contactChannels: true } },
         },
       });
 
       for (const user of usersWithManageApiKeysPermission) {
         // We might have other types besides email, so we disable this rule
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        const primaryEmail = user.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary === 'TRUE')?.value ?? undefined;
+        const primaryEmail = user.contact.contactChannels.find(c => c.type === 'EMAIL' && c.isPrimary === 'TRUE')?.value ?? undefined;
         if (primaryEmail) {
             affectedEmails.add(primaryEmail);
         }

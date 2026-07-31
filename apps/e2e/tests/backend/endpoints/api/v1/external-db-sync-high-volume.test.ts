@@ -102,17 +102,27 @@ describe.sequential('External DB Sync - High Volume Tests', () => {
               now() AS ts
             FROM generate_series(1, $4::int) AS gs
           ),
+          insert_contacts AS (
+            INSERT INTO "Contact"
+              ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+            SELECT
+              tenancy_id,
+              project_user_id,
+              'HV User ' || idx,
+              ts,
+              ts
+            FROM generated
+          ),
           insert_users AS (
             INSERT INTO "ProjectUser"
               ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-               "displayName", "createdAt", "updatedAt", "isAnonymous",
+               "createdAt", "updatedAt", "isAnonymous",
                "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
             SELECT
               tenancy_id,
               project_user_id,
               project_id,
               'main',
-              'HV User ' || idx,
               ts,
               ts,
               false,
@@ -121,18 +131,32 @@ describe.sequential('External DB Sync - High Volume Tests', () => {
               0
             FROM generated
             RETURNING "tenancyId", "projectUserId"
+          ),
+          insert_channels AS (
+            INSERT INTO "ContactChannel"
+              ("tenancyId", "id", "contactId", "type", "isPrimary",
+               "isVerified", "value", "identityScope", "createdAt", "updatedAt")
+            SELECT
+              g.tenancy_id,
+              g.contact_id,
+              g.project_user_id,
+              'EMAIL',
+              'TRUE'::"BooleanTrue",
+              false,
+              'hv-user-' || g.idx || '@test.example.com',
+              '',
+              g.ts,
+              g.ts
+            FROM generated g
           )
-          INSERT INTO "ContactChannel"
-            ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth",
-             "isVerified", "value", "createdAt", "updatedAt")
+          INSERT INTO "ProjectUserAuthContactChannel"
+            ("tenancyId", "projectUserId", "contactChannelId", "type", "identityScope", "value", "createdAt", "updatedAt")
           SELECT
             g.tenancy_id,
             g.project_user_id,
             g.contact_id,
             'EMAIL',
-            'TRUE'::"BooleanTrue",
-            'TRUE'::"BooleanTrue",
-            false,
+            '',
             'hv-user-' || g.idx || '@test.example.com',
             g.ts,
             g.ts

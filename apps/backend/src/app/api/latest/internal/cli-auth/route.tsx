@@ -181,12 +181,15 @@ export const GET = createSmartRouteHandler({
         const userRows = await prisma.$replica().$queryRaw<ProjectUserRow[]>(Prisma.sql`
           SELECT
             pu."projectUserId",
-            pu."displayName",
+            c."displayName",
             cc."value" AS "primaryEmail"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser" pu
+          JOIN ${sqlQuoteIdent(schema)}."Contact" c
+            ON c."tenancyId" = pu."tenancyId"
+            AND c."id" = pu."projectUserId"
           LEFT JOIN ${sqlQuoteIdent(schema)}."ContactChannel" cc
             ON cc."tenancyId" = pu."tenancyId"
-            AND cc."projectUserId" = pu."projectUserId"
+            AND cc."contactId" = pu."projectUserId"
             AND cc."type"::text = 'EMAIL'
             AND cc."isPrimary"::text = 'TRUE'
           WHERE pu."tenancyId" = ${tenancy.id}::UUID

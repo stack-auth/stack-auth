@@ -3,6 +3,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { usersCrudHandlers } from "../../../users/crud";
 import { resetPasswordVerificationCodeHandler } from "../reset/verification-code-handler";
@@ -57,9 +58,11 @@ export const POST = createSmartRouteHandler({
         },
       };
     }
+    const projectUser = contactChannel.contact.projectUser
+      ?? throwErr("An auth-selected contact channel must belong to a ProjectUser");
     const user = await usersCrudHandlers.adminRead({
       tenancy,
-      user_id: contactChannel.projectUserId,
+      user_id: projectUser.projectUserId,
     });
     await resetPasswordVerificationCodeHandler.sendCode({
       tenancy,

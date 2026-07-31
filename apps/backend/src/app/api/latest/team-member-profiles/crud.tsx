@@ -17,8 +17,8 @@ function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof full
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
-    display_name: prisma.displayName ?? prisma.projectUser.displayName,
-    profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
+    display_name: prisma.displayName ?? prisma.projectUser.contact.displayName,
+    profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.contact.profileImageUrl,
     user: userPrismaToCrud(prisma.projectUser, config),
   };
 }

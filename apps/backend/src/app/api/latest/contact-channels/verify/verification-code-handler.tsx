@@ -48,10 +48,11 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
   },
   async handler(tenancy, { email }, data) {
     const uniqueKeys = {
-      tenancyId_projectUserId_type_value: {
+      tenancyId_contactId_type_identityScope_value: {
         tenancyId: tenancy.id,
-        projectUserId: data.user_id,
+        contactId: data.user_id,
         type: "EMAIL",
+        identityScope: "",
         value: email,
       },
     } as const;
@@ -71,6 +72,7 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
       where: uniqueKeys,
       data: withExternalDbSyncUpdate({
         isVerified: true,
+        verifiedAt: new Date(),
       }),
     });
 

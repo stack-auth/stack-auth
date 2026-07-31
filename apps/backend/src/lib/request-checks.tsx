@@ -187,10 +187,11 @@ export async function ensureContactChannelDoesNotExists(
 ) {
   const contactChannel = await tx.contactChannel.findUnique({
     where: {
-      tenancyId_projectUserId_type_value: {
+      tenancyId_contactId_type_identityScope_value: {
         tenancyId: options.tenancyId,
-        projectUserId: options.userId,
+        contactId: options.userId,
         type: typedToUppercase(options.type),
+        identityScope: "",
         value: options.value,
       },
     },
@@ -211,15 +212,14 @@ export async function ensureContactChannelExists(
 ) {
   const contactChannel = await tx.contactChannel.findUnique({
     where: {
-      tenancyId_projectUserId_id: {
+      tenancyId_id: {
         tenancyId: options.tenancyId,
-        projectUserId: options.userId,
         id: options.contactChannelId,
       },
     },
   });
 
-  if (!contactChannel) {
+  if (!contactChannel || contactChannel.contactId !== options.userId) {
     throw new StatusError(StatusError.BadRequest, 'Contact channel not found');
   }
 

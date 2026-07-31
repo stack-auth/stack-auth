@@ -1,8 +1,22 @@
 import { KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
-import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
+import {
+  ServerCommsConversation,
+  ServerCommsConversationCreateOptions,
+  ServerCommsConversationListOptions,
+  ServerCommsDelivery,
+  ServerCommsMessage,
+  ServerCommsMessageCreateOptions,
+  ServerCommsMessageListOptions,
+} from "../../comms";
+import {
+  ServerContact,
+  ServerContactCreateOptions,
+  ServerContactListOptions,
+} from "../../contacts";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
@@ -107,6 +121,18 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     activateEmailCapacityBoost(): Promise<void>,
 
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
+
+    createContact(options: ServerContactCreateOptions): Promise<ServerContact>,
+    getContact(contactId: string): Promise<ServerContact>,
+    listContacts(options?: ServerContactListOptions): Promise<ServerContact[] & { nextCursor: string | null }>,
+
+    createCommsMessage(options: ServerCommsMessageCreateOptions): Promise<ServerCommsMessage>,
+    getCommsMessage(messageId: string): Promise<ServerCommsMessage>,
+    listCommsMessages(options?: ServerCommsMessageListOptions): Promise<ServerCommsMessage[] & { nextCursor: string | null }>,
+    createCommsConversation(options?: ServerCommsConversationCreateOptions): Promise<ServerCommsConversation>,
+    getCommsConversation(conversationId: string): Promise<ServerCommsConversation>,
+    listCommsConversations(options?: ServerCommsConversationListOptions): Promise<ServerCommsConversation[] & { nextCursor: string | null }>,
+    getCommsDelivery(deliveryId: string): Promise<ServerCommsDelivery>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

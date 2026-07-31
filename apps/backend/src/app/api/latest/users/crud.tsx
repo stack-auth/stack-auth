@@ -1,6 +1,7 @@
 import { BooleanTrue, Prisma } from "@/generated/prisma/client";
+import { contactChannelIsUsedForAuth, ensureContactForNewUser, updateContactProfileForUser } from "@/lib/comms/contacts";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
-import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
+import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue, setContactChannelUsedForAuth } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { arePlanLimitsEnforced, getBillingTeamId, getTeamWideAuthUsersCapacity, getTeamWideNonAnonymousUserCount } from "@/lib/plan-entitlements";
 import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncOAuthAccountDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncRefreshTokenDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
@@ -26,7 +27,7 @@ import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@he
 import { hashPassword, isPasswordHashValid } from "@hexclave/shared/dist/utils/hashes";
 import { has } from "@hexclave/shared/dist/utils/objects";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
+import { generateUuid, isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
 
 export const userFullInclude = {
@@ -39,7 +40,15 @@ export const userFullInclude = {
       passkeyAuthMethod: true,
     }
   },
-  contactChannels: true,
+  contact: {
+    include: {
+      contactChannels: {
+        include: {
+          authSelections: true,
+        },
+      },
+    },
+  },
   teamMembers: {
     include: {
       team: true,
@@ -176,7 +185,7 @@ export const userPrismaToCrud = (
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const primaryEmailContactChannel = prisma.contactChannels.find((c) => c.type === 'EMAIL' && c.isPrimary);
+  const primaryEmailContactChannel = prisma.contact.contactChannels.find((c) => c.type === 'EMAIL' && c.isPrimary);
   const passwordAuth = prisma.authMethods.find((m) => m.passwordAuthMethod);
   const otpAuth = prisma.authMethods.find((m) => m.otpAuthMethod);
   const passkeyAuth = prisma.authMethods.find((m) => m.passkeyAuthMethod);
@@ -191,15 +200,17 @@ export const userPrismaToCrud = (
 
   const result = {
     id: prisma.projectUserId,
-    display_name: prisma.displayName || null,
+    display_name: prisma.contact.displayName || null,
     primary_email: primaryEmailContactChannel?.value || null,
     primary_email_verified: primaryEmailVerified,
-    primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
-    profile_image_url: prisma.profileImageUrl,
+    primary_email_auth_enabled: primaryEmailContactChannel != null
+      ? contactChannelIsUsedForAuth(primaryEmailContactChannel, prisma.projectUserId)
+      : false,
+    profile_image_url: prisma.contact.profileImageUrl,
     signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt),
-    client_metadata: prisma.clientMetadata,
-    client_read_only_metadata: prisma.clientReadOnlyMetadata,
-    server_metadata: prisma.serverMetadata,
+    client_metadata: prisma.contact.clientMetadata,
+    client_read_only_metadata: prisma.contact.clientReadOnlyMetadata,
+    server_metadata: prisma.contact.serverMetadata,
     has_password: !!passwordAuth,
     otp_auth_enabled: !!otpAuth,
     auth_with_email: !!passwordAuth || !!otpAuth,
@@ -273,13 +284,15 @@ async function checkAuthData(
     if (!data.primaryEmail) {
       throw new HexclaveAssertionError("primary_email_auth_enabled cannot be true without primary_email");
     }
-    const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
+    const existingChannelUsedForAuth = await tx.projectUserAuthContactChannel.findUnique({
       where: {
-        tenancyId: data.tenancyId,
-        type: 'EMAIL',
-        value: data.primaryEmail,
-        usedForAuth: BooleanTrue.TRUE,
-      }
+        tenancyId_type_identityScope_value: {
+          tenancyId: data.tenancyId,
+          type: 'EMAIL',
+          identityScope: "",
+          value: data.primaryEmail,
+        },
+      },
     });
 
     if (existingChannelUsedForAuth) {
@@ -324,13 +337,29 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
           SELECT (
             to_jsonb("ProjectUser".*) ||
             jsonb_build_object(
+              'displayName', "Contact"."displayName",
+              'profileImageUrl', "Contact"."profileImageUrl",
+              'clientMetadata', "Contact"."clientMetadata",
+              'clientReadOnlyMetadata', "Contact"."clientReadOnlyMetadata",
+              'serverMetadata', "Contact"."serverMetadata",
               'ContactChannels', (
                 SELECT COALESCE(ARRAY_AGG(
                   to_jsonb("ContactChannel") ||
-                  jsonb_build_object()
+                  jsonb_build_object(
+                    'usedForAuth', CASE
+                      WHEN EXISTS (
+                        SELECT 1
+                        FROM ${sqlQuoteIdent(schema)}."ProjectUserAuthContactChannel" AS "AuthSelection"
+                        WHERE "AuthSelection"."tenancyId" = "ContactChannel"."tenancyId"
+                          AND "AuthSelection"."contactChannelId" = "ContactChannel"."id"
+                          AND "AuthSelection"."projectUserId" = "ProjectUser"."projectUserId"
+                      ) THEN 'TRUE'
+                      ELSE NULL
+                    END
+                  )
                 ), '{}')
                 FROM ${sqlQuoteIdent(schema)}."ContactChannel"
-                WHERE "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId" AND "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId" AND "ContactChannel"."isPrimary" = 'TRUE'
+                WHERE "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId" AND "ContactChannel"."contactId" = "ProjectUser"."projectUserId" AND "ContactChannel"."isPrimary" = 'TRUE'
               ),
               'ProjectUserOAuthAccounts', (
                 SELECT COALESCE(ARRAY_AGG(
@@ -400,6 +429,9 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
             )
           )
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
+          JOIN ${sqlQuoteIdent(schema)}."Contact"
+            ON "Contact"."tenancyId" = "ProjectUser"."tenancyId"
+            AND "Contact"."id" = "ProjectUser"."projectUserId"
           WHERE "ProjectUser"."mirroredProjectId" = ${projectId} AND "ProjectUser"."mirroredBranchId" = ${branchId} AND "ProjectUser"."projectUserId" = ${userId}::UUID
         )
       ) AS "row_data_json"
@@ -611,11 +643,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       // Filter out restricted users if needed (restricted = signed up but email not verified)
       ...shouldFilterRestrictedByEmail ? {
         // User must have a verified primary email to not be restricted
-        contactChannels: {
-          some: {
-            type: 'EMAIL' as const,
-            isPrimary: 'TRUE' as const,
-            isVerified: true,
+        contact: {
+          contactChannels: {
+            some: {
+              type: 'EMAIL' as const,
+              isPrimary: 'TRUE' as const,
+              isVerified: true,
+            },
           },
         },
       } : {},
@@ -624,17 +658,19 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
       ...excludedEmailDomains.length > 0 ? {
         NOT: {
-          contactChannels: {
-            some: {
-              type: 'EMAIL' as const,
-              isPrimary: 'TRUE' as const,
-              OR: excludedEmailDomains.map((domain) => ({
-                value: {
-                  // Exact-domain match: @gmail.com matches user@gmail.com, not user@mail.gmail.com.
-                  endsWith: `@${domain}`,
-                  mode: 'insensitive' as const,
-                },
-              })),
+          contact: {
+            contactChannels: {
+              some: {
+                type: 'EMAIL' as const,
+                isPrimary: 'TRUE' as const,
+                OR: excludedEmailDomains.map((domain) => ({
+                  value: {
+                    // Exact-domain match: @gmail.com matches user@gmail.com, not user@mail.gmail.com.
+                    endsWith: `@${domain}`,
+                    mode: 'insensitive' as const,
+                  },
+                })),
+              },
             },
           },
         },
@@ -647,17 +683,21 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             },
           }] : [],
           {
-            displayName: {
-              contains: query.query,
-              mode: 'insensitive',
+            contact: {
+              displayName: {
+                contains: query.query,
+                mode: 'insensitive',
+              },
             },
           },
           {
-            contactChannels: {
-              some: {
-                value: {
-                  contains: query.query,
-                  mode: 'insensitive',
+            contact: {
+              contactChannels: {
+                some: {
+                  value: {
+                    contains: query.query,
+                    mode: 'insensitive',
+                  },
                 },
               },
             },
@@ -744,18 +784,27 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
+      // Contact must exist before ProjectUser because of the FK (tenancyId, projectUserId) → Contact.
+      const projectUserId = generateUuid();
+      const profileImageUrl = await uploadAndGetUrl(data.profile_image_url, "user-profile-images");
+      await ensureContactForNewUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId,
+        displayName: data.display_name === undefined ? undefined : (data.display_name || null),
+        clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
+        clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
+        serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
+        profileImageUrl,
+      });
+
       const newUser = await tx.projectUser.create({
         data: {
           tenancyId: auth.tenancy.id,
+          projectUserId,
           mirroredProjectId: auth.project.id,
           mirroredBranchId: auth.branchId,
-          displayName: data.display_name === undefined ? undefined : (data.display_name || null),
-          clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
-          clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
-          serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin,
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
@@ -802,17 +851,24 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       if (primaryEmail) {
-        await tx.contactChannel.create({
+        const createdChannel = await tx.contactChannel.create({
           data: {
-            projectUserId: newUser.projectUserId,
+            contactId: newUser.projectUserId,
             tenancyId: auth.tenancy.id,
             type: 'EMAIL' as const,
             value: primaryEmail,
             isVerified: data.primary_email_verified ?? false,
             isPrimary: "TRUE",
-            usedForAuth: data.primary_email_auth_enabled ? BooleanTrue.TRUE : null,
           }
         });
+        if (data.primary_email_auth_enabled) {
+          await setContactChannelUsedForAuth(tx, {
+            tenancyId: auth.tenancy.id,
+            projectUserId: newUser.projectUserId,
+            contactChannelId: createdChannel.id,
+            usedForAuth: true,
+          });
+        }
       }
 
       if (passwordHash) {
@@ -962,7 +1018,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      const primaryEmailContactChannel = oldUser.contactChannels.find((c) => c.type === 'EMAIL' && c.isPrimary);
+      const primaryEmailContactChannel = oldUser.contact.contactChannels.find((c) => c.type === 'EMAIL' && c.isPrimary);
       const otpAuth = oldUser.authMethods.find((m) => m.otpAuthMethod)?.otpAuthMethod;
       const passwordAuth = oldUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
       const passkeyAuth = oldUser.authMethods.find((m) => m.passkeyAuthMethod)?.passkeyAuthMethod;
@@ -973,7 +1029,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const isRemovingEmail = primaryEmail === null;
       const primaryEmailAuthEnabled = isRemovingEmail
         ? false
-        : (data.primary_email_auth_enabled ?? !!primaryEmailContactChannel?.usedForAuth);
+        : (data.primary_email_auth_enabled ?? (primaryEmailContactChannel != null
+          ? contactChannelIsUsedForAuth(primaryEmailContactChannel, params.user_id)
+          : false));
       const primaryEmailVerified = isRemovingEmail
         ? false
         : (data.primary_email_verified ?? !!primaryEmailContactChannel?.isVerified);
@@ -996,15 +1054,23 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           // Setting primary email to null - demote the primary contact channel to non-primary
           await demoteAllContactChannelsToNonPrimary(tx, {
             tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
+            contactId: params.user_id,
             type: 'EMAIL',
           });
+          if (primaryEmailContactChannel != null) {
+            await setContactChannelUsedForAuth(tx, {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              contactChannelId: primaryEmailContactChannel.id,
+              usedForAuth: false,
+            });
+          }
         } else {
           // Check if a contact channel with this email already exists for this user
           const existingChannel = await tx.contactChannel.findFirst({
             where: {
               tenancyId: auth.tenancy.id,
-              projectUserId: params.user_id,
+              contactId: params.user_id,
               type: 'EMAIL',
               value: primaryEmail,
             },
@@ -1015,34 +1081,44 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             // Include isVerified in additionalUpdates if primary_email_verified was specified
             await setContactChannelAsPrimaryByValue(tx, {
               tenancyId: auth.tenancy.id,
-              projectUserId: params.user_id,
+              contactId: params.user_id,
               type: 'EMAIL',
               value: primaryEmail,
               additionalUpdates: {
-                usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
                 ...(data.primary_email_verified !== undefined && { isVerified: data.primary_email_verified }),
               },
+            });
+            await setContactChannelUsedForAuth(tx, {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              contactChannelId: existingChannel.id,
+              usedForAuth: primaryEmailAuthEnabled,
             });
           } else {
             // Email doesn't exist as a contact channel - demote old primary and create new
             await demoteAllContactChannelsToNonPrimary(tx, {
               tenancyId: auth.tenancy.id,
-              projectUserId: params.user_id,
+              contactId: params.user_id,
               type: 'EMAIL',
             });
 
             // Create the new primary email contact channel
             // Use primary_email_verified if specified, otherwise default to false
-            await tx.contactChannel.create({
+            const createdChannel = await tx.contactChannel.create({
               data: {
-                projectUserId: params.user_id,
+                contactId: params.user_id,
                 tenancyId: auth.tenancy.id,
                 type: 'EMAIL' as const,
                 value: primaryEmail,
                 isVerified: data.primary_email_verified ?? false,
                 isPrimary: "TRUE",
-                usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
               },
+            });
+            await setContactChannelUsedForAuth(tx, {
+              tenancyId: auth.tenancy.id,
+              projectUserId: params.user_id,
+              contactChannelId: createdChannel.id,
+              usedForAuth: primaryEmailAuthEnabled,
             });
           }
         }
@@ -1054,9 +1130,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       if (data.primary_email_verified !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
         await tx.contactChannel.update({
           where: {
-            tenancyId_projectUserId_type_isPrimary: {
+            tenancyId_contactId_type_isPrimary: {
               tenancyId: auth.tenancy.id,
-              projectUserId: params.user_id,
+              contactId: params.user_id,
               type: 'EMAIL',
               isPrimary: "TRUE",
             },
@@ -1068,20 +1144,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       }
 
       // if primary_email_auth_enabled is being updated without changing the email
-      // - update the primary email contact channel's usedForAuth field
+      // - update the primary email contact channel's auth selection
       if (data.primary_email_auth_enabled !== undefined && primaryEmail === undefined && primaryEmailContactChannel) {
-        await tx.contactChannel.update({
-          where: {
-            tenancyId_projectUserId_type_isPrimary: {
-              tenancyId: auth.tenancy.id,
-              projectUserId: params.user_id,
-              type: 'EMAIL',
-              isPrimary: "TRUE",
-            },
-          },
-          data: withExternalDbSyncUpdate({
-            usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
-          }),
+        await setContactChannelUsedForAuth(tx, {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+          contactChannelId: primaryEmailContactChannel.id,
+          usedForAuth: primaryEmailAuthEnabled,
         });
       }
 
@@ -1177,7 +1246,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             const primaryEmailChannel = await tx.contactChannel.findFirst({
               where: {
                 tenancyId: auth.tenancy.id,
-                projectUserId: params.user_id,
+                contactId: params.user_id,
                 type: 'EMAIL',
                 isPrimary: "TRUE",
               }
@@ -1250,6 +1319,34 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         restrictedByAdminPrivateDetails = null;
       }
 
+      const profileImageUrl = data.profile_image_url !== undefined
+        ? await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
+        : undefined;
+
+      if (
+        data.display_name !== undefined
+        || data.client_metadata !== undefined
+        || data.client_read_only_metadata !== undefined
+        || data.server_metadata !== undefined
+        || profileImageUrl !== undefined
+      ) {
+        await updateContactProfileForUser(tx, {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+          displayName: data.display_name === undefined ? undefined : (data.display_name || null),
+          clientMetadata: data.client_metadata === undefined
+            ? undefined
+            : (data.client_metadata === null ? Prisma.JsonNull : data.client_metadata),
+          clientReadOnlyMetadata: data.client_read_only_metadata === undefined
+            ? undefined
+            : (data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata),
+          serverMetadata: data.server_metadata === undefined
+            ? undefined
+            : (data.server_metadata === null ? Prisma.JsonNull : data.server_metadata),
+          profileImageUrl,
+        });
+      }
+
       const db = await tx.projectUser.update({
         where: {
           tenancyId_projectUserId: {
@@ -1258,10 +1355,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
         data: withExternalDbSyncUpdate({
-          displayName: data.display_name === undefined ? undefined : (data.display_name || null),
-          clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
-          clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
-          serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
@@ -1270,7 +1363,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           // (a) that transition is admin-only and rare, and (b) preserving the original
           // sign-up timestamp keeps risk/audit data intact.
           signedUpAt: oldUser.isAnonymous && data.is_anonymous === false ? new Date() : undefined,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,

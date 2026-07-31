@@ -78,11 +78,13 @@ export const POST = createSmartRouteHandler({
           isAnonymous: false,
           // User must NOT have a verified primary email to be affected
           NOT: {
-            contactChannels: {
-              some: {
-                type: 'EMAIL',
-                isPrimary: 'TRUE',
-                isVerified: true,
+            contact: {
+              contactChannels: {
+                some: {
+                  type: 'EMAIL',
+                  isPrimary: 'TRUE',
+                  isVerified: true,
+                },
               },
             },
           },
@@ -96,20 +98,26 @@ export const POST = createSmartRouteHandler({
           isAnonymous: false,
           // User must NOT have a verified primary email to be affected
           NOT: {
-            contactChannels: {
-              some: {
-                type: 'EMAIL',
-                isPrimary: 'TRUE',
-                isVerified: true,
+            contact: {
+              contactChannels: {
+                some: {
+                  type: 'EMAIL',
+                  isPrimary: 'TRUE',
+                  isVerified: true,
+                },
               },
             },
           },
         },
         include: {
-          contactChannels: {
-            where: {
-              type: 'EMAIL',
-              isPrimary: 'TRUE',
+          contact: {
+            include: {
+              contactChannels: {
+                where: {
+                  type: 'EMAIL',
+                  isPrimary: 'TRUE',
+                },
+              },
             },
           },
         },
@@ -120,10 +128,10 @@ export const POST = createSmartRouteHandler({
       });
 
       for (const user of users) {
-        const primaryEmailChannel = user.contactChannels.find(c => c.isPrimary === 'TRUE');
+        const primaryEmailChannel = user.contact.contactChannels.find(c => c.isPrimary === 'TRUE');
         affectedUsers.push({
           id: user.projectUserId,
-          display_name: user.displayName,
+          display_name: user.contact.displayName,
           primary_email: primaryEmailChannel?.value ?? null,
           restricted_reason: { type: "email_not_verified" },
         });

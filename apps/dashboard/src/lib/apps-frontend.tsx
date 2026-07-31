@@ -259,6 +259,23 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  comms: {
+    icon: ChatCircleDotsIcon,
+    href: "comms",
+    navigationItems: [
+      { displayName: "Messages", href: "." },
+      { displayName: "Conversations", href: "./conversations" },
+      { displayName: "Contacts", href: "./contacts" },
+    ],
+    screenshots: getScreenshots("comms", 0),
+    storeDescription: (
+      <>
+        <p>Comms is an information-dense control room for the project&apos;s channel-agnostic communications data.</p>
+        <p>Inspect messages, conversations, contacts, channels, deliveries, attempts, and assignment history from one place.</p>
+        <p>The alpha is intended for internal operators and exposes advanced mutation tools with explicit audit context.</p>
+      </>
+    ),
+  },
   "data-vault": {
     icon: VaultIcon,
     href: "data-vault",

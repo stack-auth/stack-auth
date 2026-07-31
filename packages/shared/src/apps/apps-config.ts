@@ -112,6 +112,12 @@ export const ALL_APPS = {
     tags: ["comms", "developers", "expert"],
     stage: "alpha",
   },
+  "comms": {
+    displayName: "Comms",
+    subtitle: "Inspect and manage communications primitives",
+    tags: ["comms", "operations", "expert"],
+    stage: "alpha",
+  },
   "data-vault": {
     displayName: "Data Vault",
     subtitle: "Secure storage for sensitive user data",

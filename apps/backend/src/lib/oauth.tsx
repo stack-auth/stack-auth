@@ -77,8 +77,8 @@ export async function handleOAuthEmailMergeStrategy(
     }
   );
 
-  // Check if we should link this OAuth account to an existing user based on email
-  if (existingContactChannel && existingContactChannel.usedForAuth) {
+  // getAuthContactChannel* only returns channels selected for auth.
+  if (existingContactChannel) {
     const accountMergeStrategy = tenancy.config.auth.oauth.accountMergeStrategy;
     switch (accountMergeStrategy) {
       case "link_method": {
@@ -96,8 +96,15 @@ export async function handleOAuthEmailMergeStrategy(
           throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email);
         }
 
-        // Link to existing user
-        linkedUserId = existingContactChannel.projectUserId;
+        // Link to existing user (user-backed contacts share UUID with ProjectUser).
+        const projectUser = existingContactChannel.contact.projectUser;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Prisma's relation type is nullable because CRM contacts exist, even though an auth-selected channel must be user-backed.
+        if (projectUser == null) {
+          throw new HexclaveAssertionError("Auth contact channel is missing its ProjectUser", {
+            existingContactChannel,
+          });
+        }
+        linkedUserId = projectUser.projectUserId;
         break;
       }
       case "raise_error": {

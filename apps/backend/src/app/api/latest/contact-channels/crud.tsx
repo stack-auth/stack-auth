@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
-import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById } from "@/lib/contact-channel";
+import { contactChannelIsUsedForAuth } from "@/lib/comms/contacts";
+import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById, setContactChannelUsedForAuth } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { markProjectUserForExternalDbSync, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
@@ -12,16 +13,24 @@ import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { typedToLowercase, typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 
-export const contactChannelToCrud = (channel: Prisma.ContactChannelGetPayload<{}>) => {
+type ContactChannelWithAuthSelections = Prisma.ContactChannelGetPayload<{
+  include: { authSelections: true },
+}>;
+
+export const contactChannelToCrud = (channel: ContactChannelWithAuthSelections) => {
+  if (channel.type !== "EMAIL") {
+    throw new StatusError(StatusError.BadRequest, `Contact channel type ${channel.type} is not supported on the legacy user contact-channels API.`);
+  }
   return {
-    user_id: channel.projectUserId,
+    // User-backed contacts share their UUID with ProjectUser; API still exposes user_id.
+    user_id: channel.contactId,
     id: channel.id,
-    type: typedToLowercase(channel.type),
+    type: "email" as const,
     value: channel.value,
     is_primary: !!channel.isPrimary,
     is_verified: channel.isVerified,
-    used_for_auth: !!channel.usedForAuth,
-  } as const;
+    used_for_auth: contactChannelIsUsedForAuth(channel, channel.contactId),
+  };
 };
 
 export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandlers(contactChannelsCrud, {
@@ -45,15 +54,15 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
     const contactChannel = await prisma.contactChannel.findUnique({
       where: {
-        tenancyId_projectUserId_id: {
+        tenancyId_id: {
           tenancyId: auth.tenancy.id,
-          projectUserId: params.user_id,
           id: params.contact_channel_id || throwErr("Missing contact channel id"),
         },
       },
+      include: { authSelections: true },
     });
 
-    if (!contactChannel) {
+    if (!contactChannel || contactChannel.contactId !== params.user_id) {
       throw new StatusError(StatusError.NotFound, 'Contact channel not found.');
     }
 
@@ -88,13 +97,13 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
       // if usedForAuth is set to true, make sure no other account uses this channel for auth
       if (data.used_for_auth) {
-        const existingWithSameChannel = await tx.contactChannel.findUnique({
+        const existingWithSameChannel = await tx.projectUserAuthContactChannel.findUnique({
           where: {
-            tenancyId_type_value_usedForAuth: {
+            tenancyId_type_identityScope_value: {
               tenancyId: auth.tenancy.id,
               type: crudContactChannelTypeToPrisma(data.type),
+              identityScope: "",
               value: value,
-              usedForAuth: 'TRUE',
             },
           },
         });
@@ -106,18 +115,27 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       const createdContactChannel = await tx.contactChannel.create({
         data: {
           tenancyId: auth.tenancy.id,
-          projectUserId: data.user_id,
+          contactId: data.user_id,
           type: typedToUppercase(data.type),
           value: value,
           isVerified: data.is_verified ?? false,
-          usedForAuth: data.used_for_auth ? 'TRUE' : null,
+          verifiedAt: data.is_verified === true ? new Date() : null,
         },
       });
+
+      if (data.used_for_auth) {
+        await setContactChannelUsedForAuth(tx, {
+          tenancyId: auth.tenancy.id,
+          projectUserId: data.user_id,
+          contactChannelId: createdContactChannel.id,
+          usedForAuth: true,
+        });
+      }
 
       if (data.is_primary) {
         await setContactChannelAsPrimaryById(tx, {
           tenancyId: auth.tenancy.id,
-          projectUserId: data.user_id,
+          contactId: data.user_id,
           contactChannelId: createdContactChannel.id,
           type: crudContactChannelTypeToPrisma(data.type),
         });
@@ -130,12 +148,12 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
       return await tx.contactChannel.findUnique({
         where: {
-          tenancyId_projectUserId_id: {
+          tenancyId_id: {
             tenancyId: auth.tenancy.id,
-            projectUserId: data.user_id,
             id: createdContactChannel.id,
           },
         },
+        include: { authSelections: true },
       }) || throwErr("Failed to create contact channel");
     });
 
@@ -172,17 +190,20 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
       // if usedForAuth is set to true, make sure no other account uses this channel for auth
       if (data.used_for_auth) {
-        const existingWithSameChannel = await tx.contactChannel.findUnique({
+        const existingWithSameChannel = await tx.projectUserAuthContactChannel.findUnique({
           where: {
-            tenancyId_type_value_usedForAuth: {
+            tenancyId_type_identityScope_value: {
               tenancyId: auth.tenancy.id,
               type: data.type !== undefined ? crudContactChannelTypeToPrisma(data.type) : existingContactChannel.type,
+              identityScope: existingContactChannel.identityScope,
               value: value !== undefined ? value : existingContactChannel.value,
-              usedForAuth: 'TRUE',
             },
           },
         });
-        if (existingWithSameChannel && existingWithSameChannel.id !== existingContactChannel.id) {
+        if (existingWithSameChannel && existingWithSameChannel.contactChannelId !== existingContactChannel.id) {
+          if (existingContactChannel.type !== "EMAIL") {
+            throw new StatusError(StatusError.BadRequest, `Contact channel type ${existingContactChannel.type} is not supported on the legacy user contact-channels API.`);
+          }
           throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse(data.type ?? prismaContactChannelTypeToCrud(existingContactChannel.type));
         }
       }
@@ -190,33 +211,58 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
       if (data.is_primary) {
         await demoteAllContactChannelsToNonPrimary(tx, {
           tenancyId: auth.tenancy.id,
-          projectUserId: params.user_id,
+          contactId: params.user_id,
           type: data.type !== undefined ? crudContactChannelTypeToPrisma(data.type) : existingContactChannel.type,
         });
       }
 
       const updated = await tx.contactChannel.update({
         where: {
-          tenancyId_projectUserId_id: {
+          tenancyId_id: {
             tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
             id: params.contact_channel_id || throwErr("Missing contact channel id"),
           },
         },
         data: withExternalDbSyncUpdate({
           value: value,
           isVerified: data.is_verified ?? (value ? false : undefined), // if value is updated and is_verified is not provided, set to false
-          usedForAuth: data.used_for_auth !== undefined ? (data.used_for_auth ? 'TRUE' : null) : undefined,
+          verifiedAt: data.is_verified === true
+            ? (existingContactChannel.verifiedAt ?? new Date())
+            : data.is_verified === false || value
+              ? null
+              : undefined,
           isPrimary: data.is_primary !== undefined ? (data.is_primary ? 'TRUE' : null) : undefined,
         }),
+        include: { authSelections: true },
       });
+
+      if (updated.contactId !== params.user_id) {
+        throw new StatusError(StatusError.NotFound, 'Contact channel not found.');
+      }
+
+      if (data.used_for_auth !== undefined) {
+        await setContactChannelUsedForAuth(tx, {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+          contactChannelId: updated.id,
+          usedForAuth: data.used_for_auth,
+        });
+      }
 
       await markProjectUserForExternalDbSync(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
       });
 
-      return updated;
+      return await tx.contactChannel.findUnique({
+        where: {
+          tenancyId_id: {
+            tenancyId: auth.tenancy.id,
+            id: updated.id,
+          },
+        },
+        include: { authSelections: true },
+      }) ?? throwErr("Contact channel missing after update");
     });
 
     return contactChannelToCrud(updatedContactChannel);
@@ -247,9 +293,8 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
 
       await tx.contactChannel.delete({
         where: {
-          tenancyId_projectUserId_id: {
+          tenancyId_id: {
             tenancyId: auth.tenancy.id,
-            projectUserId: params.user_id,
             id: params.contact_channel_id || throwErr("Missing contact channel id"),
           },
         },
@@ -274,9 +319,11 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
     const contactChannels = await prisma.contactChannel.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        projectUserId: query.user_id,
+        contactId: query.user_id,
         id: query.contact_channel_id,
+        type: "EMAIL",
       },
+      include: { authSelections: true },
     });
 
     return {

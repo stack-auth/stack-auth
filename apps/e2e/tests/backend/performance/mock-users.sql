@@ -24,7 +24,6 @@ existing_max AS (
   LEFT JOIN "ContactChannel" cc
     ON cc."tenancyId" = t.id
    AND cc."type" = 'EMAIL'
-   AND cc."usedForAuth" = 'TRUE'::"BooleanTrue"
    AND cc."value" ~ '^perf-user-[0-9]+@internal\.stack$'
 ),
 next_range AS (
@@ -65,27 +64,38 @@ generated AS (
   CROSS JOIN next_range r
   CROSS JOIN generate_series(r.start_idx, r.end_idx) AS gs
   -- Ensure re-running this script can't error due to the unique constraint on
-  -- (tenancyId, type, value, usedForAuth). If a perf-user email already exists
-  -- and is used for auth, skip generating that row entirely.
+  -- (tenancyId, type, identityScope, value) for auth selections. If a perf-user
+  -- email already exists, skip generating that row entirely.
   WHERE NOT EXISTS (
     SELECT 1
     FROM "ContactChannel" cc
     WHERE cc."tenancyId" = t.id
       AND cc."type" = 'EMAIL'
       AND cc."value" = ('perf-user-' || gs::text || '@internal.stack')
-      AND cc."usedForAuth" = 'TRUE'::"BooleanTrue"
   )
+),
+insert_contacts AS (
+  INSERT INTO "Contact"
+    ("tenancyId","id","displayName","createdAt","updatedAt")
+  SELECT
+    tenancy_id,
+    project_user_id,
+    'Perf Test User ' || idx,
+    ts,
+    ts
+  FROM generated
+  ON CONFLICT ("tenancyId", "id") DO NOTHING
+  RETURNING "tenancyId","id"
 ),
 insert_users AS (
   INSERT INTO "ProjectUser"
-    ("tenancyId","projectUserId","mirroredProjectId","mirroredBranchId","displayName",
+    ("tenancyId","projectUserId","mirroredProjectId","mirroredBranchId",
      "projectId","createdAt","updatedAt","signedUpAt","signUpRiskScoreBot","signUpRiskScoreFreeTrialAbuse")
   SELECT
     tenancy_id,
     project_user_id,
     'internal',
     'main',
-    'Perf Test User ' || idx,
     'internal',
     ts,
     ts,
@@ -96,18 +106,34 @@ insert_users AS (
   ON CONFLICT ("tenancyId", "projectUserId") DO NOTHING
   RETURNING "tenancyId","projectUserId"
 ),
-insert_contacts AS (
+insert_channels AS (
   INSERT INTO "ContactChannel"
-    ("tenancyId","projectUserId","id","type","isPrimary","usedForAuth",
-     "isVerified","value","createdAt","updatedAt")
+    ("tenancyId","id","contactId","type","isPrimary",
+     "isVerified","value","identityScope","createdAt","updatedAt")
+  SELECT
+    g.tenancy_id,
+    g.contact_id,
+    g.project_user_id,
+    'EMAIL',
+    'TRUE'::"BooleanTrue",
+    false,
+    g.email_value,
+    '',
+    g.ts,
+    g.ts
+  FROM generated g
+  ON CONFLICT DO NOTHING
+  RETURNING "tenancyId","contactId"
+),
+insert_auth_channels AS (
+  INSERT INTO "ProjectUserAuthContactChannel"
+    ("tenancyId","projectUserId","contactChannelId","type","identityScope","value","createdAt","updatedAt")
   SELECT
     g.tenancy_id,
     g.project_user_id,
     g.contact_id,
     'EMAIL',
-    'TRUE'::"BooleanTrue",
-    'TRUE'::"BooleanTrue",
-    false,
+    '',
     g.email_value,
     g.ts,
     g.ts

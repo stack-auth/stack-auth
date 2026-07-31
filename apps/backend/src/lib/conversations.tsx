@@ -263,8 +263,8 @@ async function getConversationRow(options: {
       c."lastOutboundAt",
       c."closedAt",
       c.metadata AS "recordMetadata",
-      pu."displayName" AS "userDisplayName",
-      pu."profileImageUrl" AS "userProfileImageUrl",
+      contact."displayName" AS "userDisplayName",
+      contact."profileImageUrl" AS "userProfileImageUrl",
       cc."value" AS "userPrimaryEmail",
       c."assignedToUserId",
       c."assignedToDisplayName",
@@ -278,9 +278,12 @@ async function getConversationRow(options: {
     LEFT JOIN "ProjectUser" pu
       ON pu."tenancyId" = c."tenancyId"
       AND pu."projectUserId" = c."projectUserId"
+    LEFT JOIN "Contact" contact
+      ON contact."tenancyId" = c."tenancyId"
+      AND contact."id" = c."projectUserId"
     LEFT JOIN "ContactChannel" cc
       ON cc."tenancyId" = c."tenancyId"
-      AND cc."projectUserId" = c."projectUserId"
+      AND cc."contactId" = c."projectUserId"
       AND cc."type" = 'EMAIL'
       AND cc."isPrimary" = 'TRUE'
     WHERE c."tenancyId" = ${options.tenancyId}::uuid
@@ -433,8 +436,8 @@ export async function listConversationSummaries(options: {
       c."lastOutboundAt",
       c."closedAt",
       c.metadata AS "recordMetadata",
-      pu."displayName" AS "userDisplayName",
-      pu."profileImageUrl" AS "userProfileImageUrl",
+      contact."displayName" AS "userDisplayName",
+      contact."profileImageUrl" AS "userProfileImageUrl",
       cc."value" AS "userPrimaryEmail",
       c."assignedToUserId",
       c."assignedToDisplayName",
@@ -451,9 +454,12 @@ export async function listConversationSummaries(options: {
     LEFT JOIN "ProjectUser" pu
       ON pu."tenancyId" = c."tenancyId"
       AND pu."projectUserId" = c."projectUserId"
+    LEFT JOIN "Contact" contact
+      ON contact."tenancyId" = c."tenancyId"
+      AND contact."id" = c."projectUserId"
     LEFT JOIN "ContactChannel" cc
       ON cc."tenancyId" = c."tenancyId"
-      AND cc."projectUserId" = c."projectUserId"
+      AND cc."contactId" = c."projectUserId"
       AND cc."type" = 'EMAIL'
       AND cc."isPrimary" = 'TRUE'
     LEFT JOIN LATERAL (
@@ -475,7 +481,7 @@ export async function listConversationSummaries(options: {
         AND (
           LOWER(c.subject) LIKE ${searchPattern} ESCAPE '\\'
           OR LOWER(COALESCE(lm.body, '')) LIKE ${searchPattern} ESCAPE '\\'
-          OR LOWER(COALESCE(pu."displayName", '')) LIKE ${searchPattern} ESCAPE '\\'
+          OR LOWER(COALESCE(contact."displayName", '')) LIKE ${searchPattern} ESCAPE '\\'
           OR LOWER(COALESCE(cc."value", '')) LIKE ${searchPattern} ESCAPE '\\'
         )
       ` : Prisma.empty}

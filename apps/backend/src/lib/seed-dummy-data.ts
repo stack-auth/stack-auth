@@ -590,16 +590,18 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       type: 'EMAIL',
       value: { in: usersToSeed.map((u) => u.email) },
     },
-    select: { value: true, projectUserId: true },
+    select: { value: true, contactId: true },
   });
-  const existingIdByEmail = new Map(existingChannels.map((c) => [c.value, c.projectUserId]));
+  const existingIdByEmail = new Map(existingChannels.map((c) => [c.value, c.contactId]));
 
   // Build every row up front, with all UUIDs pre-generated so foreign keys
   // wire up without round-tripping. This replaces ~N per-user adminCreate
   // transactions with one createMany per table.
   const defaultPermissionIds = Object.keys(tenancy.config.rbac.defaultPermissions.signUp);
+  const contactRows: Prisma.ContactCreateManyInput[] = [];
   const projectUserRows: Prisma.ProjectUserCreateManyInput[] = [];
   const contactChannelRows: Prisma.ContactChannelCreateManyInput[] = [];
+  const authContactChannelRows: Prisma.ProjectUserAuthContactChannelCreateManyInput[] = [];
   const authMethodRows: Prisma.AuthMethodCreateManyInput[] = [];
   const oauthAccountRows: Prisma.ProjectUserOAuthAccountCreateManyInput[] = [];
   const oauthAuthMethodRows: Prisma.OAuthAuthMethodCreateManyInput[] = [];
@@ -614,27 +616,39 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
     const projectUserId = randomUUID();
     userEmailToId.set(user.email, projectUserId);
 
+    contactRows.push({
+      tenancyId: tenancy.id,
+      id: projectUserId,
+      displayName: user.displayName,
+      profileImageUrl: user.profileImageUrl,
+    });
     projectUserRows.push({
       tenancyId: tenancy.id,
       projectUserId,
       mirroredProjectId: tenancy.project.id,
       mirroredBranchId: tenancy.branchId,
-      displayName: user.displayName,
       isAnonymous: user.isAnonymous,
-      profileImageUrl: user.profileImageUrl,
       // Only createdAt is back-dated (mirrors adminCreate + the old updateMany);
       // signedUpAt / lastActiveAt fall back to their now() defaults.
       createdAt: user.createdAt ?? undefined,
     });
+    const contactChannelId = randomUUID();
     contactChannelRows.push({
       tenancyId: tenancy.id,
-      projectUserId,
-      id: randomUUID(),
+      contactId: projectUserId,
+      id: contactChannelId,
       type: ContactChannelType.EMAIL,
       value: user.email,
       isVerified: user.primaryEmailVerified,
       isPrimary: BooleanTrue.TRUE,
-      usedForAuth: BooleanTrue.TRUE,
+    });
+    authContactChannelRows.push({
+      tenancyId: tenancy.id,
+      projectUserId,
+      contactChannelId,
+      type: ContactChannelType.EMAIL,
+      identityScope: "",
+      value: user.email,
     });
     for (const provider of user.oauthProviders) {
       const authMethodId = randomUUID();
@@ -668,11 +682,15 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
   }
 
   // One createMany per table, all inside a single transaction. Order matters
-  // for foreign keys: ProjectUser first, OAuthAuthMethod after its referents.
+  // for foreign keys: Contact before ProjectUser, OAuthAuthMethod after its referents.
   if (projectUserRows.length > 0) {
     await retryTransaction(prisma, async (tx) => {
+      await tx.contact.createMany({ data: contactRows });
       await tx.projectUser.createMany({ data: projectUserRows });
       await tx.contactChannel.createMany({ data: contactChannelRows });
+      if (authContactChannelRows.length > 0) {
+        await tx.projectUserAuthContactChannel.createMany({ data: authContactChannelRows });
+      }
       if (authMethodRows.length > 0) {
         await tx.authMethod.createMany({ data: authMethodRows });
         await tx.projectUserOAuthAccount.createMany({ data: oauthAccountRows });
@@ -1776,26 +1794,30 @@ async function seedBulkSignupsAndActivity(options: {
       tenancyId: tenancy.id,
       type: 'EMAIL',
       isPrimary: 'TRUE',
-      usedForAuth: 'TRUE',
       value: { in: seedUsers.map((seedUser) => seedUser.email) },
+      authSelections: {
+        some: {},
+      },
     },
     select: {
       value: true,
-      projectUserId: true,
+      contactId: true,
     },
   });
 
   const existingUserIdByEmail = new Map<string, string>();
   for (const existingContactChannel of existingContactChannels) {
     const existingUserId = existingUserIdByEmail.get(existingContactChannel.value);
-    if (existingUserId != null && existingUserId !== existingContactChannel.projectUserId) {
+    if (existingUserId != null && existingUserId !== existingContactChannel.contactId) {
       throwErr(`Expected one authenticated user per seed email (${existingContactChannel.value}), found multiple project users`);
     }
-    existingUserIdByEmail.set(existingContactChannel.value, existingContactChannel.projectUserId);
+    existingUserIdByEmail.set(existingContactChannel.value, existingContactChannel.contactId);
   }
 
+  const contactsToCreate: Prisma.ContactCreateManyInput[] = [];
   const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
   const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
+  const authContactChannelsToCreate: Prisma.ProjectUserAuthContactChannelCreateManyInput[] = [];
   const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
   // Only users that already existed need a timestamp UPDATE afterwards — the
   // `createMany` below already writes correct createdAt/signedUpAt for every
@@ -1807,12 +1829,16 @@ async function seedBulkSignupsAndActivity(options: {
     const existingUserId = existingUserIdByEmail.get(seedUser.email);
     if (existingUserId == null) {
       created++;
+      contactsToCreate.push({
+        tenancyId: tenancy.id,
+        id: userId,
+        displayName: seedUser.displayName,
+      });
       projectUsersToCreate.push({
         tenancyId: tenancy.id,
         projectUserId: userId,
         mirroredProjectId: tenancy.project.id,
         mirroredBranchId: tenancy.branchId,
-        displayName: seedUser.displayName,
         isAnonymous: false,
         createdAt: seedUser.signedUpAt,
         lastActiveAt: seedUser.signedUpAt,
@@ -1820,16 +1846,25 @@ async function seedBulkSignupsAndActivity(options: {
         signUpRiskScoreBot: 0,
         signUpRiskScoreFreeTrialAbuse: 0,
       });
+      const contactChannelId = randomUUID();
       contactChannelsToCreate.push({
         tenancyId: tenancy.id,
-        projectUserId: userId,
+        contactId: userId,
+        id: contactChannelId,
         type: 'EMAIL',
         isPrimary: 'TRUE',
-        usedForAuth: 'TRUE',
         isVerified: seedUser.primaryEmailVerified,
         value: seedUser.email,
         createdAt: seedUser.signedUpAt,
         updatedAt: seedUser.signedUpAt,
+      });
+      authContactChannelsToCreate.push({
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        contactChannelId,
+        type: ContactChannelType.EMAIL,
+        identityScope: "",
+        value: seedUser.email,
       });
     } else {
       updated++;
@@ -1873,6 +1908,12 @@ async function seedBulkSignupsAndActivity(options: {
     }
   }
 
+  if (contactsToCreate.length > 0) {
+    await prisma.contact.createMany({
+      data: contactsToCreate,
+      skipDuplicates: true,
+    });
+  }
   if (projectUsersToCreate.length > 0) {
     await prisma.projectUser.createMany({
       data: projectUsersToCreate,
@@ -1882,6 +1923,12 @@ async function seedBulkSignupsAndActivity(options: {
   if (contactChannelsToCreate.length > 0) {
     await prisma.contactChannel.createMany({
       data: contactChannelsToCreate,
+      skipDuplicates: true,
+    });
+  }
+  if (authContactChannelsToCreate.length > 0) {
+    await prisma.projectUserAuthContactChannel.createMany({
+      data: authContactChannelsToCreate,
       skipDuplicates: true,
     });
   }
@@ -2354,18 +2401,25 @@ async function seedDummyAnalyticsMirrorTables(options: {
     return;
   }
 
-  const [users, contactChannels, teams] = await Promise.all([
+  const [users, contactChannels, teams, contacts] = await Promise.all([
     prisma.projectUser.findMany({ where: { tenancyId } }),
-    prisma.contactChannel.findMany({ where: { tenancyId } }),
+    prisma.contactChannel.findMany({
+      where: { tenancyId },
+      include: { authSelections: true },
+    }),
     prisma.team.findMany({ where: { tenancyId } }),
+    prisma.contact.findMany({ where: { tenancyId } }),
   ]);
+
+  const contactById = new Map(contacts.map((c) => [c.id, c]));
 
   // Primary contact channel per user — drives primary_email and the verified /
   // unverified user split on the overview page. Seeded channels are all EMAIL.
+  // User-backed contacts share their UUID with ProjectUser.
   const primaryEmailByUser = new Map<string, { value: string, isVerified: boolean }>();
   for (const cc of contactChannels) {
     if (cc.isPrimary === BooleanTrue.TRUE) {
-      primaryEmailByUser.set(cc.projectUserId, { value: cc.value, isVerified: cc.isVerified });
+      primaryEmailByUser.set(cc.contactId, { value: cc.value, isVerified: cc.isVerified });
     }
   }
 
@@ -2380,18 +2434,20 @@ async function seedDummyAnalyticsMirrorTables(options: {
 
   const userRows = users.map((u) => {
     const primaryEmail = primaryEmailByUser.get(u.projectUserId);
+    const contact = contactById.get(u.projectUserId)
+      ?? throwErr("Seeded ProjectUser is missing its same-UUID Contact", { projectUserId: u.projectUserId, tenancyId });
     return {
       project_id: projectId,
       branch_id: DEFAULT_BRANCH_ID,
       id: u.projectUserId,
-      display_name: u.displayName,
-      profile_image_url: u.profileImageUrl,
+      display_name: contact.displayName,
+      profile_image_url: contact.profileImageUrl,
       primary_email: primaryEmail?.value ?? null,
       primary_email_verified: primaryEmail?.isVerified ? 1 : 0,
       signed_up_at: formatClickhouseTimestamp(u.signedUpAt),
-      client_metadata: JSON.stringify(u.clientMetadata ?? {}),
-      client_read_only_metadata: JSON.stringify(u.clientReadOnlyMetadata ?? {}),
-      server_metadata: JSON.stringify(u.serverMetadata ?? {}),
+      client_metadata: JSON.stringify(contact.clientMetadata ?? {}),
+      client_read_only_metadata: JSON.stringify(contact.clientReadOnlyMetadata ?? {}),
+      server_metadata: JSON.stringify(contact.serverMetadata ?? {}),
       is_anonymous: u.isAnonymous ? 1 : 0,
       restricted_by_admin: u.restrictedByAdmin ? 1 : 0,
       restricted_by_admin_reason: u.restrictedByAdminReason,
@@ -2419,12 +2475,12 @@ async function seedDummyAnalyticsMirrorTables(options: {
     project_id: projectId,
     branch_id: DEFAULT_BRANCH_ID,
     id: cc.id,
-    user_id: cc.projectUserId,
+    user_id: cc.contactId,
     type: cc.type,
     value: cc.value,
     is_primary: cc.isPrimary === BooleanTrue.TRUE ? 1 : 0,
     is_verified: cc.isVerified ? 1 : 0,
-    used_for_auth: cc.usedForAuth === BooleanTrue.TRUE ? 1 : 0,
+    used_for_auth: cc.authSelections.length > 0 ? 1 : 0,
     created_at: formatClickhouseTimestamp(cc.createdAt),
     sync_sequence_id: SEED_SYNC_SEQUENCE_ID,
     sync_is_deleted: 0,

@@ -51,6 +51,7 @@ const stripFields = [
   "date",
   "last_active_at_millis",
   "signed_up_at_millis",
+  "verified_at_millis",
   "expires_at_millis",
   "created_at_millis",
   "effective_at_millis",

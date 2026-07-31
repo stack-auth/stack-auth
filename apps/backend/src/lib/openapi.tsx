@@ -193,7 +193,7 @@ function parseRouteHandler(options: {
   return result;
 }
 
-function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string, items?: any, properties?: any, required?: any, default?: any } | undefined {
+function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string, items?: any, properties?: any, required?: any, default?: any, oneOf?: unknown[] } | undefined {
   const meta = "meta" in field ? field.meta : {};
   if (meta?.openapiField?.hidden) {
     return undefined;
@@ -227,6 +227,14 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
       return { type: field.type, ...openapiFieldExtra };
     }
     case 'mixed': {
+      const schemaInfo = meta?.hexclaveSchemaInfo;
+      if (schemaInfo?.type === "union") {
+        return {
+          type: 'object',
+          oneOf: schemaInfo.items.map((item: yup.AnySchema) => getFieldSchema(item.describe(), crudOperation)),
+          ...openapiFieldExtra,
+        };
+      }
       return { type: 'object', ...openapiFieldExtra };
     }
     case 'object': {

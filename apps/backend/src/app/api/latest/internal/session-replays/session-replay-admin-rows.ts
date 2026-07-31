@@ -30,11 +30,11 @@ export async function querySessionReplayAdminRows(options: {
       sr."projectUserId",
       sr."startedAt",
       sr."lastEventAt",
-      pu."displayName" AS "projectUserDisplayName",
+      c."displayName" AS "projectUserDisplayName",
       (
         SELECT cc."value"
         FROM ${sqlQuoteIdent(schema)}."ContactChannel" cc
-        WHERE cc."projectUserId" = sr."projectUserId"
+        WHERE cc."contactId" = sr."projectUserId"
           AND cc."tenancyId" = sr."tenancyId"
           AND cc."type" = 'EMAIL'
           AND cc."isPrimary" = 'TRUE'::"BooleanTrue"
@@ -44,6 +44,9 @@ export async function querySessionReplayAdminRows(options: {
     JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
       ON pu."projectUserId" = sr."projectUserId"
       AND pu."tenancyId" = sr."tenancyId"
+    JOIN ${sqlQuoteIdent(schema)}."Contact" c
+      ON c."id" = pu."projectUserId"
+      AND c."tenancyId" = pu."tenancyId"
     WHERE sr."tenancyId" = ${tenancyId}::UUID
       ${suffixSql}
   `;

@@ -32,8 +32,9 @@ export const getFailedEmailsByTenancy = async (after: Date) => {
   INNER JOIN "Team" team ON team."teamId" = p."ownerTeamId"
   INNER JOIN "TeamMember" tm ON tm."teamId" = team."teamId"
     AND tm."projectUserId" = pu."projectUserId"
-  INNER JOIN "ContactChannel" cc ON tm."projectUserId" = cc."projectUserId" 
-    AND cc."isPrimary" = 'TRUE' 
+  INNER JOIN "ContactChannel" cc ON cc."contactId" = tm."projectUserId"
+    AND cc."tenancyId" = pu."tenancyId"
+    AND cc."isPrimary" = 'TRUE'
     AND cc."type" = 'EMAIL'
   WHERE eo."simpleStatus" = 'ERROR'::"EmailOutboxSimpleStatus"
     AND eo."createdAt" >= ${after}

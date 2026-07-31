@@ -67,23 +67,37 @@ async function insertProjectUsers(client: Client, context: ProjectUsageContext, 
 }): Promise<string[]> {
   const nonAnonymousUsers = await client.query<{ projectUserId: string }>(
     `
+      WITH generated AS (
+        SELECT gen_random_uuid() AS project_user_id, gs
+        FROM generate_series(1, $3::int) AS gs
+      ),
+      insert_contacts AS (
+        INSERT INTO "Contact"
+          ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+        SELECT
+          $1::uuid,
+          project_user_id,
+          'Plan Usage User ' || gs,
+          now(),
+          now()
+        FROM generated
+      )
       INSERT INTO "ProjectUser"
         ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-         "displayName", "createdAt", "updatedAt", "isAnonymous",
+         "createdAt", "updatedAt", "isAnonymous",
          "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
       SELECT
         $1::uuid,
-        gen_random_uuid(),
+        project_user_id,
         $2,
         'main',
-        'Plan Usage User ' || gs,
         now(),
         now(),
         false,
         now(),
         0,
         0
-      FROM generate_series(1, $3::int) AS gs
+      FROM generated
       RETURNING "projectUserId"
     `,
     [context.tenancyId, context.projectId, options.nonAnonymousCount],
@@ -91,23 +105,37 @@ async function insertProjectUsers(client: Client, context: ProjectUsageContext, 
 
   await client.query(
     `
+      WITH generated AS (
+        SELECT gen_random_uuid() AS project_user_id, gs
+        FROM generate_series(1, $3::int) AS gs
+      ),
+      insert_contacts AS (
+        INSERT INTO "Contact"
+          ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+        SELECT
+          $1::uuid,
+          project_user_id,
+          'Plan Usage Anonymous User ' || gs,
+          now(),
+          now()
+        FROM generated
+      )
       INSERT INTO "ProjectUser"
         ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-         "displayName", "createdAt", "updatedAt", "isAnonymous",
+         "createdAt", "updatedAt", "isAnonymous",
          "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
       SELECT
         $1::uuid,
-        gen_random_uuid(),
+        project_user_id,
         $2,
         'main',
-        'Plan Usage Anonymous User ' || gs,
         now(),
         now(),
         true,
         now(),
         0,
         0
-      FROM generate_series(1, $3::int) AS gs
+      FROM generated
     `,
     [context.tenancyId, context.projectId, options.anonymousCount],
   );

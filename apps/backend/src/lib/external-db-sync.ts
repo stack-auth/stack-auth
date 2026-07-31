@@ -157,6 +157,9 @@ export async function recordExternalDbSyncDeletion(
   if (target.tableName === "ContactChannel") {
     assertUuid(target.projectUserId, "projectUserId");
     assertUuid(target.contactChannelId, "contactChannelId");
+    // projectUserId is retained on the sync tombstone for backward-compatible
+    // external DB mappings (user_id). Ownership is Contact.contactId; for
+    // user-backed contacts contactId === former projectUserId.
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
@@ -174,17 +177,16 @@ export async function recordExternalDbSyncDeletion(
         jsonb_build_object(
           'tenancyId',
           "tenancyId",
-          'projectUserId',
-          "projectUserId",
           'id',
-          "id"
+          "id",
+          'projectUserId',
+          "contactId"
         ),
         to_jsonb("ContactChannel".*),
         NOW(),
         TRUE
       FROM "ContactChannel"
       WHERE "tenancyId" = ${target.tenancyId}::uuid
-        AND "projectUserId" = ${target.projectUserId}::uuid
         AND "id" = ${target.contactChannelId}::uuid
       FOR UPDATE
     `);
@@ -457,6 +459,9 @@ export async function recordExternalDbSyncContactChannelDeletionsForUser(
   assertUuid(options.tenancyId, "tenancyId");
   assertUuid(options.projectUserId, "projectUserId");
 
+  // The internal ContactChannel rows intentionally survive user deletion, but
+  // the legacy external projection only contains user-backed channels. Emit
+  // tombstones before ProjectUser is removed so those projected rows disappear.
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO "DeletedRow" (
       "id",
@@ -469,23 +474,23 @@ export async function recordExternalDbSyncContactChannelDeletionsForUser(
     )
     SELECT
       gen_random_uuid(),
-      "tenancyId",
+      cc."tenancyId",
       'ContactChannel',
       jsonb_build_object(
         'tenancyId',
-        "tenancyId",
-        'projectUserId',
-        "projectUserId",
+        cc."tenancyId",
         'id',
-        "id"
+        cc."id",
+        'projectUserId',
+        ${options.projectUserId}::uuid
       ),
-      to_jsonb("ContactChannel".*),
+      to_jsonb(cc.*),
       NOW(),
       TRUE
-    FROM "ContactChannel"
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "projectUserId" = ${options.projectUserId}::uuid
-    FOR UPDATE
+    FROM "ContactChannel" cc
+    WHERE cc."tenancyId" = ${options.tenancyId}::uuid
+      AND cc."contactId" = ${options.projectUserId}::uuid
+    FOR UPDATE OF cc
   `);
 }
 

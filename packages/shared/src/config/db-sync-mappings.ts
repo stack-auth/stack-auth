@@ -1,6 +1,6 @@
 export const DEFAULT_DB_SYNC_MAPPINGS = {
   "users": {
-    sourceTables: { "ProjectUser": "ProjectUser" },
+    sourceTables: { "ProjectUser": "ProjectUser", "Contact": "Contact" },
     targetTable: "users",
     targetTableSchemas: {
       postgres: `
@@ -68,12 +68,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
             "ProjectUser"."projectUserId" AS "id",
-            "ProjectUser"."displayName" AS "display_name",
-            "ProjectUser"."profileImageUrl" AS "profile_image_url",
+            "Contact"."displayName" AS "display_name",
+            "Contact"."profileImageUrl" AS "profile_image_url",
             (
               SELECT "ContactChannel"."value"
               FROM "ContactChannel"
-              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+              WHERE "ContactChannel"."contactId" = "ProjectUser"."projectUserId"
                 AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
                 AND "ContactChannel"."type" = 'EMAIL'
                 AND "ContactChannel"."isPrimary" = 'TRUE'
@@ -83,7 +83,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
               (
                 SELECT "ContactChannel"."isVerified"
                 FROM "ContactChannel"
-                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                WHERE "ContactChannel"."contactId" = "ProjectUser"."projectUserId"
                   AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
                   AND "ContactChannel"."type" = 'EMAIL'
                   AND "ContactChannel"."isPrimary" = 'TRUE'
@@ -92,9 +92,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
               false
             ) AS "primary_email_verified",
             COALESCE("ProjectUser"."signedUpAt", "ProjectUser"."createdAt") AS "signed_up_at",
-            COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
-            COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
-            COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
+            COALESCE("Contact"."clientMetadata", '{}'::jsonb) AS "client_metadata",
+            COALESCE("Contact"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
+            COALESCE("Contact"."serverMetadata", '{}'::jsonb) AS "server_metadata",
             "ProjectUser"."isAnonymous" AS "is_anonymous",
             "ProjectUser"."restrictedByAdmin" AS "restricted_by_admin",
             "ProjectUser"."restrictedByAdminReason" AS "restricted_by_admin_reason",
@@ -104,6 +104,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             false AS "sync_is_deleted"
           FROM "ProjectUser"
           JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
+          JOIN "Contact" ON "Contact"."tenancyId" = "ProjectUser"."tenancyId"
+            AND "Contact"."id" = "ProjectUser"."projectUserId"
           WHERE "ProjectUser"."tenancyId" = $1::uuid
 
           UNION ALL
@@ -144,12 +146,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       FROM (
         SELECT
           "ProjectUser"."projectUserId" AS "id",
-          "ProjectUser"."displayName" AS "display_name",
-          "ProjectUser"."profileImageUrl" AS "profile_image_url",
+          "Contact"."displayName" AS "display_name",
+          "Contact"."profileImageUrl" AS "profile_image_url",
           (
             SELECT "ContactChannel"."value"
             FROM "ContactChannel"
-            WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+            WHERE "ContactChannel"."contactId" = "ProjectUser"."projectUserId"
               AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
               AND "ContactChannel"."type" = 'EMAIL'
               AND "ContactChannel"."isPrimary" = 'TRUE'
@@ -159,7 +161,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             (
               SELECT "ContactChannel"."isVerified"
               FROM "ContactChannel"
-              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+              WHERE "ContactChannel"."contactId" = "ProjectUser"."projectUserId"
                 AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
                 AND "ContactChannel"."type" = 'EMAIL'
                 AND "ContactChannel"."isPrimary" = 'TRUE'
@@ -168,14 +170,16 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             false
           ) AS "primary_email_verified",
           COALESCE("ProjectUser"."signedUpAt", "ProjectUser"."createdAt") AS "signed_up_at",
-          COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
-          COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
-          COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
+          COALESCE("Contact"."clientMetadata", '{}'::jsonb) AS "client_metadata",
+          COALESCE("Contact"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
+          COALESCE("Contact"."serverMetadata", '{}'::jsonb) AS "server_metadata",
           "ProjectUser"."isAnonymous" AS "is_anonymous",
           "ProjectUser"."sequenceId" AS "sequence_id",
           "ProjectUser"."tenancyId",
           false AS "is_deleted"
         FROM "ProjectUser"
+        JOIN "Contact" ON "Contact"."tenancyId" = "ProjectUser"."tenancyId"
+          AND "Contact"."id" = "ProjectUser"."projectUserId"
         WHERE "ProjectUser"."tenancyId" = $1::uuid
 
         UNION ALL
@@ -276,7 +280,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
     },
   },
   "contact_channels": {
-    sourceTables: { "ContactChannel": "ContactChannel" },
+    sourceTables: { "ContactChannel": "ContactChannel", "ProjectUserAuthContactChannel": "ProjectUserAuthContactChannel" },
     targetTable: "contact_channels",
     targetTableSchemas: {
       postgres: `
@@ -328,18 +332,24 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
             "ContactChannel"."id" AS "id",
-            "ContactChannel"."projectUserId" AS "user_id",
+            "ProjectUser"."projectUserId" AS "user_id",
             "ContactChannel"."type"::text AS "type",
             "ContactChannel"."value" AS "value",
             CASE WHEN "ContactChannel"."isPrimary" = 'TRUE' THEN true ELSE false END AS "is_primary",
             "ContactChannel"."isVerified" AS "is_verified",
-            CASE WHEN "ContactChannel"."usedForAuth" = 'TRUE' THEN true ELSE false END AS "used_for_auth",
+            CASE WHEN "AuthSelection"."contactChannelId" IS NOT NULL THEN true ELSE false END AS "used_for_auth",
             "ContactChannel"."createdAt" AS "created_at",
             "ContactChannel"."sequenceId" AS "sync_sequence_id",
             "ContactChannel"."tenancyId" AS "tenancyId",
             false AS "sync_is_deleted"
           FROM "ContactChannel"
           JOIN "Tenancy" ON "Tenancy"."id" = "ContactChannel"."tenancyId"
+          JOIN "ProjectUser"
+            ON "ProjectUser"."tenancyId" = "ContactChannel"."tenancyId"
+            AND "ProjectUser"."projectUserId" = "ContactChannel"."contactId"
+          LEFT JOIN "ProjectUserAuthContactChannel" AS "AuthSelection"
+            ON "AuthSelection"."tenancyId" = "ContactChannel"."tenancyId"
+            AND "AuthSelection"."contactChannelId" = "ContactChannel"."id"
           WHERE "ContactChannel"."tenancyId" = $1::uuid
 
           UNION ALL
@@ -375,17 +385,23 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       FROM (
         SELECT
           "ContactChannel"."id" AS "id",
-          "ContactChannel"."projectUserId" AS "user_id",
+          "ProjectUser"."projectUserId" AS "user_id",
           "ContactChannel"."type"::text AS "type",
           "ContactChannel"."value" AS "value",
           CASE WHEN "ContactChannel"."isPrimary" = 'TRUE' THEN true ELSE false END AS "is_primary",
           "ContactChannel"."isVerified" AS "is_verified",
-          CASE WHEN "ContactChannel"."usedForAuth" = 'TRUE' THEN true ELSE false END AS "used_for_auth",
+          CASE WHEN "AuthSelection"."contactChannelId" IS NOT NULL THEN true ELSE false END AS "used_for_auth",
           "ContactChannel"."createdAt" AS "created_at",
           "ContactChannel"."sequenceId" AS "sequence_id",
           "ContactChannel"."tenancyId",
           false AS "is_deleted"
         FROM "ContactChannel"
+        JOIN "ProjectUser"
+          ON "ProjectUser"."tenancyId" = "ContactChannel"."tenancyId"
+          AND "ProjectUser"."projectUserId" = "ContactChannel"."contactId"
+        LEFT JOIN "ProjectUserAuthContactChannel" AS "AuthSelection"
+          ON "AuthSelection"."tenancyId" = "ContactChannel"."tenancyId"
+          AND "AuthSelection"."contactChannelId" = "ContactChannel"."id"
         WHERE "ContactChannel"."tenancyId" = $1::uuid
 
         UNION ALL

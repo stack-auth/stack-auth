@@ -81,9 +81,37 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
+    const contactTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "Contact"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "Contact" c
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE c."tenancyId" = r."tenancyId"
+          AND c."id"        = r."id"
+        RETURNING c."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.contact-tenants", contactTenants.length);
+
+    if (contactTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(contactTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
     const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
-        SELECT "tenancyId", "projectUserId", "id"
+        SELECT "tenancyId", "id"
         FROM "ContactChannel"
         WHERE "shouldUpdateSequenceId" = TRUE
         ORDER BY "tenancyId"
@@ -96,7 +124,6 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
             "shouldUpdateSequenceId" = FALSE
         FROM rows_to_update r
         WHERE cc."tenancyId"     = r."tenancyId"
-          AND cc."projectUserId" = r."projectUserId"
           AND cc."id"            = r."id"
         RETURNING cc."tenancyId"
       )

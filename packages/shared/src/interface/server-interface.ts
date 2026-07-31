@@ -13,7 +13,22 @@ import {
 } from "./client-interface";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
+import type {
+  CommsConversation,
+  CommsDelivery,
+  CommsDeliveryAttempt,
+  CommsDeliveryAttemptCreate,
+  CommsDeliveryCreate,
+  CommsDeliveryStatusUpdate,
+  Contact,
+  ContactChannel,
+  ContactChannelUpdate,
+  ContactChannelWrite,
+} from "./comms";
+import { CommsConversationsCrud } from "./crud/comms-conversations";
+import { CommsMessagesCrud } from "./crud/comms-messages";
 import { ContactChannelsCrud } from "./crud/contact-channels";
+import { ContactsCrud } from "./crud/contacts";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ItemCrud } from "./crud/items";
 import { NotificationPreferenceCrud } from "./crud/notification-preferences";
@@ -755,6 +770,478 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
     );
     const json = await response.json() as ContactChannelsCrud['Server']['List'];
     return json.items;
+  }
+
+  async createServerContact(
+    data: ContactsCrud['Server']['Create'],
+  ): Promise<ContactsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      "/contacts",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerContact(
+    contactId: string,
+  ): Promise<ContactsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listServerContacts(options?: {
+    cursor?: string,
+    limit?: number,
+    includeMerged?: boolean,
+  }): Promise<ContactsCrud['Server']['List']> {
+    const searchParams = new URLSearchParams(filterUndefined({
+      cursor: options?.cursor,
+      limit: options?.limit?.toString(),
+      include_merged: options?.includeMerged == null ? undefined : (options.includeMerged ? "true" : "false"),
+    }));
+    const response = await this.sendServerRequest(
+      `/contacts?${searchParams.toString()}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerContact(
+    contactId: string,
+    data: ContactsCrud['Server']['Update'],
+  ): Promise<ContactsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerContact(
+    contactId: string,
+  ): Promise<void> {
+    await this.sendServerRequest(
+      urlString`/contacts/${contactId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
+  async mergeServerContacts(options: {
+    sourceContactId: string,
+    targetContactId: string,
+    idempotencyKey: string,
+    actorUserId?: string | null,
+    reason?: string | null,
+    metadata?: unknown,
+  }): Promise<{ operation_id: string, replayed: boolean, contact: Contact }> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${options.sourceContactId}/merge`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(filterUndefined({
+          target_contact_id: options.targetContactId,
+          idempotency_key: options.idempotencyKey,
+          actor_user_id: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        })),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async ingestServerCommsMessage(
+    data: CommsMessagesCrud['Server']['Create'],
+  ): Promise<CommsMessagesCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      "/comms/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerCommsMessage(
+    messageId: string,
+  ): Promise<CommsMessagesCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/messages/${messageId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listServerCommsMessages(options: {
+    conversationId?: string,
+    cursor?: string,
+    limit?: number,
+  }): Promise<CommsMessagesCrud['Server']['List']> {
+    const searchParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit?.toString(),
+    }));
+    const path = options.conversationId == null
+      ? "/comms/messages"
+      : urlString`/comms/conversations/${options.conversationId}/messages`;
+    const response = await this.sendServerRequest(
+      `${path}?${searchParams.toString()}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listServerChannelsOnContact(
+    contactId: string,
+  ): Promise<{ is_paginated: false, items: ContactChannel[] }> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}/channels`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerChannelOnContact(
+    contactId: string,
+    data: ContactChannelWrite,
+  ): Promise<ContactChannel> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}/channels`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerChannelOnContact(
+    contactId: string,
+    channelId: string,
+  ): Promise<ContactChannel> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}/channels/${channelId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerChannelOnContact(
+    contactId: string,
+    channelId: string,
+    data: ContactChannelUpdate,
+  ): Promise<ContactChannel> {
+    const response = await this.sendServerRequest(
+      urlString`/contacts/${contactId}/channels/${channelId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteServerChannelOnContact(
+    contactId: string,
+    channelId: string,
+  ): Promise<void> {
+    await this.sendServerRequest(
+      urlString`/contacts/${contactId}/channels/${channelId}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
+  async listServerCommsDeliveries(
+    messageId: string,
+  ): Promise<{ is_paginated: false, items: CommsDelivery[] }> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/messages/${messageId}/deliveries`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerCommsDelivery(
+    messageId: string,
+    data: CommsDeliveryCreate,
+  ): Promise<CommsDelivery> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/messages/${messageId}/deliveries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerCommsDelivery(
+    deliveryId: string,
+  ): Promise<CommsDelivery> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/deliveries/${deliveryId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerCommsDeliveryStatus(
+    deliveryId: string,
+    data: CommsDeliveryStatusUpdate,
+  ): Promise<CommsDelivery> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/deliveries/${deliveryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async recordServerCommsDeliveryAttempt(
+    deliveryId: string,
+    data: CommsDeliveryAttemptCreate,
+  ): Promise<{ delivery: CommsDelivery, attempt: CommsDeliveryAttempt }> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/deliveries/${deliveryId}/attempts`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createServerCommsConversation(
+    data: CommsConversationsCrud['Server']['Create'],
+  ): Promise<CommsConversationsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      "/comms/conversations",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getServerCommsConversation(
+    conversationId: string,
+  ): Promise<CommsConversationsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/conversations/${conversationId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listServerCommsConversations(options?: {
+    cursor?: string,
+    limit?: number,
+    includeMerged?: boolean,
+  }): Promise<CommsConversationsCrud['Server']['List']> {
+    const searchParams = new URLSearchParams(filterUndefined({
+      cursor: options?.cursor,
+      limit: options?.limit?.toString(),
+      include_merged: options?.includeMerged == null ? undefined : (options.includeMerged ? "true" : "false"),
+    }));
+    const response = await this.sendServerRequest(
+      `/comms/conversations?${searchParams.toString()}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateServerCommsConversation(
+    conversationId: string,
+    data: CommsConversationsCrud['Server']['Update'],
+  ): Promise<CommsConversationsCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async mergeServerCommsConversations(options: {
+    sourceConversationId: string,
+    targetConversationId: string,
+    idempotencyKey: string,
+    actorUserId?: string | null,
+    reason?: string | null,
+    metadata?: unknown,
+  }): Promise<{ operation_id: string, replayed: boolean, conversation: CommsConversation }> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/conversations/${options.sourceConversationId}/merge`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(filterUndefined({
+          target_conversation_id: options.targetConversationId,
+          idempotency_key: options.idempotencyKey,
+          actor_user_id: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        })),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async splitServerCommsConversation(options: {
+    sourceConversationId: string,
+    messageIds: string[],
+    idempotencyKey: string,
+    title?: string | null,
+    actorUserId?: string | null,
+    reason?: string | null,
+    metadata?: unknown,
+  }): Promise<{ operation_id: string, replayed: boolean, conversation: CommsConversation }> {
+    const response = await this.sendServerRequest(
+      urlString`/comms/conversations/${options.sourceConversationId}/split`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(filterUndefined({
+          message_ids: options.messageIds,
+          idempotency_key: options.idempotencyKey,
+          title: options.title,
+          actor_user_id: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        })),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async reassignServerCommsMessages(options: {
+    targetConversationId: string,
+    messageIds: string[],
+    idempotencyKey: string,
+    actorUserId?: string | null,
+    reason?: string | null,
+    metadata?: unknown,
+  }): Promise<{ operation_id: string, replayed: boolean, conversation: CommsConversation }> {
+    const response = await this.sendServerRequest(
+      "/comms/messages/reassign",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(filterUndefined({
+          target_conversation_id: options.targetConversationId,
+          message_ids: options.messageIds,
+          idempotency_key: options.idempotencyKey,
+          actor_user_id: options.actorUserId,
+          reason: options.reason,
+          metadata: options.metadata,
+        })),
+      },
+      null,
+    );
+    return await response.json();
   }
 
   async listServerNotificationCategories(

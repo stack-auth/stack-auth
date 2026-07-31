@@ -11,6 +11,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { turnstileResultValues } from "@hexclave/shared/dist/utils/turnstile";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -26,7 +27,9 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
   );
 
   if (contactChannel) {
-    const otpAuthMethod = contactChannel.projectUser.authMethods.find((m) => m.otpAuthMethod)?.otpAuthMethod;
+    const projectUser = contactChannel.contact.projectUser
+      ?? throwErr("Auth contact channel is missing its ProjectUser", { contactChannelId: contactChannel.id });
+    const otpAuthMethod = projectUser.authMethods.find((m) => m.otpAuthMethod)?.otpAuthMethod;
 
     if (contactChannel.isVerified) {
       if (!otpAuthMethod) {
@@ -34,11 +37,11 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
 
         await prisma.authMethod.create({
           data: {
-            projectUserId: contactChannel.projectUser.projectUserId,
+            projectUserId: projectUser.projectUserId,
             tenancyId: tenancy.id,
             otpAuthMethod: {
               create: {
-                projectUserId: contactChannel.projectUser.projectUserId,
+                projectUserId: projectUser.projectUserId,
               }
             }
           },
@@ -47,7 +50,7 @@ export async function ensureUserForEmailAllowsOtp(tenancy: Tenancy, email: strin
 
       return await usersCrudHandlers.adminRead({
         tenancy,
-        user_id: contactChannel.projectUser.projectUserId,
+        user_id: projectUser.projectUserId,
       });
     } else {
       throw new KnownErrors.UserWithEmailAlreadyExists(contactChannel.value, true);

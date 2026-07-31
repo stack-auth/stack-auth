@@ -78,6 +78,44 @@ export type {
 } from "./contact-channels";
 
 export type {
+  ServerContact,
+  ServerContactCreateOptions,
+  ServerContactListOptions,
+  ServerContactMergeOptions,
+  ServerContactMergeResult,
+  ServerContactUpdateOptions,
+  ServerCommunicationChannel,
+  ServerCommunicationChannelCreateOptions,
+  ServerCommunicationChannelUpdateOptions,
+} from "./contacts";
+
+export type {
+  CommsMessagePayload,
+  ServerCommsConversation,
+  ServerCommsConversationCreateOptions,
+  ServerCommsConversationListOptions,
+  ServerCommsConversationMergeOptions,
+  ServerCommsConversationOperationResult,
+  ServerCommsConversationReassignOptions,
+  ServerCommsConversationSplitOptions,
+  ServerCommsConversationUpdateOptions,
+  ServerCommsDelivery,
+  ServerCommsDeliveryAttempt,
+  ServerCommsDeliveryAttemptCreateOptions,
+  ServerCommsDeliveryCreateOptions,
+  ServerCommsDeliveryStatusUpdateOptions,
+  ServerCommsMessage,
+  ServerCommsMessageAttachment,
+  ServerCommsMessageAttachmentCreateOptions,
+  ServerCommsMessageCreateOptions,
+  ServerCommsMessageListOptions,
+  ServerCommsMessageParticipant,
+  ServerCommsMessageParticipantCreateOptions,
+  ServerCommsMessageRelation,
+  ServerCommsMessageRelationCreateOptions,
+} from "./comms";
+
+export type {
   AdminEmailOutbox,
   AdminEmailOutboxRecipient,
   AdminEmailOutboxSimpleStatus,

@@ -73,6 +73,18 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  contacts            Contact[]
+  contactMergeOperations ContactMergeOperation[]
+  projectUserAuthContactChannels ProjectUserAuthContactChannel[]
+  commsConversations  CommsConversation[]
+  commsMessages       CommsMessage[]
+  commsMessageParticipants CommsMessageParticipant[]
+  commsMessageAttachments CommsMessageAttachment[]
+  commsMessageRelations CommsMessageRelation[]
+  commsConversationOperations CommsConversationOperation[]
+  commsMessageAssignments CommsMessageAssignment[]
+  commsDeliveries     CommsDelivery[]
+  commsDeliveryAttempts CommsDeliveryAttempt[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -304,11 +316,10 @@ model ProjectUser {
   sequenceId             BigInt? @unique
   shouldUpdateSequenceId Boolean @default(true)
 
-  displayName            String?
-  serverMetadata         Json?
-  clientReadOnlyMetadata Json?
-  clientMetadata         Json?
-  profileImageUrl        String?
+  // Person/profile fields (displayName, profileImageUrl, metadata) live on Contact.
+  // Every ProjectUser shares its UUID with a required Contact row; deleting the
+  // user preserves the Contact. Check for a same-UUID ProjectUser to see if a
+  // Contact is user-backed (and therefore not mergeable as a source).
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
@@ -332,8 +343,8 @@ model ProjectUser {
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
-  contactChannels          ContactChannel[]
   authMethods              AuthMethod[]
+  authContactChannels      ProjectUserAuthContactChannel[]
 
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod         PasswordAuthMethod[]
@@ -346,12 +357,11 @@ model ProjectUser {
   projectId                  String?
   userNotificationPreference UserNotificationPreference[]
   sessionReplays             SessionReplay[]
+  contact                    Contact                       @relation(fields: [tenancyId, projectUserId], references: [tenancyId, id], onDelete: Restrict)
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
   // indices for sorting and filtering
-  @@index([tenancyId, displayName(sort: Asc)], name: "ProjectUser_displayName_asc")
-  @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
   @@index([tenancyId, isAnonymous, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
@@ -465,13 +475,18 @@ model SessionReplayChunk {
 
 enum ContactChannelType {
   EMAIL
-  // PHONE
+  PHONE
+  DISCORD
+  SLACK
+  PUSH
 }
 
-model ContactChannel {
-  tenancyId     String @db.Uuid
-  projectUserId String @db.Uuid
-  id            String @default(uuid()) @db.Uuid
+// Contact is the durable person/profile record. Every ProjectUser requires a
+// same-UUID Contact. CRM-only contacts (no ProjectUser) can be merged into a
+// user-backed contact; user-backed contacts cannot be merge sources.
+model Contact {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -479,23 +494,122 @@ model ContactChannel {
   sequenceId             BigInt? @unique
   shouldUpdateSequenceId Boolean @default(true)
 
-  type        ContactChannelType
-  isPrimary   BooleanTrue?
-  usedForAuth BooleanTrue?
-  isVerified  Boolean
-  value       String
+  displayName            String?
+  profileImageUrl        String?
+  clientMetadata         Json?
+  clientReadOnlyMetadata Json?
+  serverMetadata         Json?
 
-  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  // When set, this contact was merged into another and is no longer canonical.
+  // mergedAt and mergedIntoContactId are both null or both non-null (DB check).
+  mergedIntoContactId String?   @db.Uuid
+  mergedAt            DateTime?
+  mergeOperationId    String?   @db.Uuid
 
-  @@id([tenancyId, projectUserId, id])
-  // each user has at most one primary contact channel of each type
-  @@unique([tenancyId, projectUserId, type, isPrimary])
-  // value must be unique per user per type
-  @@unique([tenancyId, projectUserId, type, value])
-  // only one contact channel per project with the same value and type can be used for auth
-  @@unique([tenancyId, type, value, usedForAuth])
+  tenancy              Tenancy               @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser          ProjectUser?
+  contactChannels      ContactChannel[]
+  mergedIntoContact    Contact?              @relation("ContactMergeRedirect", fields: [tenancyId, mergedIntoContactId], references: [tenancyId, id], onDelete: Restrict)
+  mergedFromContacts   Contact[]             @relation("ContactMergeRedirect")
+  mergeOperationsAsSource ContactMergeOperation[] @relation("ContactMergeSource")
+  mergeOperationsAsTarget ContactMergeOperation[] @relation("ContactMergeTarget")
+  messageParticipants  CommsMessageParticipant[]
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, displayName(sort: Asc)], name: "Contact_displayName_asc")
+  @@index([tenancyId, displayName(sort: Desc)], name: "Contact_displayName_desc")
+  @@index([tenancyId, mergedIntoContactId], name: "Contact_mergedIntoContactId_idx")
+  @@index([tenancyId, sequenceId], name: "Contact_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "Contact_shouldUpdateSequenceId_idx")
+}
+
+model ContactMergeOperation {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  sourceContactId String @db.Uuid
+  targetContactId String @db.Uuid
+  idempotencyKey  String
+  actorUserId     String? @db.Uuid
+  reason          String?
+  metadata        Json?
+
+  tenancy        Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  sourceContact  Contact @relation("ContactMergeSource", fields: [tenancyId, sourceContactId], references: [tenancyId, id], onDelete: Restrict)
+  targetContact  Contact @relation("ContactMergeTarget", fields: [tenancyId, targetContactId], references: [tenancyId, id], onDelete: Restrict)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, idempotencyKey])
+  @@index([tenancyId, sourceContactId])
+  @@index([tenancyId, targetContactId])
+}
+
+model ContactChannel {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+  contactId String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
+  type ContactChannelType
+  // Canonical, type-normalized identifier used for lookup and delivery.
+  value String
+  // Type-aware identity scope. Empty string means unscoped (email/discord).
+  // Slack uses workspaceId; push uses provider:appId:environment.
+  // Empty string (not null) so unique constraints treat unscoped rows correctly.
+  identityScope String @default("")
+  // Runtime-validated type-specific fields (phone extension, push provider, etc.).
+  // displayValue is computed by the channel type implementation and never stored.
+  data Json?
+
+  isPrimary  BooleanTrue?
+  isVerified Boolean
+  verifiedAt DateTime?
+  metadata   Json?
+
+  contact            Contact                         @relation(fields: [tenancyId, contactId], references: [tenancyId, id], onDelete: Cascade)
+  authSelections     ProjectUserAuthContactChannel[]
+  messageParticipants CommsMessageParticipant[]
+
+  @@id([tenancyId, id])
+  // each contact has at most one primary contact channel of each type
+  @@unique([tenancyId, contactId, type, isPrimary])
+  // value must be unique per contact per type+scope
+  @@unique([tenancyId, contactId, type, identityScope, value])
+  @@index([tenancyId, type, identityScope, value], name: "ContactChannel_identity_lookup_idx")
+  @@index([tenancyId, contactId], name: "ContactChannel_contactId_idx")
   @@index([tenancyId, sequenceId], name: "ContactChannel_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ContactChannel_shouldUpdateSequenceId_idx")
+}
+
+// Account-owned auth selection. Cascades with the user so deleted accounts stop
+// using a channel for auth while the ContactChannel itself survives on Contact.
+model ProjectUserAuthContactChannel {
+  tenancyId        String @db.Uuid
+  projectUserId    String @db.Uuid
+  contactChannelId String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Denormalized for tenancy-wide "one auth owner per identity" uniqueness.
+  type          ContactChannelType
+  identityScope String @default("")
+  value         String
+
+  projectUser    ProjectUser    @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  contactChannel ContactChannel @relation(fields: [tenancyId, contactChannelId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy        Tenancy        @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, projectUserId, contactChannelId])
+  @@unique([tenancyId, type, identityScope, value])
+  @@index([tenancyId, contactChannelId])
 }
 
 model AuthMethod {
@@ -1159,6 +1273,262 @@ model UserNotificationPreference {
   @@unique([tenancyId, projectUserId, notificationCategoryId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
   @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
+}
+
+// ---------------------------------------------------------------------------
+// Communications primitives (channel-agnostic). Separate from support
+// Conversation* tables, which remain until a later migration.
+// ---------------------------------------------------------------------------
+
+model CommsConversation {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title String?
+
+  // When set, this conversation was merged into another and is no longer canonical.
+  mergedIntoConversationId String?   @db.Uuid
+  mergedAt                 DateTime?
+
+  firstMessageAt DateTime?
+  lastMessageAt  DateTime?
+
+  tenancy                  Tenancy              @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  messages                 CommsMessage[]
+  mergedIntoConversation   CommsConversation?   @relation("CommsConversationMergeRedirect", fields: [tenancyId, mergedIntoConversationId], references: [tenancyId, id], onDelete: Restrict)
+  mergedFromConversations  CommsConversation[]  @relation("CommsConversationMergeRedirect")
+  operationsAsSource       CommsConversationOperation[] @relation("CommsConversationOpSource")
+  operationsAsTarget       CommsConversationOperation[] @relation("CommsConversationOpTarget")
+  assignmentsFrom          CommsMessageAssignment[] @relation("CommsAssignmentFrom")
+  assignmentsTo            CommsMessageAssignment[] @relation("CommsAssignmentTo")
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, lastMessageAt(sort: Desc), id(sort: Desc)], name: "CommsConversation_lastMessageAt_idx")
+  @@index([tenancyId, mergedIntoConversationId], name: "CommsConversation_mergedInto_idx")
+}
+
+model CommsMessage {
+  tenancyId      String @db.Uuid
+  id             String @default(uuid()) @db.Uuid
+  conversationId String @db.Uuid
+
+  createdAt DateTime @default(now())
+  // When the message actually occurred on the source channel (immutable).
+  occurredAt DateTime
+  ingestedAt DateTime @default(now())
+
+  direction   String // inbound | outbound
+  adapterKey  String
+  // Provider message id; unique with adapterKey when non-null for idempotent ingest.
+  externalMessageId String?
+  // Canonical hash of the validated ingest request; detects conflicting replays.
+  ingestFingerprint String
+  externalThreadId  String?
+
+  replyToMessageId String? @db.Uuid
+
+  // Versioned, discriminated channel payload (email/slack/discord/push). Validated in shared schemas.
+  payloadType    String
+  payloadVersion Int
+  payload        Json
+
+  // Optional out-of-row raw MIME / provider blob reference for exact fidelity.
+  rawBlobKey String?
+
+  tenancy       Tenancy            @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  conversation  CommsConversation  @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Restrict)
+  // The SQL FK scopes SET NULL to replyToMessageId; tenancyId must remain set.
+  replyToMessage CommsMessage?     @relation("CommsMessageReply", fields: [tenancyId, replyToMessageId], references: [tenancyId, id], onDelete: SetNull)
+  replies        CommsMessage[]     @relation("CommsMessageReply")
+  participants   CommsMessageParticipant[]
+  attachments    CommsMessageAttachment[]
+  relationsFrom  CommsMessageRelation[] @relation("CommsMessageRelationFrom")
+  relationsTo    CommsMessageRelation[] @relation("CommsMessageRelationTo")
+  assignments    CommsMessageAssignment[]
+  deliveries     CommsDelivery[]
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, occurredAt, id], name: "CommsMessage_global_timeline_idx")
+  @@index([tenancyId, conversationId, occurredAt, id], name: "CommsMessage_conversation_timeline_idx")
+  @@index([tenancyId, adapterKey, externalMessageId], name: "CommsMessage_external_id_idx")
+  @@index([tenancyId, externalThreadId], name: "CommsMessage_external_thread_idx")
+  @@index([tenancyId, replyToMessageId], name: "CommsMessage_replyTo_idx")
+}
+
+model CommsMessageParticipant {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+  messageId String @db.Uuid
+
+  role     String // author | from | sender | to | cc | bcc | reply-to | envelope-from | envelope-to | audience
+  position Int
+
+  // Live references are nullable and non-cascading so history survives lifecycle changes.
+  contactId        String? @db.Uuid
+  contactChannelId String? @db.Uuid
+  addressSnapshot      String
+  displayNameSnapshot  String?
+
+  tenancy        Tenancy         @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  message        CommsMessage    @relation(fields: [tenancyId, messageId], references: [tenancyId, id], onDelete: Cascade)
+  // The SQL FKs scope SET NULL to the optional ID column; tenancyId must remain set.
+  contact        Contact?        @relation(fields: [tenancyId, contactId], references: [tenancyId, id], onDelete: SetNull)
+  contactChannel ContactChannel? @relation(fields: [tenancyId, contactChannelId], references: [tenancyId, id], onDelete: SetNull)
+  deliveries     CommsDelivery[] @relation("CommsDeliveryParticipant")
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, messageId, id], name: "CommsMessageParticipant_message_id_key")
+  @@unique([tenancyId, messageId, role, position])
+  @@index([tenancyId, contactId], name: "CommsMessageParticipant_contact_idx")
+  @@index([tenancyId, contactChannelId], name: "CommsMessageParticipant_channel_idx")
+}
+
+model CommsMessageAttachment {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+  messageId String @db.Uuid
+
+  filename       String?
+  contentType    String?
+  sizeBytes      Int?
+  // Content-ID for inline email resources; null for regular attachments.
+  contentId      String?
+  isInline       Boolean @default(false)
+  storageKey     String?
+  metadata       Json?
+
+  tenancy Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  message CommsMessage @relation(fields: [tenancyId, messageId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, messageId], name: "CommsMessageAttachment_message_idx")
+}
+
+model CommsMessageRelation {
+  tenancyId       String @db.Uuid
+  id              String @default(uuid()) @db.Uuid
+  fromMessageId   String @db.Uuid
+  toMessageId     String? @db.Uuid
+  // RFC Message-ID / In-Reply-To / References style relation when the target is external-only.
+  relationType    String // in-reply-to | references | quote | other
+  externalMessageId String?
+  position        Int    @default(0)
+
+  tenancy     Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  fromMessage CommsMessage @relation("CommsMessageRelationFrom", fields: [tenancyId, fromMessageId], references: [tenancyId, id], onDelete: Cascade)
+  // The SQL FK scopes SET NULL to toMessageId; tenancyId must remain set.
+  toMessage   CommsMessage? @relation("CommsMessageRelationTo", fields: [tenancyId, toMessageId], references: [tenancyId, id], onDelete: SetNull)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, fromMessageId], name: "CommsMessageRelation_from_idx")
+  @@index([tenancyId, toMessageId], name: "CommsMessageRelation_to_idx")
+  @@index([tenancyId, externalMessageId], name: "CommsMessageRelation_external_idx")
+}
+
+model CommsConversationOperation {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  operationType  String // merge | split | reassign
+  idempotencyKey String
+  sourceConversationId String? @db.Uuid
+  targetConversationId String? @db.Uuid
+  actorUserId    String? @db.Uuid
+  reason         String?
+  metadata       Json?
+
+  tenancy            Tenancy            @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  sourceConversation CommsConversation? @relation("CommsConversationOpSource", fields: [tenancyId, sourceConversationId], references: [tenancyId, id], onDelete: Restrict)
+  targetConversation CommsConversation? @relation("CommsConversationOpTarget", fields: [tenancyId, targetConversationId], references: [tenancyId, id], onDelete: Restrict)
+  assignments        CommsMessageAssignment[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, idempotencyKey])
+  @@index([tenancyId, sourceConversationId])
+  @@index([tenancyId, targetConversationId])
+}
+
+model CommsMessageAssignment {
+  tenancyId   String @db.Uuid
+  id          String @default(uuid()) @db.Uuid
+  messageId   String @db.Uuid
+  operationId String @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  fromConversationId String? @db.Uuid
+  toConversationId   String  @db.Uuid
+  reason             String // reply | external-thread | rules | ai | manual | merge | split
+  confidence         Float?
+
+  tenancy            Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  message            CommsMessage              @relation(fields: [tenancyId, messageId], references: [tenancyId, id], onDelete: Cascade)
+  operation          CommsConversationOperation @relation(fields: [tenancyId, operationId], references: [tenancyId, id], onDelete: Cascade)
+  fromConversation   CommsConversation?        @relation("CommsAssignmentFrom", fields: [tenancyId, fromConversationId], references: [tenancyId, id], onDelete: Restrict)
+  toConversation     CommsConversation         @relation("CommsAssignmentTo", fields: [tenancyId, toConversationId], references: [tenancyId, id], onDelete: Restrict)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, operationId, messageId])
+  @@index([tenancyId, messageId, createdAt], name: "CommsMessageAssignment_message_idx")
+}
+
+model CommsDelivery {
+  tenancyId   String @db.Uuid
+  id          String @default(uuid()) @db.Uuid
+  messageId   String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Per-recipient outbound delivery lifecycle (separate from immutable message content).
+  participantId      String? @db.Uuid
+  addressSnapshot    String
+  status             String // pending | queued | sending | sent | delivered | delayed | bounced | failed | skipped
+  providerMessageId  String?
+  skippedReason      String?
+  lastErrorPublic    String?
+  lastErrorInternal  String?
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  bouncedAt          DateTime?
+  failedAt           DateTime?
+
+  tenancy   Tenancy               @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  message   CommsMessage          @relation(fields: [tenancyId, messageId], references: [tenancyId, id], onDelete: Cascade)
+  participant CommsMessageParticipant? @relation("CommsDeliveryParticipant", fields: [tenancyId, messageId, participantId], references: [tenancyId, messageId, id], onDelete: NoAction)
+  attempts  CommsDeliveryAttempt[]
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, messageId], name: "CommsDelivery_message_idx")
+  @@index([tenancyId, status], name: "CommsDelivery_status_idx")
+}
+
+model CommsDeliveryAttempt {
+  tenancyId  String @db.Uuid
+  id         String @default(uuid()) @db.Uuid
+  deliveryId String @db.Uuid
+
+  createdAt   DateTime @default(now())
+  attemptedAt DateTime @default(now())
+  finishedAt  DateTime?
+
+  attemptNumber Int
+  outcome       String // success | failure | deferred
+  providerResponse Json?
+  errorPublic   String?
+  errorInternal String?
+
+  tenancy  Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  delivery CommsDelivery @relation(fields: [tenancyId, deliveryId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deliveryId, attemptNumber])
+  @@index([tenancyId, deliveryId, attemptedAt], name: "CommsDeliveryAttempt_delivery_idx")
 }
 
 model Conversation {

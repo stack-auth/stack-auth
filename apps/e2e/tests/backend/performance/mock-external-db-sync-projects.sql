@@ -86,15 +86,26 @@ insert_env_config AS (
     "updatedAt" = EXCLUDED."updatedAt"
   RETURNING "projectId"
 ),
+insert_contacts AS (
+  INSERT INTO "Contact"
+    ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+  SELECT
+    tenancy_id,
+    project_user_id,
+    'External Sync User ' || padded_idx,
+    ts,
+    ts
+  FROM small_projects
+  RETURNING "tenancyId", "id"
+),
 insert_users AS (
   INSERT INTO "ProjectUser"
-    ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+    ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
   SELECT
     tenancy_id,
     project_user_id,
     project_id,
     'main',
-    'External Sync User ' || padded_idx,
     project_id,
     ts,
     ts,
@@ -103,17 +114,32 @@ insert_users AS (
   FROM small_projects
   RETURNING "tenancyId", "projectUserId"
 ),
-insert_contacts AS (
+insert_channels AS (
   INSERT INTO "ContactChannel"
-    ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth", "isVerified", "value", "createdAt", "updatedAt")
+    ("tenancyId", "id", "contactId", "type", "isPrimary", "isVerified", "value", "identityScope", "createdAt", "updatedAt")
+  SELECT
+    tenancy_id,
+    contact_id,
+    project_user_id,
+    'EMAIL',
+    'TRUE'::"BooleanTrue",
+    false,
+    'external-sync-user-' || padded_idx || '@load.local',
+    '',
+    ts,
+    ts
+  FROM small_projects
+  RETURNING "tenancyId", "contactId"
+),
+insert_auth_channels AS (
+  INSERT INTO "ProjectUserAuthContactChannel"
+    ("tenancyId", "projectUserId", "contactChannelId", "type", "identityScope", "value", "createdAt", "updatedAt")
   SELECT
     tenancy_id,
     project_user_id,
     contact_id,
     'EMAIL',
-    'TRUE'::"BooleanTrue",
-    'TRUE'::"BooleanTrue",
-    false,
+    '',
     'external-sync-user-' || padded_idx || '@load.local',
     ts,
     ts
@@ -239,15 +265,25 @@ BEGIN
         lp.ts AS ts
       FROM tmp_large_projects lp
       CROSS JOIN generate_series(batch_start, batch_end) AS gs
+    ),
+    insert_contacts AS (
+      INSERT INTO "Contact"
+        ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+      SELECT
+        tenancy_id,
+        project_user_id,
+        'Mega User ' || padded_project_idx || '-' || padded_user_idx,
+        ts,
+        ts
+      FROM mega_users
     )
     INSERT INTO "ProjectUser"
-      ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+      ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
     SELECT
       tenancy_id,
       project_user_id,
       project_id,
       'main',
-      'Mega User ' || padded_project_idx || '-' || padded_user_idx,
       project_id,
       ts,
       ts,

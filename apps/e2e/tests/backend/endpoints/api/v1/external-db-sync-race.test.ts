@@ -191,17 +191,27 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             now() AS ts
           FROM generate_series(1, $3::int) AS gs
         ),
+        insert_contacts AS (
+          INSERT INTO "Contact"
+            ("tenancyId", "id", "displayName", "createdAt", "updatedAt")
+          SELECT
+            tenancy_id,
+            project_user_id,
+            'Paged User ' || idx,
+            ts,
+            ts
+          FROM generated
+        ),
         insert_users AS (
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-             "displayName", "createdAt", "updatedAt", "isAnonymous",
+             "createdAt", "updatedAt", "isAnonymous",
              "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
             project_id,
             'main',
-            'Paged User ' || idx,
             ts,
             ts,
             false,
@@ -211,25 +221,41 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
           FROM generated
           RETURNING "projectUserId"
         ),
-        insert_contacts AS (
+        insert_channels AS (
           INSERT INTO "ContactChannel"
-            ("tenancyId", "projectUserId", "id", "type", "isPrimary", "usedForAuth",
-             "isVerified", "value", "createdAt", "updatedAt")
+            ("tenancyId", "id", "contactId", "type", "isPrimary",
+             "isVerified", "value", "identityScope", "createdAt", "updatedAt")
+          SELECT
+            g.tenancy_id,
+            g.contact_id,
+            g.project_user_id,
+            'EMAIL',
+            'TRUE'::"BooleanTrue",
+            false,
+            'page-user-' || g.idx || '@example.com',
+            '',
+            g.ts,
+            g.ts
+          FROM generated g
+        ),
+        insert_auth AS (
+          INSERT INTO "ProjectUserAuthContactChannel"
+            ("tenancyId", "projectUserId", "contactChannelId", "type", "identityScope", "value", "createdAt", "updatedAt")
           SELECT
             g.tenancy_id,
             g.project_user_id,
             g.contact_id,
             'EMAIL',
-            'TRUE'::"BooleanTrue",
-            'TRUE'::"BooleanTrue",
-            false,
+            '',
             'page-user-' || g.idx || '@example.com',
             g.ts,
             g.ts
           FROM generated g
-          RETURNING "projectUserId", "value" AS email
         )
-        SELECT "projectUserId"::text, email FROM insert_contacts ORDER BY email
+        SELECT g.project_user_id::text AS "projectUserId",
+               ('page-user-' || g.idx || '@example.com') AS email
+        FROM generated g
+        ORDER BY email
       `, [tenancyId, projectId, totalUsers]);
 
       users = insertResult.rows.map(row => ({
@@ -377,9 +403,9 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
           await internalClient.query('BEGIN');
           await internalClient.query(
             `
-              UPDATE "ProjectUser"
+              UPDATE "Contact"
               SET "displayName" = 'Transaction 1', "updatedAt" = NOW()
-              WHERE "projectUserId" = $1
+              WHERE "id" = $1
             `,
             [user.userId],
           );

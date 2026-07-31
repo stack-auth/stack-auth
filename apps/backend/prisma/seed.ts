@@ -460,17 +460,34 @@ export async function seed() {
     if (oldAdminUser) {
       console.log(`Admin user already exists, skipping creation`);
     } else {
-      const newUser = await internalPrisma.projectUser.create({
-        data: {
-          displayName: 'Administrator (created by seed script)',
-          projectUserId: defaultUserId,
-          tenancyId: internalTenancy.id,
-          mirroredProjectId: 'internal',
-          mirroredBranchId: DEFAULT_BRANCH_ID,
-          signedUpAt: new Date(),
-          signUpRiskScoreBot: 0,
-          signUpRiskScoreFreeTrialAbuse: 0,
-        }
+      const newUser = await internalPrisma.$transaction(async (tx) => {
+        await tx.contact.upsert({
+          where: {
+            tenancyId_id: {
+              tenancyId: internalTenancy.id,
+              id: defaultUserId,
+            },
+          },
+          create: {
+            tenancyId: internalTenancy.id,
+            id: defaultUserId,
+            displayName: 'Administrator (created by seed script)',
+          },
+          update: {
+            displayName: 'Administrator (created by seed script)',
+          },
+        });
+        return await tx.projectUser.create({
+          data: {
+            projectUserId: defaultUserId,
+            tenancyId: internalTenancy.id,
+            mirroredProjectId: 'internal',
+            mirroredBranchId: DEFAULT_BRANCH_ID,
+            signedUpAt: new Date(),
+            signUpRiskScoreBot: 0,
+            signUpRiskScoreFreeTrialAbuse: 0,
+          },
+        });
       });
 
       // Note: TeamMember creation is handled by the upsert below (after this if/else block)

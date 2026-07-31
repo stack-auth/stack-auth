@@ -5,7 +5,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { comparePassword } from "@hexclave/shared/dist/utils/hashes";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -49,7 +49,7 @@ export const POST = createSmartRouteHandler({
       }
     );
 
-    const passwordAuthMethod = contactChannel?.projectUser.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
+    const passwordAuthMethod = contactChannel?.contact.projectUser?.authMethods.find((m) => m.passwordAuthMethod)?.passwordAuthMethod;
 
     // we compare the password even if the authMethod doesn't exist to prevent timing attacks
     if (!await comparePassword(password, passwordAuthMethod?.passwordHash || "")) {
@@ -60,18 +60,21 @@ export const POST = createSmartRouteHandler({
       throw new HexclaveAssertionError("This should never happen (the comparePassword call should've already caused this to fail)");
     }
 
-    if (contactChannel.projectUser.requiresTotpMfa) {
+    const projectUser = contactChannel.contact.projectUser
+      ?? throwErr("Auth contact channel is missing its ProjectUser", { contactChannelId: contactChannel.id });
+
+    if (projectUser.requiresTotpMfa) {
       throw await createMfaRequiredError({
         project: tenancy.project,
         branchId: tenancy.branchId,
         isNewUser: false,
-        userId: contactChannel.projectUser.projectUserId,
+        userId: projectUser.projectUserId,
       });
     }
 
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
-      projectUserId: contactChannel.projectUser.projectUserId,
+      projectUserId: projectUser.projectUserId,
       apiUrl: getApiUrlForRequest(fullReq),
     });
 
@@ -81,7 +84,7 @@ export const POST = createSmartRouteHandler({
       body: {
         access_token: accessToken,
         refresh_token: refreshToken,
-        user_id: contactChannel.projectUser.projectUserId,
+        user_id: projectUser.projectUserId,
       }
     };
   },

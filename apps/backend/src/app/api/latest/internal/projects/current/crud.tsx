@@ -1,7 +1,7 @@
 import { getBranchConfigPushedError, getDevelopmentEnvironmentConfigWarnings, renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { yupObject } from "@hexclave/shared/dist/schema-fields";
@@ -54,10 +54,19 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     };
   },
   onDelete: async ({ auth }) => {
-    await globalPrismaClient.project.delete({
-      where: {
-        id: auth.project.id
-      }
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      // ProjectUser intentionally has no tenancy cascade because deleting an
+      // individual user preserves its Contact. For whole-project deletion,
+      // remove users first so the Contact restriction cannot block the Tenancy
+      // cascade that follows.
+      await tx.projectUser.deleteMany({
+        where: { mirroredProjectId: auth.project.id },
+      });
+      await tx.project.delete({
+        where: {
+          id: auth.project.id
+        }
+      });
     });
   }
 }));

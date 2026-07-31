@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@hexclave/shared/dist/apps/apps-ui";
-import { BarChart3, ClipboardList, Code, CreditCard, Headset, KeyRound, Mail, Mails, MousePointerClick, PlayCircle, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { BarChart3, ClipboardList, Code, CreditCard, Headset, KeyRound, Mail, Mails, MessageSquare, MousePointerClick, PlayCircle, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -21,6 +21,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
   "api-keys": KeyRound,
   payments: CreditCard,
   emails: Mail,
+  comms: MessageSquare,
   support: Headset,
   "email-api": Mails,
   "data-vault": Vault,

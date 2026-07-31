@@ -1,0 +1,14 @@
+-- Each DROP is retry-safe; keep them together to avoid retaining temporary or
+-- legacy uniqueness rules after the bounded backfills complete.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."temp_ProjectUser_contact_backfill_idx";
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."temp_ContactChannel_contactId_backfill_idx";
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+DROP INDEX CONCURRENTLY IF EXISTS /* SCHEMA_NAME_SENTINEL */."ContactChannel_tenancyId_type_value_usedForAuth_key";

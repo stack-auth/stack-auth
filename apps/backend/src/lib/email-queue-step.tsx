@@ -341,13 +341,13 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
   }
   const users = userIds.size > 0 ? await prisma.projectUser.findMany({
     where: { tenancyId: tenancy.id, projectUserId: { in: [...userIds] } },
-    include: { contactChannels: true },
+    include: { contact: { include: { contactChannels: true } } },
   }) : [];
   const userMap = new Map(users.map(user => [user.projectUserId, user]));
 
   const buildRenderRequest = (row: EmailOutbox, unsubscribeLink: string | undefined) => {
     const recipient = deserializeRecipient(row.to as Json);
-    const userDisplayName = "userId" in recipient ? userMap.get(recipient.userId)?.displayName ?? null : null;
+    const userDisplayName = "userId" in recipient ? userMap.get(recipient.userId)?.contact.displayName ?? null : null;
     return {
       templateSource: row.tsxSource,
       themeSource: getEmailThemeForThemeId(tenancy, row.themeId ?? false),
@@ -615,7 +615,7 @@ async function processSendPlan(plan: TenancySendBatch[]): Promise<void> {
   }
 }
 
-type ProjectUserWithContacts = Prisma.ProjectUserGetPayload<{ include: { contactChannels: true } }>;
+type ProjectUserWithContacts = Prisma.ProjectUserGetPayload<{ include: { contact: { include: { contactChannels: true } } } }>;
 
 type TenancyProcessingContext = {
   tenancy: Tenancy,
@@ -645,7 +645,7 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 function getPrimaryEmail(user: ProjectUserWithContacts | undefined): string | undefined {
   if (!user) return undefined;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const primaryChannel = user.contactChannels.find((channel) => channel.type === "EMAIL" && channel.isPrimary === "TRUE");
+  const primaryChannel = user.contact.contactChannels.find((channel) => channel.type === "EMAIL" && channel.isPrimary === "TRUE");
   return primaryChannel?.value ?? undefined;
 }
 
@@ -921,7 +921,7 @@ async function resolveRecipientEmails(
       },
     },
     include: {
-      contactChannels: true,
+      contact: { include: { contactChannels: true } },
     },
   });
   if (!user) {
