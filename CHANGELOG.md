@@ -2,6 +2,10 @@
 
 ---
 
+## 8/7/26
+
+- _(entries added throughout the week)_
+
 ## 7/24/26
 
 ![Analytics table search bar](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-analytics-search.webp)
