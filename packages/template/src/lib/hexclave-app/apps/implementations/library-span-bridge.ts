@@ -1,5 +1,6 @@
-import { truncateUtf8Bytes, uuidToW3cSpanId, uuidToW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
-import { context as contextApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as traceApi, type Context, type ContextManager, type Exception, type Span as OtelSpan, type SpanAttributes, type SpanAttributeValue, type SpanContext, type SpanOptions, type SpanStatus, type TimeInput, type Tracer, type TracerOptions, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
+import { CUSTOM_TELEMETRY_NAME_RE, formatTraceparent, generateW3cSpanId, generateW3cTraceId, isW3cSpanId, isW3cTraceId, parseTraceparent, truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
+import { loadAsyncLocalStorage, type AsyncLocalStorageLike } from "@hexclave/shared/dist/utils/async-local-storage";
+import { context as contextApi, createContextKey, propagation as propagationApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as traceApi, type Context, type ContextManager, type Exception, type Span as OtelSpan, type SpanAttributes, type SpanAttributeValue, type SpanContext, type SpanOptions, type SpanStatus, type TextMapGetter, type TextMapPropagator, type TextMapSetter, type TimeInput, type Tracer, type TracerOptions, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
 
 /**
  * The hidden OpenTelemetry bridge: a minimal, hand-rolled implementation of
@@ -7,8 +8,10 @@ import { context as contextApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as
  * AsyncLocalStorage ContextManager) that turns spans any third-party library
  * emits through the OTel API GLOBAL — Prisma via `@prisma/instrumentation`,
  * Drizzle's OTel support, the Vercel AI SDK's `experimental_telemetry` — into
- * native Hexclave `$lib-span` rows, nested under the ambient Hexclave request
- * span. Users never configure exporters, endpoints, or collectors; the SDK IS
+ * native Hexclave spans named after each library operation, with the tracer
+ * recorded as its instrumentation scope and the span nested under the ambient
+ * Hexclave request span. Users never configure exporters, endpoints, or
+ * collectors; the SDK IS
  * the in-process OTel implementation (the same pattern Sentry v8 uses).
  *
  * Deliberately NOT built on `@opentelemetry/sdk-trace-*`: the API surface the
@@ -16,14 +19,28 @@ import { context as contextApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as
  * in processors/exporters/resources we would immediately have to neutralize.
  *
  * Parenting contract (see also the seam in server-app-impl._beginLibrarySpan):
- *  (a) the explicit/active OTel context carries a span WE minted → the native
- *      parent is that span's registry entry; parent_span_ids = its stored
- *      root-first path + its own native id (arbitrary OTel nesting depth,
- *      e.g. Prisma client:operation → engine:query → engine:db_query);
- *  (b) no OTel parent → the ambient Hexclave refs AT CALL TIME (enclosing
- *      withSpan frames + the request context's propagated client chain);
- *  (c) neither → project-level root (empty parents), still recorded.
+ *  (a) the explicit/active OTel context carries a span we REGISTERED, or a
+ *      remote W3C parent extracted from `traceparent` → we join that entry's
+ *      trace and parent under its `recordedSpanId` (arbitrary OTel nesting depth,
+ *      e.g. browser fetch → Next.js → route → Prisma → PostgreSQL);
+ *  (b) no registered OTel parent → the ambient Hexclave contexts AT CALL TIME
+ *      (enclosing withSpan frames + the request's incoming traceparent);
+ *  (c) neither → a new trace rooted at this span, still recorded.
  * Both lookups are AsyncLocalStorage-scoped, so this is concurrency-safe.
+ *
+ * NON-RECORDING SPANS AND THE ORPHAN TRAP. Spans rejected by the capture policy, and
+ * every span minted while the seam returns null, are API-complete but write NO
+ * row — while their children happily do. A child must therefore never name such a
+ * span as its parent, or it would reference a row that does not exist (which under
+ * a scalar `parent_span_id` silently detaches the whole subtree, and hides it from
+ * the trace inbox too, since an orphan's parent is non-null). The registry
+ * therefore stores the nearest RECORDED ancestor rather than the immediate one: a
+ * non-recording span with a registered parent re-registers that parent's
+ * `recordedSpanId` under its own span id, so lookups transparently skip the
+ * phantom. A non-recording span with NO registered parent is deliberately left
+ * OUT of the registry entirely, so its children fall through to ambient
+ * resolution (case (b)) — that is what keeps a Prisma span under a Next.js render
+ * span attached to the Hexclave request context.
  *
  * Known limits (accepted for v1):
  * - A second bundled copy of `@opentelemetry/api` with an incompatible
@@ -38,10 +55,18 @@ import { context as contextApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as
 // Seam types (implemented by server-app-impl, injected at registration)
 // ---------------------------------------------------------------------------
 
-/** A native parent minted by this bridge: its uuid plus its own root-first parent chain. */
+/**
+ * A registry entry for an OTel span this bridge minted: which trace it belongs to,
+ * and the nearest ancestor that actually WROTE A ROW (null when no ancestor in
+ * this trace was recorded, i.e. a child should become a root of the trace).
+ */
 export type LibrarySpanOtelParent = {
-  nativeId: string,
-  parentPath: string[],
+  traceId: string,
+  recordedSpanId: string | null,
+  /** The shared trace-level sampling decision inherited by OTel children. */
+  sampled: boolean,
+  /** The innermost SDK withSpan frame this OTel lineage already entered. */
+  ambientSpanId: string | null,
 };
 
 export type BeginLibrarySpanInfo = {
@@ -53,9 +78,14 @@ export type BeginLibrarySpanInfo = {
 };
 
 export type LibrarySpanHandle = {
-  nativeId: string,
-  /** The resolved root-first parent chain of THIS span (what children extend). */
-  parentPath: string[],
+  /** The trace the seam resolved for this span; children inherit it. */
+  traceId: string,
+  /** This span's own W3C span id — it WILL be written, so children may name it. */
+  spanId: string,
+  /** The same deterministic decision the SDK flusher applies to this trace. */
+  sampled: boolean,
+  /** Lets descendants detect when a newer SDK withSpan frame must win once. */
+  ambientSpanId: string | null,
   end: (endedAtMs: number, data: Record<string, unknown>) => void,
 };
 
@@ -63,7 +93,7 @@ export type LibrarySpanBridgeDeps = {
   projectId: string,
   /**
    * Called synchronously at OTel startSpan time: resolves the ambient batch
-   * context + parents, mints the native span uuid, and returns the row
+   * context + parent, mints the span's W3C identity, and returns the row
    * emitter. Returns null when server telemetry cannot record (disabled
    * project, browser-like environment) — the bridge span then becomes
    * non-recording but stays API-complete so library code never breaks.
@@ -91,31 +121,41 @@ const MAX_TOTAL_ATTRIBUTE_BYTES = 32_768;
 // captured unsanitized. The query shape is recoverable from span names +
 // db.operation/db.collection attributes, which we keep.
 const DROPPED_ATTRIBUTE_KEY_RE = /db\.statement|db\.query\.text|sql/i;
-// Bounded native-id registry: OTel span id → native mapping, FIFO-evicted.
+// Bounded registry: OTel span id → nearest-recorded-ancestor mapping, FIFO-evicted.
 // 2000 is far beyond any realistic set of spans whose CHILDREN are still
 // being started; eviction only costs case-(a) parenting (the child falls back
-// to ambient refs), never data loss.
+// to ambient contexts), never data loss.
 const SPAN_REGISTRY_CAP = 2000;
-// Tracer names whose spans are runtime plumbing rather than customer library
-// work — never recorded (their spans stay API-complete but non-recording, so
-// the emitting code path never breaks):
-// - "stack-tracer": Hexclave's own internal instrumentation (@hexclave/shared's
-//   traceSpan, wrapping utilities like wait()). Capturing it is not just noise
-//   but a feedback loop: the telemetry sender's retry backoff calls wait(), so
-//   every failed batch send would mint the $lib-span that fills the NEXT
-//   batch, and the buffer never drains. This is the bridge's counterpart of
-//   the self-capture guards the other capture layers already have (the fetch
-//   wrapper's own-API-url exclusion, the console mirror's "Hexclave" prefix
-//   skip).
-// - "next.js": the framework's runtime spans (middleware, RSC render
-//   pipeline, segment/module resolution). The bridge exists for LIBRARY work
-//   the customer's code invokes (Prisma, Drizzle, AI SDKs); the request layer
-//   is already modeled by the SDK's own system spans, and dev servers emit
-//   these for every request/HMR round-trip at flood volume.
-// Children of an ignored span miss the registry and fall through to ambient
-// parenting (contract case (b)) — e.g. a Prisma span under a Next.js render
-// span still parents under the Hexclave request context.
-const IGNORED_TRACER_NAMES = new Set(["stack-tracer", "next.js"]);
+// Specific runtime-plumbing spans that must stay non-recording. Do NOT ignore
+// the entire stack-tracer: it also owns the backend's request/validation/route
+// spans, and dropping those flattens Prisma into a sibling of the request span.
+// wait() is the exceptional feedback-loop operation: the telemetry sender's
+// retry backoff uses it, so recording that timer would let each failed batch
+// mint the row that fills the next batch forever.
+// A child of an ignored span inherits that span's OWN nearest recorded ancestor
+// when it has one, and otherwise falls through to ambient parenting (contract
+// case (b)) — e.g. a Prisma span under a Next.js render span still parents under
+// the Hexclave request context. Either way it never names the phantom itself.
+const STACK_TRACER_IGNORED_SPAN_NAMES = new Set(["STACK: wait(...)"]);
+
+export function shouldIgnoreLibrarySpan(tracerName: string, spanName: string): boolean {
+  return tracerName === "stack-tracer" && STACK_TRACER_IGNORED_SPAN_NAMES.has(spanName.trim());
+}
+
+/**
+ * Converts an arbitrary OTel operation name to the public span-type contract.
+ * Most instrumentation names (including Prisma's) already pass unchanged.
+ * Invalid punctuation is normalized instead of falling back to `$lib-span`,
+ * while the exact original remains in data.name for diagnostics.
+ */
+export function librarySpanTypeFromName(name: string): string {
+  if (CUSTOM_TELEMETRY_NAME_RE.test(name)) return name;
+  const sanitized = name.trim().replace(/[^a-zA-Z0-9_.:-]+/g, "-");
+  if (!/[a-zA-Z0-9]/.test(sanitized)) return "library.operation";
+  const prefixed = /^[a-zA-Z]/.test(sanitized) ? sanitized : `library.${sanitized}`;
+  const bounded = prefixed.slice(0, 64);
+  return CUSTOM_TELEMETRY_NAME_RE.test(bounded) ? bounded : "library.operation";
+}
 
 // ---------------------------------------------------------------------------
 // Process-global state (one bridge per process, across SDK copies)
@@ -133,14 +173,19 @@ type LibrarySpanBridgeGlobalState = {
   // provider must forward to the live one, same rationale as the console
   // capture's sink swap.
   deps: LibrarySpanBridgeDeps | null,
-  // w3c span id (16-hex) → native mapping; see SPAN_REGISTRY_CAP.
+  // w3c span id (16-hex) → nearest-recorded-ancestor mapping; see SPAN_REGISTRY_CAP.
   registry: Map<string, LibrarySpanOtelParent>,
+  // The collector-recursion marker must live on the bridge's OWN context
+  // manager. A Next.js server can evaluate @opentelemetry/api in multiple
+  // chunks; setting suppression through another copy can otherwise reach a
+  // different API delegate even though Prisma is wired to this provider.
+  telemetrySuppressionKey: ReturnType<typeof createContextKey>,
   // Sticky back-off so a foreign OTel setup produces exactly one debug note
   // per process, not one per register() call.
   backedOff: boolean,
 };
 
-const BRIDGE_STATE_KEY = Symbol.for("hexclave.analytics.library-span-bridge.v1");
+const BRIDGE_STATE_KEY = Symbol.for("hexclave.analytics.library-span-bridge.v3");
 
 function getBridgeState(): LibrarySpanBridgeGlobalState {
   const holder = globalThis as { [BRIDGE_STATE_KEY]?: LibrarySpanBridgeGlobalState };
@@ -148,9 +193,71 @@ function getBridgeState(): LibrarySpanBridgeGlobalState {
     installed: null,
     deps: null,
     registry: new Map(),
+    telemetrySuppressionKey: createContextKey("hexclave.analytics.telemetry-suppression"),
     backedOff: false,
   };
   return holder[BRIDGE_STATE_KEY];
+}
+
+export function isLibrarySpanBridgeTelemetrySuppressed(): boolean {
+  const state = getBridgeState();
+  const manager = state.installed?.contextManager;
+  return manager?.active().getValue(state.telemetrySuppressionKey) === true;
+}
+
+/** The nearest OTel/library row active in this async flow, for SDK span nesting. */
+export function getActiveLibrarySpanContext(): { traceId: string, spanId: string } | null {
+  const state = getBridgeState();
+  const activeSpan = traceApi.getSpan(state.installed?.contextManager.active() ?? ROOT_CONTEXT);
+  if (activeSpan === undefined) return null;
+  const mapped = state.registry.get(activeSpan.spanContext().spanId);
+  if (mapped?.recordedSpanId == null) return null;
+  return { traceId: mapped.traceId, spanId: mapped.recordedSpanId };
+}
+
+/**
+ * Runs collector work inside the exact context manager owned by the hidden
+ * OTel bridge. This is intentionally exposed only through framework
+ * instrumentation glue: ordinary SDK consumers should never suppress their
+ * own telemetry.
+ */
+export async function runWithLibrarySpanBridgeTelemetrySuppressed<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  const state = getBridgeState();
+  const manager = state.installed?.contextManager;
+  if (manager === undefined) {
+    throw new Error("Hexclave analytics: telemetry suppression requires the library-span bridge to be registered first");
+  }
+  return await manager.with(
+    manager.active().setValue(state.telemetrySuppressionKey, true),
+    fn,
+  );
+}
+
+/**
+ * Internal delivery variant: telemetry still works when a runtime's existing
+ * OTel setup made the hidden bridge back off. When the bridge is installed,
+ * the delivery runs inside its exact context manager so Next/undici spans from
+ * the collector POST cannot inherit and inflate the request being exported.
+ */
+export async function runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  const state = getBridgeState();
+  const manager = state.installed?.contextManager;
+  if (manager === undefined) return await fn();
+  // Delivery is not a child operation of the request whose telemetry it is
+  // exporting. Keeping that span active lets framework fetch instrumentation
+  // propagate sampled=1 to /analytics/events/batch; the receiver then honors
+  // the upstream decision, traces its own collector work, and sends another
+  // batch indefinitely. Preserve the rest of the ambient context while
+  // explicitly detaching its span, then mark the whole delivery suppressed.
+  const detachedContext = traceApi.deleteSpan(manager.active());
+  return await manager.with(
+    detachedContext.setValue(state.telemetrySuppressionKey, true),
+    fn,
+  );
 }
 
 function registerSpanMapping(registry: Map<string, LibrarySpanOtelParent>, w3cSpanId: string, entry: LibrarySpanOtelParent): void {
@@ -161,6 +268,59 @@ function registerSpanMapping(registry: Map<string, LibrarySpanOtelParent>, w3cSp
     if (!oldest.done) registry.delete(oldest.value);
   }
   registry.set(w3cSpanId, entry);
+}
+
+/**
+ * Makes an SDK-native span the active parent seen by the process-global OTel
+ * bridge for exactly `fn`'s async extent. This is separate from the SDK's own
+ * withSpan ALS on purpose: Next.js can evaluate route code and
+ * instrumentation.ts from different server chunks, while the OTel provider
+ * and this Symbol.for-backed registry are process-global. Without this carrier,
+ * a library span opened inside an SDK withSpan can see the surrounding Next.js
+ * span but miss the SDK boundary and become its sibling.
+ *
+ * If the bridge backed off because the host owns OTel, leave the host context
+ * untouched. The SDK span still works; only the hidden bridge integration is
+ * unavailable in that configuration.
+ */
+export async function runWithLibrarySpanBridgeParentIfRegistered<T>(
+  parent: { traceId: string, spanId: string },
+  sampled: boolean,
+  fn: () => T,
+): Promise<Awaited<T>> {
+  if (!isW3cTraceId(parent.traceId) || !isW3cSpanId(parent.spanId)) {
+    throw new Error("Hexclave analytics: library-span bridge parent must be a valid W3C span context");
+  }
+  const state = getBridgeState();
+  const manager = state.installed?.contextManager;
+  if (manager === undefined) return await fn();
+
+  const previous = state.registry.get(parent.spanId);
+  const mapping: LibrarySpanOtelParent = {
+    traceId: parent.traceId,
+    recordedSpanId: parent.spanId,
+    sampled,
+    // Descendants have already entered this SDK frame. The seam uses this to
+    // avoid re-inserting the same frame ahead of every nested OTel child.
+    ambientSpanId: parent.spanId,
+  };
+  registerSpanMapping(state.registry, parent.spanId, mapping);
+  const carrier = traceApi.wrapSpanContext({
+    traceId: parent.traceId,
+    spanId: parent.spanId,
+    traceFlags: sampled ? 1 : 0,
+  });
+  try {
+    return await manager.with(traceApi.setSpan(manager.active(), carrier), fn);
+  } finally {
+    // Preserve an older mapping in the astronomically unlikely event that a
+    // caller deliberately re-enters the same span id; otherwise release the
+    // temporary SDK carrier immediately instead of consuming registry capacity.
+    if (state.registry.get(parent.spanId) === mapping) {
+      if (previous === undefined) state.registry.delete(parent.spanId);
+      else state.registry.set(parent.spanId, previous);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -414,12 +574,9 @@ export class HexclaveTracer implements Tracer {
 
   startSpan(name: string, options?: SpanOptions, ctx?: Context): OtelSpan {
     const activeContext = ctx ?? contextApi.active();
-    // Parenting case (a): the context carries a span we minted. Foreign spans
-    // (a remote SpanContext wrapped via trace.wrapSpanContext, or a span from
-    // a second bundled api copy) miss the registry and fall through to (b)/(c)
-    // inside the seam.
+    // Parenting case (a): the context carries a span we minted, or a remote
+    // W3C parent the global propagator extracted from traceparent.
     let otelParent: LibrarySpanOtelParent | null = null;
-    let parentTraceId: string | null = null;
     if (options?.root !== true) {
       const parentSpan = traceApi.getSpan(activeContext);
       if (parentSpan !== undefined) {
@@ -427,12 +584,27 @@ export class HexclaveTracer implements Tracer {
         const mapped = this._state.registry.get(parentSpanContext.spanId);
         if (mapped !== undefined) {
           otelParent = mapped;
-          parentTraceId = parentSpanContext.traceId;
+        } else if (
+          parentSpanContext.isRemote === true
+          && isW3cTraceId(parentSpanContext.traceId)
+          && isW3cSpanId(parentSpanContext.spanId)
+        ) {
+          // A remote span is allowed to name a row written by another tier — in
+          // this product that is normally the browser's `$http-client`. Unlike
+          // an arbitrary local foreign span, treating it as a parent is exactly
+          // the W3C propagation contract and cannot fabricate a local row.
+          otelParent = {
+            traceId: parentSpanContext.traceId,
+            recordedSpanId: parentSpanContext.spanId,
+            sampled: (parentSpanContext.traceFlags & 1) === 1,
+            ambientSpanId: null,
+          };
         }
       }
     }
     const startedAtMs = timeInputToMs(options?.startTime) ?? Date.now();
-    const handle = IGNORED_TRACER_NAMES.has(this._name)
+    const handle = shouldIgnoreLibrarySpan(this._name, name)
+      || isLibrarySpanBridgeTelemetrySuppressed()
       ? null
       : this._state.deps?.beginLibrarySpan({
         name,
@@ -440,22 +612,32 @@ export class HexclaveTracer implements Tracer {
         startedAtMs,
         otelParent,
       }) ?? null;
-    // A non-recording span (no seam / telemetry disabled) still needs a valid
-    // W3C identity, so mint a local uuid purely for id derivation.
-    const nativeId = handle?.nativeId ?? crypto.randomUUID();
+    // A recording span uses the identity the seam resolved, so the OTel-visible
+    // context and the stored row can never disagree. A non-recording span still
+    // needs a valid W3C identity for the library's own use: it keeps its parent's
+    // trace when it has one, so the trace stays coherent across the gap.
     const spanContext: SpanContext = {
-      // Children share the OTel parent's trace id (W3C trace coherence, and
-      // it matches how the backend derives trace ids from the root native
-      // uuid); roots derive a fresh trace id from their own native uuid.
-      traceId: parentTraceId ?? uuidToW3cTraceId(nativeId),
-      spanId: uuidToW3cSpanId(nativeId),
-      traceFlags: 1, // sampled
+      traceId: handle?.traceId ?? otelParent?.traceId ?? generateW3cTraceId(),
+      spanId: handle?.spanId ?? generateW3cSpanId(),
+      // A parentless span declined by the seam (for example, collector work in
+      // a suppression scope) is non-recording and must never advertise a
+      // sampling decision that no stored row can satisfy.
+      traceFlags: (handle?.sampled ?? otelParent?.sampled ?? false) ? 1 : 0,
     };
     if (handle !== null) {
+      // This span WILL be written, so it is its own nearest recorded ancestor.
       registerSpanMapping(this._state.registry, spanContext.spanId, {
-        nativeId: handle.nativeId,
-        parentPath: handle.parentPath,
+        traceId: handle.traceId,
+        recordedSpanId: handle.spanId,
+        sampled: handle.sampled,
+        ambientSpanId: handle.ambientSpanId,
       });
+    } else if (otelParent !== null) {
+      // Non-recording but inside a known trace: forward our PARENT's recorded
+      // ancestor so children skip this phantom instead of naming it. Leaving a
+      // parentless non-recording span unregistered is deliberate — see the
+      // orphan-trap note in the module doc.
+      registerSpanMapping(this._state.registry, spanContext.spanId, otelParent);
     }
     const span = new HexclaveBridgeSpan({
       name,
@@ -530,10 +712,7 @@ export class HexclaveTracerProvider implements TracerProvider {
 // Context manager (AsyncLocalStorage-backed)
 // ---------------------------------------------------------------------------
 
-type ContextAls = {
-  run: <T>(store: Context, fn: () => T) => T,
-  getStore: () => Context | undefined,
-};
+type ContextAls = AsyncLocalStorageLike<Context>;
 
 export class HexclaveContextManager implements ContextManager {
   constructor(private readonly _als: ContextAls) {}
@@ -578,30 +757,46 @@ export class HexclaveContextManager implements ContextManager {
   }
 }
 
+/** Minimal W3C propagator so framework/library instrumentation joins browser traces. */
+class HexclaveTraceContextPropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const spanContext = traceApi.getSpanContext(context);
+    if (
+      spanContext === undefined
+      || !isW3cTraceId(spanContext.traceId)
+      || !isW3cSpanId(spanContext.spanId)
+    ) return;
+    setter.set(carrier, "traceparent", formatTraceparent({
+      traceId: spanContext.traceId,
+      spanId: spanContext.spanId,
+      sampled: (spanContext.traceFlags & 1) === 1,
+    }));
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const rawValue = getter.get(carrier, "traceparent");
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    const parsed = parseTraceparent(typeof value === "string" ? value : null);
+    if (parsed === null) return context;
+    return traceApi.setSpanContext(context, {
+      traceId: parsed.traceId,
+      spanId: parsed.spanId,
+      traceFlags: parsed.sampled ? 1 : 0,
+      isRemote: true,
+    });
+  }
+
+  fields(): string[] {
+    return ["traceparent"];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
-type AsyncHooksModuleLike = {
-  AsyncLocalStorage?: new () => ContextAls,
-};
-
-let contextAlsPromise: Promise<ContextAls | null> | null = null;
-
-async function loadContextAls(): Promise<ContextAls | null> {
-  contextAlsPromise ??= (async () => {
-    try {
-      // Opaque specifier so bundlers leave this as a runtime dynamic import —
-      // it rejects in browsers and resolves to the built-in everywhere
-      // node-like. Mirrors span-context-state.ts.
-      const specifier = "node:async_hooks";
-      const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as AsyncHooksModuleLike;
-      return typeof mod.AsyncLocalStorage === "function" ? new mod.AsyncLocalStorage() : null;
-    } catch {
-      return null;
-    }
-  })();
-  return await contextAlsPromise;
+function loadContextAls(): Promise<ContextAls | null> {
+  return loadAsyncLocalStorage<Context>("library-span-bridge-context");
 }
 
 function debugNote(message: string): void {
@@ -657,6 +852,13 @@ export async function registerLibrarySpanBridge(deps: LibrarySpanBridgeDeps): Pr
     debugNote("another OpenTelemetry context manager is already registered; the library-span bridge is backing off completely");
     return null;
   }
+  if (!propagationApi.setGlobalPropagator(new HexclaveTraceContextPropagator())) {
+    traceApi.disable();
+    contextApi.disable();
+    state.backedOff = true;
+    debugNote("another OpenTelemetry propagator is already registered; the library-span bridge is backing off completely");
+    return null;
+  }
   state.deps = deps;
   state.installed = { provider, contextManager };
   return { provider };
@@ -670,6 +872,7 @@ export function resetLibrarySpanBridgeForTesting(): void {
   const holder = globalThis as { [BRIDGE_STATE_KEY]?: LibrarySpanBridgeGlobalState };
   const state = holder[BRIDGE_STATE_KEY];
   if (state?.installed) {
+    propagationApi.disable();
     traceApi.disable();
     contextApi.disable();
   }

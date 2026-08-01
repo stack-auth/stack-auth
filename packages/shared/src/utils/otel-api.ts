@@ -15,7 +15,7 @@
  * lets the bridge become the tracer provider that third-party libraries
  * (Prisma instrumentation, Drizzle, Vercel AI SDK) resolve at runtime.
  */
-export { context, createContextKey, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+export { context, createContextKey, propagation, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 export type {
   Attributes,
   AttributeValue,
@@ -31,6 +31,9 @@ export type {
   SpanOptions,
   SpanStatus,
   TimeInput,
+  TextMapGetter,
+  TextMapPropagator,
+  TextMapSetter,
   Tracer,
   TracerOptions,
   TracerProvider,

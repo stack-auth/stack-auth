@@ -1031,20 +1031,30 @@ surface:
     Starts a custom span (open interval, versioned upserts). Invalid input
     throws; environment unavailability (e.g. SSR on a client app) returns an
     INERT span instead — see analytics.spec.md "Inert spans".
+    The handle exposes its W3C identity as `traceId`, `spanId`, and
+    `spanContext(): { traceId, spanId }` — the serializable form accepted as the
+    `parent` option or as a `links` entry. There is no bare-span-id form,
+    because a span id is only unique within its trace.
 
   withSpan(spanType, optionsOrFn, fn?): Promise<T>
     Runs fn inside a span (ambient parent; auto-end; records data.error and
     rethrows on throw).
 
   setGlobalSpan(span) / clearGlobalSpan(span): void
-    Register/unregister an ambient parent.
+    Register/unregister an ambient parent. Ambient parents are ordered
+    outermost-first and a span has exactly one parent, so the innermost one
+    wins; see analytics.spec.md "Parent resolution".
 
   flush(): Promise<void>
     Sends all buffered analytics immediately and settles in-flight sends.
 
-  getSpanPropagationHeaders(options?: { parentIds?, root? }): Record<string, string>
-    The cross-tier x-hexclave-span-context header for transports the SDK
-    cannot instrument itself; {} when there is nothing to propagate.
+  getSpanPropagationHeaders(options?: { parent?, root? }): Record<string, string>
+    The cross-tier propagation headers — the standard W3C `traceparent` (which
+    carries hierarchy for a head-sampled parent, so any OTel-compatible
+    receiver can continue a trace whose parent is guaranteed to be retained)
+    plus `x-hexclave-span-context` (non-hierarchical correlation) — for
+    transports the SDK cannot instrument itself. Head-dropped/pre-load spans
+    return correlation only; {} when there is nothing to propagate.
 
 
 ## Redirect Methods  [BROWSER-ONLY]

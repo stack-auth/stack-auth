@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
+import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
@@ -643,6 +644,102 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
+async function loadAnonymousVisitorsFromTokenRefresh(
+  tenancy: Tenancy,
+  now: Date,
+): Promise<{ dailyVisitors: DataPoints, visitors: number }> {
+  const { since, untilExclusive } = getMetricsWindowBounds(now);
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+
+  // GROUPING SETS keeps the exact old normalized-UUID semantics, but collapses
+  // the result to 31 daily rows plus one total row. The previous `GROUP BY day,
+  // user_id` returned every distinct (day, user) pair to Node and rebuilt those
+  // sets in JS, so response size and V8 memory grew with tenant activity.
+  const query = `
+    SELECT
+      if(GROUPING(event_day) = 1, '', toString(event_day)) AS day,
+      uniqExact(normalized_user_uuid) AS visitors
+    FROM (
+      SELECT
+        event_day,
+        normalized_user_id,
+        toUUIDOrNull(normalized_user_id) AS normalized_user_uuid
+      FROM (
+        SELECT
+          toDate(event_at) AS event_day,
+          lower(trim(assumeNotNull(user_id))) AS normalized_user_id
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
+          AND event_at < {untilExclusive:DateTime}
+          AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 1
+      )
+    )
+    WHERE normalized_user_uuid IS NOT NULL
+      AND match(normalized_user_id, {uuidRe:String})
+    GROUP BY GROUPING SETS ((event_day), ())
+    ORDER BY GROUPING(event_day) ASC, day ASC
+  `;
+  try {
+    const result = await clickhouseClient.query({
+      query,
+      query_params: {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        since: formatClickhouseDateTimeParam(since),
+        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+        uuidRe: MAU_UUID_V4_REGEX,
+      },
+      format: "JSONEachRow",
+    });
+    const rows: { day: string, visitors: string | number }[] = await result.json();
+    const totalRow = rows.at(-1);
+    if (totalRow == null || totalRow.day !== "") {
+      throw new HexclaveAssertionError("Anonymous visitor query did not return the expected total row.", { rows });
+    }
+
+    const visitorsByDay = new Map<string, number>();
+    for (const row of rows.slice(0, -1)) {
+      const visitors = Number(row.visitors);
+      if (!Number.isFinite(visitors) || visitors < 0) {
+        throw new HexclaveAssertionError("Invalid anonymous visitor count returned by ClickHouse.", { row });
+      }
+      visitorsByDay.set(row.day.split('T')[0], visitors);
+    }
+
+    const dailyVisitors: DataPoints = [];
+    for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
+      const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
+      dailyVisitors.push({ date, activity: visitorsByDay.get(date) ?? 0 });
+    }
+
+    return { dailyVisitors, visitors: Number(totalRow.visitors) };
+  } catch (error) {
+    // Swallow all failures so callers can `await` this without guarding — the
+    // fallback is best-effort and must never take down the main metrics call.
+    // Separate Sentry IDs for ClickHouseError vs. everything else so noisy CH
+    // outages don't drown out real bugs.
+    const captureId = error instanceof ClickHouseError
+      ? "internal-metrics-load-anonymous-visitors-fallback-clickhouse-error"
+      : "internal-metrics-load-anonymous-visitors-fallback-unexpected-error";
+    captureError(captureId, new HexclaveAssertionError(
+      "Failed to load anonymous visitors fallback for internal metrics.",
+      {
+        cause: error,
+        tenancyId: tenancy.id,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        windowDays: METRICS_WINDOW_DAYS,
+        query,
+      },
+    ));
+    return { dailyVisitors: [], visitors: 0 };
+  }
+}
+
 async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
 
@@ -1154,11 +1251,17 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
 // These PREWHERE fields are immutable for a span ID, so filtering them before
 // FINAL preserves replacement semantics while avoiding JSON reads for the much
 // larger population of operational spans.
+//
+// The column list is deliberately the INTERSECTION of what spans and events both
+// have, because PAGE_VIEWS_AND_CLICKS_SQL unions the two and ClickHouse pairs
+// UNION ALL branches positionally. No span-identity column is selected: these
+// queries only ever aggregate page views and clicks, so carrying hierarchy here
+// would be dead weight that has to be kept in sync with two schemas.
 const PAGE_VIEWS_FROM_SPANS_SQL = `
   SELECT
     CAST('$page-view', 'LowCardinality(String)') AS event_type,
     started_at AS event_at,
-    CAST(attributes, 'JSON') AS data,
+    CAST(data, 'JSON') AS data,
     project_id,
     branch_id,
     user_id,
@@ -1166,12 +1269,11 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
     refresh_token_id,
     session_replay_id,
     session_replay_segment_id,
-    created_at,
-    parent_span_ids
+    created_at
   FROM analytics_internal.spans FINAL
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
-    AND name = '$page-view'
+    AND span_type = '$page-view'
     AND started_at >= {since:DateTime}
     AND started_at < {untilExclusive:DateTime}
 `;
@@ -1190,8 +1292,7 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     refresh_token_id,
     session_replay_id,
     session_replay_segment_id,
-    created_at,
-    parent_span_ids
+    created_at
   FROM analytics_internal.events
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
@@ -1204,6 +1305,13 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
 
 export function getAnalyticsOverviewTelemetrySqlForTest(): string {
   return PAGE_VIEWS_AND_CLICKS_SQL;
+}
+
+export function reconcileAnalyticsVisitorCount(
+  analyticsVisitors: number,
+  anonymousVisitorsFallback: number,
+): number {
+  return Math.max(analyticsVisitors, anonymousVisitorsFallback);
 }
 
 async function loadAnalyticsOverview(
@@ -1229,6 +1337,8 @@ async function loadAnalyticsOverview(
   }
 
   const clickhouseClient = getClickhouseAdminClientForMetrics();
+  const replayPromise = loadSessionReplayAggregates(tenancy, since);
+  const anonymousVisitorsPromise = loadAnonymousVisitorsFromTokenRefresh(tenancy, now);
 
   let clickhouseAggregates: {
     dailyPageViews: DataPoints,
@@ -1771,13 +1881,12 @@ async function loadAnalyticsOverview(
         branchId: tenancy.branchId,
       },
     ));
+    replayPromise.catch(() => {});
     throw error;
   }
 
-  // Postgres-backed session replay query has its own error surface. Start it
-  // only after the ClickHouse work has settled so neither failure can become
-  // an unhandled background rejection.
-  const replayResult = await loadSessionReplayAggregates(tenancy, since);
+  const replayResult = await replayPromise;
+  const anonymousVisitorsResult = await anonymousVisitorsPromise;
 
   // daily_revenue is intentionally not populated here — it is owned by
   // payments_overview (real invoice data) and stitched into analytics_overview
@@ -1791,11 +1900,13 @@ async function loadAnalyticsOverview(
       hourly_page_views: [] as DataPoints,
       hourly_active_users: [] as DataPoints,
       hourly_visitors: [] as DataPoints,
+      daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
       visitors: 0,
+      anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
       avg_session_seconds: replayResult.avgSessionSeconds,
       bounce_rate: 0,
       daily_bounce_rate: [] as DataPoints,
@@ -1811,6 +1922,11 @@ async function loadAnalyticsOverview(
     };
   }
 
+  const effectiveVisitors = reconcileAnalyticsVisitorCount(
+    clickhouseAggregates.visitors,
+    anonymousVisitorsResult.visitors,
+  );
+
   return {
     daily_page_views: clickhouseAggregates.dailyPageViews,
     daily_clicks: clickhouseAggregates.dailyClicks,
@@ -1818,18 +1934,20 @@ async function loadAnalyticsOverview(
     hourly_page_views: clickhouseAggregates.hourlyPageViews,
     hourly_active_users: clickhouseAggregates.hourlyActiveUsers,
     hourly_visitors: clickhouseAggregates.hourlyVisitors,
+    daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
     daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
     total_revenue_cents: replayResult.totalRevenueCents,
     total_replays: replayResult.total,
     recent_replays: replayResult.recent,
-    visitors: clickhouseAggregates.visitors,
+    visitors: effectiveVisitors,
+    anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
     avg_session_seconds: clickhouseAggregates.avgSessionSeconds,
     bounce_rate: clickhouseAggregates.bounceRate,
     daily_bounce_rate: clickhouseAggregates.dailyBounceRate,
     daily_avg_session_seconds: clickhouseAggregates.dailyAvgSession,
     online_live: clickhouseAggregates.onlineLive,
-    revenue_per_visitor: clickhouseAggregates.visitors > 0
-      ? Number(((replayResult.totalRevenueCents / 100) / clickhouseAggregates.visitors).toFixed(2))
+    revenue_per_visitor: effectiveVisitors > 0
+      ? Number(((replayResult.totalRevenueCents / 100) / effectiveVisitors).toFixed(2))
       : 0,
     top_referrers: clickhouseAggregates.topReferrers,
     top_region: clickhouseAggregates.topRegion,

@@ -3,6 +3,7 @@ import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
 import { wait } from '@hexclave/shared/dist/utils/promises';
 import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
+import { isTelemetryIngestionPath } from './lib/telemetry-ingestion-paths';
 import './polyfills';
 
 import type { NextRequest } from 'next/server';
@@ -42,6 +43,11 @@ const corsAllowedRequestHeaders = [
   'sentry-trace',
   'traceparent',
   'tracestate',
+  // The SDK's native cross-tier span context (see span-context-codec in
+  // @hexclave/shared). Without this, browser SDK calls to the Hexclave API
+  // from a different origin would fail CORS preflight once the fetch
+  // instrumentation attaches the header.
+  'x-hexclave-span-context',
 
   // Vercel
   'x-vercel-protection-bypass',
@@ -70,7 +76,10 @@ const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllo
 export async function proxy(request: NextRequest) {
   const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
-  if (delay) {
+  // Preflights are transport negotiation rather than application work. Delaying
+  // them doubles cross-origin development latency and creates a standalone
+  // middleware trace whose only child is STACK: wait(...).
+  if (request.method !== 'OPTIONS' && delay && !isTelemetryIngestionPath(url.pathname)) {
     if (getNodeEnvironment().includes('production')) {
       throw new HexclaveAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
     }
@@ -91,7 +100,11 @@ export async function proxy(request: NextRequest) {
   } : undefined;
 
   // ensure our clients can handle 429 responses
-  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
+  // Collector traffic is deliberately exempt from artificial development
+  // pressure (the delay above and the limiter here). The backend observes
+  // itself, so slowing the very batches needed to explain a cold-start burst
+  // makes the SDK's bounded delivery queue fill with retrying telemetry.
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/") && !isTelemetryIngestionPath(url.pathname)) {
     const now = Date.now();
     while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitTimestamps.shift();

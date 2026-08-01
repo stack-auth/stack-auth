@@ -1,51 +1,51 @@
-import { ROOT_CONTEXT, defaultTextMapGetter } from "@opentelemetry/api";
-import { W3CTraceContextPropagator } from "@opentelemetry/core";
-import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { NextRequest } from "next/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxy } from "./proxy";
 
-describe("cross-tier OpenTelemetry propagation", () => {
-  it("allows W3C trace headers through the API CORS boundary", async () => {
+const { waitMock } = vi.hoisted(() => ({
+  waitMock: vi.fn(async () => {}),
+}));
+
+vi.mock("@hexclave/shared/dist/utils/promises", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@hexclave/shared/dist/utils/promises")>(),
+  wait: waitMock,
+}));
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  waitMock.mockClear();
+});
+
+describe("cross-tier telemetry boundary", () => {
+  it("allows W3C trace headers and the native span-context header through API CORS", async () => {
+    vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "500");
     const response = await proxy(new NextRequest("http://localhost:8102/api/latest/users", {
       method: "OPTIONS",
       headers: {
         origin: "http://localhost:8101",
-        "access-control-request-headers": "traceparent, tracestate",
+        "access-control-request-headers": "traceparent, tracestate, x-hexclave-span-context",
       },
     }));
 
     expect(response.headers.get("Access-Control-Allow-Headers")?.split(", ")).toEqual(expect.arrayContaining([
       "traceparent",
       "tracestate",
+      "x-hexclave-span-context",
     ]));
+    expect(waitMock).not.toHaveBeenCalled();
   });
 
-  it("continues the dashboard trace ID and parent span on the backend", () => {
-    const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
-    const dashboardSpanId = "00f067aa0ba902b7";
-    const propagator = new W3CTraceContextPropagator();
-    const parentContext = propagator.extract(ROOT_CONTEXT, {
-      traceparent: `00-${traceId}-${dashboardSpanId}-01`,
-    }, defaultTextMapGetter);
+  it("keeps telemetry ingestion outside artificial development pressure", async () => {
+    vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "500");
 
-    const exporter = new InMemorySpanExporter();
-    const provider = new BasicTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    await proxy(new NextRequest("http://localhost:8102/api/v1/analytics/events/batch", {
+      method: "POST",
+    }));
+    expect(waitMock).not.toHaveBeenCalled();
 
-    const backendSpan = provider.getTracer("cross-tier-test").startSpan("backend request", undefined, parentContext);
-    backendSpan.end();
-
-    expect(exporter.getFinishedSpans().map((span) => ({
-      traceId: span.spanContext().traceId,
-      parentSpanId: span.parentSpanId,
-    }))).toMatchInlineSnapshot(`
-      [
-        {
-          "parentSpanId": "00f067aa0ba902b7",
-          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-        },
-      ]
-    `);
+    await proxy(new NextRequest("http://localhost:8102/api/latest/users", {
+      method: "GET",
+    }));
+    expect(waitMock).toHaveBeenCalledWith(500);
   });
 });

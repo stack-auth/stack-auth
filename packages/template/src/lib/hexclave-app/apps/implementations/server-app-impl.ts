@@ -13,7 +13,7 @@ import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@hexclave/sh
 import { TeamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
-import { CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, HTTP_CLIENT_SPAN_TYPE, LIB_SPAN_TYPE, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
+import { generateW3cSpanId, generateW3cTraceId, parseTraceparent, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_UUID_RE, truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
 import type { AsyncCache } from "@hexclave/shared/dist/utils/caches";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -40,24 +40,28 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { assertValidSpanStartInput, autoDetectedBackgroundTaskHook, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveParentIds, withSpanImpl, getCustomTelemetryDataError, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { assertValidSpanStartInput, autoDetectedBackgroundTaskHook, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, withSpanImpl, getCustomTelemetryDataError, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { buildErrorEventData, installServerErrorMonitor } from "./error-capture";
 import { DEFAULT_CONSOLE_CAPTURE_LEVELS } from "./observability-config";
 import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
-import { requireTelemetryResource } from "./telemetry-config";
 import { createSpanHandle } from "./span-handle";
 import { generateUuid } from "./telemetry-transport";
-import { getAmbientSpanRefs } from "./span-context";
+import { getAmbientSpanContexts } from "./span-context";
 import { beginHttpClientSpanCore, sanitizeHttpClientUrl, shouldCaptureNetworkRequest, type HttpRequestSpanHandle } from "./network-capture";
 import { installServerFetchInstrumentation } from "./server-fetch-instrumentation";
-import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER, type RequestSpanInfo, type SpanPropagationContext } from "./span-propagation";
+import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, decodeSpanContextHeader, readRequestHeader, readSpanContextHeader, TRACEPARENT_HEADER, type RequestSpanInfo, type SpanPropagationContext } from "./span-propagation";
 import { getServerRequestContext, runWithServerRequestContext, withExplicitServerUser, type ServerRequestSpanContext } from "./server-request-context";
-import { registerLibrarySpanBridge, type BeginLibrarySpanInfo, type LibrarySpanBridgeRegistration, type LibrarySpanHandle } from "./library-span-bridge";
+import { getActiveLibrarySpanContext, isLibrarySpanBridgeTelemetrySuppressed, librarySpanTypeFromName, registerLibrarySpanBridge, runWithLibrarySpanBridgeTelemetrySuppressed, runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered, shouldIgnoreLibrarySpan, type BeginLibrarySpanInfo, type LibrarySpanBridgeRegistration, type LibrarySpanHandle } from "./library-span-bridge";
+import { getKeptTraceIds, isTraceSampled } from "./trace-sampling";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: HexclaveServerInterface;
+
+  protected override _telemetryTier(): "browser" | "server" {
+    return "server";
+  }
 
   // TODO override the client user cache to use the server user cache, so we save some requests
   private readonly _currentServerUserCache = createCacheBySession(async (session) => {
@@ -526,7 +530,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           levels: captureConsoleLevels,
           logger: createLogger({ emit: (item) => this._emitLog(item), origin: "console" }),
           projectId: this.projectId,
-          serviceName: requireTelemetryResource(this._telemetryOptions).service.name,
+          serviceName: this._telemetryResource.service.name,
         });
       }
     }
@@ -1789,19 +1793,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   // The browser tracker (EventTracker) only exists in browser-like environments;
   // on the server there is no session to derive identity from, so trackEvent/
   // startSpan take an explicit `userId` and authenticate with the secret server
-  // key. Items coalesce per (userId) in a buffer flushed on the next microtask —
-  // a synchronous loop of N trackEvent calls costs one POST, not N — while every
-  // call still gets its own settled-on-ack promise. `await` (or flush()) is the
-  // delivery guarantee: there is no page-lifetime flush cadence on the server.
+  // key. Items coalesce per (userId) across a short non-blocking window — a
+  // burst of N trackEvent calls costs one POST, not N — while every call still
+  // gets its own settled-on-ack promise. `await` (or flush()) is the delivery
+  // guarantee: there is no page-lifetime flush cadence on the server.
   //
   // NOTE: setGlobalSpan is app-instance-level state. Under concurrent requests
   // (one shared app instance) a global span set in one request becomes a parent
-  // in all of them — prefer explicit parentIds (or span.trackEvent) on servers.
+  // in all of them — prefer an explicit parent (or span.trackEvent) on servers.
   // ---------------------------------------------------------------------------
 
   private readonly _serverTelemetryBuffers = new Map<string, ServerTelemetryBuffer>();
   private readonly _serverGlobalSpans = new Set<Span>();
   private readonly _serverTelemetryInFlight = new Set<Promise<void>>();
+  private readonly _serverTelemetryPending = new Set<Promise<void>>();
+  private readonly _serverTelemetryQueue: ServerTelemetryDelivery[] = [];
+  private _serverTelemetryQueuedBytes = 0;
+  private _warnedServerTelemetryQueueCap = false;
+  private _telemetrySuppressionPredicate: (() => boolean) | null = null;
   // See the soft-cap block in setGlobalSpan.
   private _warnedServerGlobalSpanCap = false;
   // Sticky per-process off switch, set when the backend rejects a batch with
@@ -1815,7 +1824,25 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (this._serverTelemetryDisabled) return;
     this._serverTelemetryDisabled = true;
     this._serverTelemetryBuffers.clear();
+    const error = new Error("Hexclave analytics: analytics is not enabled for this project");
+    for (const delivery of this._serverTelemetryQueue.splice(0)) {
+      delivery.rejectBeforeStart(error);
+      this._serverTelemetryPending.delete(delivery.completion);
+      delivery.complete();
+    }
+    this._serverTelemetryQueuedBytes = 0;
     console.warn("Hexclave analytics: the Analytics app is not enabled for this project, so server telemetry is disabled for this process. Enable it in the Hexclave dashboard to collect events, spans, and logs.");
+  }
+
+  /** Framework/collector seam: keeps SDK-native capture aligned with the
+   * runtime's scoped tracing-suppression context. */
+  _setTelemetrySuppressionPredicate(predicate: (() => boolean) | null): void {
+    this._telemetrySuppressionPredicate = predicate;
+  }
+
+  private _isTelemetrySuppressed(): boolean {
+    return isLibrarySpanBridgeTelemetrySuppressed()
+      || this._telemetrySuppressionPredicate?.() === true;
   }
 
   override trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string, request?: RequestLike }): Promise<void> {
@@ -1833,8 +1860,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return this._clientAnalytics.trackCustomEvent(eventType, data, options);
     }
     // `{ request }`: resolve the caller's session + client-propagated span context
-    // (async) and run the send with that context ambient, so the event parents
-    // under the client session ($refresh-token/$session-replay/$session-replay-segment).
+    // (async) and run the send with that context ambient, so the event joins the
+    // active browser operation and carries session/replay correlation.
     if (options?.request) {
       this._installServerFetchInstrumentation();
       this._installServerErrorMonitor();
@@ -1894,11 +1921,18 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   /**
    * Resolves an incoming request into the ambient span context for a `{ request }`
-   * server span: the caller's user + refresh token from the session (server-trusted)
-   * and the client-propagated replay/segment/custom-parent ids from the
-   * `x-hexclave-span-context` header (untrusted labels — dropped if they name a
-   * different project). A valid unauthenticated request resolves to an empty
-   * session; request parsing and session-resolution failures propagate.
+   * server span: the caller's user + refresh token from the session (server-trusted),
+   * the incoming W3C `traceparent` (which trace to join), and the client-propagated
+   * replay/segment/page ids from the `x-hexclave-span-context` header (untrusted
+   * labels — dropped if they name a different project). A valid unauthenticated
+   * request resolves to an empty session; request parsing and session-resolution
+   * failures propagate.
+   *
+   * Note `traceparent` is NOT project-scoped the way our own header is: it is a
+   * standard header any upstream tier may set. We honour it regardless of the
+   * correlation header's projectId, because joining the caller's trace is the
+   * entire point of the standard — a mismatched projectId only invalidates the
+   * REPLAY labels, which is exactly what the sameProject check below drops.
    */
   private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
     let userId: string | null = null;
@@ -1923,14 +1957,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     const decoded = decodeSpanContextHeader(readSpanContextHeader(request.headers));
     const sameProject = decoded !== null && decoded.projectId === this.projectId ? decoded : null;
+    const traceparent = parseTraceparent(readRequestHeader(request.headers, TRACEPARENT_HEADER));
+    const acceptedParent = sameProject !== null && traceparent?.sampled === true
+      ? { traceId: traceparent.traceId, spanId: traceparent.spanId }
+      : null;
     return withExplicitServerUser({
       userId,
       refreshTokenId,
       sessionReplayId: sameProject?.sessionReplayId ?? null,
       sessionReplaySegmentId: sameProject?.sessionReplaySegmentId ?? null,
       pageViewSpanId: sameProject?.pageViewSpanId ?? null,
-      httpClientSpanId: sameProject?.httpClientSpanId ?? null,
-      customParentSpanIds: sameProject?.customParentSpanIds ?? [],
+      // The project claim proves the parent belongs to this visibility scope;
+      // sampled=1 promises it was selected for recording. Without both, start a
+      // new root rather than persisting a parent edge the reader cannot satisfy.
+      incomingParent: acceptedParent,
     }, explicitUserId);
   }
 
@@ -1993,7 +2033,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (ambient) {
       return withExplicitServerUser(ambient, explicitUserId);
     }
-    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, pageViewSpanId: null, httpClientSpanId: null, customParentSpanIds: [] };
+    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, pageViewSpanId: null, incomingParent: null };
   }
 
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
@@ -2018,11 +2058,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
       return;
     }
-    const existing = [...this._serverGlobalSpans].filter((candidate) => !candidate.isEnded).map((candidate) => candidate.ref());
-    const resolved = resolveParentIds({ ambient: [...existing, span.ref()] });
-    if ("error" in resolved) {
-      throw new Error(`Hexclave analytics: ${resolved.error}`);
-    }
+    // No path-compatibility check any more: the nearest ambient context wins as
+    // parent and any other global span in a different trace becomes a link.
     this._serverGlobalSpans.add(span);
     // Soft cap, mirroring the client tracker's registries: global spans are
     // app-instance state on the server, so a long-lived process registering
@@ -2047,44 +2084,57 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   override async flush(): Promise<void> {
     await super.flush();
     for (const buffer of [...this._serverTelemetryBuffers.values()]) {
-      this._flushServerTelemetry(buffer.context);
+      const completion = this._flushServerTelemetry(buffer.context);
+      if (completion !== null) {
+        runAsynchronously(completion, { noErrorLogging: true });
+      }
     }
-    await Promise.allSettled([...this._serverTelemetryInFlight]);
+    await Promise.allSettled([...this._serverTelemetryPending]);
   }
 
-  private _serverAmbientParentRefs(): SpanRef[] {
-    const refs: SpanRef[] = [];
+  private _serverAmbientSpanContexts(): SpanContext[] {
+    const contexts: SpanContext[] = [];
     for (const span of this._serverGlobalSpans) {
-      if (!span.isEnded) refs.push(span.ref());
+      if (!span.isEnded) contexts.push(span.spanContext());
     }
     // Enclosing withSpan() frames — AsyncLocalStorage on servers, isolated per
     // request. If ALS is somehow unavailable, fail closed: only prologue-open
     // sync-stack frames count (never another flow's suspended frame).
-    refs.push(...getAmbientSpanRefs());
-    return refs;
+    contexts.push(...getAmbientSpanContexts());
+    // Framework/library spans are real rows too. Appending the active bridge
+    // context makes an SDK withSpan opened inside a Next.js route continue the
+    // exact `browser fetch → Next → route → SDK` chain.
+    const activeLibrarySpan = getActiveLibrarySpanContext();
+    if (activeLibrarySpan !== null) contexts.push(activeLibrarySpan);
+    return contexts;
+  }
+
+  /** SDK-owned scopes only; used to insert a withSpan boundary into OTel nesting. */
+  private _serverOwnedAmbientSpanContexts(): SpanContext[] {
+    const contexts: SpanContext[] = [];
+    for (const span of this._serverGlobalSpans) {
+      if (!span.isEnded) contexts.push(span.spanContext());
+    }
+    contexts.push(...getAmbientSpanContexts());
+    return contexts;
   }
 
   /**
-   * The client-propagated custom parents (raw uuids from the request's
-   * span-context header — global spans + enclosing client withSpan frames,
-   * already resolved as one farthest-to-nearest path by the sender) FIRST, then
-   * `_serverAmbientParentRefs`: the client ancestry is the outer context a
-   * server span nests inside, so the merged root-first list reads
-   * client-chain → server frames → explicit parents. All of these are leaf
-   * frames in parent resolution, so `root: true` drops them together. The
-   * system ancestry (`rti-`/`sri-`/`srsi-`) is NOT here — it is composed
-   * server-side from the batch context's scalar ids, so it survives `root`
-   * (attribution to the session is always kept).
+   * The ambient contexts for this request, OUTERMOST FIRST: the incoming
+   * `traceparent` span (the caller's fetch — the outer context everything here
+   * happens inside), then this process's own global spans and enclosing withSpan
+   * frames. The resolver takes the LAST as parent, so a nested server span still
+   * parents under its enclosing server frame while a bare request-level span
+   * parents under the caller.
+   *
+   * All of these are ambient, so `root: true` drops them together. Session
+   * attribution (refresh token / replay / segment) is NOT here — it is stamped as
+   * scalar correlation columns, so it survives `root`.
    */
-  private _ambientParentRefsWith(batchContext: ServerRequestSpanContext): SpanRef[] {
-    const propagatedParents = batchContext.customParentSpanIds;
-    const propagatedLeaf = propagatedParents.at(-1);
+  private _ambientSpanContextsWith(batchContext: ServerRequestSpanContext): SpanContext[] {
     return [
-      ...propagatedLeaf === undefined ? [] : [{
-        spanId: propagatedLeaf,
-        parentSpanIds: propagatedParents.slice(0, -1),
-      }],
-      ...this._serverAmbientParentRefs(),
+      ...batchContext.incomingParent === null ? [] : [batchContext.incomingParent],
+      ...this._serverAmbientSpanContexts(),
     ];
   }
 
@@ -2116,19 +2166,21 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return rejectedPreCaught(`Invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
     const batchContext = this._currentServerBatchContext(userId);
-    const resolved = resolveParentIds({
-      explicit: options?.parentIds,
-      ambient: this._ambientParentRefsWith(batchContext),
+    const resolved = resolveSpanParent({
+      explicit: options?.parent,
+      ambient: this._ambientSpanContextsWith(batchContext),
+      links: options?.links,
       root: options?.root,
-      exclude: options?.excludeParentIds,
     });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
+    // An event is an instant: with no enclosing span it carries no trace at all
+    // rather than minting one, so it never appears as a phantom trace root.
+    const enclosing = resolved.parentSpanId === null ? null : { traceId: resolved.traceId, spanId: resolved.parentSpanId };
 
     let settler!: TelemetrySettler;
     const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     }));
-    const httpClientSpanId = httpClientSpanIdForServerItem(batchContext, resolved.ids);
     const buffer = this._getServerTelemetryBuffer(batchContext);
     buffer.events.push({
       event: {
@@ -2136,9 +2188,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         event_at_ms: Date.now(),
         data: { ...data ?? {} },
         ...logFields ?? {},
-        ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
+        ...enclosing !== null ? { trace_id: enclosing.traceId, span_id: enclosing.spanId } : {},
         ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
-        ...httpClientSpanId !== null ? { http_client_span_id: httpClientSpanId } : {},
       },
       settler,
     });
@@ -2152,11 +2203,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
     const batchContext = this._currentServerBatchContext(userId);
-    const resolved = resolveParentIds({
-      explicit: options?.parentIds,
-      ambient: this._ambientParentRefsWith(batchContext),
+    const resolved = resolveSpanParent({
+      explicit: options?.parent,
+      ambient: this._ambientSpanContextsWith(batchContext),
+      links: options?.links,
       root: options?.root,
-      exclude: options?.excludeParentIds,
     });
     if ("error" in resolved) {
       throw new Error(`Hexclave analytics: ${resolved.error}`);
@@ -2165,10 +2216,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // `handle` is assigned synchronously below; the closures can only fire after.
     let handle!: { span: Span, markInert: () => void };
     handle = createSpanHandle({
-      spanId: generateUuid(),
+      traceId: resolved.traceId,
+      spanId: generateW3cSpanId(),
       spanType,
       startedAtMs: options?.startedAtMs ?? Date.now(),
-      parentSpanIds: resolved.ids,
+      parentSpanId: resolved.parentSpanId,
+      links: resolved.links,
       pageViewSpanId: batchContext.pageViewSpanId,
       initialData: { ...options?.data ?? {} },
       validateData: getCustomTelemetryDataError,
@@ -2181,17 +2234,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       capabilities: {
         trackEvent: (eventType, data, trackOptions) => this._trackServerEvent(eventType, data, trackOptions, userId),
         startChildSpan: (childType, childOptions) => this._startServerSpan(childType, childOptions, userId),
-        // Pinned to exactly this span's frozen chain; carries the caller's segment
-        // identity when this span was resolved from a request. Raw ids — the
-        // receiving backend applies the prefixes.
-        getSpanPropagationHeaders: (span) => ({
-          [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
+        // `traceparent` pins the hierarchy to exactly this span only when the
+        // deterministic trace decision guarantees its row will survive a
+        // healthy flush. Correlation labels remain useful independently.
+        getSpanPropagationHeaders: (span) => buildPropagationHeaderValues({
+          traceparent: isTraceSampled(span.traceId, this._traceSampleRate) ? {
+            ...span.spanContext(),
+            sampled: true,
+          } : null,
+          context: {
             projectId: this.projectId,
             ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
             ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
             ...batchContext.pageViewSpanId ? { pageViewSpanId: batchContext.pageViewSpanId } : {},
-            customParentSpanIds: [...span.ref().parentSpanIds, span.spanId],
-          }),
+          },
         }),
         // Server runtimes do not have a browser-like current origin, so
         // span.fetch attaches the header only for the propagation origin
@@ -2205,12 +2261,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
             const initWithHeader = buildFetchInitWithSpanContext({
               input,
               init,
-              headerValue: span.getSpanPropagationHeaders()[SPAN_CONTEXT_HEADER],
+              headerValues: span.getSpanPropagationHeaders(),
               selfOrigin: null,
               allowedOrigins: policy.allowedOrigins,
               allowLocalhost: policy.allowLocalhost,
             });
-            return globalThis.fetch(input, initWithHeader ?? init);
+            return globalThis.fetch(input, initWithHeader?.init ?? init);
           } catch {
             return globalThis.fetch(input, init);
           }
@@ -2228,19 +2284,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     }));
-    // `$http-client` spans ARE the bridge nodes and must never point at
-    // themselves (the batch route 400s such rows); every other span follows
-    // the nearest-known-ancestor contract.
-    const httpClientSpanId = row.span_type === HTTP_CLIENT_SPAN_TYPE ? null : httpClientSpanIdForServerItem(context, row.parent_span_ids);
-    const stampedRow: SpanUpdateRow = {
-      ...row,
-      ...httpClientSpanId !== null ? { http_client_span_id: httpClientSpanId } : {},
-    };
+    // Nothing to stamp any more: the row already carries its own trace and parent,
+    // so the buffer is a pure pass-through. (The old model had to derive an
+    // `http_client_span_id` here, because ancestry was assembled server-side.)
     const buffer = this._getServerTelemetryBuffer(context);
-    const previous = buffer.spans.get(stampedRow.span_id);
+    const previous = buffer.spans.get(row.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
     // along so every returned promise settles with the batch that ships.
-    buffer.spans.set(stampedRow.span_id, { row: stampedRow, settlers: [...previous?.settlers ?? [], settler] });
+    buffer.spans.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
     this._afterServerTelemetryEnqueue(context, buffer);
     return promise;
   }
@@ -2252,103 +2303,270 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const key = serializeServerBatchKey(context);
     let buffer = this._serverTelemetryBuffers.get(key);
     if (!buffer) {
-      buffer = { events: [], spans: new Map(), scheduled: false, context };
+      buffer = {
+        events: [],
+        spans: new Map(),
+        scheduled: false,
+        context,
+        upstreamSampledTraceIds: new Set(),
+      };
       this._serverTelemetryBuffers.set(key, buffer);
+    }
+    // W3C sampled=1 is an upstream recording decision, not a hint to rerun this
+    // service's local sampler. Batch contexts intentionally coalesce multiple
+    // requests, so collect every incoming trace id instead of keeping only the
+    // first request's context.
+    if (context.incomingParent !== null) {
+      buffer.upstreamSampledTraceIds.add(context.incomingParent.traceId);
     }
     return buffer;
   }
 
   private _afterServerTelemetryEnqueue(context: ServerRequestSpanContext, buffer: ServerTelemetryBuffer): void {
-    // Stay well under the server's 500-items-per-batch cap: ship immediately once
-    // the coalesced batch is large, otherwise wait for the microtask boundary.
-    if (buffer.events.length + buffer.spans.size >= SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH) {
-      this._flushServerTelemetry(context);
+    // A sampled producer must apply the size threshold to a reasonably large
+    // pre-sampling window. Using the 400-row wire limit here meant a busy
+    // process flushed every few milliseconds even though only about 10% of
+    // those traces survived. _flushServerTelemetry chunks the retained rows to
+    // the wire limit after selection, so this larger cap stays protocol-safe.
+    const maxBufferedItems = this._traceSampleRate < 1
+      ? SERVER_TELEMETRY_MAX_SAMPLED_BUFFERED_ITEMS
+      : SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH;
+    if (buffer.events.length + buffer.spans.size >= maxBufferedItems) {
+      const completion = this._flushServerTelemetry(context);
+      if (completion !== null) {
+        runAsynchronously(completion, { noErrorLogging: true });
+      }
       return;
     }
     if (buffer.scheduled) return;
     buffer.scheduled = true;
-    queueMicrotask(() => this._flushServerTelemetry(context));
+    const scheduledFlush = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        const completion = this._flushServerTelemetry(context);
+        if (completion === null) {
+          resolve();
+          return;
+        }
+        runAsynchronously(async () => {
+          await completion;
+          resolve();
+        }, { noErrorLogging: true });
+      }, this._traceSampleRate < 1
+        ? SERVER_TELEMETRY_SAMPLED_FLUSH_DELAY_MS
+        : SERVER_TELEMETRY_FLUSH_DELAY_MS);
+    });
+    // Register before the timer fires: a serverless runtime may tear the
+    // request down during the coalescing window, before the delivery itself
+    // gets a chance to register its own completion promise.
+    registerTelemetryBackgroundTask(this._telemetryOptions?.waitUntil ?? autoDetectedBackgroundTaskHook, scheduledFlush, "server telemetry buffer");
   }
 
-  private _flushServerTelemetry(context: ServerRequestSpanContext): void {
+  private _flushServerTelemetry(context: ServerRequestSpanContext): Promise<void> | null {
     const key = serializeServerBatchKey(context);
     const buffer = this._serverTelemetryBuffers.get(key);
-    if (!buffer) return;
+    if (!buffer) return null;
     this._serverTelemetryBuffers.delete(key);
-    const events = buffer.events;
-    const spanEntries = [...buffer.spans.values()];
-    if (events.length === 0 && spanEntries.length === 0) return;
+    const bufferedEvents = buffer.events;
+    const bufferedSpanEntries = [...buffer.spans.values()];
+    if (bufferedEvents.length === 0 && bufferedSpanEntries.length === 0) return null;
 
-    const settlers: TelemetrySettler[] = events.map((entry) => entry.settler);
-    for (const entry of spanEntries) {
-      settlers.push(...entry.settlers);
+    // The server and browser use the same pre-transport trace selector. This
+    // runs after the producer-coalescing window, so request, library, network,
+    // log, and error rows can promote or drop as one trace group
+    // before an /analytics/events/batch request is even constructed.
+    const keptTraceIds = getKeptTraceIds(
+      bufferedEvents.map((entry) => entry.event),
+      bufferedSpanEntries.map((entry) => entry.row),
+      this._traceSampleRate,
+    );
+    for (const traceId of buffer.upstreamSampledTraceIds) {
+      keptTraceIds.add(traceId);
     }
+    const events = bufferedEvents.filter((entry) =>
+      entry.event.trace_id === undefined || keptTraceIds.has(entry.event.trace_id));
+    const spanEntries = bufferedSpanEntries.filter((entry) =>
+      keptTraceIds.has(entry.row.trace_id));
+
+    const retainedOpenSpans = new Map<string, { row: SpanUpdateRow, settlers: TelemetrySettler[] }>();
+    for (const entry of bufferedEvents) {
+      if (entry.event.trace_id !== undefined && !keptTraceIds.has(entry.event.trace_id)) {
+        entry.settler.resolve();
+      }
+    }
+    for (const entry of bufferedSpanEntries) {
+      if (!keptTraceIds.has(entry.row.trace_id)) {
+        for (const settler of entry.settlers) settler.resolve();
+        // Preserve only open ancestors across sampling windows. A later
+        // request error can then promote a connected trace without retaining
+        // every completed healthy library/query span indefinitely.
+        if (entry.row.ended_at_ms === null) {
+          retainedOpenSpans.set(entry.row.span_id, { row: entry.row, settlers: [] });
+        }
+      }
+    }
+    if (
+      retainedOpenSpans.size > 0
+      && this._serverTelemetryBuffers.size < SERVER_TELEMETRY_MAX_RETAINED_OPEN_CONTEXTS
+    ) {
+      this._serverTelemetryBuffers.set(key, {
+        events: [],
+        spans: retainedOpenSpans,
+        scheduled: false,
+        context: buffer.context,
+        upstreamSampledTraceIds: buffer.upstreamSampledTraceIds,
+      });
+    }
+    if (events.length === 0 && spanEntries.length === 0) return null;
 
     const ctx = buffer.context;
-    const payload = {
-      // Versions the BATCH BODY (shape of the envelope + rows), the same way
-      // the span-context header versions itself with its `v1.` prefix. The
-      // backend tolerates unknown fields today; a future route can dispatch on
-      // this instead of sniffing shapes.
-      schema_version: 2,
-      resource: requireTelemetryResource(this._telemetryOptions),
-      batch_id: generateUuid(),
-      sent_at_ms: Date.now(),
-      ...ctx.userId !== null ? { user_id: ctx.userId } : {},
-      // Resolved request context (server auth): the backend composes the
-      // $refresh-token/$session-replay/$session-replay-segment ancestry from these.
-      ...ctx.refreshTokenId !== null ? { refresh_token_id: ctx.refreshTokenId } : {},
-      ...ctx.sessionReplayId !== null ? { session_replay_id: ctx.sessionReplayId } : {},
-      ...ctx.sessionReplaySegmentId !== null ? { session_replay_segment_id: ctx.sessionReplaySegmentId } : {},
-      ...events.length > 0 ? { events: events.map((entry) => entry.event) } : {},
-      ...spanEntries.length > 0 ? { spans: spanEntries.map((entry) => entry.row) } : {},
-    };
+    const completions: Promise<void>[] = [];
+    let eventOffset = 0;
+    let spanOffset = 0;
+    while (eventOffset < events.length || spanOffset < spanEntries.length) {
+      const chunkEvents = events.slice(eventOffset, eventOffset + SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH);
+      eventOffset += chunkEvents.length;
+      const remainingItems = SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH - chunkEvents.length;
+      const chunkSpanEntries = spanEntries.slice(spanOffset, spanOffset + remainingItems);
+      spanOffset += chunkSpanEntries.length;
+      const payload = {
+        // Versions the BATCH BODY (shape of the envelope + rows), the same way
+        // the span-context header versions itself with its `v1.` prefix. The
+        // backend tolerates unknown fields today; a future route can dispatch on
+        // this instead of sniffing shapes.
+        schema_version: 3,
+        resource: this._telemetryResource,
+        batch_id: generateUuid(),
+        sent_at_ms: Date.now(),
+        ...ctx.userId !== null ? { user_id: ctx.userId } : {},
+        // Resolved request context (server auth): scalar lifecycle correlation.
+        // Operation ancestry stays exclusively in trace_id/parent_span_id.
+        ...ctx.refreshTokenId !== null ? { refresh_token_id: ctx.refreshTokenId } : {},
+        ...ctx.sessionReplayId !== null ? { session_replay_id: ctx.sessionReplayId } : {},
+        ...ctx.sessionReplaySegmentId !== null ? { session_replay_segment_id: ctx.sessionReplaySegmentId } : {},
+        ...chunkEvents.length > 0 ? { events: chunkEvents.map((entry) => entry.event) } : {},
+        ...chunkSpanEntries.length > 0 ? { spans: chunkSpanEntries.map((entry) => entry.row) } : {},
+      };
+      const completion = this._enqueueServerTelemetryDelivery(
+        JSON.stringify(payload),
+        [
+          ...chunkEvents.map((entry) => entry.settler),
+          ...chunkSpanEntries.flatMap((entry) => entry.settlers),
+        ],
+      );
+      if (completion !== null) completions.push(completion);
+    }
+    if (completions.length === 0) return null;
+    if (completions.length === 1) return completions[0];
+    return Promise.all(completions).then(() => undefined);
+  }
 
-    const send = (async () => {
-      try {
-        const res = await this._interface.sendAnalyticsEventBatchAsServer(JSON.stringify(payload));
-        if (res.status === "error") {
-          for (const settler of settlers) settler.reject(res.error);
-          // Sticky disable on the analytics-app-not-enabled rejection, matched
-          // on the KnownErrors code in the error text (the server transport
-          // wraps the non-ok Response into an Error message rather than a
-          // parsed KnownError). Required by the eager instrumentation install:
-          // without it, a project without the analytics app would send a
-          // doomed batch per outgoing fetch, forever.
-          if (isAnalyticsNotEnabledFailureText(res.error instanceof Error ? res.error.message : String(res.error))) {
-            this._disableServerTelemetry();
-            return;
-          }
-          console.warn("Hexclave analytics: server telemetry send failed:", res.error);
-          return;
-        }
-        if (!res.data.ok) {
-          const text = await res.data.text();
-          for (const settler of settlers) settler.reject(new Error(`Hexclave analytics: server telemetry send failed: ${res.data.status} ${text}`));
-          // Same sticky disable as the error-result branch above (which body
-          // shape arrives depends on the transport's wrapping).
-          if (isAnalyticsNotEnabledFailureText(text)) {
-            this._disableServerTelemetry();
-            return;
-          }
-          console.warn("Hexclave analytics: server telemetry send failed:", res.data.status, text);
-          return;
-        }
-        for (const settler of settlers) settler.resolve();
-      } catch (error) {
-        for (const settler of settlers) settler.reject(error);
-        console.warn("Hexclave analytics: server telemetry send failed:", error);
+  private _enqueueServerTelemetryDelivery(payloadJson: string, settlers: TelemetrySettler[]): Promise<void> | null {
+    const payloadBytes = new TextEncoder().encode(payloadJson).byteLength;
+
+    // A healthy collector can briefly receive more contexts than its latency
+    // permits us to send concurrently (Prisma commonly ends several sibling
+    // spans across separate microtasks). Queue that finite burst instead of
+    // dropping the rows that carry session/refresh-token correlation. The count
+    // and byte ceilings keep an unavailable collector from growing memory
+    // without bound.
+    if (
+      this._serverTelemetryQueue.length >= SERVER_TELEMETRY_MAX_QUEUED_BATCHES
+      || this._serverTelemetryQueuedBytes + payloadBytes > SERVER_TELEMETRY_MAX_QUEUED_BYTES
+    ) {
+      const error = new Error(`Hexclave analytics: dropping server telemetry because the bounded delivery queue is full (${SERVER_TELEMETRY_MAX_QUEUED_BATCHES} batches or ${SERVER_TELEMETRY_MAX_QUEUED_BYTES} bytes)`);
+      for (const settler of settlers) settler.reject(error);
+      if (!this._warnedServerTelemetryQueueCap) {
+        this._warnedServerTelemetryQueueCap = true;
+        console.warn(error.message);
       }
-    })();
-    const tracked: Promise<void> = send.finally(() => {
-      this._serverTelemetryInFlight.delete(tracked);
+      return null;
+    }
+
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      complete = resolve;
     });
-    this._serverTelemetryInFlight.add(tracked);
+    const delivery: ServerTelemetryDelivery = {
+      payloadBytes,
+      completion,
+      complete,
+      rejectBeforeStart: (error) => {
+        for (const settler of settlers) settler.reject(error);
+      },
+      start: async () => {
+        try {
+          const res = await this._interface.sendAnalyticsEventBatchAsServer(payloadJson);
+          if (res.status === "error") {
+            for (const settler of settlers) settler.reject(res.error);
+            // Sticky disable on the analytics-app-not-enabled rejection, matched
+            // on the KnownErrors code in the error text (the server transport
+            // wraps the non-ok Response into an Error message rather than a
+            // parsed KnownError). Required by the eager instrumentation install:
+            // without it, a project without the analytics app would send a
+            // doomed batch per outgoing fetch, forever.
+            if (isAnalyticsNotEnabledFailureText(res.error instanceof Error ? res.error.message : String(res.error))) {
+              this._disableServerTelemetry();
+              return;
+            }
+            console.warn("Hexclave analytics: server telemetry send failed:", res.error);
+            return;
+          }
+          if (!res.data.ok) {
+            const text = await res.data.text();
+            for (const settler of settlers) settler.reject(new Error(`Hexclave analytics: server telemetry send failed: ${res.data.status} ${text}`));
+            // Same sticky disable as the error-result branch above (which body
+            // shape arrives depends on the transport's wrapping).
+            if (isAnalyticsNotEnabledFailureText(text)) {
+              this._disableServerTelemetry();
+              return;
+            }
+            console.warn("Hexclave analytics: server telemetry send failed:", res.data.status, text);
+            return;
+          }
+          for (const settler of settlers) settler.resolve();
+        } catch (error) {
+          for (const settler of settlers) settler.reject(error);
+          console.warn("Hexclave analytics: server telemetry send failed:", error);
+        }
+      },
+    };
+    this._serverTelemetryPending.add(completion);
+    this._serverTelemetryQueue.push(delivery);
+    this._serverTelemetryQueuedBytes += payloadBytes;
     // Serverless keep-alive (TelemetryOptions.waitUntil): un-awaited sends must
-    // survive runtime teardown. Without an explicit hook, fall back to the
-    // auto-detected platform hook (currently Vercel's request context) so the
-    // common serverless setup needs no wiring at all.
-    registerTelemetryBackgroundTask(this._telemetryOptions?.waitUntil ?? autoDetectedBackgroundTaskHook, tracked, "server telemetry");
+    // survive runtime teardown, including time spent waiting behind another
+    // delivery. Without an explicit hook, fall back to the auto-detected
+    // platform hook (currently Vercel's request context).
+    registerTelemetryBackgroundTask(this._telemetryOptions?.waitUntil ?? autoDetectedBackgroundTaskHook, completion, "server telemetry");
+    this._pumpServerTelemetryQueue();
+    return completion;
+  }
+
+  private _pumpServerTelemetryQueue(): void {
+    while (
+      this._serverTelemetryInFlight.size < SERVER_TELEMETRY_MAX_IN_FLIGHT_BATCHES
+      && this._serverTelemetryQueue.length > 0
+    ) {
+      const delivery = this._serverTelemetryQueue.shift();
+      if (delivery === undefined) {
+        throw new Error("Hexclave analytics: telemetry queue length changed unexpectedly");
+      }
+      this._serverTelemetryQueuedBytes -= delivery.payloadBytes;
+      let tracked!: Promise<void>;
+      tracked = runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered(delivery.start).finally(() => {
+        this._serverTelemetryInFlight.delete(tracked);
+        this._serverTelemetryPending.delete(delivery.completion);
+        delivery.complete();
+        if (
+          this._serverTelemetryQueue.length < SERVER_TELEMETRY_MAX_QUEUED_BATCHES
+          && this._serverTelemetryQueuedBytes < SERVER_TELEMETRY_MAX_QUEUED_BYTES
+        ) {
+          this._warnedServerTelemetryQueueCap = false;
+        }
+        this._pumpServerTelemetryQueue();
+      });
+      this._serverTelemetryInFlight.add(tracked);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2395,24 +2613,28 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   /**
-   * The context an outgoing SERVER request forwards (server→server hop):
-   * meaningful only inside a `{ request }` scope, where the ambient ALS
-   * context carries the ORIGINAL caller's identity. The incoming request's own
-   * httpClientSpanId is intentionally NOT forwarded — it names the browser→
-   * server hop; the wrapper adds the NEW span's id for this hop instead.
+   * The CORRELATION context an outgoing SERVER request forwards (server→server
+   * hop): meaningful only inside a `{ request }` scope, where the ambient ALS
+   * context carries the ORIGINAL caller's session labels. Hierarchy is not here —
+   * the fetch wrapper emits `traceparent` from the `$http-client` span it opens
+   * for this hop, which is what keeps the whole chain in one trace.
+   */
+  /**
+   * The project claim is stated even outside a `{ request }` scope (a bare
+   * `withSpan` that fetches our API): with no correlation ids to carry it is
+   * what tells the receiver the propagated `traceparent` names a span in THIS
+   * project, which is the precondition for its own span to hang under ours.
+   * `buildPropagationHeaderValues` decides whether the bare claim earns a header.
    */
   private _getServerSpanPropagationContext(): SpanPropagationContext | null {
+    if (this._isTelemetrySuppressed()) return null;
     if (this._observabilityOptions?.spanPropagation?.enabled === false) return null;
     const ambient = getServerRequestContext();
-    if (ambient === null) return null;
-    const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(ambient) });
-    const chain = "error" in resolved ? [] : resolved.ids;
     return {
       projectId: this.projectId,
-      ...ambient.sessionReplayId !== null ? { sessionReplayId: ambient.sessionReplayId } : {},
-      ...ambient.sessionReplaySegmentId !== null ? { sessionReplaySegmentId: ambient.sessionReplaySegmentId } : {},
-      ...ambient.pageViewSpanId !== null ? { pageViewSpanId: ambient.pageViewSpanId } : {},
-      ...chain.length > 0 ? { customParentSpanIds: chain } : {},
+      ...ambient?.sessionReplayId != null ? { sessionReplayId: ambient.sessionReplayId } : {},
+      ...ambient?.sessionReplaySegmentId != null ? { sessionReplaySegmentId: ambient.sessionReplaySegmentId } : {},
+      ...ambient?.pageViewSpanId != null ? { pageViewSpanId: ambient.pageViewSpanId } : {},
     };
   }
 
@@ -2426,6 +2648,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * request, and long-lived batch jobs are exactly the traffic worth seeing.
    */
   private _beginServerHttpRequestSpan(info: RequestSpanInfo): HttpRequestSpanHandle | null {
+    if (this._isTelemetrySuppressed()) return null;
     if (this._serverTelemetryDisabled) return null;
     if (this._shouldIgnoreOwnApiFetchUrl(info.url)) return null;
     const sanitizedUrl = sanitizeHttpClientUrl(info.url);
@@ -2435,16 +2658,21 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const target = new URL(info.url);
     if (!shouldCaptureNetworkRequest(this._networkCaptureConfig, target)) return null;
     const batchContext = this._currentServerBatchContext(null);
-    // Ambient refs are pre-validated compatible; degrade to no custom parents
-    // rather than throwing into the caller's request.
-    const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(batchContext) });
-    const parentSpanIds = "error" in resolved ? [] : resolved.ids;
+    // Ambient contexts come from our own handles / a parsed traceparent, so an
+    // error is unreachable; degrade to a fresh trace root rather than throwing
+    // into the caller's request.
+    const resolved = resolveSpanParent({ ambient: this._ambientSpanContextsWith(batchContext) });
+    const parent = "error" in resolved
+      ? { traceId: generateW3cTraceId(), parentSpanId: null }
+      : resolved;
     return beginHttpClientSpanCore({
       config: this._networkCaptureConfig,
+      sampled: isTraceSampled(parent.traceId, this._traceSampleRate),
       sanitizedUrl,
       method: info.method,
       transport: info.transport,
-      parentSpanIds,
+      traceId: parent.traceId,
+      parentSpanId: parent.parentSpanId,
       pageViewSpanId: batchContext.pageViewSpanId,
       enqueueRow: (row) => this._enqueueServerSpanUpdate(batchContext, row),
     });
@@ -2461,20 +2689,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * startSpan time so the ambient batch context and the parent chain are
    * frozen at call time (the same instant `_startServerSpan` resolves them),
    * then again on `end()` with the collected data. Exactly ONE complete
-   * `$lib-span` row is enqueued per span, at end — an unended library span is
-   * never shipped, unlike native spans' open-interval upserts, because the
+   * One row named after the library operation is enqueued per span, at end — an
+   * unended library span is never shipped, unlike native spans' open-interval
+   * upserts, because the
    * bridge cannot re-write rows and half-open library spans are noise.
    *
-   * Parent chain resolution restates the bridge's contract:
-   *  (a) `otelParent` given → the OTel-minted ancestor wins outright; its
-   *      stored root-first path already BEGINS at whatever ambient chain that
-   *      ancestor resolved against, so re-merging ambient refs here would
-   *      duplicate (or, under concurrency, diverge from) the prefix. Clamped
-   *      to the NEAREST ancestors when arbitrary OTel nesting depth exceeds
-   *      the shared wire cap.
-   *  (b) no `otelParent` → ambient Hexclave refs at call time (withSpan ALS
-   *      frames + the request context's client-propagated chain).
-   *  (c) neither → project-level root (empty parents), still recorded.
+   * Parent resolution restates the bridge's contract:
+   *  (a) `otelParent` given → the OTel-minted ancestor wins outright: we join its
+   *      trace, and its `recordedSpanId` is our parent. That id may be null when
+   *      the nearest OTel ancestor was a NON-RECORDING span (an ignored tracer),
+   *      in which case we are a root of that trace — never a child of a row that
+   *      does not exist. See the registry in library-span-bridge.
+   *  (b) no `otelParent` → ambient Hexclave contexts at call time (withSpan ALS
+   *      frames + the request's incoming traceparent).
+   *  (c) neither → a new trace rooted at this library span, still recorded.
    *
    * Note the ambient lookup is the SYNCHRONOUS one only (ALS request scopes,
    * adapter wrappers) — same as `_startServerSpan`. The async next/headers
@@ -2484,25 +2712,49 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * Returns null when server telemetry cannot record (browser-like env,
    * analytics disabled) — the bridge span then becomes non-recording.
    * Public-but-underscored: reached via getServerAppInstrumentation.
-   */
+  */
   _beginLibrarySpan(info: BeginLibrarySpanInfo): LibrarySpanHandle | null {
+    // Keep capture policy at the replaceable seam as well as in the provider.
+    // The OTel provider is process-global and intentionally survives HMR; an
+    // older provider still calls the newest deps closure, so policy changes
+    // take effect without leaving a stale dev process recording filtered rows.
+    if (shouldIgnoreLibrarySpan(info.tracerName, info.name)) return null;
+    if (this._isTelemetrySuppressed()) return null;
     if (this._clientAnalytics) return null;
     if (this._serverTelemetryDisabled) return null;
     if (this._observabilityOptions?.enabled === false) return null;
+    const spanType = librarySpanTypeFromName(info.name);
+    const scopeName = truncateUtf8Bytes(info.tracerName, TELEMETRY_SCOPE_NAME_MAX_BYTES);
+    if (scopeName === "") return null;
     const batchContext = this._currentServerBatchContext(null);
-    let parentSpanIds: string[];
-    if (info.otelParent !== null) {
-      parentSpanIds = [...info.otelParent.parentPath, info.otelParent.nativeId].slice(-CUSTOM_TELEMETRY_MAX_PARENT_CHAIN);
+    let traceId: string;
+    let parentSpanId: string | null;
+    const sdkAmbient = this._serverOwnedAmbientSpanContexts().at(-1) ?? null;
+    // The first OTel span created inside a newer SDK withSpan frame must enter
+    // that frame. Once one OTel span has done so, its descendants retain normal
+    // OTel parentage until another SDK frame is entered.
+    if (sdkAmbient !== null && info.otelParent?.ambientSpanId !== sdkAmbient.spanId) {
+      traceId = sdkAmbient.traceId;
+      parentSpanId = sdkAmbient.spanId;
+    } else if (info.otelParent !== null) {
+      traceId = info.otelParent.traceId;
+      parentSpanId = info.otelParent.recordedSpanId;
     } else {
-      // Ambient refs are pre-validated compatible; degrade to project root
-      // rather than throwing inside a third-party library's code path.
-      const resolved = resolveParentIds({ ambient: this._ambientParentRefsWith(batchContext) });
-      parentSpanIds = "error" in resolved ? [] : resolved.ids;
+      // Ambient contexts come from our own handles / a parsed traceparent, so an
+      // error is unreachable; degrade to a fresh root rather than throwing inside
+      // a third-party library's code path.
+      const resolved = resolveSpanParent({ ambient: this._ambientSpanContextsWith(batchContext) });
+      traceId = "error" in resolved ? generateW3cTraceId() : resolved.traceId;
+      parentSpanId = "error" in resolved ? null : resolved.parentSpanId;
     }
-    const nativeId = generateUuid();
+    const spanId = generateW3cSpanId();
+    const upstreamSampled = info.otelParent?.sampled === true
+      || batchContext.incomingParent?.traceId === traceId;
     return {
-      nativeId,
-      parentPath: parentSpanIds,
+      traceId,
+      spanId,
+      sampled: upstreamSampled || isTraceSampled(traceId, this._traceSampleRate),
+      ambientSpanId: sdkAmbient?.spanId ?? info.otelParent?.ambientSpanId ?? null,
       end: (endedAtMs, data) => {
         const dataError = getCustomTelemetryDataError(data);
         if (dataError !== null) {
@@ -2516,19 +2768,28 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           return;
         }
         const row: SpanUpdateRow = {
-          span_id: nativeId,
-          span_type: LIB_SPAN_TYPE,
+          trace_id: traceId,
+          span_id: spanId,
+          parent_span_id: parentSpanId,
+          // Operation identity belongs in the indexed span_type column. The
+          // instrumentation source is orthogonal metadata in scope_name; using
+          // one generic `$lib-span` type made ClickHouse and every downstream
+          // query unable to distinguish actual operations.
+          span_type: spanType,
+          scope_name: scopeName,
           started_at_ms: info.startedAtMs,
           // The bridge already clamps end >= start and rounds to integer ms;
           // re-clamp here so a future second bridge caller cannot regress the
           // invariant resolveEndedAtMs enforces (throwing is not an option in
           // a library's end() path).
           ended_at_ms: Math.max(info.startedAtMs, Math.round(endedAtMs)),
-          parent_span_ids: parentSpanIds,
           data,
           updated_at_ms: Date.now(),
           ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
         };
+        if (upstreamSampled) {
+          this._getServerTelemetryBuffer(batchContext).upstreamSampledTraceIds.add(traceId);
+        }
         // Fire-and-forget like the $log sink: the promise is pre-caught and
         // delivery failures already warn inside the server flush path.
         this._enqueueServerSpanUpdate(batchContext, row).catch(() => {});
@@ -2563,6 +2824,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * delivery and is pre-caught.
    */
   _captureServerRequestError(error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }): Promise<void> {
+    if (this._isTelemetrySuppressed()) return Promise.resolve();
     // Shared payload builder (see error-capture.ts): message/name/stack
     // bounded to 8KB, flattened mechanism_type/handled scalars, local
     // fingerprint for grouping, release/environment stamps.
@@ -2572,8 +2834,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         // Every caller of this seam reports UNCAUGHT errors; a future manual
         // capture API ("captured" mechanism) would pass handled: true.
         handled: false,
-        release: requireTelemetryResource(this._telemetryOptions).service.version ?? null,
-        environment: requireTelemetryResource(this._telemetryOptions).deploymentEnvironmentName ?? null,
+        release: this._telemetryResource.service.version ?? null,
+        environment: this._telemetryResource.deploymentEnvironmentName ?? null,
         sdkVersion: clientVersion,
       }),
       ...info.data ?? {},
@@ -2611,7 +2873,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       projectId: this.projectId,
       capture: (error) => {
         // Fire-and-forget: the monitor is observation-only and the process is
-        // likely about to exit. The capture flushes on the next microtask —
+        // likely about to exit. The capture flushes after the coalescing window —
         // best-effort delivery; loss on a hard exit is the documented cost of
         // never touching the app's crash policy (see installServerErrorMonitor).
         this._captureServerRequestError(error, { mechanism: "node.uncaughtexception" }).catch(() => {});
@@ -2623,10 +2885,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * Server-side `$log` sink behind `app.logger` (overrides the browser sink):
    * rides the server telemetry buffer, so a log emitted inside a
    * `withSpan({ request })` scope automatically inherits the ambient batch
-   * context — the caller's session/page/fetch ancestry — exactly like a
-   * server event. In browser-like environments the inherited client sink wins.
+   * context — the caller's page/fetch ancestry plus lifecycle correlation —
+   * exactly like a server event. In browser-like environments the inherited
+   * client sink wins.
    */
   protected override _emitLog(item: LogEmitItem): "ok" | "unavailable" {
+    // "ok" deliberately means "suppressed, do not warn": returning unavailable
+    // would make the logger emit a diagnostic from inside the collector path.
+    if (this._isTelemetrySuppressed()) return "ok";
     if (this._observabilityOptions?.enabled === false) return "unavailable";
     if (this._clientAnalytics) return super._emitLog(item);
     // Fire-and-forget is the logger contract; the promise is pre-caught and
@@ -2648,27 +2914,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 }
 
-/**
- * The nearest-known-ancestor contract for per-item `http_client_span_id`
- * emission (restating the backend's composition rule, buildBatchSpanRows: the
- * `hc-` prefix composes AFTER the custom chain). An item may name the caller's
- * `$http-client` fetch span only when that fetch is its NEAREST known
- * ancestor, i.e. its ENTIRE custom chain arrived via the propagation header. A
- * server-opened span in the chain sits between the fetch and the item, so such
- * items chain through their root span and OMIT the id — the root
- * `withSpan({ request })` span (parents = the header chain) and request-level
- * events qualify; spans/events nested under a server span do not. Exported for
- * tests.
- */
-export function httpClientSpanIdForServerItem(context: ServerRequestSpanContext, parentSpanIds: readonly string[]): string | null {
-  if (context.httpClientSpanId === null) return null;
-  const propagated = new Set(context.customParentSpanIds);
-  return parentSpanIds.every((id) => propagated.has(id)) ? context.httpClientSpanId : null;
-}
-
 export type ServerAppInstrumentation = {
   installServerFetchInstrumentation: () => void,
   installServerErrorMonitor: () => void,
+  setTelemetrySuppressionPredicate: (predicate: (() => boolean) | null) => void,
+  runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
   captureServerRequestError: (error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }) => Promise<void>,
   /**
    * Registers the framework's ambient request provider: a function that
@@ -2704,6 +2954,8 @@ export function getServerAppInstrumentation(app: unknown): ServerAppInstrumentat
   return {
     installServerFetchInstrumentation: () => app._installServerFetchInstrumentation(),
     installServerErrorMonitor: () => app._installServerErrorMonitor(),
+    setTelemetrySuppressionPredicate: (predicate) => app._setTelemetrySuppressionPredicate(predicate),
+    runWithTelemetrySuppressed: async (fn) => await runWithLibrarySpanBridgeTelemetrySuppressed(fn),
     captureServerRequestError: (error, info) => app._captureServerRequestError(error, info),
     setAmbientRequestProvider: (provider) => app._setAmbientRequestProvider(provider),
     registerLibrarySpanBridge: () => app._registerLibrarySpanBridge(),
@@ -2730,10 +2982,10 @@ function isAnalyticsNotEnabledFailureText(text: string): boolean {
 const SERVER_GLOBAL_SPAN_SOFT_CAP = 1000;
 
 /**
- * Buffer coalescing key. customParentSpanIds, pageViewSpanId, and
- * httpClientSpanId are intentionally excluded — they are per-item fields (they
- * ride on each row), not part of the batch identity, so items sharing
- * user/refresh/replay/segment still batch together.
+ * Buffer coalescing key. `incomingParent` and `pageViewSpanId` are intentionally
+ * excluded — they are per-item facts (they ride on each row), not part of the
+ * batch identity, so items sharing user/refresh/replay/segment still batch
+ * together.
  */
 function serializeServerBatchKey(context: ServerRequestSpanContext): string {
   return JSON.stringify([context.userId, context.refreshTokenId, context.sessionReplayId, context.sessionReplaySegmentId]);
@@ -2741,10 +2993,37 @@ function serializeServerBatchKey(context: ServerRequestSpanContext): string {
 // Below the route's 500-items cap with headroom, so a coalesced batch can never
 // be rejected for size.
 const SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH = 400;
+// The selector runs at flush time so it can promote a whole trace for errors or
+// latency. Buffer enough raw rows for the sampled one-second window to matter,
+// then split the retained rows into protocol-sized deliveries.
+const SERVER_TELEMETRY_MAX_SAMPLED_BUFFERED_ITEMS = 4_000;
+const SERVER_TELEMETRY_FLUSH_DELAY_MS = 100;
+// Sampling reduces rows, but a busy process can still select at least one trace
+// in every 100ms window and keep hammering the collector at 10 POSTs/second.
+// A sampled producer gets the same one-second coalescing cadence as the former
+// backend BatchSpanProcessor; explicit flush() and the size cap remain immediate.
+const SERVER_TELEMETRY_SAMPLED_FLUSH_DELAY_MS = 1_000;
+// A collector outage must not let observability exhaust the host's socket
+// pool. Eight active requests preserve throughput without tripping the
+// development proxy's burst limiter; excess work waits in a bounded queue.
+const SERVER_TELEMETRY_MAX_IN_FLIGHT_BATCHES = 8;
+const SERVER_TELEMETRY_MAX_QUEUED_BATCHES = 256;
+const SERVER_TELEMETRY_MAX_QUEUED_BYTES = 8 * 1024 * 1024;
+// Sampled-out open ancestors are useful for later error promotion, but a
+// caller that never ends spans must not create an unbounded context registry.
+const SERVER_TELEMETRY_MAX_RETAINED_OPEN_CONTEXTS = 256;
 
 type TelemetrySettler = {
   resolve: () => void,
   reject: (error: unknown) => void,
+};
+
+type ServerTelemetryDelivery = {
+  payloadBytes: number,
+  completion: Promise<void>,
+  complete: () => void,
+  rejectBeforeStart: (error: unknown) => void,
+  start: () => Promise<void>,
 };
 
 type ServerTelemetryBuffer = {
@@ -2756,9 +3035,9 @@ type ServerTelemetryBuffer = {
       // `$log`-only wire fields (route-enforced) — see the client TrackedEvent.
       message?: string,
       level?: string,
-      parent_span_ids?: string[],
+      trace_id?: string,
+      span_id?: string,
       page_view_span_id?: string,
-      http_client_span_id?: string,
     },
     settler: TelemetrySettler,
   }[],
@@ -2767,4 +3046,7 @@ type ServerTelemetryBuffer = {
   // The batch context every item in this buffer shares; becomes the payload's
   // user_id / refresh_token_id / session_replay_id / session_replay_segment_id.
   context: ServerRequestSpanContext,
+  // Trace ids received with W3C sampled=1. These must survive this service's
+  // local sampler so the upstream parent never points at a discarded subtree.
+  upstreamSampledTraceIds: Set<string>,
 };

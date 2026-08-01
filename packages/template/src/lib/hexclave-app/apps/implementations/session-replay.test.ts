@@ -4,11 +4,25 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { describe, expect, it, vi } from "vitest";
 import * as errors from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { analyticsOptionsFromJson, analyticsOptionsToJson, canInlineStylesheetLink, getSessionReplayOptions, SessionRecorder } from "./session-replay";
-import { observabilityOptionsFromJson, observabilityOptionsToJson } from "./observability-config";
-import { telemetryOptionsFromJson, telemetryOptionsToJson } from "./telemetry-config";
+import { canInlineStylesheetLink, getOrRotateSession, SessionRecorder } from "./session-replay";
+import { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./analytics-config";
+import { telemetryOptionsToJson } from "./telemetry-config";
 
 const TEST_RESOURCE = { service: { name: "test-client" } } as const;
+
+describe("session replay lifecycle", () => {
+  it("rotates after the maximum replay duration even when the tab stays active", () => {
+    const key = "session-replay-max-duration-test";
+    localStorage.setItem(key, JSON.stringify({
+      session_id: "12345678-1234-4123-8123-123456789abc",
+      created_at_ms: 1,
+      last_activity_ms: 12 * 60 * 60 * 1000,
+    }));
+
+    const rotated = getOrRotateSession({ key, nowMs: 12 * 60 * 60 * 1000 + 2 });
+    expect(rotated.session_id).not.toBe("12345678-1234-4123-8123-123456789abc");
+  });
+});
 
 const rrwebMocks = vi.hoisted(() => {
   const takeFullSnapshot = vi.fn();
@@ -22,6 +36,7 @@ describe("session replay options", () => {
     expect(getSessionReplayOptions(undefined).enabled).toBe(true);
     expect(getSessionReplayOptions({}).enabled).toBe(true);
     expect(getSessionReplayOptions({ replays: {} }).enabled).toBe(true);
+    expect(getSessionReplayOptions(undefined).captureKeystrokes).toBe(false);
   });
 
   it("preserves explicit replay opt-out", () => {
@@ -35,12 +50,14 @@ describe("analytics option JSON conversion", () => {
       enabled: false,
       replays: {
         enabled: true,
+        captureKeystrokes: true,
         blockClass: /stack-sensitive/u,
       },
     });
 
     expect(json?.enabled).toBe(false);
     expect(json?.replays?.enabled).toBe(true);
+    expect(json?.replays?.captureKeystrokes).toBe(true);
   });
 
   it("preserves top-level analytics options when deserializing replay block classes", () => {
@@ -55,25 +72,9 @@ describe("analytics option JSON conversion", () => {
     expect(roundTripped?.replays?.blockClass).toEqual(/stack-sensitive/u);
   });
 
-  it("carries observability network options through both directions", () => {
-    const network = {
-      enabled: true,
-      capture: "errors-only" as const,
-      sampleRate: 0.25,
-      denyOrigins: ["https://third-party.example"],
-      ignoreUrls: ["/health"],
-    };
-    expect(observabilityOptionsFromJson(observabilityOptionsToJson({ network }))?.network).toEqual(network);
-    const roundTripped = observabilityOptionsFromJson(observabilityOptionsToJson({
-      network,
-    }));
-    expect(roundTripped?.network).toEqual(network);
-  });
-
   it("omits the function-valued telemetry lifecycle hook from serialized apps", () => {
     const waitUntil = vi.fn();
     expect(telemetryOptionsToJson({ waitUntil })).toBeUndefined();
-    expect(telemetryOptionsFromJson(undefined)).toBeUndefined();
   });
 });
 
@@ -529,6 +530,7 @@ describe("SessionRecorder flush", () => {
     }));
 
     const sentBodies: string[] = [];
+    const materializedSegments: string[] = [];
     const recorder = new SessionRecorder(
       {
         projectId: "test-project",
@@ -539,6 +541,9 @@ describe("SessionRecorder flush", () => {
           return Result.ok(new Response("ok", { status: 200 }));
         },
         sessionReplaySegmentId: "old-segment",
+        onSessionReplaySegmentMaterialized: async (segmentId) => {
+          materializedSegments.push(segmentId);
+        },
       },
       {},
     );
@@ -566,6 +571,7 @@ describe("SessionRecorder flush", () => {
       const batch2 = JSON.parse(sentBodies[1]);
       expect(batch1.session_replay_segment_id).toBe("old-segment");
       expect(batch2.session_replay_segment_id).toBe("old-segment");
+      expect(materializedSegments).toEqual(["old-segment", "old-segment"]);
     } finally {
       recorder.stop();
       localStorage.removeItem(storageKey);

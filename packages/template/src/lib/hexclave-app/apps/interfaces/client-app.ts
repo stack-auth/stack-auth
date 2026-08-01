@@ -167,16 +167,18 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * interval. Invalid input throws synchronously; when the ENVIRONMENT makes
      * telemetry impossible (e.g. during server-side rendering on a client
      * app), an inert no-op span is returned instead — all its methods are safe
-     * to call and `ref()` keeps the id it would have had — so isomorphic code
-     * does not need environment branches around span calls.
+     * to call and `spanContext()` keeps the identity it would have had — so
+     * isomorphic code does not need environment branches around span calls.
      */
     startSpan(spanType: string, options?: StartSpanOptions): Span,
 
     /**
-     * Registers a span as an ambient parent for all subsequently tracked
-     * custom events and spans. All ambient and explicit parents must describe
-     * one ancestry path; sibling paths are rejected. Ending the span
-     * automatically unregisters it.
+     * Registers a span as an ambient parent for all subsequently tracked custom
+     * events and spans. Ending the span automatically unregisters it.
+     *
+     * Registering several is fine: a span has exactly one parent, so the NEAREST
+     * ambient span wins and any other global span in a different trace is recorded
+     * as a link instead of being rejected.
      */
     setGlobalSpan(span: Span): void,
     clearGlobalSpan(span: Span): void,
@@ -199,28 +201,35 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * already have — `span.trackEvent` / `span.withSpan` / `span.fetch` /
      * `span.run`. Handle-based item methods are exact everywhere; `span.run`
      * covers its callback's synchronous window in the browser fallback. Opt out
-     * of ambient parents per item with `root: true` or `excludeParentIds`.
+     * of the ambient parent per item with `root: true`, which starts a new trace.
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
     withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,
 
     /**
-     * The cross-tier span-propagation headers (`x-hexclave-span-context`) for a
-     * request the SDK cannot attach them to itself — `fetch` to same-origin (and
-     * `observability.spanPropagation.allowedOrigins`) already gets them automatically, so
-     * this is the escape hatch for other transports (XHR, sendBeacon, WebSocket
-     * handshakes) or manually-built requests. Carries the same ambient context an
-     * event tracked right now would get: the per-tab replay segment, global spans,
-     * and enclosing `withSpan()` frames — plus any explicit `parentIds`. Returns
-     * `{}` when there is nothing to propagate (analytics off, non-browser).
+     * The cross-tier propagation headers — the standard `traceparent` plus
+     * `x-hexclave-span-context` — for a request the SDK cannot attach them to
+     * itself. `fetch` to same-origin (and
+     * `observability.spanPropagation.allowedOrigins`) already gets them
+     * automatically, so this is the escape hatch for other transports (XHR,
+     * sendBeacon, WebSocket handshakes) or manually-built requests.
      *
-     * Setting this header on a `fetch` also overrides the automatic one, and
-     * `root: true` drops the ambient parents (only explicit `parentIds` apply) —
-     * together the precise-control path when overlapping async flows could mix
-     * ambient frames (the documented browser sync-stack fallback):
-     * `fetch(url, { headers: app.getSpanPropagationHeaders({ parentIds: [span], root: true }) })`.
+     * `traceparent` carries the hierarchy for a head-sampled enclosing span, so
+     * the receiving tier joins the same trace without naming a parent the
+     * flusher may drop. `x-hexclave-span-context` carries non-hierarchical
+     * correlation only (per-tab replay segment, current page view). Returns `{}`
+     * when there is nothing to propagate (analytics off, non-browser).
+     *
+     * Setting these on a `fetch` also overrides the automatic ones. `parent` pins
+     * the trace explicitly and `root: true` drops the ambient parent — together the
+     * precise-control path when overlapping async flows could mix ambient frames
+     * (the documented browser sync-stack fallback):
+     * `fetch(url, { headers: app.getSpanPropagationHeaders({ parent: span }) })`.
+     * With `root: true` and no `parent` there is no span to name, so no
+     * `traceparent` is emitted — inventing a trace id would fabricate a parent span
+     * that never exists.
      */
-    getSpanPropagationHeaders(options?: { parentIds?: ParentRef[], root?: boolean }): Record<string, string>,
+    getSpanPropagationHeaders(options?: { parent?: ParentRef, root?: boolean }): Record<string, string>,
 
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,

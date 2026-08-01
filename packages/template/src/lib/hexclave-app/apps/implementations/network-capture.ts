@@ -1,6 +1,6 @@
-import { HTTP_CLIENT_SPAN_TYPE } from "@hexclave/shared/dist/utils/analytics-wire";
+import { HTTP_CLIENT_SPAN_TYPE, generateW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { createSpanCore } from "./span-handle";
-import { generateUuid } from "./telemetry-transport";
+import type { SpanContext } from "./telemetry-core";
 
 /**
  * Shared logic for `$http-client` spans — the bridge nodes of cross-tier
@@ -35,9 +35,9 @@ export type NetworkOptions = {
    */
   capture?: "all" | "errors-only",
   /**
-   * Sampling rate in [0, 1] for fast + successful requests. Failures (status
-   * >= 400, network error, >= 3s duration) are ALWAYS kept regardless of the
-   * rate.
+   * @deprecated Use `observability.traceSampleRate`. This remains a
+   * backwards-compatible alias, but sampling is applied to whole traces by the
+   * SDK flusher rather than independently to network spans.
    *
    * @default 1
    */
@@ -133,21 +133,20 @@ export type HttpRequestSpanOutcome = {
   status?: number,
   errored: boolean,
   aborted: boolean,
-  /** Set by the wrapper when this span's uuid actually rode the outgoing
-   * span-context header (+ traceparent) — i.e. the bridge exists for this
-   * request. Recorded as `propagated: 1` in the span data so readers can tell
-   * bridged requests from local-only ones. */
+  /** Set by the wrapper when this span's context actually rode the outgoing
+   * `traceparent` — i.e. the backend could join this trace. Recorded as
+   * `propagated: 1` in the span data so readers can tell cross-tier requests from
+   * local-only ones. */
   propagated?: boolean,
 };
 
 export type HttpRequestSpanHandle = {
-  spanUuid: string,
+  spanContext: SpanContext,
   /**
-   * Whether this span's uuid may be promised to the backend via
-   * `httpClientSpanId` / `traceparent`. Only true when the span is GUARANTEED
-   * to be stored (see the sampling comment in beginHttpClientSpanCore): a
-   * traceparent must always point at a stored span, so maybe-kept spans are
-   * never propagation-eligible.
+   * Whether the outgoing request may name this span as its parent. This is true
+   * only when the span is guaranteed-keep and already owned by a live delivery
+   * buffer; otherwise propagation would create a parent id that can never be
+   * fetched from the receiving project's trace.
    */
   propagate: boolean,
   end: (outcome: HttpRequestSpanOutcome) => void,
@@ -157,33 +156,40 @@ export type HttpRequestSpanHandle = {
 
 export type BeginHttpClientSpanOptions = {
   config: NetworkCaptureConfig,
+  /** The shared trace-level head decision made before propagation. */
+  sampled: boolean,
   /** Already sanitized (origin + pathname) — see sanitizeHttpClientUrl. */
   sanitizedUrl: string,
   method: string,
   transport: "fetch" | "xhr",
-  parentSpanIds: readonly string[],
+  /** The trace this fetch belongs to; a root fetch mints its own. */
+  traceId: string,
+  parentSpanId: string | null,
   pageViewSpanId: string | null,
   enqueueRow: Parameters<typeof createSpanCore>[0]["enqueueRow"],
+  /**
+   * False while the lazy browser tracker has not loaded. Pre-load rows can be
+   * discarded during sign-in rotation before they ever reach a delivery buffer,
+   * so they must not be promised as remote parents.
+   */
+  propagationEligible?: boolean,
   isSuppressed?: () => boolean,
   onEnded?: () => void,
 };
 
 /**
- * Opens one `$http-client` span on the shared span state machine, implementing
- * the volume-control contract:
+ * Opens one `$http-client` span on the shared span state machine.
  *
- * - The sampling draw happens at BEGIN time, because propagation eligibility
- *   must be known before the request leaves: a span whose uuid rides the
- *   outgoing header/traceparent must be GUARANTEED to be stored, or the
- *   backend would compose `hc-` parents (and W3C trace ids) pointing at a span
- *   that never exists.
- * - A drawn-in span under `capture: "all"` is guaranteed-keep: its open row is
- *   enqueued immediately (so a request in flight when the tab closes is still
- *   visible as an open interval), and it is propagation-eligible.
- * - Everything else (drawn-out, or `capture: "errors-only"`) is maybe-keep:
- *   NO row is written until end time, when the span is kept only if the
- *   outcome is in the always-keep class (status >= 400, network error, or
- *   duration >= 3s). Deferred-first-write trade-off, accepted deliberately:
+ * Sampling deliberately does NOT live here. `opts.sampled` is the deterministic
+ * trace decision shared with the SDK flusher; this module owns only the
+ * network-specific capture policy:
+ *
+ * - Under `capture: "all"`, the open row is enqueued immediately. The shared
+ *   flusher later keeps or drops its complete trace group.
+ * - Under `capture: "errors-only"`, NO row is written until end time, when the
+ *   span is kept only if the outcome is in the always-keep class (status >=
+ *   400, network error, or duration >= 3s). Deferred-first-write trade-off,
+ *   accepted deliberately:
  *   the versioned-upsert model has no tombstones (a written open row could
  *   never be retracted), so maybe-keep spans appear only at end time — and a
  *   maybe-keep request still in flight at tab close is lost entirely.
@@ -192,19 +198,19 @@ export type BeginHttpClientSpanOptions = {
  *   failures would flood errors-only capture with noise.
  */
 export function beginHttpClientSpanCore(opts: BeginHttpClientSpanOptions): HttpRequestSpanHandle {
-  const sampledIn = opts.config.sampleRate >= 1 || Math.random() < opts.config.sampleRate;
-  const guaranteedKeep = opts.config.capture === "all" && sampledIn;
+  const eagerCapture = opts.config.capture === "all";
   // While false, rows are swallowed (the deferred first write). The final
   // setData+end rows carry the full accumulated state, so nothing needs to be
   // replayed when the decision flips to keep at end time.
-  let keepDecided = guaranteedKeep;
+  let keepDecided = eagerCapture;
   const startedAtPerf = performance.now();
 
   const core = createSpanCore({
-    spanId: generateUuid(),
+    traceId: opts.traceId,
+    spanId: generateW3cSpanId(),
     spanType: HTTP_CLIENT_SPAN_TYPE,
     startedAtMs: Date.now(),
-    parentSpanIds: opts.parentSpanIds,
+    parentSpanId: opts.parentSpanId,
     pageViewSpanId: opts.pageViewSpanId,
     initialData: { method: opts.method, url: opts.sanitizedUrl, transport: opts.transport },
     // System span: callers are internal, and validation could only drop data
@@ -219,8 +225,8 @@ export function beginHttpClientSpanCore(opts: BeginHttpClientSpanOptions): HttpR
   });
 
   return {
-    spanUuid: core.spanId,
-    propagate: guaranteedKeep,
+    spanContext: core.spanContext(),
+    propagate: eagerCapture && opts.sampled && (opts.propagationEligible ?? true),
     markInert: core.markInert,
     end: (outcome) => {
       if (core.isEnded()) return;

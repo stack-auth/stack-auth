@@ -51,8 +51,8 @@ export function parseAnonymousAnalyticsTokens(raw: string | null): TokenObject {
 /**
  * A browser-only identity used when an app intentionally has no public token
  * store. Keeping it separate preserves `tokenStore: null` semantics while a
- * full-page SSR navigation can still join replay batches to the same anonymous
- * refresh-token/session chain.
+ * full-page SSR navigation can still correlate replay batches to the same
+ * anonymous refresh-token lifecycle.
  */
 export function createAnonymousAnalyticsTokenStore(projectId: string): Store<TokenObject> {
   const storageKey = makeAnonymousAnalyticsTokenStorageKey(projectId);

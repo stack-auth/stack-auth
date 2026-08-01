@@ -25,8 +25,9 @@ export async function register() {
 
       enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
 
-      // @vercel/otel owns the provider. Allowing Sentry to install another one
-      // breaks the shared active context and fragments distributed traces.
+      // The Hexclave SDK owns the Node provider; @vercel/otel owns Edge.
+      // Allowing Sentry to install another one would break the shared active
+      // context and fragment distributed traces.
       skipOpenTelemetrySetup: true,
 
       // Add exception metadata to the event
@@ -53,4 +54,18 @@ export async function register() {
     });
 
   }
+}
+
+export async function onRequestError(
+  ...args: Parameters<typeof Sentry.captureRequestError>
+): Promise<void> {
+  // Keep the internal SDK Node-only for Edge bundle safety. Sentry remains in
+  // parallel during the dogfood cutover so this change does not remove an
+  // existing error sink before the internal project has production evidence.
+  // eslint-disable-next-line no-restricted-syntax -- Next compile-time eliminates the opposite runtime branch.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { captureNodeRequestError } = await import("./instrumentation-node");
+    await captureNodeRequestError(...args);
+  }
+  Sentry.captureRequestError(...args);
 }

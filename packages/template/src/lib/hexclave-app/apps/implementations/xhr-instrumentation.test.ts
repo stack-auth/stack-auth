@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeSpanContextHeader, SPAN_CONTEXT_HEADER, type RequestSpanOutcome, type SpanPropagationContext } from "./span-propagation";
+import { decodeSpanContextHeader, SPAN_CONTEXT_HEADER, TRACEPARENT_HEADER, type RequestSpanInfo, type RequestSpanOutcome, type SpanPropagationContext } from "./span-propagation";
+import type { SpanContext } from "./telemetry-core";
 import { installXhrSpanPropagation } from "./xhr-instrumentation";
 
 const SELF = "https://app.example.com";
 const SEG = "11111111-1111-4111-8111-111111111111";
-const SPAN_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const EXPECTED_TRACEPARENT = "00-aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa-8aaaaaaaaaaaaaaa-01";
+const SPAN: SpanContext = { traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", spanId: "bbbbbbbbbbbbbbbb" };
+const SAMPLED_TRACEPARENT = `00-${SPAN.traceId}-${SPAN.spanId}-01`;
 
 /** Minimal XHR stand-in: real prototype methods (so the patch has something to
  * wrap), instance-recorded calls, and manual event dispatch. */
@@ -49,7 +50,7 @@ class StubXhr {
 describe("installXhrSpanPropagation", () => {
   let uninstall: (() => void) | null | undefined;
   let ends: RequestSpanOutcome[];
-  let begins: { url: string, method: string, transport: string }[];
+  let begins: RequestSpanInfo[];
 
   beforeEach(() => {
     ends = [];
@@ -72,7 +73,7 @@ describe("installXhrSpanPropagation", () => {
         begins.push(info);
         if (opts?.span === null) return null;
         return {
-          spanUuid: SPAN_UUID,
+          spanContext: SPAN,
           propagate: opts?.propagate ?? true,
           end: (outcome) => ends.push(outcome),
         };
@@ -95,12 +96,12 @@ describe("installXhrSpanPropagation", () => {
     // Original open/send still ran.
     expect(xhr.opened).toEqual([{ method: "post", url: "/api/orders" }]);
     expect(xhr.sentBodies).toHaveLength(1);
+    // Hierarchy rides `traceparent` only; the Hexclave header is correlation.
     expect(decodeSpanContextHeader(xhr.headerValue(SPAN_CONTEXT_HEADER))).toEqual({
       projectId: "p",
       sessionReplaySegmentId: SEG,
-      httpClientSpanId: SPAN_UUID,
     });
-    expect(xhr.headerValue("traceparent")).toBe(EXPECTED_TRACEPARENT);
+    expect(xhr.headerValue(TRACEPARENT_HEADER)).toBe(SAMPLED_TRACEPARENT);
 
     xhr.status = 200;
     xhr.fire("loadend");
@@ -118,30 +119,38 @@ describe("installXhrSpanPropagation", () => {
     expect(ends).toEqual([{ status: 404, errored: false, aborted: false, propagated: false }]);
   });
 
-  it("never overwrites a caller-set span-context header (span still opens, unpropagated)", () => {
+  it("never overwrites a caller-set span-context header, but traceparent still rides (per-header precedence)", () => {
     install();
     const xhr = request("/api/x", { beforeSend: (pending) => pending.setRequestHeader(SPAN_CONTEXT_HEADER, "caller-value") });
-    expect(xhr.headersSet).toEqual([[SPAN_CONTEXT_HEADER, "caller-value"]]);
+    // Precedence is decided PER HEADER, not all-or-nothing: pinning the
+    // correlation header by hand must not also cost the request its trace
+    // linkage, which is the one thing the backend cannot reconstruct.
+    expect(xhr.headerValue(SPAN_CONTEXT_HEADER)).toBe("caller-value");
+    expect(xhr.headerValue(TRACEPARENT_HEADER)).toBe(SAMPLED_TRACEPARENT);
     xhr.status = 200;
     xhr.fire("loadend");
-    expect(ends[0]).toMatchObject({ propagated: false });
+    expect(ends[0]).toMatchObject({ propagated: true });
   });
 
-  it("never overwrites a caller-set traceparent (span-context still rides)", () => {
+  it("never overwrites a caller-set traceparent (the correlation header still rides)", () => {
     install();
+    // Header lookup is case-insensitive on purpose: XHR callers commonly title-case.
     const xhr = request("/api/x", { beforeSend: (pending) => pending.setRequestHeader("Traceparent", "caller-tp") });
-    expect(xhr.headerValue("traceparent")).toBe("caller-tp");
-    expect(decodeSpanContextHeader(xhr.headerValue(SPAN_CONTEXT_HEADER))?.httpClientSpanId).toBe(SPAN_UUID);
-  });
-
-  it("omits httpClientSpanId + traceparent for maybe-kept spans (propagate: false)", () => {
-    install({ propagate: false });
-    const xhr = request("/api/x");
+    expect(xhr.headerValue(TRACEPARENT_HEADER)).toBe("caller-tp");
     expect(decodeSpanContextHeader(xhr.headerValue(SPAN_CONTEXT_HEADER))).toEqual({
       projectId: "p",
       sessionReplaySegmentId: SEG,
     });
-    expect(xhr.headerValue("traceparent")).toBeNull();
+  });
+
+  it("does not advertise a maybe-kept span as a remote parent", () => {
+    install({ propagate: false });
+    const xhr = request("/api/x");
+    expect(xhr.headerValue(TRACEPARENT_HEADER)).toBeNull();
+    expect(decodeSpanContextHeader(xhr.headerValue(SPAN_CONTEXT_HEADER))).toEqual({
+      projectId: "p",
+      sessionReplaySegmentId: SEG,
+    });
   });
 
   it("attaches the plain context header when no span was created", () => {
@@ -151,7 +160,7 @@ describe("installXhrSpanPropagation", () => {
       projectId: "p",
       sessionReplaySegmentId: SEG,
     });
-    expect(xhr.headerValue("traceparent")).toBeNull();
+    expect(xhr.headerValue(TRACEPARENT_HEADER)).toBeNull();
   });
 
   it("status 0 on loadend means no response headers: errored, aborted when abort fired", () => {
