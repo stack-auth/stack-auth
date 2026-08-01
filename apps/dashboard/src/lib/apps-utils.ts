@@ -9,6 +9,20 @@ type InstalledAppConfig = {
 
 export type InstalledAppsMap = Record<string, InstalledAppConfig>;
 
+// Typed wide on purpose: any given app's stage is a single literal, so a
+// narrowed lookup type would make each caller's null check read as
+// "always true/false" and rot the moment that app's stage changes.
+const STAGE_LABELS: Record<"alpha" | "beta" | "stable", string | null> = { alpha: "Alpha", beta: "Beta", stable: null };
+
+/**
+ * The badge text for an app's maturity, or null once it is stable (a "Stable"
+ * badge on every page would be noise). Derived from the app registry so a page
+ * header can't go stale when the app graduates.
+ */
+export function getAppStageLabel(appId: AppId): string | null {
+  return STAGE_LABELS[ALL_APPS[appId].stage];
+}
+
 /**
  * Get all available app IDs, filtering out alpha apps in production
  */

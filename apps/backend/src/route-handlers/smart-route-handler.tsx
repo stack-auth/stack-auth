@@ -118,6 +118,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             "/api/latest/internal/external-db-sync/poller",
             "/api/latest/internal/external-db-sync/sequencer",
             "/api/latest/internal/external-db-sync/sync-engine",
+            "/api/latest/internal/workflow-engine-step",
           ];
           // Prefix entries for routes with dynamic path segments (which exact
           // matching can't express): deploys upload many files to Vercel and

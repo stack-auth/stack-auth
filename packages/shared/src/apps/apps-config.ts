@@ -214,6 +214,16 @@ export const ALL_APPS = {
     tags: ["developers", "operations"],
     stage: "alpha",
   },
+  // Same `-alpha` suffix reasoning as Deployments above. The plain `workflows`
+  // id is additionally unusable: a 2025-10-29 config migration strips
+  // `apps.installed.workflows` from every override (see migrateConfigOverride),
+  // so an app under that id could never stay enabled.
+  "workflows-alpha": {
+    displayName: "Workflows",
+    subtitle: "Durable, code-defined automations that react to events in your project",
+    tags: ["automation", "developers"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {
