@@ -29,7 +29,7 @@ export async function findRecentSessionReplay(prisma: PrismaClientWithReplica<Pr
  * Maintains the per-tab segment's event-time bounds in O(1) per batch: a single-row
  * LEAST/GREATEST upsert instead of re-aggregating min/max over all of the segment's
  * chunks on every upload (SessionReplayChunk has >>1M rows). Returns the maintained
- * bounds, which feed the $session-replay-segment span in ClickHouse.
+ * bounds used by replay metadata and time-range queries.
  *
  * Bounds can only widen (LEAST/GREATEST are commutative and idempotent), so
  * concurrent batches converge to the same result regardless of order — no

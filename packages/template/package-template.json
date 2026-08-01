@@ -127,6 +127,15 @@
       }
     }
   },
+  "//": "IF_PLATFORM next",
+  "typesVersions": {
+    "*": {
+      "next": [
+        "./dist/integrations/next.d.ts"
+      ]
+    }
+  },
+  "//": "END_PLATFORM",
   "homepage": "https://hexclave.com",
   "scripts": {
     "typecheck": "tsc --noEmit",

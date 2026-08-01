@@ -1,7 +1,7 @@
-import { buildTraceparent } from "@hexclave/shared/dist/utils/analytics-wire";
 import {
   SPAN_CONTEXT_HEADER,
-  encodeSpanContextHeader,
+  TRACEPARENT_HEADER,
+  buildPropagationHeaderValues,
   isAbortError,
   resolveHttpRequestUrl,
   shouldPropagateSpanContext,
@@ -11,12 +11,12 @@ import {
 
 /**
  * XMLHttpRequest counterpart of the fetch wrapper in span-propagation.ts:
- * attaches the `x-hexclave-span-context` header (same origin policy, same
- * fail-closed single-candidate rule across providers) and opens one
+ * attaches `traceparent` + the `x-hexclave-span-context` header (same origin
+ * policy, same fail-closed single-candidate rule across providers) and opens one
  * `$http-client` span per request through the same `beginRequestSpan` provider
  * hook (`transport: "xhr"`). Installed alongside the fetch wrapper so
- * XHR-based HTTP layers (axios' default browser adapter, older SDKs) get the
- * same cross-tier bridge.
+ * XHR-based HTTP layers (axios' default browser adapter, older SDKs) join traces
+ * exactly like fetch-based ones.
  *
  * Prototype patching instead of per-instance wrapping: requests are created by
  * third-party code, so `open`/`send`/`setRequestHeader` on
@@ -131,7 +131,7 @@ export function installXhrSpanPropagation(options: FetchSpanPropagationOptions):
     try {
       const request = state.requests.get(this);
       if (request) {
-        const candidates = new Map<string, { spanEntry: SpanEntry | null }>();
+        const candidates = new Map<string, { headerValues: Record<string, string>, spanEntry: SpanEntry | null }>();
         for (const provider of state.providers) {
           try {
             const absoluteUrl = resolveHttpRequestUrl(request.rawUrl, provider.getSelfOrigin());
@@ -146,32 +146,41 @@ export function installXhrSpanPropagation(options: FetchSpanPropagationOptions):
                 openedSpans.push(spanEntry);
               }
             }
-            if (request.callerSetSpanContext) continue;
-            const context = provider.getContext();
-            if (!context) continue;
             if (!shouldPropagateSpanContext({ targetUrl: absoluteUrl, selfOrigin: provider.getSelfOrigin(), allowedOrigins: provider.getAllowedOrigins(), allowLocalhost: provider.getAllowLocalhostOrigins?.() ?? false })) continue;
-            const propagatableSpan = spanEntry !== null && spanEntry.span.propagate !== false ? spanEntry : null;
-            const headerValue = encodeSpanContextHeader(
-              propagatableSpan !== null ? { ...context, httpClientSpanId: propagatableSpan.span.spanUuid } : context,
-            );
-            candidates.set(headerValue, { spanEntry: propagatableSpan });
+            // Match fetch: only a guaranteed-retained span may become a remote
+            // parent. Built through the shared helper, then narrowed to headers
+            // the caller did not already pin themselves.
+            const propagatableSpan = spanEntry !== null && spanEntry.span.propagate !== false
+              ? spanEntry
+              : null;
+            const headerValues = buildPropagationHeaderValues({
+              traceparent: propagatableSpan === null ? null : {
+                ...propagatableSpan.span.spanContext,
+                sampled: true,
+              },
+              context: provider.getContext(),
+            });
+            if (request.callerSetTraceparent) delete headerValues[TRACEPARENT_HEADER];
+            if (request.callerSetSpanContext) delete headerValues[SPAN_CONTEXT_HEADER];
+            if (Object.keys(headerValues).length === 0) continue;
+            candidates.set(JSON.stringify(headerValues), { headerValues, spanEntry: propagatableSpan });
           } catch {
             // A broken provider must not affect the request or the other providers.
           }
         }
         if (candidates.size === 1) {
-          const candidate = candidates.entries().next();
+          const candidate = candidates.values().next();
           if (!candidate.done) {
-            const [headerValue, { spanEntry }] = candidate.value;
-            // The ORIGINAL setRequestHeader: the patched one would record our
-            // own header as caller intent.
-            state.originalSetRequestHeader.call(this, SPAN_CONTEXT_HEADER, headerValue);
-            if (spanEntry !== null) {
-              spanEntry.propagated = true;
-              if (!request.callerSetTraceparent) {
-                state.originalSetRequestHeader.call(this, "traceparent", buildTraceparent(spanEntry.span.spanUuid));
-              }
+            const { headerValues, spanEntry } = candidate.value;
+            for (const [name, value] of Object.entries(headerValues)) {
+              // The ORIGINAL setRequestHeader: the patched one would record our
+              // own header as caller intent.
+              state.originalSetRequestHeader.call(this, name, value);
             }
+            // Only when OUR traceparent rode: `headerValues` omits it when the
+            // caller set their own, in which case the receiver joins the caller's
+            // trace and this span has no cross-tier link to report.
+            if (spanEntry !== null && TRACEPARENT_HEADER in headerValues) spanEntry.propagated = true;
           }
         }
       }

@@ -1,3 +1,4 @@
+import { isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   beginHttpClientSpanCore,
@@ -84,6 +85,12 @@ describe("shouldCaptureNetworkRequest", () => {
 });
 
 describe("beginHttpClientSpanCore", () => {
+  // Real W3C ids: the row shape is the wire contract, so a test with fake ids
+  // could pass against a row ClickHouse would reject.
+  const TRACE_ID = "1111111111111111111111111111aaaa";
+  const PARENT_SPAN_ID = "1111111111111111";
+  const PAGE_VIEW_SPAN_ID = "2222222222222222";
+
   function collectRows() {
     const rows: SpanUpdateRow[] = [];
     const enqueueRow = (row: SpanUpdateRow) => {
@@ -99,11 +106,13 @@ describe("beginHttpClientSpanCore", () => {
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
       config,
+      sampled: true,
       sanitizedUrl: "https://api.example.com/orders",
       method: "POST",
       transport: "fetch",
-      parentSpanIds: ["11111111-1111-4111-8111-111111111111"],
-      pageViewSpanId: "22222222-2222-4222-8222-222222222222",
+      traceId: TRACE_ID,
+      parentSpanId: PARENT_SPAN_ID,
+      pageViewSpanId: PAGE_VIEW_SPAN_ID,
       enqueueRow,
     });
     expect(handle.propagate).toBe(true);
@@ -111,10 +120,19 @@ describe("beginHttpClientSpanCore", () => {
     expect(rows[0]).toMatchObject({
       span_type: "$http-client",
       ended_at_ms: null,
-      parent_span_ids: ["11111111-1111-4111-8111-111111111111"],
-      page_view_span_id: "22222222-2222-4222-8222-222222222222",
+      trace_id: TRACE_ID,
+      parent_span_id: PARENT_SPAN_ID,
+      page_view_span_id: PAGE_VIEW_SPAN_ID,
       data: { method: "POST", url: "https://api.example.com/orders", transport: "fetch" },
     });
+    // The span mints its OWN id inside its caller's trace; a span that reused
+    // its parent's id (or an all-zero one) would collide in ClickHouse.
+    expect(isW3cSpanId(rows[0].span_id)).toBe(true);
+    expect(rows[0].span_id).not.toBe(PARENT_SPAN_ID);
+    expect(isW3cTraceId(rows[0].trace_id)).toBe(true);
+    // The handle's advertised identity is exactly what lands on the wire — this
+    // is what the outgoing `traceparent` is built from.
+    expect(handle.spanContext).toEqual({ traceId: TRACE_ID, spanId: rows[0].span_id });
 
     handle.end({ status: 200, errored: false, aborted: false, propagated: true });
     const last = rows[rows.length - 1];
@@ -123,30 +141,55 @@ describe("beginHttpClientSpanCore", () => {
     expect(last.data.error).toBeUndefined();
   });
 
-  it("sampled-out fast success is dropped entirely (deferred first write, never enqueued)", () => {
+  it("a root fetch (no ambient parent) is the trace root: parent_span_id is null", () => {
     const { rows, enqueueRow } = collectRows();
-    const handle = beginHttpClientSpanCore({
-      config: { ...config, sampleRate: 0 },
+    beginHttpClientSpanCore({
+      config,
+      sampled: true,
       sanitizedUrl: "https://api.example.com/orders",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
+      pageViewSpanId: null,
+      enqueueRow,
+    });
+    // null (not omitted, not ""): `trace_roots_mv` fires on `parent_span_id IS
+    // NULL`, so this is what makes the fetch show up in the trace inbox.
+    expect(rows[0].parent_span_id).toBeNull();
+    // No page correlation to report, so the key is absent rather than null.
+    expect("page_view_span_id" in rows[0]).toBe(false);
+  });
+
+  it("passes unsampled capture-all rows to the shared flusher but does not propagate them", () => {
+    const { rows, enqueueRow } = collectRows();
+    const handle = beginHttpClientSpanCore({
+      config,
+      sampled: false,
+      sanitizedUrl: "https://api.example.com/orders",
+      method: "GET",
+      transport: "fetch",
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
     expect(handle.propagate).toBe(false);
     handle.end({ status: 200, errored: false, aborted: false });
-    expect(rows).toHaveLength(0);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[rows.length - 1].data).toMatchObject({ status: 200 });
   });
 
-  it("sampled-out requests are still kept on status >= 400 (single write at end time)", () => {
+  it("passes unsampled failures to the shared flusher for trace promotion", () => {
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
-      config: { ...config, sampleRate: 0 },
+      config,
+      sampled: false,
       sanitizedUrl: "https://api.example.com/orders",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
@@ -162,8 +205,8 @@ describe("beginHttpClientSpanCore", () => {
 
     const success = collectRows();
     const successHandle = beginHttpClientSpanCore({
-      config: errorsOnly, sanitizedUrl: "https://x.example/a", method: "GET", transport: "xhr",
-      parentSpanIds: [], pageViewSpanId: null, enqueueRow: success.enqueueRow,
+      config: errorsOnly, sampled: true, sanitizedUrl: "https://x.example/a", method: "GET", transport: "xhr",
+      traceId: TRACE_ID, parentSpanId: null, pageViewSpanId: null, enqueueRow: success.enqueueRow,
     });
     expect(successHandle.propagate).toBe(false);
     successHandle.end({ status: 204, errored: false, aborted: false });
@@ -171,8 +214,8 @@ describe("beginHttpClientSpanCore", () => {
 
     const failure = collectRows();
     const failureHandle = beginHttpClientSpanCore({
-      config: errorsOnly, sanitizedUrl: "https://x.example/a", method: "GET", transport: "xhr",
-      parentSpanIds: [], pageViewSpanId: null, enqueueRow: failure.enqueueRow,
+      config: errorsOnly, sampled: true, sanitizedUrl: "https://x.example/a", method: "GET", transport: "xhr",
+      traceId: TRACE_ID, parentSpanId: null, pageViewSpanId: null, enqueueRow: failure.enqueueRow,
     });
     failureHandle.end({ errored: true, aborted: false });
     const last = failure.rows[failure.rows.length - 1];
@@ -180,16 +223,37 @@ describe("beginHttpClientSpanCore", () => {
     expect(last.ended_at_ms).not.toBeNull();
   });
 
-  it("slow requests are always kept, even when sampled out", () => {
+  it("keeps a pre-load open row local until a live delivery buffer owns it", () => {
+    const { rows, enqueueRow } = collectRows();
+    const handle = beginHttpClientSpanCore({
+      config,
+      sampled: true,
+      sanitizedUrl: "https://api.example.com/bootstrap",
+      method: "GET",
+      transport: "fetch",
+      traceId: TRACE_ID,
+      parentSpanId: null,
+      pageViewSpanId: null,
+      enqueueRow,
+      propagationEligible: false,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(handle.propagate).toBe(false);
+  });
+
+  it("errors-only still keeps slow requests before the shared flusher", () => {
     let nowMs = 0;
     vi.spyOn(performance, "now").mockImplementation(() => nowMs);
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
-      config: { ...config, sampleRate: 0 },
+      config: { ...config, capture: "errors-only" },
+      sampled: false,
       sanitizedUrl: "https://x.example/slow",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
@@ -202,11 +266,13 @@ describe("beginHttpClientSpanCore", () => {
   it("fast aborts are NOT in the always-keep class (SPA cancellations are routine)", () => {
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
-      config: { ...config, sampleRate: 0 },
+      config: { ...config, capture: "errors-only" },
+      sampled: false,
       sanitizedUrl: "https://x.example/aborted",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
@@ -218,10 +284,12 @@ describe("beginHttpClientSpanCore", () => {
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
       config,
+      sampled: true,
       sanitizedUrl: "https://x.example/aborted",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
@@ -236,10 +304,12 @@ describe("beginHttpClientSpanCore", () => {
     const { rows, enqueueRow } = collectRows();
     const handle = beginHttpClientSpanCore({
       config,
+      sampled: true,
       sanitizedUrl: "https://x.example/a",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow,
     });
@@ -253,10 +323,12 @@ describe("beginHttpClientSpanCore", () => {
     const onEnded = vi.fn();
     const handle = beginHttpClientSpanCore({
       config,
+      sampled: true,
       sanitizedUrl: "https://x.example/a",
       method: "GET",
       transport: "fetch",
-      parentSpanIds: [],
+      traceId: TRACE_ID,
+      parentSpanId: null,
       pageViewSpanId: null,
       enqueueRow: () => Promise.resolve(),
       onEnded,

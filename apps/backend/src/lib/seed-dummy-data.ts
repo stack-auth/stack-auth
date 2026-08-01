@@ -5,7 +5,6 @@ import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhous
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
-import { SPAN_ID_PREFIXES, toSpanId } from '@/lib/spans';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
@@ -36,6 +35,27 @@ function deterministicUuid(namespace: string): string {
   const d = ((parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + hex.slice(17, 20);
   const e = hex.slice(20, 32);
   return `${a}-${b}-${c}-${d}-${e}`;
+}
+
+/**
+ * Deterministic W3C ids for seed rows. Span identity is W3C (32/16 lowercase hex),
+ * and seeded spans must be re-derivable so a re-seed upserts the same
+ * ReplacingMergeTree rows instead of duplicating them — which rules out the random
+ * generators the SDK uses. sha256 is already the hash behind `deterministicUuid`;
+ * these just take hex slices of it directly rather than shaping a uuid first.
+ *
+ * The all-zero id is theoretically possible and invalid per spec; it is a
+ * 2^-128 sha256 collision with a fixed value, so a hard failure is the right
+ * response if it ever somehow happens.
+ */
+function deterministicW3cTraceId(namespace: string): string {
+  const traceId = createHash('sha256').update(namespace).digest('hex').slice(0, 32);
+  return traceId === '0'.repeat(32) ? throwErr(`Seed namespace ${namespace} hashed to the invalid all-zero trace id`) : traceId;
+}
+
+function deterministicW3cSpanId(namespace: string): string {
+  const spanId = createHash('sha256').update(namespace).digest('hex').slice(0, 16);
+  return spanId === '0'.repeat(16) ? throwErr(`Seed namespace ${namespace} hashed to the invalid all-zero span id`) : spanId;
 }
 
 /** Mulberry32 — small, fast, deterministic PRNG. */
@@ -1468,12 +1488,39 @@ function pickBulkReferrer(rand: () => number): string {
   return '';
 }
 
-const BULK_PAGE_PATHS = [
-  '/', '/pricing', '/docs', '/docs/getting-started', '/docs/api-reference',
-  '/blog', '/blog/announcing-v2', '/about', '/contact', '/changelog',
-  '/dashboard', '/settings', '/settings/profile', '/settings/billing',
-  '/integrations', '/features', '/enterprise',
+/**
+ * Scrubbed, representative journeys for exercising the demo project's Paths
+ * graph. Reusing destinations across journeys is intentional: it produces the
+ * hubs and differently weighted edges that a real product graph has, while
+ * keeping the fixture deterministic and free of production routes or domains.
+ */
+const DUMMY_NAVIGATION_JOURNEYS: readonly (readonly string[])[] = [
+  ['/', '/product', '/product/analytics', '/pricing', '/sign-up'],
+  ['/', '/product', '/product/observability', '/pricing', '/sign-up'],
+  ['/', '/solutions/startups', '/customers', '/pricing', '/sign-up'],
+  ['/', '/solutions/enterprise', '/security', '/contact-sales'],
+  ['/', '/blog', '/blog/product-analytics', '/docs/getting-started', '/sign-up'],
+  ['/docs', '/docs/getting-started', '/docs/sdk/nextjs', '/docs/api-reference', '/sign-up'],
+  ['/docs', '/docs/observability', '/docs/api-reference', '/contact-sales'],
+  ['/sign-in', '/app', '/app/projects', '/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/paths'],
+  ['/sign-in', '/app', '/app/projects/demo/overview', '/app/projects/demo/users', '/app/projects/demo/users/sample-user', '/app/projects/demo/teams'],
+  ['/app/projects/demo/overview', '/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/retention'],
+  ['/app/projects/demo/overview', '/app/projects/demo/observability', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/services', '/app/projects/demo/observability/logs'],
+  ['/app/projects/demo/overview', '/app/projects/demo/session-replays', '/app/projects/demo/session-replays/sample-session', '/app/projects/demo/analytics/events'],
+  ['/app/projects/demo/overview', '/app/projects/demo/authentication', '/app/projects/demo/authentication/methods', '/app/projects/demo/authentication/oauth'],
+  ['/app/projects/demo/overview', '/app/projects/demo/emails', '/app/projects/demo/emails/templates', '/app/projects/demo/emails/sent'],
+  ['/app/projects/demo/overview', '/app/projects/demo/integrations', '/app/projects/demo/integrations/webhooks', '/app/projects/demo/integrations/webhooks/sample-webhook'],
+  ['/app/projects/demo/overview', '/app/projects/demo/api-keys', '/app/projects/demo/settings', '/app/projects/demo/settings/billing'],
+  ['/app/projects/demo/users', '/app/projects/demo/teams', '/app/projects/demo/rbac', '/app/projects/demo/rbac/permissions'],
+  ['/app/projects/demo/analytics', '/app/projects/demo/analytics/events', '/app/projects/demo/analytics/paths', '/app/projects/demo/analytics/saved-views'],
+  ['/app/projects/demo/observability', '/app/projects/demo/observability/issues', '/app/projects/demo/observability/traces', '/app/projects/demo/observability/performance'],
+  ['/pricing', '/docs/getting-started', '/sign-up', '/onboarding', '/onboarding/create-project', '/app/projects/demo/overview'],
 ];
+
+export function buildDummyNavigationJourney(userIndex: number, visitIndex: number): readonly string[] {
+  const journeyIndex = (userIndex + visitIndex) % DUMMY_NAVIGATION_JOURNEYS.length;
+  return DUMMY_NAVIGATION_JOURNEYS[journeyIndex] ?? throwErr(`Missing dummy navigation journey ${journeyIndex}`);
+}
 
 function bulkFakeIp(prefix: string, rand: () => number): string {
   const c = Math.floor(rand() * 256);
@@ -1800,7 +1847,7 @@ async function seedBulkSignupsAndActivity(options: {
 
   const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
   const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
-  const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
+  const userActivity: Array<{ index: number, userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
   // Only users that already existed need a timestamp UPDATE afterwards — the
   // `createMany` below already writes correct createdAt/signedUpAt for every
   // newly-inserted row, so re-updating them would be pure wasted work.
@@ -1841,6 +1888,7 @@ async function seedBulkSignupsAndActivity(options: {
     }
 
     userActivity.push({
+      index: seedUser.index,
       userId,
       signupDaysAgo: seedUser.signupDaysAgo,
       region: seedUser.region,
@@ -1904,7 +1952,7 @@ async function seedBulkSignupsAndActivity(options: {
 
   console.log(`[seed-activity] Generating multi-day activity events for ${userActivity.length} users...`);
 
-  for (const { userId, signupDaysAgo, region } of userActivity) {
+  for (const { index, userId, signupDaysAgo, region } of userActivity) {
     if (signupDaysAgo === 0) continue;
     const isReturning = rand() < 0.7;
     if (!isReturning) continue;
@@ -1939,29 +1987,37 @@ async function seedBulkSignupsAndActivity(options: {
         team_id: null,
       });
 
-      const pageViewCount = 1 + Math.floor(rand() * 4);
-      let clickPageViewSpanId: string | null = null;
-      for (let p = 0; p < pageViewCount; p++) {
-        const pvOffset = Math.floor(rand() * 3600) * 1000;
+      const navigationJourney = buildDummyNavigationJourney(index, v);
+      let clickPageViewTrace: { traceId: string, spanId: string } | null = null;
+      for (let p = 0; p < navigationJourney.length; p++) {
+        // Keep each journey ordered while varying dwell time between pages.
+        // The Paths query infers edges from timestamp order, so independently
+        // random offsets would fabricate transitions that the fixture did not
+        // intend to model.
+        const pvOffset = (p * 4 * 60 + Math.floor(rand() * 2 * 60)) * 1000;
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
         const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
         // `v` is part of the namespace because a returning user can have
         // several visits on the same sampled day; each page view must remain a
         // distinct ReplacingMergeTree row.
-        const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`);
-        clickPageViewSpanId ??= spanId;
-        const prefixedSpanId = toSpanId(SPAN_ID_PREFIXES.pageView, spanId);
+        const namespace = `seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`;
+        const spanId = deterministicW3cSpanId(namespace);
+        const traceId = deterministicW3cTraceId(namespace);
+        clickPageViewTrace ??= { traceId, spanId };
         pageViewSpanRows.push({
-          trace_id: prefixedSpanId,
-          span_id: prefixedSpanId,
-          name: '$page-view',
+          // A `$page-view` is one of the root activities, so it roots its own trace.
+          trace_id: traceId,
+          span_id: spanId,
+          span_type: '$page-view',
           started_at: formatClickhouseTimestamp(pvTime),
           ended_at: formatClickhouseTimestamp(pvTime),
-          parent_span_ids: [],
-          attributes: JSON.stringify({
-            path: BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)],
-            referrer: p === 0 ? pickBulkReferrer(rand) : '',
+          parent_span_id: null,
+          producer: 'sdk',
+          data: JSON.stringify({
+            path: navigationJourney[p],
+            url: `https://demo.example${navigationJourney[p]}`,
+            referrer: p === 0 ? pickBulkReferrer(rand) : `https://demo.example${navigationJourney[p - 1]}`,
             is_anonymous: false,
           }),
           project_id: tenancy.project.id,
@@ -1971,6 +2027,7 @@ async function seedBulkSignupsAndActivity(options: {
           refresh_token_id: null,
           session_replay_id: null,
           session_replay_segment_id: null,
+          page_view_span_id: null,
           // Seed rows are write-once; version = start ms is enough for uniqueness.
           version: pvTime.getTime(),
         });
@@ -1980,10 +2037,7 @@ async function seedBulkSignupsAndActivity(options: {
         const clickOffset = Math.floor(rand() * 1800) * 1000;
         // Clamp to `now` so the offset can't push the event into the future.
         const clickTime = new Date(Math.min(visitTime.getTime() + clickOffset, now.getTime()));
-        const pageViewParentId = toSpanId(
-          SPAN_ID_PREFIXES.pageView,
-          clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
-        );
+        const pageView = clickPageViewTrace ?? throwErr("A seeded visit must generate a page view before its click");
         clickhouseRows.push({
           event_type: '$click',
           event_at: formatClickhouseTimestamp(clickTime),
@@ -1995,10 +2049,11 @@ async function seedBulkSignupsAndActivity(options: {
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
-          // Raw seed inserts bypass the API's page_view_span_id-to-parent
-          // composition, so write the same canonical pv- ancestry directly.
-          parent_span_ids: [pageViewParentId],
-          trace_id: pageViewParentId,
+          // A click is an instant inside the page-view span, so it carries that
+          // span's identity (trace + enclosing span) plus the page correlation.
+          trace_id: pageView.traceId,
+          span_id: pageView.spanId,
+          page_view_span_id: pageView.spanId,
         });
       }
     }

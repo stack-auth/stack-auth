@@ -118,8 +118,8 @@ type ConsoleCaptureGlobalState = {
   // before restoring).
   patched: Map<ConsoleCaptureLevel, { original: (...args: unknown[]) => void, patched: (...args: unknown[]) => void }>,
   // Re-entrancy latch: console use from inside the mirror (the serializer, the
-  // logger's own warnings, SDK diagnostics via runWithoutConsoleCapture) must
-  // never mirror again.
+  // logger's own warnings) must never mirror again. SDK diagnostics are kept out
+  // by the "Hexclave" message-prefix skip inside the patch instead.
   suppressed: boolean,
   buckets: Map<ConsoleCaptureLevel, { tokens: number, lastRefillMs: number, warnedDry: boolean }>,
   warnedFailure: boolean,
@@ -142,24 +142,6 @@ function getConsoleCaptureState(): ConsoleCaptureGlobalState {
 function getActiveConsoleCaptureSink(state: ConsoleCaptureGlobalState): ConsoleCaptureSink | null {
   if (state.sinksByIdentity.size !== 1) return null;
   return state.sinksByIdentity.values().next().value ?? null;
-}
-
-/**
- * Runs `fn` with the console mirror suppressed — the SDK's own diagnostics
- * escape hatch, so internal warns/errors never report themselves as customer
- * telemetry. (Console output still happens; only the mirror is skipped.) The
- * "Hexclave" message-prefix skip inside the patch remains as belt and
- * suspenders for call sites that don't go through this.
- */
-export function runWithoutConsoleCapture<T>(fn: () => T): T {
-  const state = getConsoleCaptureState();
-  const prev = state.suppressed;
-  state.suppressed = true;
-  try {
-    return fn();
-  } finally {
-    state.suppressed = prev;
-  }
 }
 
 // Keys whose values must never leave the process through the automatic

@@ -6,12 +6,10 @@ import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } fro
 import type { AnalyticsReplayOptions } from "./analytics-config";
 import type { TelemetryResource } from "./telemetry-config";
 
-// The options types/helpers and the transport primitives used to be defined
-// here; they moved to analytics-config.ts / telemetry-transport.ts so the
-// recorder module can be lazy-loaded (and so fundamental modules don't depend
-// on the browser replay module for primitives). Re-exported for compatibility.
-export { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions, type AnalyticsOptions, type AnalyticsReplayOptions } from "./analytics-config";
-export { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
+// This module is lazy-loaded (see ClientAnalytics), so it deliberately
+// re-exports nothing: a value import routed through here would drag the whole
+// recorder into the initial bundle. Options helpers live in analytics-config.ts,
+// transport primitives in telemetry-transport.ts — import them from there.
 
 // ---------- Recording internals ----------
 
@@ -21,6 +19,7 @@ const LOCAL_STORAGE_PREFIX = "hexclave:session-replay:v1";
 // across an SDK upgrade is not orphaned. Never written.
 const LEGACY_LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
 const IDLE_TTL_MS = 3 * 60 * 1000;
+const MAX_SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
@@ -95,7 +94,11 @@ export function getOrRotateSession(options: { key: string, legacyKey?: string, n
   // recording session active across an SDK upgrade is not orphaned.
   const existing = safeParseStoredSession(localStorage.getItem(options.key))
     ?? (options.legacyKey ? safeParseStoredSession(localStorage.getItem(options.legacyKey)) : null);
-  if (existing && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS) {
+  if (
+    existing
+    && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS
+    && options.nowMs - existing.created_at_ms <= MAX_SESSION_DURATION_MS
+  ) {
     return existing;
   }
   const next: StoredSession = {
@@ -115,6 +118,10 @@ export type SessionRecorderDeps = {
   // events from the same tab carry the same session_replay_segment_id. Falls
   // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
+  /** Rotate the shared tab span when the durable replay lifecycle rotates. */
+  onSessionRotation?: () => void,
+  /** The replay endpoint has materialized this segment and it is safe to parent under it. */
+  onSessionReplaySegmentMaterialized?: (segmentId: string) => Promise<void>,
 };
 
 export class SessionRecorder {
@@ -312,6 +319,7 @@ export class SessionRecorder {
           captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed (dropping ${droppedCount} buffered event(s)): ${res.data.status} ${await res.data.text()}`));
           return;
         }
+        await this._deps.onSessionReplaySegmentMaterialized?.(sessionReplaySegmentId);
       }
     } finally {
       this._flushInProgress = false;
@@ -425,6 +433,10 @@ export class SessionRecorder {
           this._lastBrowserSessionId = stored.session_id;
         } else if (stored.session_id !== this._lastBrowserSessionId && !this._takingSnapshot) {
           this._lastBrowserSessionId = stored.session_id;
+          // One segment span may have only one replay parent in the scalar
+          // schema. Rotate the tab identity at the exact replay boundary so a
+          // later replay can never re-parent an existing segment row.
+          this._deps.onSessionRotation?.();
           // Inject a FullSnapshot for the new session (calls emit synchronously)
           this._takingSnapshot = true;
           try {

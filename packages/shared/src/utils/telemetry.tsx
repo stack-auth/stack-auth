@@ -4,26 +4,11 @@ import { HexclaveAssertionError } from "./errors";
 
 const tracer = trace.getTracer('stack-tracer');
 
-// The analytics wire-contract constants used to live here, but this module
-// eagerly initializes @opentelemetry/api (the tracer above), and the client
-// SDK's event tracker imports the constants — which dragged OTel into every
-// customer's browser bundle. They now live in the dependency-free
-// ./analytics-wire module; re-exported here so backend imports keep working.
-export {
-  CLIENT_SYSTEM_SPAN_TYPES,
-  CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES,
-  CUSTOM_TELEMETRY_MAX_PARENT_CHAIN,
-  CUSTOM_TELEMETRY_NAME_RE,
-  HTTP_CLIENT_SPAN_TYPE,
-  PAGE_VIEW_SPAN_TYPE,
-  SYSTEM_EVENT_TYPES,
-  TELEMETRY_UUID_RE,
-  buildTraceparent,
-  uuidToW3cSpanId,
-  uuidToW3cTraceId,
-  type ClientSystemSpanType,
-  type SystemEventType,
-} from "./analytics-wire";
+// The analytics wire-contract constants deliberately live in the
+// dependency-free ./analytics-wire module rather than here: this module eagerly
+// initializes @opentelemetry/api (the tracer above), and the client SDK's event
+// tracker imports those constants — importing them through here would drag OTel
+// into every customer's browser bundle. Import them from ./analytics-wire.
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
   return async (...args: P) => {

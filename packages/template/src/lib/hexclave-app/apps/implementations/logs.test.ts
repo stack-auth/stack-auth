@@ -4,7 +4,7 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { computeErrorFingerprint } from "./error-capture";
 import { EventTracker } from "./event-tracker";
-import { createLogger, installConsoleCapture, runWithoutConsoleCapture, type LogEmitItem } from "./logs";
+import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
 
 const TEST_RESOURCE = { service: { name: "test-client" } } as const;
 
@@ -167,28 +167,6 @@ describe("installConsoleCapture", () => {
     console.log("outer");
     expect(emits).toBe(1);
     expect(originalSpy).toHaveBeenCalledTimes(2); // outer + nested both reach the original
-
-    uninstall();
-    originalSpy.mockRestore();
-  });
-
-  it("suppresses the mirror inside runWithoutConsoleCapture (SDK diagnostics escape hatch)", () => {
-    const emitted: LogEmitItem[] = [];
-    const logger = createLogger({
-      emit: (item) => {
-        emitted.push(item);
-        return "ok";
-      },
-    });
-    const originalSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const uninstall = installConsoleCapture({ levels: ["warn"], logger, projectId: "internal", serviceName: "dashboard" });
-
-    runWithoutConsoleCapture(() => console.warn("internal diagnostics"));
-    expect(originalSpy).toHaveBeenCalledTimes(1); // output still happens
-    expect(emitted).toHaveLength(0); // mirror skipped
-
-    console.warn("normal again");
-    expect(emitted).toHaveLength(1);
 
     uninstall();
     originalSpy.mockRestore();
@@ -377,7 +355,9 @@ type SentEvent = {
   data: Record<string, unknown>,
   message?: string,
   level?: string,
-  parent_span_ids?: string[],
+  /** The ENCLOSING span, W3C-style; absent when the event had none. */
+  trace_id?: string,
+  span_id?: string,
   page_view_span_id?: string,
 };
 
@@ -393,7 +373,7 @@ describe("EventTracker $log / $error", () => {
     vi.useRealTimers();
   });
 
-  it("ships $log events with the wire fields, page ancestry, and ambient custom parents", async () => {
+  it("ships $log events with the wire fields, page correlation, and the ambient enclosing span", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
@@ -417,8 +397,11 @@ describe("EventTracker $log / $error", () => {
       expect(log.message).toBe("hello logs");
       expect(log.level).toBe("info");
       expect(log.data).toEqual({ step: 1 });
-      // Ambient custom chain (the global span) + the current page-view span.
-      expect(log.parent_span_ids).toEqual([span.spanId]);
+      // HIERARCHY: the global span is the nearest ambient context, so it is the
+      // log's enclosing span — one scalar pair, not a chain.
+      expect(log.trace_id).toBe(span.traceId);
+      expect(log.span_id).toBe(span.spanId);
+      // CORRELATION: which page it happened on, alongside (not inside) the trace.
       expect(typeof log.page_view_span_id).toBe("string");
     } finally {
       tracker.stop();

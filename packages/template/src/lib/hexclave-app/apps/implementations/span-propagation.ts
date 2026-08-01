@@ -1,7 +1,10 @@
-import { buildTraceparent } from "@hexclave/shared/dist/utils/analytics-wire";
+import { formatTraceparent } from "@hexclave/shared/dist/utils/analytics-wire";
 import { SPAN_CONTEXT_HEADER, encodeSpanContextHeader, type SpanPropagationContext } from "@hexclave/shared/dist/utils/span-context-codec";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
-import type { ParentRef, SpanRef } from "./event-tracker";
+import type { SpanContext } from "./event-tracker";
+
+/** The standard W3C hierarchy carrier. Lowercase per spec; `Headers` is case-insensitive anyway. */
+export const TRACEPARENT_HEADER = "traceparent";
 
 // The header codec lives in @hexclave/shared (the backend decodes the same
 // header in parseAuth for tenant attribution — one codec, zero drift); this
@@ -10,131 +13,34 @@ export {
   SPAN_CONTEXT_HEADER,
   decodeSpanContextHeader,
   encodeSpanContextHeader,
+  readRequestHeader,
   readSpanContextHeader,
   type SpanPropagationContext,
 } from "@hexclave/shared/dist/utils/span-context-codec";
 
-export type ParentSpanPathPart =
-  | { kind: "known-path", ids: readonly string[] }
-  | { kind: "declared-next", id: string };
-
-function isParentPathPrefix(prefix: readonly string[], path: readonly string[]): boolean {
-  return prefix.length <= path.length && prefix.every((id, index) => path[index] === id);
-}
-
-function parentPathOverlap(left: readonly string[], right: readonly string[]): number {
-  const maxLength = Math.min(left.length, right.length);
-  for (let length = maxLength; length > 0; length -= 1) {
-    const leftStart = left.length - length;
-    if (right.slice(0, length).every((id, index) => left[leftStart + index] === id)) {
-      return length;
-    }
-  }
-  return 0;
-}
-
-/**
- * Merges parent information into one farthest-known-to-nearest-known path.
- *
- * Span refs carry a frozen path, so two refs are compatible only when one path
- * extends the other or their retained ends overlap (a capped path may have lost
- * its root). Raw ids have no ancestry metadata; their position in a `parentIds`
- * array explicitly declares that they follow the path built so far.
- */
-export function mergeParentSpanPath(
-  parts: readonly ParentSpanPathPart[],
-): { ids: string[] } | { error: string } {
-  let merged: string[] = [];
-
-  for (const part of parts) {
-    if (part.kind === "declared-next") {
-      if (!merged.includes(part.id)) merged.push(part.id);
-      continue;
-    }
-
-    if (new Set(part.ids).size !== part.ids.length) {
-      return { error: "A parent span path must not contain duplicate span ids" };
-    }
-    if (merged.length === 0 || isParentPathPrefix(merged, part.ids)) {
-      merged = [...part.ids];
-      continue;
-    }
-    if (isParentPathPrefix(part.ids, merged)) continue;
-    const forwardOverlap = parentPathOverlap(merged, part.ids);
-    if (forwardOverlap > 0) {
-      const candidate = [...merged, ...part.ids.slice(forwardOverlap)];
-      if (new Set(candidate).size !== candidate.length) {
-        return { error: "A parent span path must not contain duplicate span ids" };
-      }
-      merged = candidate;
-      continue;
-    }
-    const backwardOverlap = parentPathOverlap(part.ids, merged);
-    if (backwardOverlap > 0) {
-      const candidate = [...part.ids.slice(0, -backwardOverlap), ...merged];
-      if (new Set(candidate).size !== candidate.length) {
-        return { error: "A parent span path must not contain duplicate span ids" };
-      }
-      merged = candidate;
-      continue;
-    }
-
-    return {
-      error: "Parent spans must describe one ancestry path; unrelated or sibling span refs cannot both be structural parents",
-    };
-  }
-
-  return { ids: merged };
-}
-
 /**
  * Cross-tier span propagation.
  *
- * When a browser calls the customer's OWN backend, we want a server span (opened
- * via `serverApp.withSpan(type, { request }, ...)`) to automatically parent under
- * the caller's client session — the `$session-replay-segment` / `$session-replay`
- * / `$refresh-token` chain — with zero glue in the customer's code.
+ * When a browser calls the customer's OWN backend, a server span (opened via
+ * `serverApp.withSpan(type, { request }, ...)`) should land in the SAME TRACE as
+ * the client fetch that triggered it, with zero glue in the customer's code.
  *
- * The browser attaches ONE header, `x-hexclave-span-context`, to same-origin
- * outgoing requests. The server reads it, resolves the caller's refresh token from
- * the request session (the ONE trusted parent), and forwards the raw ids to the
- * ingestion route, which composes the system-prefixed parents (`rti-`/`sri-`/`srsi-`)
- * exactly like it does for browser events.
+ * TWO headers ride an eligible outgoing request, with a strict division of labour:
  *
- * Trust model: the header is CLIENT-CONTROLLED, so `sessionReplayId` /
- * `sessionReplaySegmentId` / custom parents are untrusted labels — fine for
- * best-effort telemetry, never for authz/billing/security. Only the refresh token
- * (server-derived), userId, project, and branch are trusted. Invalid/oversized/
- * unknown-version headers are ignored, never surfaced as an error.
+ *  - `traceparent` (W3C standard) carries the HIERARCHY: the `$http-client` span's
+ *    trace id + span id. This is what makes the backend's spans children of the
+ *    client fetch, and it is the reason Hexclave traces interoperate with any other
+ *    OTel-compatible tooling instead of needing a bespoke bridge.
+ *  - `x-hexclave-span-context` carries only NON-HIERARCHICAL correlation (replay /
+ *    segment / page-view ids). It exists because those facts have no home in the
+ *    W3C standard, not because they describe ancestry.
+ *
+ * Trust model: both headers are CLIENT-CONTROLLED, so every id in them is an
+ * untrusted label — fine for best-effort telemetry, never for authz/billing/
+ * security. Only the refresh token (server-derived from the session), userId,
+ * project, and branch are trusted. Invalid/oversized/unknown-version headers are
+ * ignored, never surfaced as an error.
  */
-
-/**
- * Merges ambient parent refs (+ optional explicit extras) into the single
- * farthest-known-to-nearest-known path the header carries. Each ref contributes
- * its full frozen path (`[...parentSpanIds, spanId]`); incompatible branches are
- * rejected rather than flattened. Raw ids declare successive parents in their
- * array order. The codec drops malformed ids on decode and the backend
- * re-validates them.
- */
-export function resolveParentRefsToPath(refs: SpanRef[], extraParents?: ParentRef[]): string[] {
-  const parts: ParentSpanPathPart[] = refs.map((ref) => ({
-    kind: "known-path",
-    ids: [...ref.parentSpanIds, ref.spanId],
-  }));
-  for (const parent of extraParents ?? []) {
-    if (typeof parent === "string") {
-      parts.push({ kind: "declared-next", id: parent });
-    } else {
-      const ref: SpanRef = "ref" in parent && typeof parent.ref === "function" ? parent.ref() : parent as SpanRef;
-      parts.push({ kind: "known-path", ids: [...ref.parentSpanIds, ref.spanId] });
-    }
-  }
-  const merged = mergeParentSpanPath(parts);
-  if ("error" in merged) {
-    throw new Error(`Hexclave analytics: ${merged.error}`);
-  }
-  return merged.ids;
-}
 
 /**
  * Whether the span-context header may ride along to `targetUrl`. Default policy is
@@ -285,12 +191,13 @@ function endRequestSpansOnSettle(
 export function buildFetchInitWithSpanContext(opts: {
   input: unknown,
   init: RequestInit | undefined,
-  headerValue: string,
+  /** Header name -> value. Names the caller already set are skipped individually. */
+  headerValues: Readonly<Record<string, string>>,
   selfOrigin: string | null,
   allowedOrigins: readonly string[],
   allowLocalhost?: boolean,
   bypassOriginPolicy?: boolean,
-}): RequestInit | null {
+}): { init: RequestInit, attachedHeaderNames: Set<string> } | null {
   if (requestInputMode(opts.input, opts.init) === "no-cors") return null;
   if (!opts.bypassOriginPolicy) {
     const url = requestInputUrl(opts.input);
@@ -302,9 +209,16 @@ export function buildFetchInitWithSpanContext(opts: {
     ? opts.init.headers
     : (isRequest ? (opts.input as Request).headers : undefined);
   const headers = new Headers(base);
-  if (headers.has(SPAN_CONTEXT_HEADER)) return null;
-  headers.set(SPAN_CONTEXT_HEADER, opts.headerValue);
-  return { ...opts.init, headers };
+  // Per-header precedence, not all-or-nothing: a caller who pinned `traceparent`
+  // by hand still gets our correlation header, and vice versa.
+  const attachedHeaderNames = new Set<string>();
+  for (const [name, value] of Object.entries(opts.headerValues)) {
+    if (headers.has(name)) continue;
+    headers.set(name, value);
+    attachedHeaderNames.add(name);
+  }
+  if (attachedHeaderNames.size === 0) return null;
+  return { init: { ...opts.init, headers }, attachedHeaderNames };
 }
 
 export type RequestSpanInfo = {
@@ -319,29 +233,70 @@ export type RequestSpanOutcome = {
   status?: number,
   errored: boolean,
   aborted: boolean,
-  /** True when this span's uuid actually rode the outgoing span-context header. */
+  /** True when this span's context actually rode the outgoing `traceparent`. */
   propagated?: boolean,
 };
 
 /**
  * Structurally matches network-capture's HttpRequestSpanHandle — declared here
  * (instead of imported) so this module stays decoupled from the span state
- * machine: the wrapper only needs an id and an end callback.
+ * machine: the wrapper only needs an identity and an end callback.
  */
 export type RequestSpanHandle = {
-  spanUuid: string,
+  spanContext: SpanContext,
   /**
-   * Whether the span's uuid may be promised to the backend via
-   * `httpClientSpanId` + `traceparent`. False for spans that are only
-   * tentatively kept (sampled-out / errors-only capture): a traceparent must
-   * always point at a stored span. Default true when omitted.
+   * Whether this span is guaranteed to remain available as a parent. False for
+   * maybe-kept spans and pre-load rows that can be discarded during a session
+   * rotation. Default true when omitted.
    */
   propagate?: boolean,
   end: (outcome: RequestSpanOutcome) => void,
 };
 
+/** Whether a context carries any correlation id, i.e. anything beyond the project claim. */
+function hasCorrelationIds(context: SpanPropagationContext): boolean {
+  return context.sessionReplayId !== undefined
+    || context.sessionReplaySegmentId !== undefined
+    || context.pageViewSpanId !== undefined;
+}
+
+/**
+ * The propagation headers for one outgoing request — the single place that
+ * decides WHETHER each header is worth sending, so the fetch wrapper, the XHR
+ * wrapper, the pinned-span helpers and the public `getSpanPropagationHeaders`
+ * cannot drift.
+ *
+ * Returns `{}` when there is nothing to state (no span AND no correlation ids).
+ * The wrappers treat that as "this provider has nothing to say", which keeps it
+ * out of their fail-closed single-candidate count.
+ *
+ * The span-context header rides whenever a `traceparent` does, EVEN with no
+ * correlation ids to carry: its `projectId` is the receiver's only way to tell
+ * whether the span named by `traceparent` is one this project can see. Without
+ * that claim the receiver must drop the parent (see the backend's
+ * customer-request-observability), because a parent no row in the project can
+ * satisfy makes the child neither a child nor a root — it vanishes from traces.
+ */
+export function buildPropagationHeaderValues(opts: {
+  traceparent: { traceId: string, spanId: string, sampled: boolean } | null,
+  context: SpanPropagationContext | null,
+}): Record<string, string> {
+  const worthSending = opts.traceparent !== null || (opts.context !== null && hasCorrelationIds(opts.context));
+  if (!worthSending) return {};
+  return {
+    ...opts.traceparent !== null ? { [TRACEPARENT_HEADER]: formatTraceparent(opts.traceparent) } : {},
+    ...opts.context !== null ? { [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(opts.context) } : {},
+  };
+}
+
 export type FetchSpanPropagationOptions = {
-  /** The current ambient client context, or null when there is nothing to link. */
+  /**
+   * The current ambient CORRELATION context, or null when propagation is off
+   * entirely. Note this no longer gates `traceparent`: an outgoing request with a
+   * `$http-client` span always propagates its hierarchy, even with no replay /
+   * page-view context to report — the context is then the bare project claim
+   * that makes the propagated hierarchy usable (see buildPropagationHeaderValues).
+   */
   getContext: () => SpanPropagationContext | null,
   /** The page's own origin (e.g. `window.location.origin`), or null if unknown. */
   getSelfOrigin: () => string | null,
@@ -379,15 +334,20 @@ function getFetchSpanPropagationState(): FetchSpanPropagationState | null {
 }
 
 /**
- * Installs a global `fetch` wrapper that attaches `x-hexclave-span-context` to
- * same-origin (or allowlisted) outgoing requests. Idempotent (a global marker
- * guards against HMR / multiple app instances). Every app registers a provider;
- * the wrapper attaches a header only when all eligible providers agree on the
- * same context. Ambiguous same-origin multi-project requests fail closed instead
- * of silently labeling one project's traffic as another's. It chains through the
- * existing fetch so it composes with other wrappers (Sentry/OTel), and never lets
- * propagation throw into the caller's request. Returns an uninstaller, or null if
- * fetch is unavailable or a foreign value already occupies the marker.
+ * Installs a global `fetch` wrapper that attaches `traceparent` +
+ * `x-hexclave-span-context` to same-origin (or allowlisted) outgoing requests.
+ * Idempotent (a global marker guards against HMR / multiple app instances).
+ *
+ * Every app registers a provider. The wrapper attaches headers only when exactly
+ * ONE eligible provider wants to, so ambiguous same-origin multi-project requests
+ * fail closed instead of silently labeling one project's traffic as another's —
+ * and, now that `traceparent` is in the bag, instead of joining a request to an
+ * arbitrary one of two candidate traces.
+ *
+ * It chains through the existing fetch so it composes with other wrappers
+ * (Sentry/OTel), and never lets propagation throw into the caller's request.
+ * Returns an uninstaller, or null if fetch is unavailable or a foreign value
+ * already occupies the marker.
  */
 export function installFetchSpanPropagation(options: FetchSpanPropagationOptions): (() => void) | null {
   const g = globalThis as typeof globalThis & Record<string, unknown>;
@@ -417,7 +377,7 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
   const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     type SpanEntry = { span: RequestSpanHandle, propagated: boolean };
     const openedSpans: SpanEntry[] = [];
-    const candidates = new Map<string, { init: RequestInit, spanEntry: SpanEntry | null }>();
+    const candidates = new Map<string, { init: RequestInit, attachedHeaderNames: Set<string>, spanEntry: SpanEntry | null }>();
     for (const provider of state.providers) {
       try {
         // `$http-client` span creation happens for EVERY http(s) request,
@@ -438,27 +398,40 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
             }
           }
         }
-        const context = provider.getContext();
-        if (!context) continue;
-        // The span's uuid rides the header only when the span is guaranteed to
-        // be stored (propagate !== false) — bridge coherence: httpClientSpanId
-        // and the traceparent below must always point at a stored span. When
-        // no span was created (capture disabled / filtered / sampled out), the
-        // context header still rides WITHOUT httpClientSpanId and no
-        // traceparent is emitted.
-        const propagatableSpan = spanEntry !== null && spanEntry.span.propagate !== false ? spanEntry : null;
-        const headerValue = encodeSpanContextHeader(
-          propagatableSpan !== null ? { ...context, httpClientSpanId: propagatableSpan.span.spanUuid } : context,
-        );
-        const initWithHeader = buildFetchInitWithSpanContext({
+        // A traceparent is a concrete parent edge, so it may name only a span
+        // that this provider has guaranteed will be retained. Maybe-kept and
+        // pre-load spans remain useful local observations but cannot safely
+        // parent a remote subtree.
+        const propagatableSpan = spanEntry !== null && spanEntry.span.propagate !== false
+          ? spanEntry
+          : null;
+        const headerValues = buildPropagationHeaderValues({
+          traceparent: propagatableSpan === null ? null : {
+            ...propagatableSpan.span.spanContext,
+            sampled: true,
+          },
+          context: provider.getContext(),
+        });
+        // Nothing to say about this request: no span opened and no correlation
+        // context. Skipping keeps such a provider out of the fail-closed count.
+        if (Object.keys(headerValues).length === 0) continue;
+        const initWithHeaders = buildFetchInitWithSpanContext({
           input,
           init,
-          headerValue,
+          headerValues,
           selfOrigin: provider.getSelfOrigin(),
           allowedOrigins: provider.getAllowedOrigins(),
           allowLocalhost: provider.getAllowLocalhostOrigins?.() ?? false,
         });
-        if (initWithHeader) candidates.set(headerValue, { init: initWithHeader, spanEntry: propagatableSpan });
+        // Keyed by the full header set so two providers that would send byte-identical
+        // headers collapse to one candidate instead of tripping the fail-closed rule.
+        if (initWithHeaders) {
+          candidates.set(JSON.stringify(headerValues), {
+            init: initWithHeaders.init,
+            attachedHeaderNames: initWithHeaders.attachedHeaderNames,
+            spanEntry: propagatableSpan,
+          });
+        }
       } catch {
         // A broken provider must not affect the request or the other providers.
       }
@@ -468,24 +441,14 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
       const candidate = candidates.values().next();
       if (!candidate.done) {
         finalInit = candidate.value.init;
-        const spanEntry = candidate.value.spanEntry;
-        if (spanEntry !== null) {
-          spanEntry.propagated = true;
-          try {
-            // The W3C bridge: `traceparent` derives deterministically from the
-            // $http-client span's uuid, so backend OTel spans of this request
-            // share a trace id computable from the client span. Caller intent
-            // wins — an explicitly-set traceparent is never overwritten.
-            // (no-cors requests never reach here: buildFetchInitWithSpanContext
-            // already excluded them.)
-            const headers = new Headers(finalInit.headers);
-            if (!headers.has("traceparent")) {
-              headers.set("traceparent", buildTraceparent(spanEntry.span.spanUuid));
-              finalInit = { ...finalInit, headers };
-            }
-          } catch {
-            // The span-context header still rides even if traceparent fails.
-          }
+        // Keyed on TRACEPARENT specifically, not on "some header of ours rode".
+        // Those were the same fact when hierarchy travelled inside our own header;
+        // under W3C they are not. If the caller pinned their own `traceparent`, our
+        // correlation header still rides (per-header precedence) but the receiver
+        // joins the CALLER's trace — so reporting propagated: 1 here would make the
+        // span row claim a cross-tier link that does not exist.
+        if (candidate.value.spanEntry !== null && candidate.value.attachedHeaderNames.has(TRACEPARENT_HEADER)) {
+          candidate.value.spanEntry.propagated = true;
         }
       }
     }

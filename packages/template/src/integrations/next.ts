@@ -1,7 +1,8 @@
 import { headers as rscHeaders } from "@hexclave/sc/force-react-server";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { RequestLike } from "../lib/hexclave-app/common";
 import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-impl";
-import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, createRequestContext, HexclaveRequestContext, runRequestSpan } from "./adapter-core";
+import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequestContext, runGuardedCall, runGuardedRoute, UnauthorizedFactory } from "./adapter-core";
 
 /**
  * Hexclave adapter for Next.js (App Router). Unlike the tRPC/oRPC/Elysia
@@ -58,12 +59,11 @@ export type HexclaveNextServerActionOptions = {
 export type HexclaveNextFactoryOptions = {
   /**
    * Default `unauthorized` for every wrapped surface (a per-handler
-   * `unauthorized` always wins). The type is the union of what the surfaces
-   * accept because one factory serves both: a returned `Response` is sent by
-   * route handlers, anything else is thrown (server actions throw whatever is
-   * returned — return an `Error` there).
+   * `unauthorized` always wins). One factory serves both surfaces, so it may
+   * produce either: a returned `Response` is sent by route handlers, an `Error`
+   * is thrown (server actions can only throw, so return an `Error` there).
    */
-  unauthorized?: () => Response | Error | Promise<Response | Error>,
+  unauthorized?: UnauthorizedFactory,
 };
 
 /**
@@ -89,6 +89,12 @@ export type HexclaveNextInstrumentation = {
   // keeps working unchanged.
   register: () => Promise<void>,
   onRequestError: (error: unknown, request: HexclaveNextRequestErrorRequest, errorContext?: HexclaveNextRequestErrorContext) => Promise<void>,
+  /**
+   * Advanced collector/control-plane hook. Runs one callback with every
+   * SDK-native telemetry source suppressed in the hidden OTel bridge's exact
+   * async context, preventing self-ingestion feedback loops.
+   */
+  runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
 };
 
 export type HexclaveNextInstrumentationOptions = {
@@ -102,6 +108,22 @@ export type HexclaveNextInstrumentationOptions = {
    * entries rather than depend on `@opentelemetry/instrumentation`.
    */
   instrumentations?: unknown[],
+  /**
+   * Whether bare telemetry and `onRequestError` should resolve the current
+   * Next.js request's session and correlation headers. Disable this when a
+   * control plane records its own telemetry into a separate internal project:
+   * the incoming request belongs to a customer project, not the telemetry app.
+   *
+   * @default true
+   */
+  requestAttribution?: boolean,
+  /**
+   * Returns true when automatic SDK telemetry must be suppressed in the
+   * current async context. Advanced collector/control-plane hook: pass the
+   * runtime's standard tracing-suppression predicate so SDK-native fetch,
+   * library, log, and error capture follows the same recursion boundary.
+   */
+  isTelemetrySuppressed?: () => boolean,
 };
 
 /**
@@ -173,7 +195,7 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  *
  * ```ts
  * // instrumentation.ts
- * import { hexclaveInstrumentation } from "@hexclave/next";
+ * import { hexclaveInstrumentation } from "@hexclave/next/next";
  * import { stackServerApp } from "./stack";
  *
  * const instrumentation = hexclaveInstrumentation(stackServerApp);
@@ -197,8 +219,9 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * `register()` also claims the process-global OpenTelemetry API for the
  * hidden library-span bridge (ONLY if no other OTel provider is registered —
  * a user's own OTel setup always wins): spans any library emits through the
- * OTel global become native `$lib-span` rows nested under the ambient
- * Hexclave request span, with zero exporter/endpoint/collector config.
+ * OTel global become native operation-named rows nested under the ambient
+ * Hexclave request span, with their tracer stored as the instrumentation scope
+ * and zero exporter/endpoint/collector config.
  * Libraries using the global API directly (Drizzle's OTel support, the
  * Vercel AI SDK's `experimental_telemetry`) need nothing at all; libraries
  * that ship an instrumentation CLASS plug in via the options:
@@ -225,12 +248,14 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
     throw new Error("hexclaveInstrumentation() requires a StackServerApp instance (created with `new StackServerApp(...)`)");
   }
   return {
+    runWithTelemetrySuppressed: async (fn) => await instrumentation.runWithTelemetrySuppressed(fn),
     register: async () => {
       instrumentation.installServerFetchInstrumentation();
       instrumentation.installServerErrorMonitor();
+      instrumentation.setTelemetrySuppressionPredicate(options?.isTelemetrySuppressed ?? null);
       // From here on, bare telemetry calls (no `{ request }`) inside a Next
       // request scope attribute to the caller's session via `next/headers`.
-      instrumentation.setAmbientRequestProvider(resolveAmbientNextRequest);
+      instrumentation.setAmbientRequestProvider(options?.requestAttribution === false ? null : resolveAmbientNextRequest);
       // Claim the OTel API global (only if free) BEFORE wiring instrumentation
       // entries, so their spans resolve to our provider from the first call.
       const registration = await instrumentation.registerLibrarySpanBridge();
@@ -261,7 +286,7 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
           : undefined;
         await instrumentation.captureServerRequestError(error, {
           mechanism: "next.onRequestError",
-          request: nextRequestToRequestLike(request),
+          ...options?.requestAttribution === false ? {} : { request: nextRequestToRequestLike(request) },
           data: {
             ...typeof request.path === "string" ? { path: request.path } : {},
             ...typeof request.method === "string" ? { method: request.method } : {},
@@ -293,28 +318,16 @@ export function createHexclaveNext(app: AdapterServerApp, factoryOptions?: Hexcl
       options?: HexclaveNextRouteHandlerOptions,
     ) => {
       return async (request: Request, context: TRouteContext): Promise<Response> => {
-        const hexclave = createRequestContext(app, request);
-        return await runRequestSpan(app, hexclave, {
+        return await runGuardedRoute(app, {
+          requestInput: request,
           defaultSpanType: "next.route",
           data: { path: new URL(request.url).pathname, method: request.method },
           telemetry: options?.telemetry,
-        }, async () => {
-          const user = await hexclave.getUser();
-          if (options?.required && user === null) {
-            if (options.unauthorized !== undefined) {
-              return await options.unauthorized();
-            }
-            if (factoryOptions?.unauthorized !== undefined) {
-              const result = await factoryOptions.unauthorized();
-              // The factory-level default is shared with server actions, so it
-              // may produce an Error instead of a Response — throw it then.
-              if (result instanceof Response) return result;
-              throw result;
-            }
-            return Response.json({ error: "You must be signed in to call this route. (Hexclave: no valid session on the request.)" }, { status: 401 });
-          }
-          return await fn({ request, context, user, hexclave });
-        });
+          required: options?.required,
+          unauthorized: options?.unauthorized,
+          factoryUnauthorized: factoryOptions?.unauthorized,
+          surface: "route",
+        }, ({ user, hexclave }) => fn({ request, context, user, hexclave }));
       };
     },
 
@@ -334,26 +347,24 @@ export function createHexclaveNext(app: AdapterServerApp, factoryOptions?: Hexcl
       options?: HexclaveNextServerActionOptions,
     ) => {
       return async (...args: TArgs): Promise<TResult> => {
-        const hexclave = createRequestContext(app, { headers: await rscHeaders() });
-        return await runRequestSpan(app, hexclave, {
+        // Goes through resolveAmbientNextRequest (not a fresh `{ headers }`
+        // literal) so it hits the ambientRequestLikeByHeaders memo: the server
+        // app keys its token store — and therefore the session plus its refresh
+        // round-trip — by request-OBJECT identity, so a fresh wrapper here would
+        // make a wrapped action and any bare `trackEvent` in the same request
+        // resolve the session twice.
+        const requestInput = await resolveAmbientNextRequest()
+          ?? throwErr("Hexclave: `serverAction` must be called during a Next.js request (next/headers is unavailable here).");
+        return await runGuardedCall(app, {
+          requestInput,
           defaultSpanType: "next.server-action",
           data: { ...options?.name !== undefined ? { name: options.name } : {} },
           telemetry: options?.telemetry,
-        }, async () => {
-          const user = await hexclave.getUser();
-          if (options?.required && user === null) {
-            if (options.unauthorized !== undefined) {
-              throw options.unauthorized();
-            }
-            if (factoryOptions?.unauthorized !== undefined) {
-              // Server actions reject by throwing; whatever the shared factory
-              // default produces (normally an Error) is thrown as-is.
-              throw await factoryOptions.unauthorized();
-            }
-            throw new Error("You must be signed in to call this server action. (Hexclave: no valid session on the request.)");
-          }
-          return await fn({ user, hexclave }, ...args);
-        });
+          required: options?.required,
+          unauthorized: options?.unauthorized,
+          factoryUnauthorized: factoryOptions?.unauthorized,
+          surface: "server action",
+        }, ({ user, hexclave }) => fn({ user, hexclave }, ...args));
       };
     },
   };

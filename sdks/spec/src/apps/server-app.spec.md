@@ -284,10 +284,13 @@ contracts in analytics.spec.md:
   trackEvent(eventType, data?, options?)
     options additionally accepts:
       userId: uuid? - explicit attribution (no session to derive it from)
-      request: RequestLike? - resolve attribution AND client-session ancestry
-        from an incoming request (session tokens + the x-hexclave-span-context
-        header). With request, userId is derived from the session unless
-        overridden.
+      request: RequestLike? - resolve attribution AND the caller's trace from an
+        incoming request: session tokens give the user, the standard W3C
+        `traceparent` gives the trace id + parent span, and
+        x-hexclave-span-context gives the non-hierarchical correlation ids
+        (replay, segment, page view). With request, userId is derived from the
+        session unless overridden. A request with no `traceparent` starts a new
+        trace rooted at this request.
     With an ambient request provider registered (Next.js:
     hexclaveInstrumentation().register()), bare calls inside a request scope
     attribute to the caller automatically — request stays as the explicit
@@ -296,8 +299,9 @@ contracts in analytics.spec.md:
   logger
     Same API as the client logger; rides the server telemetry buffer. Inside a
     withSpan({ request }) scope — or any request scope when an ambient request
-    provider is registered — logs automatically inherit the caller's
-    client-session ancestry (page view, $http-client fetch span, replay chain).
+    provider is registered — logs automatically join the caller's TRACE (they
+    carry its trace_id and the enclosing span_id) and pick up the caller's
+    correlation ids (page view, replay, segment, refresh token).
 
   startSpan(spanType, options?)
     options additionally accepts userId. Synchronous — cannot resolve a
@@ -317,7 +321,7 @@ contracts in analytics.spec.md:
   telemetry.waitUntil on serverless (auto-detected on Vercel; see
   analytics.spec.md). Sends sticky-disable for the process on the backend's
   ANALYTICS_NOT_ENABLED rejection. See analytics.spec.md "Batch wire
-  format" for the envelope (schema_version: 2, resource, refresh_token_id, ...).
+  format" for the envelope (schema_version: 3, resource, refresh_token_id, ...).
 
   Auto-instrumentation seams (server outbound-fetch $http-client spans — now
   installed eagerly at app construction — the uncaught-exception $error

@@ -145,4 +145,12 @@ export const config = defineHexclaveConfig({
       },
     },
   },
+
+  apps: {
+    installed: {
+      analytics: {
+        enabled: true,
+      },
+    },
+  },
 });

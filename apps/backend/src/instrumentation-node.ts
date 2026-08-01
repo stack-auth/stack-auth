@@ -1,34 +1,19 @@
+import { getHexclaveServerApp } from "@/hexclave";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { hexclaveInstrumentation, type HexclaveNextInstrumentation } from "@hexclave/next/next";
+import { context } from "@opentelemetry/api";
+import { isTracingSuppressed } from "@opentelemetry/core";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
-import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { registerOTel } from "@vercel/otel";
-import { AnalyticsSpanExporter } from "./lib/analytics-span-exporter";
 import { initPerfStats } from "./lib/dev-perf-stats";
-import { createDevelopmentTraceSampler } from "./lib/otel-sampling";
+import { isNodeTelemetrySuppressed, registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
 
-function createAnalyticsSpanProcessor(): BatchSpanProcessor | null {
-  if (!getEnvBoolean("HEXCLAVE_ANALYTICS_OTEL_EXPORT_ENABLED")) return null;
-  return new BatchSpanProcessor(new AnalyticsSpanExporter(), {
-    maxQueueSize: 4096,
-    maxExportBatchSize: 500,
-    scheduledDelayMillis: 5000,
-    exportTimeoutMillis: 30_000,
-  });
-}
+let instrumentation: ReturnType<typeof hexclaveInstrumentation> | null = null;
 
-export async function registerNodeInstrumentation(): Promise<void> {
-  // Prisma instrumentation accesses the Node global alias during setup.
-  globalThis.global = globalThis;
-
-  const analyticsSpanProcessor = createAnalyticsSpanProcessor();
-  registerOTel({
-    serviceName: "stack-backend",
-    spanProcessors: [
-      "auto",
-      ...analyticsSpanProcessor === null ? [] : [analyticsSpanProcessor],
-    ],
+function getBackendInstrumentation() {
+  const options = {
+    // Instrumentation classes are the only provider-specific wiring required;
+    // the SDK owns the OTel provider and converts their spans to native rows.
     instrumentations: [
       new PrismaInstrumentation(),
       ...getNodeAutoInstrumentations({
@@ -37,19 +22,37 @@ export async function registerNodeInstrumentation(): Promise<void> {
         },
       }),
     ],
-    ...getNodeEnvironment() === "development" ? {
-      // The backend runs several high-frequency background loops. Sampling
-      // unrelated roots keeps both local exporters below their bounded queue
-      // capacity, while the parent-based sampler retains every sampled trace
-      // arriving from the dashboard.
-      traceSampler: createDevelopmentTraceSampler(),
-      traceExporter: new OTLPTraceExporter({
-        url: `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}31/v1/traces`,
-      }),
-    } : {},
-  });
+    // Customer request cookies and correlation labels belong to the customer's
+    // project. Backend observability is intentionally rooted in `internal`.
+    requestAttribution: false,
+    // The backend-owned task-local flag survives Next.js server chunk copies;
+    // standard OTel suppression remains the compatibility path for any other
+    // instrumentation using this exact @opentelemetry/core instance.
+    isTelemetrySuppressed: () => isNodeTelemetrySuppressed() || isTracingSuppressed(context.active()),
+  };
+  instrumentation ??= hexclaveInstrumentation(getHexclaveServerApp(), options);
+  return instrumentation;
+}
+
+export async function registerNodeInstrumentation(): Promise<void> {
+  // Prisma instrumentation accesses the Node global alias during setup.
+  globalThis.global = globalThis;
+  const backendInstrumentation = getBackendInstrumentation();
+  await backendInstrumentation.register();
+  // Route modules can be evaluated from another Next.js server chunk. Hand
+  // them the registered instance's closure instead of making them reconstruct
+  // an SDK instance whose bridge context would not govern Prisma's provider.
+  registerNodeTelemetrySuppressionRunner(
+    backendInstrumentation.runWithTelemetrySuppressed,
+  );
 
   // `process` is guaranteed here because this module is Node-only.
   process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
   initPerfStats();
+}
+
+export async function captureNodeRequestError(
+  ...args: Parameters<HexclaveNextInstrumentation["onRequestError"]>
+): Promise<void> {
+  await getBackendInstrumentation().onRequestError(...args);
 }

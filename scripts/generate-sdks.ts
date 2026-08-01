@@ -145,6 +145,8 @@ withGeneratorLock(async () => {
   const nextOnlyTemplateFiles = new Set([
     "src/integrations/next.ts",
     "src/integrations/next.test.ts",
+    // Physical `@hexclave/next/next` types entry for classic node resolution.
+    "next.d.ts",
   ]);
   const templateOnlyFiles = new Set([
     "src/tanstack-start-server-context.d.ts",

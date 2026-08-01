@@ -8,13 +8,28 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+const TELEMETRY_RESOURCE = {
+  service: { namespace: "e2e", name: "test-client", version: "test" },
+  deploymentEnvironmentName: "test",
+  attributes: { suite: "session-replays" },
+} as const;
+
+/**
+ * The two telemetry batch routes are versioned INDEPENDENTLY, so this file needs
+ * both constants. The session-replay body carries rrweb chunks and did not change
+ * when span identity moved to W3C, so its route still accepts only `[2]` and the
+ * SDK's recorder still sends 2; the events/spans body did change, so that route
+ * requires 3. Using one shared constant for both makes one of the two 400 on every
+ * request.
+ */
 const DEFAULT_REPLAY_TELEMETRY_FIELDS = {
   schema_version: 2,
-  resource: {
-    service: { namespace: "e2e", name: "test-client", version: "test" },
-    deploymentEnvironmentName: "test",
-    attributes: { suite: "session-replays" },
-  },
+  resource: TELEMETRY_RESOURCE,
+} as const;
+
+const DEFAULT_EVENT_TELEMETRY_FIELDS = {
+  schema_version: 3,
+  resource: TELEMETRY_RESOURCE,
 } as const;
 
 function getInternalDatabaseConnectionString(): string {
@@ -251,6 +266,7 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
       method: "POST",
       accessType: "client",
       body: {
+        ...DEFAULT_REPLAY_TELEMETRY_FIELDS,
         browser_session_id: browserSessionId,
         session_replay_segment_id: sessionReplaySegmentId,
         batch_id: concurrentBatchId,
@@ -280,14 +296,13 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
   });
 });
 
-it("emits $session-replay and $session-replay-segment spans queryable via the spans surface", async ({ expect }) => {
+it("emits W3C $session-replay and $session-replay-segment spans with scalar parents", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const now = Date.now();
   const sessionReplaySegmentId = randomUUID();
-
   const uploadRes = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -300,46 +315,43 @@ it("emits $session-replay and $session-replay-segment spans queryable via the sp
     ],
   });
   expect(uploadRes.status).toBe(200);
-  const replayId = uploadRes.body?.session_replay_id as string;
+  const replayId = uploadRes.body?.session_replay_id;
+  if (typeof replayId !== "string") {
+    throw new HexclaveAssertionError("Successful replay upload did not return a replay id");
+  }
 
-  // A successful replay upload now guarantees that its trace spans have crossed
-  // the ClickHouse acceptance boundary; no background-task polling is required.
   const queryRes = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
     accessType: "admin",
     body: {
-      query: "SELECT span_type, span_id, parent_span_ids, session_replay_id, session_replay_segment_id, service_namespace, service_name, service_version, deployment_environment_name, JSONExtractString(resource_attributes, 'suite') AS resource_suite FROM spans WHERE session_replay_id = {replayId:String} ORDER BY span_type",
+      query: "SELECT trace_id, span_type, span_id, parent_span_id, session_replay_segment_id FROM spans WHERE session_replay_id = {replayId:String} ORDER BY span_type",
       params: { replayId },
     },
   });
-
   expect(queryRes.status).toBe(200);
-  const rows = (queryRes.body as any).result;
+  const queryBody = queryRes.body;
+  const result = typeof queryBody === "object" && queryBody !== null && "result" in queryBody
+    ? queryBody.result
+    : null;
+  if (!Array.isArray(result)) {
+    throw new HexclaveAssertionError("Successful analytics query did not return a result array");
+  }
+  const rows = result.filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null);
   expect(rows).toHaveLength(2);
-
-  const replaySpan = rows.find((r: any) => r.span_type === "$session-replay");
-  const segmentSpan = rows.find((r: any) => r.span_type === "$session-replay-segment");
-
-  // Replay-level span: id is prefixed, parented to the refresh-token span, no segment.
-  expect(replaySpan.span_id).toBe(`sri-${replayId}`);
-  expect(replaySpan.parent_span_ids).toHaveLength(1);
-  expect(replaySpan.parent_span_ids[0]).toMatch(/^rti-/);
-  expect(replaySpan.session_replay_segment_id).toBeNull();
+  const replaySpan = rows.find((row) => row.span_type === "$session-replay");
+  const segmentSpan = rows.find((row) => row.span_type === "$session-replay-segment");
   expect(replaySpan).toMatchObject({
-    service_namespace: "e2e",
-    service_name: "test-client",
-    service_version: "test",
-    deployment_environment_name: "test",
-    resource_suite: "session-replays",
+    span_id: replayId.replaceAll("-", "").slice(16),
+    session_replay_segment_id: null,
   });
-
-  // Segment span (per tab): ancestor list is root-first [refresh-token, replay];
-  // its identity combines the replay id with the recording's per-tab segment id.
-  expect(segmentSpan.span_id).toBe(`srsi-${replayId}:${sessionReplaySegmentId}`);
-  expect(segmentSpan.parent_span_ids).toHaveLength(2);
-  expect(segmentSpan.parent_span_ids[0]).toMatch(/^rti-/);
-  expect(segmentSpan.parent_span_ids[1]).toBe(`sri-${replayId}`);
-  expect(segmentSpan.session_replay_segment_id).toBe(sessionReplaySegmentId);
+  expect(replaySpan?.trace_id).toMatch(/^[0-9a-f]{32}$/);
+  expect(replaySpan?.parent_span_id).toMatch(/^[0-9a-f]{16}$/);
+  expect(segmentSpan).toMatchObject({
+    trace_id: replaySpan?.trace_id,
+    span_id: sessionReplaySegmentId.replaceAll("-", "").slice(16),
+    parent_span_id: replaySpan?.span_id,
+    session_replay_segment_id: sessionReplaySegmentId,
+  });
 });
 
 it("accepts a gzipped binary body (compressed large-payload encoding)", async ({ expect }) => {
@@ -1265,6 +1277,7 @@ async function uploadEventBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_EVENT_TELEMETRY_FIELDS,
       session_replay_segment_id: options.sessionReplaySegmentId,
       batch_id: options.batchId,
       sent_at_ms: options.sentAtMs,

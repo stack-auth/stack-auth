@@ -14,8 +14,8 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
-import { buildEventSpanFields } from "./spans";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
+import { resolveCustomerRequestObservability } from "./customer-request-observability";
 
 export const endUserIpInfoSchema = yupObject({
   ip: yupString().defined(),
@@ -387,6 +387,15 @@ export async function logEvent<T extends EventType[]>(
           ? (clickhouseEventData as any).refresh_token_id as string
           : null);
 
+      if (matchingEventType.id === "$token-refresh") {
+        resolveCustomerRequestObservability({
+          projectId,
+          branchId,
+          userId: userId || null,
+          refreshTokenId: resolvedRefreshTokenId,
+        });
+      }
+
       await clickhouseClient.insert({
         table: "analytics_internal.events",
         values: [{
@@ -400,11 +409,9 @@ export async function logEvent<T extends EventType[]>(
           refresh_token_id: resolvedRefreshTokenId ?? null,
           session_replay_id: options.sessionReplayId ?? null,
           session_replay_segment_id: options.sessionReplaySegmentId ?? null,
-          ...buildEventSpanFields({
-            sessionReplayId: options.sessionReplayId ?? null,
-            sessionReplaySegmentId: options.sessionReplaySegmentId ?? null,
-            refreshTokenId: resolvedRefreshTokenId ?? null,
-          }),
+          // No trace/span ids: a backend-produced system event like this happens
+          // outside any span, and an event never roots a trace of its own. The
+          // session columns above are how it is correlated.
         }],
         format: "JSONEachRow",
         clickhouse_settings: {

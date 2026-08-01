@@ -33,16 +33,37 @@ export type SpanPropagationOptions = {
 export type ObservabilityOptions = {
   /** Whether logs, errors, spans, and code instrumentation are enabled. @default true */
   enabled?: boolean,
+  /**
+   * Deterministic sample rate in [0, 1] for healthy traces. Sampling is applied
+   * once to the coalesced SDK flush, so every event/span in one trace receives
+   * the same decision. Failed and slow traces are always retained.
+   *
+   * @default 1
+   */
+  traceSampleRate?: number,
   errorCapture?: ErrorCaptureOptions,
   logs?: LogsOptions,
   spanPropagation?: SpanPropagationOptions,
   network?: NetworkOptions,
 };
 
-export function observabilityOptionsToJson(options: ObservabilityOptions | undefined): ObservabilityOptions | undefined {
-  return options;
+export function normalizeTraceSampleRate(options: ObservabilityOptions | undefined): number {
+  const sampleRate = options?.traceSampleRate ?? options?.network?.sampleRate ?? 1;
+  if (typeof sampleRate !== "number" || !(sampleRate >= 0 && sampleRate <= 1)) {
+    throw new Error("Hexclave analytics: observability.traceSampleRate must be a number between 0 and 1");
+  }
+  if (
+    options?.traceSampleRate !== undefined
+    && options.network?.sampleRate !== undefined
+    && options.traceSampleRate !== options.network.sampleRate
+  ) {
+    throw new Error("Hexclave analytics: observability.traceSampleRate and the deprecated network.sampleRate alias must match when both are set");
+  }
+  return sampleRate;
 }
 
-export function observabilityOptionsFromJson(options: ObservabilityOptions | undefined): ObservabilityOptions | undefined {
-  return options;
-}
+// ObservabilityOptions is JSON-native by construction (no RegExp/function-valued
+// fields, unlike AnalyticsOptions.replays.blockClass and TelemetryOptions.waitUntil),
+// so it crosses the SSR serialization boundary as-is — there is deliberately no
+// toJson/fromJson pair here. Keep it that way: adding a non-JSON field means
+// adding the codec, not silently dropping the field.
