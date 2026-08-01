@@ -1,4 +1,4 @@
-// Shared shell for the skill pages served by this app (`/` and `/deployments`).
+// Shared shell for the skill pages served by this app (`/`, `/deployments`, and `/workflows`).
 // Every such page is the same document: a content-negotiated endpoint that
 // serves styled HTML to browsers and raw `text/markdown` to agents/curl, with
 // the skill markdown embedded verbatim in a <details> block. Only the title,
