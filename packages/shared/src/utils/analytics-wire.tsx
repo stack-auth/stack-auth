@@ -138,7 +138,7 @@ export type TelemetrySignalDescriptor = {
 };
 
 export const SYSTEM_EVENT_TYPES = [
-  "$page-view", "$click", "$form-submit", "$window-resize", "$copy", "$cut",
+  "$page-view", "$click", "$keystroke", "$form-submit", "$window-resize", "$copy", "$cut",
   "$paste", "$context-menu", "$print", "$fullscreen-exit", "$error", "$log",
 ] as const;
 export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
@@ -219,7 +219,10 @@ export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
 // same ceiling for every event/span preserves its generated payloads while
 // giving current custom telemetry one bounded validation contract.
 export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
-export const CUSTOM_TELEMETRY_MAX_PARENT_CHAIN = 10;
+// Instrumentation scope names identify the library/tracer that emitted a span.
+// They ride on the SDK wire so operation names can live in `span_type` without
+// losing the distinction between customer-authored and auto-instrumented work.
+export const TELEMETRY_SCOPE_NAME_MAX_BYTES = 1_024;
 // Cap on a `$log` event's message (the human-readable text; structured
 // attributes ride in `data` under the normal item-data cap). Shared so the SDK
 // truncates to exactly what the route accepts instead of 400ing the batch.
@@ -251,11 +254,13 @@ export function truncateUtf8Bytes(value: string, maxBytes: number): string {
 export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 export type LogLevel = typeof LOG_LEVELS[number];
 
-// The one uuid shape accepted anywhere in the telemetry pipeline (span ids,
-// parent ids, batch ids, replay ids). Defined ONCE here because the client
-// tracker, the propagation header codec, the server SDK buffer, and the batch
-// route must agree exactly — an id that passes locally but fails server-side
-// 400s the whole batch, so drift between copies is a data-loss bug.
+// The one uuid shape accepted anywhere in the telemetry pipeline for DATABASE
+// identities: batch ids, replay ids, segment ids, user ids, refresh token ids.
+// Span identity is NOT a uuid — it is W3C trace context (see below). Defined
+// ONCE here because the client tracker, the propagation header codec, the
+// server SDK buffer, and the batch route must agree exactly — an id that passes
+// locally but fails server-side 400s the whole batch, so drift between copies
+// is a data-loss bug.
 export const TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const PAGE_VIEW_SPAN_TYPE = "$page-view";
@@ -263,16 +268,30 @@ export const HTTP_CLIENT_SPAN_TYPE = "$http-client";
 export const LIB_SPAN_TYPE = "$lib-span";
 
 // ---------------------------------------------------------------------------
-// Native uuid ↔ W3C trace-context bridge.
+// Native W3C trace context.
 //
-// A uuid is 16 bytes — exactly the size of a W3C trace id (32 lowercase hex
-// chars); its lower 8 bytes are exactly a W3C span id (16 hex chars). The SDK
-// exploits this to connect its native span model to standard OpenTelemetry
-// tracing WITHOUT any ingestion-side correlation state: the `$http-client`
-// span's uuid U becomes the `traceparent` sent with the request, so every
-// backend span of that request stores `trace_id = uuidToW3cTraceId(U)` — a
-// pure function of the client span's own id, joinable at read time.
+// Span identity IS W3C: a 32-hex trace id, a 16-hex span id, and a single
+// nullable parent span id. This replaces the previous model in which every span
+// carried its full ancestor path and ids were namespaced with prefixes; the
+// hierarchy now lives in one scalar column and cross-tier propagation is the
+// standard `traceparent` header rather than a bespoke one.
 // ---------------------------------------------------------------------------
+
+export const W3C_TRACE_ID_RE = /^[0-9a-f]{32}$/;
+export const W3C_SPAN_ID_RE = /^[0-9a-f]{16}$/;
+
+const ALL_ZERO_TRACE_ID = "0".repeat(32);
+const ALL_ZERO_SPAN_ID = "0".repeat(16);
+
+/** Whether `value` is a usable W3C trace id. The all-zero id is invalid per spec. */
+export function isW3cTraceId(value: unknown): value is string {
+  return typeof value === "string" && W3C_TRACE_ID_RE.test(value) && value !== ALL_ZERO_TRACE_ID;
+}
+
+/** Whether `value` is a usable W3C span id. The all-zero id is invalid per spec. */
+export function isW3cSpanId(value: unknown): value is string {
+  return typeof value === "string" && W3C_SPAN_ID_RE.test(value) && value !== ALL_ZERO_SPAN_ID;
+}
 
 function assertTelemetryUuid(uuid: string): void {
   if (!TELEMETRY_UUID_RE.test(uuid)) {
@@ -280,34 +299,84 @@ function assertTelemetryUuid(uuid: string): void {
   }
 }
 
-/** The 32-hex W3C trace id deterministically derived from a native span uuid. */
+/**
+ * Session lifecycle spans need stable W3C identities on both sides of the
+ * browser/server boundary. A UUID is exactly 128 bits, so removing its hyphens
+ * gives a deterministic trace id without hashing or shared state.
+ */
 export function uuidToW3cTraceId(uuid: string): string {
   assertTelemetryUuid(uuid);
   return uuid.toLowerCase().replaceAll("-", "");
 }
 
 /**
- * The 16-hex W3C span id derived from a native span uuid (its lower 8 bytes).
- * For RFC 4122 uuids this is never the forbidden all-zero span id: byte 8
- * carries the variant bits (top bits `10`), so the first hex char is 8–b.
- * The regex above technically admits a `0` variant nibble, so we still fail
- * loud on the (never-generated-by-us) all-zero case rather than emit an
- * invalid traceparent.
+ * The lower 64 bits of a telemetry UUID, used as the stable span id for the
+ * corresponding lifecycle node. Generated RFC 4122 UUIDs cannot produce the
+ * forbidden all-zero value because their variant bits live in this half.
  */
 export function uuidToW3cSpanId(uuid: string): string {
   const spanId = uuidToW3cTraceId(uuid).slice(16);
-  if (spanId === "0000000000000000") {
-    throw new HexclaveAssertionError("Derived W3C span id is all-zero; the uuid must have been generated outside crypto.randomUUID, which guarantees RFC 4122 variant bits");
+  if (!isW3cSpanId(spanId)) {
+    throw new HexclaveAssertionError("Derived W3C span id is all-zero; expected an RFC 4122 telemetry uuid");
   }
   return spanId;
 }
 
+function randomHex(bytes: number): string {
+  const buffer = new Uint8Array(bytes);
+  crypto.getRandomValues(buffer);
+  let hex = "";
+  for (const byte of buffer) hex += byte.toString(16).padStart(2, "0");
+  return hex;
+}
+
 /**
- * The `traceparent` header value derived from a native `$http-client` span
- * uuid. Always flagged sampled (`01`): the client only emits a traceparent
- * when it actually stored the bridge span, and parent-based samplers
- * downstream should then keep the whole request trace.
+ * A fresh trace id. Retries rather than accepting the all-zero value — the odds
+ * are 2^-128, but an invalid id would silently break every downstream join, so
+ * the loop is cheaper than the failure mode.
  */
-export function buildTraceparent(uuid: string): string {
-  return `00-${uuidToW3cTraceId(uuid)}-${uuidToW3cSpanId(uuid)}-01`;
+export function generateW3cTraceId(): string {
+  let id = randomHex(16);
+  while (id === ALL_ZERO_TRACE_ID) id = randomHex(16);
+  return id;
+}
+
+export function generateW3cSpanId(): string {
+  let id = randomHex(8);
+  while (id === ALL_ZERO_SPAN_ID) id = randomHex(8);
+  return id;
+}
+
+export type W3cTraceContext = {
+  traceId: string,
+  spanId: string,
+  /** The `sampled` flag from traceFlags. */
+  sampled: boolean,
+};
+
+/**
+ * Formats a W3C `traceparent`, preserving the caller's sampling decision.
+ */
+export function formatTraceparent(context: W3cTraceContext): string {
+  return `00-${context.traceId}-${context.spanId}-${context.sampled ? "01" : "00"}`;
+}
+
+/**
+ * Parses a `traceparent`, returning null for anything unusable.
+ *
+ * Version `ff` is invalid per spec. Unknown future versions are accepted for
+ * forward compatibility: the spec requires parsing the first three fields the
+ * same way and ignoring extra trailing ones, so a v01 header still yields a
+ * usable trace context here.
+ */
+export function parseTraceparent(value: unknown): W3cTraceContext | null {
+  if (typeof value !== "string") return null;
+  const parts = value.trim().toLowerCase().split("-");
+  if (parts.length < 4) return null;
+  const [version, traceId, spanId, flags] = parts;
+  if (!/^[0-9a-f]{2}$/.test(version) || version === "ff") return null;
+  if (!isW3cTraceId(traceId) || !isW3cSpanId(spanId)) return null;
+  if (!/^[0-9a-f]{2}$/.test(flags)) return null;
+  // Bit 0 of traceFlags is `sampled`; every other bit is reserved and ignored.
+  return { traceId, spanId, sampled: (Number.parseInt(flags, 16) & 0x01) === 0x01 };
 }
