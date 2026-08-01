@@ -55,7 +55,7 @@ export function readRemoteDevelopmentEnvironmentState(): RemoteDevelopmentEnviro
   if (!existsSync(path)) {
     return emptyRemoteDevelopmentEnvironmentState();
   }
-  if ((statSync(path).mode & 0o077) !== 0) {
+  if (process.platform !== "win32" && (statSync(path).mode & 0o077) !== 0) {
     chmodSync(path, 0o600);
     if ((statSync(path).mode & 0o077) !== 0) {
       throw new Error(`${path} must not be readable or writable by group/others. Run: chmod 600 ${path}`);

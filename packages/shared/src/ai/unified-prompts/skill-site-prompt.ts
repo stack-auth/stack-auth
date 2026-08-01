@@ -9,6 +9,7 @@ import { dashboardInstructionsPrompt } from "./skill-site-prompt-parts/dashboard
 import { deploymentsSkillSection } from "./skill-site-prompt-parts/deployments-skill";
 import { docsIndexPrompt } from "./skill-site-prompt-parts/docs-index";
 import { sdkInterfaceSourcePrompt } from "./skill-site-prompt-parts/sdk-interface-source";
+import { workflowsSkillSection } from "./skill-site-prompt-parts/workflows-skill";
 
 export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
   return deindent`
@@ -88,3 +89,18 @@ export function buildDeploymentsSkillSitePrompt(baseSkillPrompt = skillSitePromp
 }
 
 export const deploymentsSkillSitePrompt = buildDeploymentsSkillSitePrompt();
+
+// Same shape as the /deployments variant above, for the Workflows app. Served at
+// https://skill.hexclave.com/workflows. Workflows are unusual among apps in that
+// their source lives only in the dashboard (no config section, no CLI command),
+// so the addendum's main job is telling the agent to write the file and hand it
+// to the user rather than looking for a command that does not exist.
+export function buildWorkflowsSkillSitePrompt(baseSkillPrompt = skillSitePrompt) {
+  return deindent`
+    ${baseSkillPrompt}
+
+    ${workflowsSkillSection}
+  `;
+}
+
+export const workflowsSkillSitePrompt = buildWorkflowsSkillSitePrompt();
