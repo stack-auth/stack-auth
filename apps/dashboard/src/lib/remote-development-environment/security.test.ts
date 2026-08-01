@@ -5,6 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 vi.mock("server-only", () => ({}));
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    chmodSync: vi.fn(actual.chmodSync),
+  };
+});
 
 let tempDir: string | undefined;
 const remoteDevelopmentEnvironmentEnabledEnv = "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT";
@@ -41,12 +48,32 @@ afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
   }
+  vi.restoreAllMocks();
   // Reset process-global browser-secret state so tests don't leak into each other.
-  delete (globalThis as Record<string, unknown>).__stackRemoteDevelopmentEnvironmentBrowserSecret;
+  delete globalThis.__stackRemoteDevelopmentEnvironmentBrowserSecret;
   vi.resetModules();
 });
 
 describe("remote development environment security", () => {
+  it("does not enforce POSIX state file permissions on Windows", async () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    const chmodSpy = vi.mocked(chmodSync);
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    chmodSync(statePath, 0o644);
+    chmodSpy.mockClear();
+    const { readRemoteDevelopmentEnvironmentState } = await import("./state");
+
+    expect(readRemoteDevelopmentEnvironmentState()).toMatchObject({
+      version: 1,
+      projectsByConfigPath: {},
+    });
+    expect(chmodSpy).not.toHaveBeenCalled();
+  });
+
   it("is inactive unless explicitly enabled", async () => {
     useTempStateFile();
     delete process.env[remoteDevelopmentEnvironmentEnabledEnv];
@@ -276,7 +303,7 @@ describe("remote development environment security", () => {
     })).rejects.toThrow(/session is not active/);
   });
 
-  it("repairs broad state file permissions before checking requests", async () => {
+  it.skipIf(process.platform === "win32")("repairs broad state file permissions before checking requests", async () => {
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {
