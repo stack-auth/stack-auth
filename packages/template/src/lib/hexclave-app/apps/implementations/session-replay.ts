@@ -1,98 +1,15 @@
-import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { captureWarning, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
+import type { AnalyticsReplayOptions } from "./analytics-config";
+import type { TelemetryResource } from "./telemetry-config";
 
-export type AnalyticsReplayOptions = {
-  /**
-   * Whether session replays are enabled.
-   *
-   * @default true
-   */
-  enabled?: boolean,
-  /**
-   * Whether to mask the content of all `<input>` elements.
-   *
-   * @default true
-   */
-  maskAllInputs?: boolean,
-  /**
-   * A CSS class name or RegExp. Elements with a matching class will be blocked
-   * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
-   */
-  blockClass?: string | RegExp,
-  /**
-   * A CSS selector string. Elements matching this selector will be blocked
-   * (replaced with a placeholder in the recording).
-   *
-   * @default undefined
-   */
-  blockSelector?: string,
-};
-
-export type AnalyticsOptions = {
-  /**
-   * Whether SDK-managed analytics capture is enabled.
-   *
-   * @default true
-   */
-  enabled?: boolean,
-  /**
-   * Options for session replay recording. Replays are enabled by default;
-   * set `enabled: false` to opt out.
-   */
-  replays?: AnalyticsReplayOptions,
-};
-
-export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {
-  return {
-    ...analyticsOptions?.replays,
-    enabled: analyticsOptions?.replays?.enabled ?? true,
-  };
-}
-
-/**
- * Converts AnalyticsOptions to a JSON-safe representation.
- * RegExp blockClass values are serialized as `{ __regexp, __flags }` objects.
- * The return type is AnalyticsOptions to keep StackClientAppJson simple;
- * the actual runtime value is JSON-safe.
- */
-export function analyticsOptionsToJson(options: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
-  if (!options?.replays?.blockClass) return options;
-  const { blockClass, ...rest } = options.replays;
-  if (!(blockClass instanceof RegExp)) return options;
-  return {
-    ...options,
-    replays: {
-      ...rest,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      blockClass: { __regexp: blockClass.source, __flags: blockClass.flags } as any,
-    },
-  };
-}
-
-/**
- * Reconstructs AnalyticsOptions from a JSON-deserialized value.
- * Converts `{ __regexp, __flags }` objects back to RegExp instances.
- */
-export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
-  if (!json?.replays?.blockClass) return json;
-  const { blockClass, ...rest } = json.replays;
-  if (typeof blockClass === 'object' && '__regexp' in blockClass) {
-    const bc = blockClass as unknown as { __regexp: string, __flags: string };
-    return {
-      ...json,
-      replays: {
-        ...rest,
-        blockClass: new RegExp(bc.__regexp, bc.__flags),
-      },
-    };
-  }
-  return json;
-}
+// This module is lazy-loaded (see ClientAnalytics), so it deliberately
+// re-exports nothing: a value import routed through here would drag the whole
+// recorder into the initial bundle. Options helpers live in analytics-config.ts,
+// transport primitives in telemetry-transport.ts — import them from there.
 
 // ---------- Recording internals ----------
 
@@ -102,6 +19,7 @@ const LOCAL_STORAGE_PREFIX = "hexclave:session-replay:v1";
 // across an SDK upgrade is not orphaned. Never written.
 const LEGACY_LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
 const IDLE_TTL_MS = 3 * 60 * 1000;
+const MAX_SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
@@ -171,16 +89,16 @@ export function makeLegacyStorageKey(projectId: string) {
   return `${LEGACY_LOCAL_STORAGE_PREFIX}:${projectId}`;
 }
 
-export function generateUuid() {
-  return crypto.randomUUID();
-}
-
 export function getOrRotateSession(options: { key: string, legacyKey?: string, nowMs: number }): StoredSession {
   // Hexclave rebrand: prefer the new key; fall back to the legacy key so a
   // recording session active across an SDK upgrade is not orphaned.
   const existing = safeParseStoredSession(localStorage.getItem(options.key))
     ?? (options.legacyKey ? safeParseStoredSession(localStorage.getItem(options.legacyKey)) : null);
-  if (existing && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS) {
+  if (
+    existing
+    && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS
+    && options.nowMs - existing.created_at_ms <= MAX_SESSION_DURATION_MS
+  ) {
     return existing;
   }
   const next: StoredSession = {
@@ -194,31 +112,17 @@ export function getOrRotateSession(options: { key: string, legacyKey?: string, n
 
 export type SessionRecorderDeps = {
   projectId: string,
+  resource: TelemetryResource,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
   // Per-tab id shared with the EventTracker so replay chunks and analytics
   // events from the same tab carry the same session_replay_segment_id. Falls
   // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
+  /** Rotate the shared tab span when the durable replay lifecycle rotates. */
+  onSessionRotation?: () => void,
+  /** The replay endpoint has materialized this segment and it is safe to parent under it. */
+  onSessionReplaySegmentMaterialized?: (segmentId: string) => Promise<void>,
 };
-
-export function isAnalyticsNotEnabledError(error: unknown): boolean {
-  return KnownErrors.AnalyticsNotEnabled.isInstance(error);
-}
-
-/**
- * Whether the error looks like a network failure caused by an ad blocker or
- * similar extension blocking analytics requests. These are expected in
- * production and should be silently ignored rather than logged as warnings.
- */
-export function isAdBlockerNetworkError(error: unknown): boolean {
-  if (error instanceof Error) {
-    return error.message.includes("Failed to fetch")
-      || error.message.includes("NetworkError")
-      || error.message.includes("Load failed")
-      || error.message.includes("network connection");
-  }
-  return false;
-}
 
 export class SessionRecorder {
   private _started = false;
@@ -368,6 +272,8 @@ export class SessionRecorder {
 
         const batchId = generateUuid();
         const payload = {
+          schema_version: 2,
+          resource: this._deps.resource,
           browser_session_id: stored.session_id,
           session_replay_segment_id: sessionReplaySegmentId,
           batch_id: batchId,
@@ -413,6 +319,7 @@ export class SessionRecorder {
           captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed (dropping ${droppedCount} buffered event(s)): ${res.data.status} ${await res.data.text()}`));
           return;
         }
+        await this._deps.onSessionReplaySegmentMaterialized?.(sessionReplaySegmentId);
       }
     } finally {
       this._flushInProgress = false;
@@ -526,6 +433,10 @@ export class SessionRecorder {
           this._lastBrowserSessionId = stored.session_id;
         } else if (stored.session_id !== this._lastBrowserSessionId && !this._takingSnapshot) {
           this._lastBrowserSessionId = stored.session_id;
+          // One segment span may have only one replay parent in the scalar
+          // schema. Rotate the tab identity at the exact replay boundary so a
+          // later replay can never re-parent an existing segment row.
+          this._deps.onSessionRotation?.();
           // Inject a FullSnapshot for the new session (calls emit synchronously)
           this._takingSnapshot = true;
           try {

@@ -1,11 +1,11 @@
 import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@hexclave/shared/dist/plans";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, generateW3cSpanId, generateW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { it } from "../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+import { Auth, INTERNAL_PROJECT_OWNER_TEAM_ID, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import {
   getItemQuantity,
   setItemQuantity,
@@ -13,13 +13,26 @@ import {
   waitForItemQuantityToStabilize,
 } from "../../../payment-quota-helpers";
 
+const DEFAULT_TELEMETRY_RESOURCE = {
+  service: { namespace: "e2e", name: "test-client", version: "test" },
+  deploymentEnvironmentName: "test",
+  attributes: { suite: "analytics-events-batch" },
+} as const;
+
 const DEFAULT_TELEMETRY_BATCH_FIELDS = {
+  schema_version: 3,
+  resource: DEFAULT_TELEMETRY_RESOURCE,
+} as const;
+
+/**
+ * The session-replay batch is versioned INDEPENDENTLY of the events/spans batch
+ * and is still at 2: its body carries rrweb chunks, and that shape did not change
+ * when span identity moved to W3C. Sending 3 here is rejected by the route, so
+ * these fields cannot be shared with DEFAULT_TELEMETRY_BATCH_FIELDS.
+ */
+const DEFAULT_REPLAY_BATCH_FIELDS = {
   schema_version: 2,
-  resource: {
-    service: { namespace: "e2e", name: "test-client", version: "test" },
-    deploymentEnvironmentName: "test",
-    attributes: { suite: "analytics-events-batch" },
-  },
+  resource: DEFAULT_TELEMETRY_RESOURCE,
 } as const;
 
 async function uploadEventBatch(options: {
@@ -147,9 +160,11 @@ it("rejects a literal null JSON body instead of crashing", async ({ expect }) =>
   `);
 });
 
-// Regression test: the cross-item single-parent-path test used to iterate raw
-// span items (reading span.span_id / span.parent_span_ids) before item-level
-// field validation had a chance to reject malformed items, crashing with a 500.
+// Regression test: yup runs a parent object's own tests even when its children
+// are failing validation, so the batch-level cross-item test (today the
+// duplicate-span-id check) sees the RAW span array — including entries that are
+// not objects at all. Reading `span.span_id` off those used to throw a 500
+// before the item's own nullability error could be reported.
 it("rejects null span items instead of crashing", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
@@ -191,10 +206,12 @@ it("rejects null span items instead of crashing", async ({ expect }) => {
   `);
 });
 
-// Regression test: the page-view-span-parent test used to read
-// span.parent_span_ids.length on an item that omitted the (required)
-// parent_span_ids field, crashing with a 500 instead of a schema error.
-it("rejects a $page-view span missing parent_span_ids instead of crashing", async ({ expect }) => {
+// Regression test: `parent_span_id` is required-but-nullable, and the span
+// item's own object-level tests (parent != self, page_view_span_id != self) run
+// even while a required field is missing. They must therefore tolerate the
+// absent field and let the field-level `must be defined` error be the answer,
+// rather than dereferencing it and crashing with a 500.
+it("rejects a span missing parent_span_id instead of crashing", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
@@ -208,7 +225,8 @@ it("rejects a $page-view span missing parent_span_ids instead of crashing", asyn
       batch_id: randomUUID(),
       sent_at_ms: Date.now(),
       spans: [{
-        span_id: randomUUID(),
+        trace_id: generateW3cTraceId(),
+        span_id: generateW3cSpanId(),
         span_type: "$page-view",
         started_at_ms: Date.now(),
         ended_at_ms: null,
@@ -226,12 +244,12 @@ it("rejects a $page-view span missing parent_span_ids instead of crashing", asyn
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - body.spans[0].parent_span_ids must be defined
+              - body.spans[0].parent_span_id must be defined
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - body.spans[0].parent_span_ids must be defined
+            - body.spans[0].parent_span_id must be defined
         \`,
       },
       "headers": Headers {
@@ -342,6 +360,40 @@ it("accepts valid $click events", async ({ expect }) => {
         },
       },
     ],
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "accepted_spans": 0,
+        "inserted": 1,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("accepts privacy-safe debounced $keystroke events", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: [{
+      event_type: "$keystroke",
+      event_at_ms: now - 500,
+      data: {
+        count: 7,
+        duration_ms: 420,
+        url: "https://example.com/search",
+        path: "/search",
+      },
+    }],
   });
 
   expect(res).toMatchInlineSnapshot(`
@@ -702,12 +754,12 @@ it("rejects invalid event_type", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - event_type must be one of $page-view, $click, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit, $error, $log or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
+              - event_type must be one of $page-view, $click, $keystroke, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit, $error, $log or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - event_type must be one of $page-view, $click, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit, $error, $log or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
+            - event_type must be one of $page-view, $click, $keystroke, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit, $error, $log or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
         \`,
       },
       "headers": Headers {
@@ -792,7 +844,7 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   `);
 });
 
-it("sets parent_span_ids on inserted events", async ({ expect }) => {
+it("leaves trace/span correlation null for an event with no enclosing span", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
@@ -820,7 +872,7 @@ it("sets parent_span_ids on inserted events", async ({ expect }) => {
       method: "POST",
       accessType: "admin",
       body: {
-        query: "SELECT parent_span_ids, session_replay_id FROM events WHERE session_replay_segment_id = {segId:String}",
+        query: "SELECT trace_id, span_id, session_replay_id FROM events WHERE session_replay_segment_id = {segId:String}",
         params: { segId: sessionReplaySegmentId },
       },
     });
@@ -831,11 +883,16 @@ it("sets parent_span_ids on inserted events", async ({ expect }) => {
 
   expect(queryRes?.status).toBe(200);
   const row = (queryRes?.body as any).result[0];
-  // No active session replay for this user, so the only ancestor span is the
-  // refresh-token span. The per-tab id itself lives in session_replay_segment_id.
+  // An event's trace_id/span_id name the span it happened INSIDE — they are not
+  // synthesized server-side. This batch declared no enclosing span, so both stay
+  // null and the row is correlated purely by session/segment scalars. (The
+  // refresh token is likewise no longer an ancestor: it is a session, not an
+  // operation, so it never appears in the hierarchy.)
+  expect(row.trace_id).toBeNull();
+  expect(row.span_id).toBeNull();
+  // No active session replay for this user; the per-tab id lives in
+  // session_replay_segment_id.
   expect(row.session_replay_id).toBeNull();
-  expect(row.parent_span_ids).toHaveLength(1);
-  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
 });
 
 // ============================================================================
@@ -1034,8 +1091,8 @@ it("debits spans against the analytics spans item, not analytics events", { time
       batch_id: randomUUID(),
       sent_at_ms: now,
       spans: [
-        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
-        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 500, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
+        { trace_id: generateW3cTraceId(), span_id: generateW3cSpanId(), parent_span_id: null, span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, data: {}, updated_at_ms: now },
+        { trace_id: generateW3cTraceId(), span_id: generateW3cSpanId(), parent_span_id: null, span_type: "checkout-flow", started_at_ms: now - 500, ended_at_ms: null, data: {}, updated_at_ms: now },
       ],
     },
   });
@@ -1074,7 +1131,7 @@ it("rejects the whole batch when span quota is insufficient without partially de
       sent_at_ms: now,
       events: [{ event_type: "$page-view", event_at_ms: now, data: {} }],
       spans: [
-        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
+        { trace_id: generateW3cTraceId(), span_id: generateW3cSpanId(), parent_span_id: null, span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, data: {}, updated_at_ms: now },
       ],
     },
   });
@@ -1141,6 +1198,7 @@ async function uploadSessionReplayBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
+      ...DEFAULT_REPLAY_BATCH_FIELDS,
       browser_session_id: options.browserSessionId,
       session_replay_segment_id: options.sessionReplaySegmentId,
       batch_id: options.batchId,
@@ -1181,14 +1239,19 @@ function sessionReplayIdFromResponseBody(body: unknown): string {
   return sessionReplayId;
 }
 
+// A minimal valid wire span: its own trace, no parent (i.e. a trace root).
+// Callers that want a hierarchy pass an explicit `trace_id` + `parent_span_id`
+// pair — the server never mints or rewrites either, so a child must be told
+// which trace it belongs to.
 function makeCustomSpan(overrides?: Record<string, unknown>) {
   const now = Date.now();
   return {
-    span_id: randomUUID(),
+    trace_id: generateW3cTraceId(),
+    span_id: generateW3cSpanId(),
+    parent_span_id: null,
     span_type: "checkout-flow",
     started_at_ms: now - 1000,
     ended_at_ms: null,
-    parent_span_ids: [],
     data: {},
     updated_at_ms: now,
     ...overrides,
@@ -1217,15 +1280,25 @@ async function queryAnalyticsUntil(
   return queryRes;
 }
 
-it("accepts custom events and stamps system ancestry on them", async ({ expect }) => {
+it("accepts custom events and stores their enclosing span identity verbatim", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
+  const traceId = generateW3cTraceId();
+  const enclosingSpanId = generateW3cSpanId();
+  const pageViewSpanId = generateW3cSpanId();
   const now = Date.now();
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
-    events: [{ event_type: "checkout_completed", event_at_ms: now - 100, data: { cart_size: 3 } }],
+    events: [{
+      event_type: "checkout_completed",
+      event_at_ms: now - 100,
+      data: { cart_size: 3 },
+      trace_id: traceId,
+      span_id: enclosingSpanId,
+      page_view_span_id: pageViewSpanId,
+    }],
   });
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
@@ -1239,24 +1312,27 @@ it("accepts custom events and stamps system ancestry on them", async ({ expect }
   `);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    query: "SELECT event_type, trace_id, span_id, page_view_span_id FROM events WHERE session_replay_segment_id = {segId:String}",
     params: { segId: sessionReplaySegmentId },
   }, (r) => r.body?.result?.length === 1);
 
   expect(queryRes?.status).toBe(200);
   const row = (queryRes?.body as any).result[0];
   expect(row.event_type).toBe("checkout_completed");
-  // No active session replay, so the only system ancestor is the refresh-token span.
-  expect(row.parent_span_ids).toHaveLength(1);
-  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
+  // The behavioural core of the W3C model: the ids the SDK sent are the ids that
+  // land. No prefix namespace, no server-composed ancestry, no rewriting.
+  expect(row.trace_id).toBe(traceId);
+  expect(row.span_id).toBe(enclosingSpanId);
+  expect(row.page_view_span_id).toBe(pageViewSpanId);
 });
 
-it("server-auth telemetry parents under the forwarded client-session context", async ({ expect }) => {
+it("server-auth telemetry stamps the forwarded client-session context as correlation", async ({ expect }) => {
   // A server span opened with withSpan({ request }) forwards the caller's resolved
   // context (refresh token from the session, replay/segment from the propagation
-  // header) as scalars; the backend composes the full $refresh-token/$session-replay/
-  // $session-replay-segment ancestry and stamps the scalar columns, exactly like a
+  // header) as scalars, and the backend stamps them onto the row exactly like a
   // browser event — even though the batch is sent with the secret server key.
+  // None of them is ancestry: hierarchy travels only in trace_id/span_id, which
+  // the caller supplies from the traceparent it received.
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
   const me = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
@@ -1273,7 +1349,8 @@ it("server-auth telemetry parents under the forwarded client-session context", a
   expect(replayBatch.status).toBe(200);
   const refreshTokenId = currentRefreshTokenId();
   const sessionReplayId = sessionReplayIdFromResponseBody(replayBatch.body);
-  const customParent = randomUUID();
+  const traceId = generateW3cTraceId();
+  const enclosingSpanId = generateW3cSpanId();
   const now = Date.now();
 
   const res = await uploadTelemetryBatch({
@@ -1281,27 +1358,24 @@ it("server-auth telemetry parents under the forwarded client-session context", a
     refresh_token_id: refreshTokenId,
     session_replay_id: sessionReplayId,
     session_replay_segment_id: sessionReplaySegmentId,
-    events: [{ event_type: "server_action", event_at_ms: now - 100, data: { ok: true }, parent_span_ids: [customParent] }],
+    events: [{ event_type: "server_action", event_at_ms: now - 100, data: { ok: true }, trace_id: traceId, span_id: enclosingSpanId }],
   }, { accessType: "server", userAuth: {} });
   expect(res.status).toBe(200);
   expect(res.body).toEqual({ inserted: 1, accepted_spans: 0 });
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, parent_span_ids, refresh_token_id, session_replay_id, session_replay_segment_id, user_id FROM events WHERE session_replay_segment_id = {segId:String}",
+    query: "SELECT event_type, trace_id, span_id, refresh_token_id, session_replay_id, session_replay_segment_id, user_id FROM events WHERE session_replay_segment_id = {segId:String}",
     params: { segId: sessionReplaySegmentId },
   }, (r) => r.body?.result?.length === 1);
 
   expect(queryRes?.status).toBe(200);
   const row = (queryRes?.body as any).result[0];
   expect(row.event_type).toBe("server_action");
-  // Root-first system ancestry composed server-side, then the custom parent (cs-).
-  expect(row.parent_span_ids).toEqual([
-    `rti-${refreshTokenId}`,
-    `sri-${sessionReplayId}`,
-    `srsi-${sessionReplayId}:${sessionReplaySegmentId}`,
-    `cs-${customParent}`,
-  ]);
-  // Scalar columns are stamped too (not just parent_span_ids), so replay filtering works.
+  // Hierarchy is exactly what the caller sent — the session context around it
+  // adds correlation columns, never ancestor ids.
+  expect(row.trace_id).toBe(traceId);
+  expect(row.span_id).toBe(enclosingSpanId);
+  // Scalar columns are stamped too, so replay filtering works.
   expect(row.refresh_token_id).toBe(refreshTokenId);
   expect(row.session_replay_id).toBe(sessionReplayId);
   expect(row.session_replay_segment_id).toBe(sessionReplaySegmentId);
@@ -1372,7 +1446,7 @@ it("does not derive a fallback replay from another user when server auth supplie
   expect(res.status).toBe(200);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT user_id, refresh_token_id, session_replay_id, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    query: "SELECT user_id, refresh_token_id, session_replay_id FROM events WHERE session_replay_segment_id = {segId:String}",
     params: { segId: serverSegmentId },
   }, (r) => r.body?.result?.length === 1);
 
@@ -1380,11 +1454,10 @@ it("does not derive a fallback replay from another user when server auth supplie
   const row = (queryRes?.body as any).result[0];
   expect(row.user_id).toBe(secondUser.userId);
   expect(row.refresh_token_id).toBe(refreshTokenId);
+  // When the forwarded token belongs to a different user there is no valid replay
+  // identity to attach, so the replay column stays null rather than leaking
+  // another user's recording; the scalar segment id remains for correlation.
   expect(row.session_replay_id).toBeNull();
-  // A replay-segment span id includes its replay id. When the forwarded token
-  // belongs to a different user, there is no valid replay identity to attach;
-  // the scalar segment id remains available for correlation.
-  expect(row.parent_span_ids).toEqual([`rti-${refreshTokenId}`]);
   expect(firstUser.userId).not.toBe(secondUser.userId);
 });
 
@@ -1399,64 +1472,205 @@ it("rejects the forwarded server context under client auth", async ({ expect }) 
   expect(res.status).toBe(400);
 });
 
-it("appends the client-supplied custom parent chain after system ancestry on events", async ({ expect }) => {
+// ---------------------------------------------------------------------------
+// W3C identity shape. These are the only structural rules left on the
+// hierarchy: with a single scalar parent there is no ancestry PATH to validate,
+// so what remains is per-field (32/16 lowercase hex, never all-zero) plus the
+// two self-reference rules. Every id below is malformed in exactly one way so a
+// regression can be attributed to a specific rule rather than "something threw".
+// ---------------------------------------------------------------------------
+
+// The ways a W3C hex id can be wrong. `uppercase` and `nonHex` are deliberately
+// the RIGHT length so a passing length check cannot mask a missing character
+// check, and `allZero` is the spec's reserved invalid id — the one value that is
+// perfectly well-formed hex yet must still be refused.
+const MALFORMED_TRACE_IDS = {
+  tooShort: "a".repeat(31),
+  tooLong: "a".repeat(33),
+  uppercase: `A${"a".repeat(31)}`,
+  nonHex: `${"a".repeat(31)}z`,
+  allZero: "0".repeat(32),
+} as const;
+
+const MALFORMED_SPAN_IDS = {
+  tooShort: "a".repeat(15),
+  tooLong: "a".repeat(17),
+  uppercase: `A${"a".repeat(15)}`,
+  nonHex: `${"a".repeat(15)}z`,
+  allZero: "0".repeat(16),
+} as const;
+
+it("rejects trace_ids that are not 32 lowercase hex characters", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
-  const sessionReplaySegmentId = randomUUID();
-  const parentSpanId = randomUUID();
-  const now = Date.now();
-  const res = await uploadTelemetryBatch({
-    session_replay_segment_id: sessionReplaySegmentId,
-    events: [{
-      event_type: "checkout_step",
-      event_at_ms: now - 100,
-      data: { step: 1 },
-      parent_span_ids: [parentSpanId],
-    }],
-  });
-  expect(res.status).toBe(200);
-  expect(res.body.inserted).toBe(1);
-  expect(res.body.accepted_spans).toBe(0);
-
-  const queryRes = await queryAnalyticsUntil({
-    query: "SELECT parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
-    params: { segId: sessionReplaySegmentId },
-  }, (r) => r.body?.result?.length === 1);
-
-  expect(queryRes?.status).toBe(200);
-  const row = (queryRes?.body as any).result[0];
-  // Root-first: system ancestry (refresh-token) first, then the cs-prefixed custom chain.
-  expect(row.parent_span_ids).toHaveLength(2);
-  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
-  expect(row.parent_span_ids[1]).toBe(`cs-${parentSpanId}`);
+  for (const [reason, traceId] of Object.entries(MALFORMED_TRACE_IDS)) {
+    const res = await uploadTelemetryBatch({
+      session_replay_segment_id: randomUUID(),
+      spans: [makeCustomSpan({ trace_id: traceId })],
+    });
+    expect({ reason, status: res.status, code: res.body?.code }).toEqual({ reason, status: 400, code: "SCHEMA_ERROR" });
+  }
 });
 
-it("rejects sibling spans flattened into one parent_span_ids path", async ({ expect }) => {
+it("rejects span_ids and parent_span_ids that are not 16 lowercase hex characters", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
-  const rootSpanId = randomUUID();
-  const leftSpanId = randomUUID();
-  const rightSpanId = randomUUID();
+  for (const [reason, spanId] of Object.entries(MALFORMED_SPAN_IDS)) {
+    const badSpanId = await uploadTelemetryBatch({
+      session_replay_segment_id: randomUUID(),
+      spans: [makeCustomSpan({ span_id: spanId })],
+    });
+    expect({ field: "span_id", reason, status: badSpanId.status, code: badSpanId.body?.code })
+      .toEqual({ field: "span_id", reason, status: 400, code: "SCHEMA_ERROR" });
+
+    const badParentSpanId = await uploadTelemetryBatch({
+      session_replay_segment_id: randomUUID(),
+      spans: [makeCustomSpan({ parent_span_id: spanId })],
+    });
+    expect({ field: "parent_span_id", reason, status: badParentSpanId.status, code: badParentSpanId.body?.code })
+      .toEqual({ field: "parent_span_id", reason, status: 400, code: "SCHEMA_ERROR" });
+  }
+});
+
+it("rejects a span that names itself as its own parent", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const spanId = generateW3cSpanId();
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [
-      makeCustomSpan({ span_id: rootSpanId }),
-      makeCustomSpan({ span_id: leftSpanId, parent_span_ids: [rootSpanId] }),
-      makeCustomSpan({ span_id: rightSpanId, parent_span_ids: [rootSpanId] }),
-    ],
-    events: [{
-      event_type: "invalid_flattened_path",
-      event_at_ms: Date.now(),
-      data: {},
-      parent_span_ids: [rootSpanId, leftSpanId, rightSpanId],
-    }],
+    spans: [makeCustomSpan({ span_id: spanId, parent_span_id: spanId })],
   });
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("parent_span_ids must describe one ancestry path");
+});
+
+it("rejects two spans sharing one span_id in the same batch", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  // The one cross-item rule that survives the ancestry deletion: same-id rows
+  // would silently collapse into each other in the ReplacingMergeTree, so the
+  // second span's data would vanish with a 200 response.
+  const traceId = generateW3cTraceId();
+  const spanId = generateW3cSpanId();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [
+      makeCustomSpan({ trace_id: traceId, span_id: spanId }),
+      makeCustomSpan({ trace_id: traceId, span_id: spanId }),
+    ],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+});
+
+it("rejects an event that carries only one half of its enclosing span reference", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  // A span id is unique only WITHIN its trace, so `span_id` without `trace_id`
+  // does not identify anything, and a `trace_id` with no span says nothing about
+  // where in the trace the event happened. Both or neither.
+  const traceOnly = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "half_context", event_at_ms: Date.now(), data: {}, trace_id: generateW3cTraceId() }],
+  });
+  expect(traceOnly.status).toBe(400);
+  expect(traceOnly.body?.code).toBe("SCHEMA_ERROR");
+
+  const spanOnly = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "half_context", event_at_ms: Date.now(), data: {}, span_id: generateW3cSpanId() }],
+  });
+  expect(spanOnly.status).toBe(400);
+  expect(spanOnly.body?.code).toBe("SCHEMA_ERROR");
+});
+
+it("accepts parent_span_id: null as the trace root and stores identity verbatim", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const traceId = generateW3cTraceId();
+  const rootSpanId = generateW3cSpanId();
+  const childSpanId = generateW3cSpanId();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [
+      makeCustomSpan({ trace_id: traceId, span_id: rootSpanId, parent_span_id: null }),
+      makeCustomSpan({ trace_id: traceId, span_id: childSpanId, parent_span_id: rootSpanId }),
+    ],
+  });
+  expect(res.status).toBe(200);
+  expect(res.body.accepted_spans).toBe(2);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT span_id, trace_id, parent_span_id FROM spans WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 2);
+  expect(queryRes?.status).toBe(200);
+  const rows = (queryRes?.body as any).result as { span_id: string, trace_id: string, parent_span_id: string | null }[];
+
+  // The whole point of the W3C model: what the SDK sent is byte-for-byte what is
+  // stored. A null parent is preserved as null (that is exactly what
+  // trace_roots_mv keys off), and the child's parent reference equals the root's
+  // own span_id — no prefix namespace stands between them any more.
+  const rootRow = rows.find((row) => row.span_id === rootSpanId);
+  expect(rootRow).toEqual({ span_id: rootSpanId, trace_id: traceId, parent_span_id: null });
+  const childRow = rows.find((row) => row.span_id === childSpanId);
+  expect(childRow).toEqual({ span_id: childSpanId, trace_id: traceId, parent_span_id: rootSpanId });
+});
+
+it("round-trips span links into the span_links surface", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const ownerTraceId = generateW3cTraceId();
+  const ownerSpanId = generateW3cSpanId();
+  // Two links, one same-trace and one cross-trace: `links` is how an ambient
+  // context in a DIFFERENT trace than the chosen parent is preserved, so the
+  // cross-trace case is the interesting one.
+  const sameTraceLink = { trace_id: ownerTraceId, span_id: generateW3cSpanId() };
+  const crossTraceLink = { trace_id: generateW3cTraceId(), span_id: generateW3cSpanId() };
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({
+      trace_id: ownerTraceId,
+      span_id: ownerSpanId,
+      links: [sameTraceLink, crossTraceLink],
+    })],
+  });
+  expect(res.status).toBe(200);
+  expect(res.body.accepted_spans).toBe(1);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT trace_id, owner_span_id, linked_trace_id, linked_span_id FROM span_links WHERE owner_span_id = {ownerSpanId:String}",
+    params: { ownerSpanId },
+  }, (r) => r.body?.result?.length === 2);
+  expect(queryRes?.status).toBe(200);
+  const linkRows = (queryRes?.body as any).result as { trace_id: string, owner_span_id: string, linked_trace_id: string, linked_span_id: string }[];
+
+  // Compared by lookup rather than by sorted order: the row order the table
+  // returns is not part of the contract, and the ids are random per run.
+  // `trace_id` on a link row is the OWNER's trace, not the target's — the table
+  // answers "which links does this trace's span declare", so keying by the
+  // target's trace would hide every cross-trace link from the trace that made it.
+  const linkRowsByLinkedSpanId = new Map(linkRows.map((row) => [row.linked_span_id, row]));
+  for (const link of [sameTraceLink, crossTraceLink]) {
+    expect(linkRowsByLinkedSpanId.get(link.span_id)).toEqual({
+      trace_id: ownerTraceId,
+      owner_span_id: ownerSpanId,
+      linked_trace_id: link.trace_id,
+      linked_span_id: link.span_id,
+    });
+  }
 });
 
 it("rejects unknown $-prefixed event types", async ({ expect }) => {
@@ -1559,28 +1773,32 @@ it("rejects $-prefixed span types outside the client-writable system list", asyn
   }
 });
 
-it("accepts a $page-view span (pv- id) with nested system autocapture and custom spans (page ancestry between system and custom)", async ({ expect }) => {
+it("accepts a $page-view trace with nested autocapture and custom spans, all identity verbatim", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
-  const pageViewSpanId = randomUUID();
-  const awaySpanId = randomUUID();
-  const customSpanId = randomUUID();
-  const customParent = randomUUID();
+  // One trace rooted at the page view — a page view IS a root activity, so it
+  // carries parent_span_id: null and everything on the page hangs beneath it.
+  const traceId = generateW3cTraceId();
+  const pageViewSpanId = generateW3cSpanId();
+  const awaySpanId = generateW3cSpanId();
+  const customSpanId = generateW3cSpanId();
   const now = Date.now();
 
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [
-      makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", data: { path: "/exam", entry_type: "initial" } }),
-      makeCustomSpan({ span_id: awaySpanId, span_type: "$away", page_view_span_id: pageViewSpanId, data: { reasons: ["tab-hidden"] } }),
-      makeCustomSpan({ span_id: customSpanId, page_view_span_id: pageViewSpanId, parent_span_ids: [customParent] }),
+      makeCustomSpan({ trace_id: traceId, span_id: pageViewSpanId, parent_span_id: null, span_type: "$page-view", data: { path: "/exam", entry_type: "initial" } }),
+      makeCustomSpan({ trace_id: traceId, span_id: awaySpanId, parent_span_id: pageViewSpanId, span_type: "$away", page_view_span_id: pageViewSpanId, data: { reasons: ["tab-hidden"] } }),
+      makeCustomSpan({ trace_id: traceId, span_id: customSpanId, parent_span_id: pageViewSpanId, page_view_span_id: pageViewSpanId }),
     ],
     events: [{
       event_type: "$paste",
       event_at_ms: now - 100,
       data: { length: 12, same_page_origin: 0 },
+      trace_id: traceId,
+      span_id: pageViewSpanId,
       page_view_span_id: pageViewSpanId,
     }],
   });
@@ -1588,94 +1806,75 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   expect(res.body).toEqual({ inserted: 1, accepted_spans: 3 });
 
   const spanQueryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, parent_span_ids FROM spans WHERE session_replay_segment_id = {segId:String} ORDER BY span_id",
+    query: "SELECT span_id, span_type, trace_id, parent_span_id, page_view_span_id FROM spans WHERE session_replay_segment_id = {segId:String} ORDER BY span_id",
     params: { segId: sessionReplaySegmentId },
   }, (r) => r.body?.result?.length === 3);
   expect(spanQueryRes?.status).toBe(200);
-  const spanRows = (spanQueryRes?.body as any).result as { span_id: string, span_type: string, parent_span_ids: string[] }[];
+  const spanRows = (spanQueryRes?.body as any).result as { span_id: string, span_type: string, trace_id: string, parent_span_id: string | null, page_view_span_id: string | null }[];
 
-  const pageViewRow = spanRows.find((row) => row.span_id === `pv-${pageViewSpanId}`);
-  expect(pageViewRow?.span_type).toBe("$page-view");
-  // The page-view span itself parents only under the system ancestry
-  // (refresh-token here — no active replay).
-  expect(pageViewRow?.parent_span_ids).toHaveLength(1);
-  expect(pageViewRow?.parent_span_ids[0]).toMatch(/^rti-/);
+  // Every row shares one trace and keeps its exact ids. A `$page-view` span does
+  // NOT name itself in page_view_span_id — it IS the page.
+  expect(spanRows.find((row) => row.span_id === pageViewSpanId)).toEqual({
+    span_id: pageViewSpanId, span_type: "$page-view", trace_id: traceId, parent_span_id: null, page_view_span_id: null,
+  });
+  expect(spanRows.find((row) => row.span_id === awaySpanId)).toEqual({
+    span_id: awaySpanId, span_type: "$away", trace_id: traceId, parent_span_id: pageViewSpanId, page_view_span_id: pageViewSpanId,
+  });
+  expect(spanRows.find((row) => row.span_id === customSpanId)).toEqual({
+    span_id: customSpanId, span_type: "checkout-flow", trace_id: traceId, parent_span_id: pageViewSpanId, page_view_span_id: pageViewSpanId,
+  });
 
-  const awayRow = spanRows.find((row) => row.span_id === `sas-${awaySpanId}`);
-  expect(awayRow?.span_type).toBe("$away");
-  expect(awayRow?.parent_span_ids).toEqual([
-    pageViewRow!.parent_span_ids[0],
-    `pv-${pageViewSpanId}`,
-  ]);
-
-  // Custom span: system ancestry, then the page, then the custom chain.
-  const customRow = spanRows.find((row) => row.span_id === `cs-${customSpanId}`);
-  expect(customRow?.parent_span_ids).toEqual([
-    pageViewRow!.parent_span_ids[0],
-    `pv-${pageViewSpanId}`,
-    `cs-${customParent}`,
-  ]);
-
-  // The new system EVENT type nests under the page too.
+  // Events join the same trace by naming their enclosing span, and additionally
+  // carry the page as a correlation label.
   const eventQueryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    query: "SELECT event_type, trace_id, span_id, page_view_span_id FROM events WHERE session_replay_segment_id = {segId:String}",
     params: { segId: sessionReplaySegmentId },
   }, (r) => r.body?.result?.length === 1);
   expect(eventQueryRes?.status).toBe(200);
-  const eventRow = (eventQueryRes?.body as any).result[0];
-  expect(eventRow.event_type).toBe("$paste");
-  expect(eventRow.parent_span_ids).toEqual([
-    pageViewRow!.parent_span_ids[0],
-    `pv-${pageViewSpanId}`,
-  ]);
+  expect((eventQueryRes?.body as any).result[0]).toEqual({
+    event_type: "$paste", trace_id: traceId, span_id: pageViewSpanId, page_view_span_id: pageViewSpanId,
+  });
 });
 
-it("rejects a $page-view span carrying page or custom ancestry and a span naming itself as its page", async ({ expect }) => {
+it("rejects a span naming itself as its own page_view_span_id", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
-  const pageViewSpanId = randomUUID();
-  const nested = await uploadTelemetryBatch({
+  // The last surviving page-view rule. The old "a $page-view must not carry
+  // parent ancestry" checks are gone: under W3C a page view can legitimately be
+  // parented (e.g. a client-side navigation inside an enclosing custom span), so
+  // only genuine self-reference is still nonsense.
+  const spanId = generateW3cSpanId();
+  const res = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", page_view_span_id: randomUUID() })],
+    spans: [makeCustomSpan({ span_id: spanId, span_type: "$away", page_view_span_id: spanId })],
   });
-  expect(nested.status).toBe(400);
-  expect(nested.body?.code).toBe("SCHEMA_ERROR");
-  expect(nested.body?.error).toContain("A $page-view span must not carry page_view_span_id");
-
-  const customParented = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", parent_span_ids: [randomUUID()] })],
-  });
-  expect(customParented.status).toBe(400);
-  expect(customParented.body?.error).toContain("A $page-view span must not carry page_view_span_id");
-
-  const selfReferencing = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$away", page_view_span_id: pageViewSpanId })],
-  });
-  expect(selfReferencing.status).toBe(400);
-  expect(selfReferencing.body?.code).toBe("SCHEMA_ERROR");
-  expect(selfReferencing.body?.error).toContain("must not name itself as its page_view_span_id");
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("must not name itself as its page_view_span_id");
 });
 
 it("rejects invalid page_view_span_id values on events and spans", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
+  // page_view_span_id is a W3C span id like any other, so a uuid — the shape it
+  // used to have — must now be rejected.
   const badEvent = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    events: [{ event_type: "$click", event_at_ms: Date.now(), data: {}, page_view_span_id: "not-a-uuid" }],
+    events: [{ event_type: "$click", event_at_ms: Date.now(), data: {}, page_view_span_id: randomUUID() }],
   });
   expect(badEvent.status).toBe(400);
-  expect(badEvent.body?.error).toContain("Invalid page_view_span_id");
+  expect(badEvent.body?.code).toBe("SCHEMA_ERROR");
+  expect(badEvent.body?.error).toContain("page_view_span_id");
 
   const badSpan = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ page_view_span_id: "not-a-uuid" })],
+    spans: [makeCustomSpan({ page_view_span_id: MALFORMED_SPAN_IDS.allZero })],
   });
   expect(badSpan.status).toBe(400);
-  expect(badSpan.body?.error).toContain("Invalid page_view_span_id");
+  expect(badSpan.body?.code).toBe("SCHEMA_ERROR");
+  expect(badSpan.body?.error).toContain("page_view_span_id");
 });
 
 it("applies one bounded object-data contract to legacy and current event types", async ({ expect }) => {
@@ -1768,16 +1967,18 @@ it("accepts a spans-only batch and lands it on the spans surface", async ({ expe
   const { userId } = await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
-  const spanId = randomUUID();
+  const traceId = generateW3cTraceId();
+  const spanId = generateW3cSpanId();
   const now = Date.now();
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [{
+      trace_id: traceId,
       span_id: spanId,
+      parent_span_id: null,
       span_type: "checkout-flow",
       started_at_ms: now - 1000,
       ended_at_ms: null,
-      parent_span_ids: [],
       data: {},
       updated_at_ms: now,
     }],
@@ -1795,25 +1996,27 @@ it("accepts a spans-only batch and lands it on the spans surface", async ({ expe
 
   // A successful response is the durability boundary for spans: this query must
   // succeed immediately, without waiting for an in-memory background task.
+  // Looking the row up by the id the SDK minted is itself part of the contract —
+  // there is no server-side prefix to reconstruct.
   const queryRes = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
     accessType: "admin",
     body: {
-      query: "SELECT span_id, span_type, ended_at, parent_span_ids, user_id, session_replay_segment_id FROM spans WHERE span_id = {id:String}",
-      params: { id: `cs-${spanId}` },
+      query: "SELECT span_id, span_type, ended_at, trace_id, parent_span_id, user_id, session_replay_segment_id FROM spans WHERE span_id = {id:String}",
+      params: { id: spanId },
     },
   });
 
   expect(queryRes.status).toBe(200);
   const rows = (queryRes.body as any).result;
   expect(rows).toHaveLength(1);
-  expect(rows[0].span_id).toBe(`cs-${spanId}`);
+  expect(rows[0].span_id).toBe(spanId);
   expect(rows[0].span_type).toBe("checkout-flow");
   // The span is still open.
   expect(rows[0].ended_at).toBeNull();
-  // No active session replay, so the only system ancestor is the refresh-token span.
-  expect(rows[0].parent_span_ids).toHaveLength(1);
-  expect(rows[0].parent_span_ids[0]).toMatch(/^rti-/);
+  expect(rows[0].trace_id).toBe(traceId);
+  // A trace root: sessions/replays are correlation columns, never ancestors.
+  expect(rows[0].parent_span_id).toBeNull();
   expect(rows[0].user_id).toBe(userId);
   expect(rows[0].session_replay_segment_id).toBe(sessionReplaySegmentId);
 });
@@ -1823,7 +2026,10 @@ it("collapses open→closed span re-writes to the ended row", async ({ expect })
   await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
-  const spanId = randomUUID();
+  // Span identity is (trace_id, span_id) — that pair is the ReplacingMergeTree's
+  // key — so a re-write of the same span must repeat BOTH ids, not just span_id.
+  const traceId = generateW3cTraceId();
+  const spanId = generateW3cSpanId();
   const now = Date.now();
   const startedAtMs = now - 10_000;
   const endedAtMs = now - 2000;
@@ -1832,27 +2038,27 @@ it("collapses open→closed span re-writes to the ended row", async ({ expect })
 
   const openRes = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
-    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs })],
+    spans: [makeCustomSpan({ trace_id: traceId, span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs })],
   });
   expect(openRes.status).toBe(200);
 
   const openQueryRes = await queryAnalyticsUntil({
     query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${spanId}` },
+    params: { id: spanId },
   }, (r) => r.body?.result?.length === 1);
   expect(openQueryRes?.status).toBe(200);
   expect((openQueryRes?.body as any).result[0].ended_at).toBeNull();
 
   const closedRes = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
-    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
+    spans: [makeCustomSpan({ trace_id: traceId, span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
   });
   expect(closedRes.status).toBe(200);
 
   // The view reads FINAL, so the two versions collapse to the ended row.
   const closedQueryRes = await queryAnalyticsUntil({
     query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${spanId}` },
+    params: { id: spanId },
   }, (r) => r.body?.result?.length === 1 && r.body.result[0].ended_at != null);
   expect(closedQueryRes?.status).toBe(200);
   const rows = (closedQueryRes?.body as any).result;
@@ -1865,8 +2071,11 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
-  const spanId = randomUUID();
-  const sentinelSpanId = randomUUID();
+  // Both re-writes must repeat the same (trace_id, span_id) pair — see the
+  // collapse test above for why span_id alone is not the span's identity.
+  const traceId = generateW3cTraceId();
+  const spanId = generateW3cSpanId();
+  const sentinelSpanId = generateW3cSpanId();
   const now = Date.now();
   const startedAtMs = now - 10_000;
   const endedAtMs = now - 2000;
@@ -1876,13 +2085,13 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   // The END row arrives first, carrying the LATER version…
   const closedRes = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
-    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
+    spans: [makeCustomSpan({ trace_id: traceId, span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
   });
   expect(closedRes.status).toBe(200);
 
   const closedQueryRes = await queryAnalyticsUntil({
     query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${spanId}` },
+    params: { id: spanId },
   }, (r) => r.body?.result?.length === 1);
   expect(closedQueryRes?.status).toBe(200);
   expect((closedQueryRes?.body as any).result[0].ended_at).not.toBeNull();
@@ -1893,22 +2102,22 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   const staleOpenRes = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [
-      makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs }),
-      makeCustomSpan({ span_id: sentinelSpanId }),
+      makeCustomSpan({ trace_id: traceId, span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs }),
+      makeCustomSpan({ trace_id: traceId, span_id: sentinelSpanId }),
     ],
   });
   expect(staleOpenRes.status).toBe(200);
 
   const sentinelQueryRes = await queryAnalyticsUntil({
     query: "SELECT span_id FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${sentinelSpanId}` },
+    params: { id: sentinelSpanId },
   }, (r) => r.body?.result?.length === 1);
   expect(sentinelQueryRes?.status).toBe(200);
 
   // The ended row still wins: version (updated_at_ms) decides, not insert order.
   const finalQueryRes = await queryAnalyticsUntil({
     query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${spanId}` },
+    params: { id: spanId },
   }, (r) => r.body?.result?.length === 1);
   expect(finalQueryRes?.status).toBe(200);
   const rows = (finalQueryRes?.body as any).result;
@@ -1916,7 +2125,7 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   expect(rows[0].ended_at).not.toBeNull();
 });
 
-it("accepts server-key batches with explicit user_id and no system ancestry", async ({ expect }) => {
+it("accepts server-key batches with explicit user_id and no span correlation", async ({ expect }) => {
   await setupAnalyticsProject();
   const { userId } = await Auth.Otp.signIn();
   // Server-key request: no user access token, no refresh token.
@@ -1939,15 +2148,17 @@ it("accepts server-key batches with explicit user_id and no system ancestry", as
   `);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT user_id, parent_span_ids FROM events WHERE event_type = {eventType:String}",
+    query: "SELECT user_id, trace_id, span_id FROM events WHERE event_type = {eventType:String}",
     params: { eventType },
   }, (r) => r.body?.result?.length === 1);
 
   expect(queryRes?.status).toBe(200);
   const row = (queryRes?.body as any).result[0];
   expect(row.user_id).toBe(userId);
-  // No session on server auth, so there is no system ancestry at all.
-  expect(row.parent_span_ids).toEqual([]);
+  // The batch declared no enclosing span, and the server never invents one, so
+  // the event is uncorrelated to any trace.
+  expect(row.trace_id).toBeNull();
+  expect(row.span_id).toBeNull();
 });
 
 it("rejects server-key batches with an unknown user_id", async ({ expect }) => {
@@ -1963,12 +2174,12 @@ it("rejects server-key batches with an unknown user_id", async ({ expect }) => {
   expect(res.body).toBe("user_id does not correspond to a user on this project/branch");
 });
 
-it("accepts server-key spans without refresh-token ancestry", async ({ expect }) => {
+it("accepts server-key spans as trace roots", async ({ expect }) => {
   await setupAnalyticsProject();
   const { userId } = await Auth.Otp.signIn();
   backendContext.set({ userAuth: null });
 
-  const spanId = randomUUID();
+  const spanId = generateW3cSpanId();
   const res = await uploadTelemetryBatch({
     user_id: userId,
     spans: [makeCustomSpan({ span_id: spanId })],
@@ -1978,8 +2189,8 @@ it("accepts server-key spans without refresh-token ancestry", async ({ expect })
   expect(res.body.accepted_spans).toBe(1);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, parent_span_ids, user_id FROM spans WHERE span_id = {id:String}",
-    params: { id: `cs-${spanId}` },
+    query: "SELECT span_id, span_type, parent_span_id, user_id FROM spans WHERE span_id = {id:String}",
+    params: { id: spanId },
   }, (r) => r.body?.result?.length === 1);
 
   expect(queryRes?.status).toBe(200);
@@ -1987,66 +2198,85 @@ it("accepts server-key spans without refresh-token ancestry", async ({ expect })
   expect(rows).toHaveLength(1);
   expect(rows[0].span_type).toBe("checkout-flow");
   expect(rows[0].user_id).toBe(userId);
-  // No refresh token on server auth → no rti- (or any system) ancestor.
-  expect(rows[0].parent_span_ids).toEqual([]);
+  // The SDK sent parent_span_id: null, so this span IS its trace's root — which
+  // is also what trace_roots_mv keys off. The refresh token, whether present or
+  // not, is never an ancestor.
+  expect(rows[0].parent_span_id).toBeNull();
 });
 
-it("accepts nested $lib-span spans with server auth (cs- namespace, so lib→lib parent links resolve)", async ({ expect }) => {
+it("stores nested library operations by name and keeps their instrumentation scope", async ({ expect }) => {
   await setupAnalyticsProject();
   backendContext.set({ userAuth: null });
 
-  const parentLibSpanId = randomUUID();
-  const childLibSpanId = randomUUID();
+  const traceId = generateW3cTraceId();
+  const parentLibSpanId = generateW3cSpanId();
+  const childLibSpanId = generateW3cSpanId();
   const now = Date.now();
   const res = await uploadTelemetryBatch({
     spans: [
       // The child ends BEFORE its parent (Prisma engine:query inside
       // client:operation) — the real emission order of the SDK's library-span
       // bridge, which only ships spans at end().
-      makeCustomSpan({ span_id: childLibSpanId, span_type: "$lib-span", started_at_ms: now - 800, ended_at_ms: now - 300, parent_span_ids: [parentLibSpanId], data: { name: "engine:query", category: "db" } }),
-      makeCustomSpan({ span_id: parentLibSpanId, span_type: "$lib-span", started_at_ms: now - 1000, ended_at_ms: now - 100, data: { name: "client:operation", category: "db" } }),
+      makeCustomSpan({ trace_id: traceId, span_id: childLibSpanId, parent_span_id: parentLibSpanId, span_type: "prisma:client:db_query", scope_name: "prisma", started_at_ms: now - 800, ended_at_ms: now - 300, data: { name: "prisma:client:db_query", category: "db" } }),
+      makeCustomSpan({ trace_id: traceId, span_id: parentLibSpanId, parent_span_id: null, span_type: "prisma:client:operation", scope_name: "prisma", started_at_ms: now - 1000, ended_at_ms: now - 100, data: { name: "prisma:client:operation", category: "db" } }),
     ],
   }, { accessType: "server" });
   expect(res.status).toBe(200);
   expect(res.body.accepted_spans).toBe(2);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, parent_span_ids FROM spans WHERE span_id IN ({childId:String}, {parentId:String}) ORDER BY span_id = {childId:String}",
-    params: { childId: `cs-${childLibSpanId}`, parentId: `cs-${parentLibSpanId}` },
+    query: "SELECT span_id, span_type, scope_name, trace_id, parent_span_id FROM spans WHERE span_id IN ({childId:String}, {parentId:String}) ORDER BY span_id = {childId:String}",
+    params: { childId: childLibSpanId, parentId: parentLibSpanId },
   }, (r) => r.body?.result?.length === 2);
   expect(queryRes?.status).toBe(200);
-  const rows = (queryRes?.body as any).result as { span_id: string, span_type: string, parent_span_ids: string[] }[];
-  expect(rows[0].span_id).toBe(`cs-${parentLibSpanId}`);
-  expect(rows[0].span_type).toBe("$lib-span");
-  expect(rows[0].parent_span_ids).toEqual([]);
-  // The child's parent reference must equal the parent row's own span_id —
-  // this is exactly what a dedicated lib- prefix would break.
-  expect(rows[1].span_id).toBe(`cs-${childLibSpanId}`);
-  expect(rows[1].parent_span_ids).toEqual([`cs-${parentLibSpanId}`]);
+  const rows = (queryRes?.body as any).result as { span_id: string, span_type: string, scope_name: string, trace_id: string, parent_span_id: string | null }[];
+  expect(rows[0]).toEqual({ span_id: parentLibSpanId, span_type: "prisma:client:operation", scope_name: "prisma", trace_id: traceId, parent_span_id: null });
+  // The child's parent reference must equal the parent row's own span_id. This
+  // used to require both spans landing in the same prefix namespace; now it is
+  // simply the id the SDK sent, which is the whole point of dropping prefixes.
+  expect(rows[1]).toEqual({ span_id: childLibSpanId, span_type: "prisma:client:db_query", scope_name: "prisma", trace_id: traceId, parent_span_id: parentLibSpanId });
 });
 
-it("does not debit span quota for $lib-span spans (system types are free)", async ({ expect }) => {
+it("does not debit span quota for server-authenticated library operation spans", async ({ expect }) => {
   await setupAnalyticsProject();
   backendContext.set({ userAuth: null });
 
   const res = await uploadTelemetryBatch({
-    spans: [makeCustomSpan({ span_type: "$lib-span", data: { name: "db:query", category: "db" } })],
+    spans: [makeCustomSpan({ span_type: "prisma:client:db_query", scope_name: "prisma", data: { name: "prisma:client:db_query", category: "db" } })],
   }, { accessType: "server" });
   expect(res.status).toBe(200);
   // Acceptance is the observable contract here; the zero-billing itself is
-  // covered by the span_writes_mv integration test (`NOT startsWith('$')`)
-  // and the route's billableSpanCount filter, both keyed on the `$` prefix
-  // that this span type carries.
+  // covered by the span_writes_mv integration test (`scope_name IS NULL`)
+  // and the route's billableSpanCount filter.
   expect(res.body.accepted_spans).toBe(1);
 });
 
-it("rejects $lib-span spans with client auth (a page must not forge server work)", async ({ expect }) => {
+it("accepts internal backend spans without consuming customer telemetry quota", async ({ expect }) => {
+  const originalQuantity = await getItemQuantity(INTERNAL_PROJECT_OWNER_TEAM_ID, ITEM_IDS.analyticsSpans);
+  try {
+    await setItemQuantity(INTERNAL_PROJECT_OWNER_TEAM_ID, ITEM_IDS.analyticsSpans, 0);
+    const res = await withInternalProject(async () => await uploadTelemetryBatch({
+      spans: [makeCustomSpan({
+        span_type: "hexclave.api.request",
+        data: { method: "GET", path: "/api/v1/users/me" },
+      })],
+    }, { accessType: "server" }));
+
+    expect(res.status).toBe(200);
+    expect(res.body.accepted_spans).toBe(1);
+    expect(await getItemQuantity(INTERNAL_PROJECT_OWNER_TEAM_ID, ITEM_IDS.analyticsSpans)).toBe(0);
+  } finally {
+    await setItemQuantity(INTERNAL_PROJECT_OWNER_TEAM_ID, ITEM_IDS.analyticsSpans, originalQuantity);
+  }
+});
+
+it("rejects instrumentation-scoped spans with client auth (a page must not forge server work)", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_type: "$lib-span", data: { name: "db:query", category: "db" } })],
+    spans: [makeCustomSpan({ span_type: "prisma:client:db_query", scope_name: "prisma", data: { name: "prisma:client:db_query", category: "db" } })],
   });
 
   expect(res.status).toBe(400);
@@ -2101,28 +2331,36 @@ it("accepts a gzipped binary body containing custom events and spans", async ({ 
 });
 
 // ---------------------------------------------------------------------------
-// $http-client bridge spans + http_client_span_id ancestry
+// $http-client spans
+//
+// The `http_client_span_id` wire field is gone. It existed because a fetch had
+// to be spliced into a custom ancestry array as the item's "nearest known
+// ancestor"; under W3C a fetch is just a span, so it is referenced the same way
+// any other parent is — via `parent_span_id`, or by sharing its `trace_id` with
+// the backend spans it produced (the `traceparent` it sent on the wire).
 // ---------------------------------------------------------------------------
 
-it("accepts $http-client spans and composes page-view + custom ancestry on them", async ({ expect }) => {
+it("accepts $http-client spans and stores their parent + page correlation verbatim", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
   const sessionReplaySegmentId = randomUUID();
-  const pageViewSpanId = randomUUID();
-  const customParentId = randomUUID();
-  const httpClientSpanId = randomUUID();
+  const traceId = generateW3cTraceId();
+  const pageViewSpanId = generateW3cSpanId();
+  const customParentId = generateW3cSpanId();
+  const httpClientSpanId = generateW3cSpanId();
   const now = Date.now();
   const res = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [
-      makeCustomSpan({ span_id: customParentId, page_view_span_id: pageViewSpanId }),
+      makeCustomSpan({ trace_id: traceId, span_id: customParentId, parent_span_id: null, page_view_span_id: pageViewSpanId }),
       {
+        trace_id: traceId,
         span_id: httpClientSpanId,
+        parent_span_id: customParentId,
         span_type: "$http-client",
         started_at_ms: now - 500,
         ended_at_ms: now - 400,
-        parent_span_ids: [customParentId],
         data: { method: "GET", url: "https://api.example.com/v1/items", status: 200 },
         updated_at_ms: now,
         page_view_span_id: pageViewSpanId,
@@ -2141,85 +2379,16 @@ it("accepts $http-client spans and composes page-view + custom ancestry on them"
   `);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, parent_span_ids FROM spans WHERE span_id = {spanId:String}",
-    params: { spanId: `hc-${httpClientSpanId}` },
+    query: "SELECT span_id, span_type, trace_id, parent_span_id, page_view_span_id FROM spans WHERE span_id = {spanId:String}",
+    params: { spanId: httpClientSpanId },
   }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
-  const row = queryRes?.body.result[0];
-  expect(row.span_type).toBe("$http-client");
-  // Root-first: refresh-token system ancestry, then the page, then the
-  // enclosing custom span. The $http-client span's own id carries the hc- prefix.
-  expect(row.parent_span_ids.at(-2)).toBe(`pv-${pageViewSpanId}`);
-  expect(row.parent_span_ids.at(-1)).toBe(`cs-${customParentId}`);
-});
-
-it("composes hc- as the nearest ancestor for items carrying http_client_span_id", async ({ expect }) => {
-  await setupAnalyticsProject();
-  await Auth.Otp.signIn();
-
-  const sessionReplaySegmentId = randomUUID();
-  const httpClientSpanId = randomUUID();
-  const customParentId = randomUUID();
-  const now = Date.now();
-  const res = await uploadTelemetryBatch({
-    session_replay_segment_id: sessionReplaySegmentId,
-    events: [{
-      event_type: "server_side_effect",
-      event_at_ms: now - 100,
-      data: {},
-      parent_span_ids: [customParentId],
-      http_client_span_id: httpClientSpanId,
-    }],
-    spans: [makeCustomSpan({ http_client_span_id: httpClientSpanId, parent_span_ids: [customParentId] })],
+  expect(queryRes?.body.result[0]).toEqual({
+    span_id: httpClientSpanId,
+    span_type: "$http-client",
+    trace_id: traceId,
+    parent_span_id: customParentId,
+    page_view_span_id: pageViewSpanId,
   });
-  expect(res.status).toBe(200);
-
-  const queryRes = await queryAnalyticsUntil({
-    query: "SELECT event_type, parent_span_ids FROM events WHERE event_type = 'server_side_effect' AND session_replay_segment_id = {segId:String}",
-    params: { segId: sessionReplaySegmentId },
-  }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
-  const row = queryRes?.body.result[0];
-  // hc- composes AFTER the custom chain: the fetch is the item's nearest
-  // known ancestor (see buildBatchSpanRows).
-  expect(row.parent_span_ids.at(-1)).toBe(`hc-${httpClientSpanId}`);
-  expect(row.parent_span_ids.at(-2)).toBe(`cs-${customParentId}`);
-});
-
-it("rejects invalid $http-client / http_client_span_id combinations", async ({ expect }) => {
-  await setupAnalyticsProject();
-  await Auth.Otp.signIn();
-
-  // A $http-client span never nests under another fetch.
-  const selfNested = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_type: "$http-client", http_client_span_id: randomUUID() })],
-  });
-  expect(selfNested.status).toBe(400);
-  expect(JSON.stringify(selfNested.body)).toContain("A $http-client span must not carry http_client_span_id");
-
-  // A span must not name itself as its http_client_span_id.
-  const selfNamedId = randomUUID();
-  const selfNamed = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: selfNamedId, http_client_span_id: selfNamedId })],
-  });
-  expect(selfNamed.status).toBe(400);
-
-  // A $page-view span must not carry http_client_span_id.
-  const now = Date.now();
-  const pageViewWithFetch = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [{
-      span_id: randomUUID(),
-      span_type: "$page-view",
-      started_at_ms: now - 1000,
-      ended_at_ms: null,
-      parent_span_ids: [],
-      data: {},
-      updated_at_ms: now,
-      http_client_span_id: randomUUID(),
-    }],
-  });
-  expect(pageViewWithFetch.status).toBe(400);
 });
 
 // ---------------------------------------------------------------------------
@@ -2376,17 +2545,27 @@ it("accepts $error events", async ({ expect }) => {
   expect(queryRes?.body.result[0]).toEqual({ event_type: "$error", message: "boom" });
 });
 
-it("requires schema version 2 and an explicit telemetry resource", async ({ expect }) => {
+it("requires schema version 3 and an explicit telemetry resource", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
   const now = Date.now();
 
+  const v3 = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    schema_version: 3,
+    events: [{ event_type: "$click", event_at_ms: now, data: {} }],
+  });
+  expect(v3.status).toBe(200);
+
+  // v2 was the full-ancestry wire (parent_span_ids / http_client_span_id). The
+  // feature is unreleased, so v3 REPLACES it outright: accepting a v2 body would
+  // mean silently ignoring hierarchy the sender still believed it was sending.
   const v2 = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
     schema_version: 2,
     events: [{ event_type: "$click", event_at_ms: now, data: {} }],
   });
-  expect(v2.status).toBe(200);
+  expect(v2.status).toBe(400);
 
   const v1 = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
