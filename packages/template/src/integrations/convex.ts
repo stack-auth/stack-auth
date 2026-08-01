@@ -73,8 +73,8 @@ export type HexclaveConvexFactoryOptions = {
  *
  * NOTE: Convex clients talk over WebSockets and functions receive no Request,
  * so unlike the HTTP adapters this span is attributed by USER only — it does
- * not (yet) nest under the caller's `$session-replay-segment`. Cross-tier
- * segment linking for Convex is a follow-up.
+ * not (yet) join the caller's browser operation or carry replay correlation.
+ * Cross-tier context propagation for Convex is a follow-up.
  */
 export function createHexclaveConvex(app: AdapterServerApp, factoryOptions?: HexclaveConvexFactoryOptions) {
   return {

@@ -216,10 +216,10 @@ export const POST = createSmartRouteHandler({
     }
     let deduped = chunk != null;
 
-    // A retry must still repair the idempotent segment/span projections. The
-    // chunk row is the durable source of truth for those projections; returning
-    // early here would strand them if the first request failed after creating
-    // the chunk.
+    // A retry must still repair the idempotent replay/segment bounds. The chunk
+    // row is the durable source of truth for those projections; returning early
+    // here would strand them if the first request failed after creating the
+    // chunk.
     if (chunk == null) {
       const payload = {
         schema_version: 2,
@@ -306,9 +306,9 @@ export const POST = createSmartRouteHandler({
     }
     const replay = replayRows[0];
 
-    // The replay and segment spans are part of the trace model, not a disposable
-    // mirror. Wait for ClickHouse acceptance before reporting a successful replay
-    // upload so a returned replay id always has its corresponding trace ancestry.
+    // These are structural trace rows, not an optional projection. Wait for
+    // ClickHouse acceptance so a successful replay response never leaves page
+    // spans permanently orphaned from their replay/session ancestors.
     await insertSessionReplaySpans(getSharedClickhouseAdminClient(), {
       projectId,
       branchId,
@@ -322,7 +322,6 @@ export const POST = createSmartRouteHandler({
       segmentLastEventAt: segmentBounds.lastEventAt,
       resource,
     });
-
     return {
       statusCode: 200,
       bodyType: "json",

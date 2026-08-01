@@ -43,15 +43,15 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     /**
      * Server-side variant of `trackEvent`: attribution is explicit via `userId`
      * (there is no session to derive it from). Items coalesce per userId and
-     * send on the next microtask; `await` the promise (or call `flush()`) as the
-     * delivery guarantee — the server has no page-lifetime flush cadence.
+     * send after a short coalescing window; `await` the promise (or call
+     * `flush()`) as the delivery guarantee — the server has no page-lifetime
+     * flush cadence.
      *
-     * Pass `request` (the incoming Request) to auto-attribute to the caller AND
-     * parent the event under their client session — the `$refresh-token` /
-     * `$session-replay` / `$session-replay-segment` chain — resolved from the
-     * session + the `x-hexclave-span-context` header the browser SDK attaches
-     * automatically. With `request`, `userId` is derived from the session unless
-     * explicitly overridden.
+     * Pass `request` (the incoming Request) to auto-attribute to the caller,
+     * correlate with their refresh-token/replay lifecycle, and join the active
+     * browser operation via `traceparent`. The session plus the
+     * `x-hexclave-span-context` header provide correlation; with `request`,
+     * `userId` is derived from the session unless explicitly overridden.
      *
      * When the framework integration registered an ambient request provider
      * (Next.js: `hexclaveInstrumentation().register()`), calls WITHOUT
@@ -66,9 +66,8 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * `withSpan({ request })` scope — or any request scope when an ambient
      * request provider is registered (Next.js:
      * `hexclaveInstrumentation().register()`) — logs automatically link to the
-     * caller's client session (page view, `$http-client` fetch span,
-     * session-replay ancestry) just like server events — no context threading
-     * needed.
+     * caller's active page/`$http-client` operation and carry the same
+     * session-replay correlation as server events — no context threading needed.
      */
     readonly logger: Logger,
 

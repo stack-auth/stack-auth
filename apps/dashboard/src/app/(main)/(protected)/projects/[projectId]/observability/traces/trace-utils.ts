@@ -10,14 +10,21 @@ export type SpanInput = {
   spanType: string,
   startMs: number,
   endMs: number | null,
-  parentSpanIds: string[],
+  /** W3C scalar parent. `null` means this span is the root of its trace. */
+  parentSpanId: string | null,
   raw: Record<string, unknown>,
 };
 
 export type EventInput = {
+  /** The W3C trace containing `spanId`; null when the event happened outside a span. */
+  traceId: string | null,
   eventType: string,
   atMs: number,
-  parentSpanIds: string[],
+  /**
+   * The span this event happened inside, when there was one. Events are not
+   * part of the span hierarchy: they name their enclosing span and nothing else.
+   */
+  spanId: string | null,
   raw: Record<string, unknown>,
 };
 
@@ -41,8 +48,15 @@ export type WaterfallRow =
   | { kind: "span", node: TraceNode }
   | { kind: "event", event: EventInput, depth: number };
 
-const HTTP_CLIENT_SPAN_ID_PREFIX = "hc-";
 const GENERIC_HTTP_METHOD_SPAN = /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)$/;
+const HTTP_CLIENT_SPAN_TYPE = "$http-client";
+const LIBRARY_SPAN_TYPE = "$lib-span";
+// This SDK-native boundary deliberately keeps its semantic operation name so
+// the cross-tier tree reads naturally, but it is framework instrumentation —
+// not a custom span authored by the application using the SDK. Without this
+// distinction, every backend request and its ancestor path is promoted into
+// Signal mode, turning the compact view into a near-copy of All spans.
+const INTERNAL_SDK_SPAN_TYPES = new Set(["hexclave.api.request"]);
 
 function objectStringProperty(value: unknown, property: string): string | null {
   if (typeof value !== "object" || value === null) return null;
@@ -57,6 +71,13 @@ function objectStringProperty(value: unknown, property: string): string | null {
  * they can contain credentials and high-cardinality customer data.
  */
 export function traceSpanDisplayName(span: SpanInput): string {
+  // Instrumentation scope identifies library-generated spans. Their indexed
+  // span_type is a normalized operation key, while data.name preserves the
+  // exact human-readable OTel operation. The legacy discriminator uses the
+  // same fallback so old rows remain useful instead of rendering "$lib-span".
+  if (span.spanType === LIBRARY_SPAN_TYPE || span.raw.scope_name != null) {
+    return objectStringProperty(span.raw.data, "name") ?? span.spanType;
+  }
   if (!GENERIC_HTTP_METHOD_SPAN.test(span.spanType)) return span.spanType;
   const target = objectStringProperty(span.raw.data, "http.route")
     ?? objectStringProperty(span.raw.data, "http.target")
@@ -64,45 +85,6 @@ export function traceSpanDisplayName(span: SpanInput): string {
   if (target == null) return span.spanType;
   const safePath = target.replace(/[?#].*$/, "");
   return safePath === "" ? span.spanType : `${span.spanType} ${safePath}`;
-}
-
-/**
- * The W3C trace id a `$http-client` bridge span's own id derives (the uuid
- * after `hc-`, dash-stripped — a uuid is exactly 16 bytes). The SDK sent this
- * exact value as `traceparent`, so the backend sub-trace this fetch produced
- * stores it as its `trace_id`. Must mirror uuidToW3cTraceId in
- * @hexclave/shared analytics-wire.
- */
-export function deriveW3cTraceIdFromHcSpanId(spanId: string): string | null {
-  if (!spanId.startsWith(HTTP_CLIENT_SPAN_ID_PREFIX)) return null;
-  const hex = spanId.slice(HTTP_CLIENT_SPAN_ID_PREFIX.length).toLowerCase().replaceAll("-", "");
-  return /^[0-9a-f]{32}$/.test(hex) ? hex : null;
-}
-
-/**
- * Reparents backend spans (stored under W3C trace ids) under the client
- * `$http-client` span that caused them, purely at read time: any span whose (32-hex) trace id is
- * derivable from a bridge span's own id gets the bridge's ancestry chain
- * prefixed onto its parents, so `nearestFetchedAncestor` attaches the W3C
- * sub-trace's root under the bridge and the waterfall renders page-view →
- * $http-client → backend request → db spans as ONE tree. Native and W3C id
- * namespaces are disjoint (prefixed vs raw hex), so no collisions or duplicate
- * parent ids are possible. Run before buildTraces.
- */
-export function spliceBridgedSubtraces(spans: SpanInput[]): SpanInput[] {
-  const bridgeByW3cTraceId = new Map<string, SpanInput>();
-  for (const span of spans) {
-    const w3cTraceId = deriveW3cTraceIdFromHcSpanId(span.id);
-    if (w3cTraceId !== null && !bridgeByW3cTraceId.has(w3cTraceId)) {
-      bridgeByW3cTraceId.set(w3cTraceId, span);
-    }
-  }
-  if (bridgeByW3cTraceId.size === 0) return spans;
-  return spans.map((span) => {
-    const bridge = bridgeByW3cTraceId.get(span.traceId);
-    if (bridge === undefined || bridge.id === span.id) return span;
-    return { ...span, parentSpanIds: [...bridge.parentSpanIds, bridge.id, ...span.parentSpanIds] };
-  });
 }
 
 export function spanHasError(span: SpanInput): boolean {
@@ -134,34 +116,62 @@ export function traceContainsSpanId(trace: Trace, spanId: string): boolean {
 
 /**
  * Select the spans that explain a trace without flooding the first view with
- * instrumentation detail. Errors, native custom spans, event owners, and the
- * trace root are always retained. The slowest operations add performance
- * context, then their ancestor paths are restored so causality is still
- * readable. The full trace remains available through the UI's All mode.
+ * instrumentation detail. Errors, spans the customer's own code authored, event
+ * owners, and the trace root are always retained. The slowest operations add
+ * performance context, then their ancestor paths are restored so causality is
+ * still readable. The full trace remains available through the UI's All mode.
+ *
+ * "Authored by the customer" means a non-`$` SDK span with no instrumentation
+ * scope. Both halves matter: `$` types are Hexclave's own autocapture, while
+ * `scope_name` separates a deliberate `startSpan("checkout")` from an
+ * auto-instrumented `prisma:client:db_query` with the same SDK producer.
  */
 export function traceSignalSpanIds(trace: Trace, slowSpanLimit = 20, needle = ""): Set<string> {
   const selected = new Set<string>([trace.root.span.id]);
   const candidates: TraceNode[] = [];
 
-  const visit = (node: TraceNode, ancestors: TraceNode[]) => {
+  const selectWithAncestors = (node: TraceNode, ancestors: TraceNode[]) => {
+    selected.add(node.span.id);
+    for (const ancestor of ancestors) selected.add(ancestor.span.id);
+  };
+
+  const visit = (
+    node: TraceNode,
+    ancestors: TraceNode[],
+    httpClientBoundary: { node: TraceNode, ancestors: TraceNode[] } | null,
+  ) => {
     const matchesSearch = needle !== "" && (
-      node.span.spanType.toLowerCase().includes(needle)
+      traceSpanDisplayName(node.span).toLowerCase().includes(needle)
       || node.events.some((event) => event.eventType.toLowerCase().includes(needle))
     );
-    const alwaysKeep = spanHasError(node.span)
-      || node.span.id.startsWith("cs-")
-      || node.events.length > 0
-      || matchesSearch;
-    if (alwaysKeep) {
-      selected.add(node.span.id);
-      for (const ancestor of ancestors) selected.add(ancestor.span.id);
+    const hasAutomaticSignal = spanHasError(node.span)
+      || isCustomerAuthoredSpan(node.span)
+      || node.events.length > 0;
+
+    if (matchesSearch) {
+      // Explicit search is the escape hatch for inspecting an internal server
+      // operation without switching the whole trace to All spans.
+      selectWithAncestors(node, ancestors);
+    } else if (hasAutomaticSignal && httpClientBoundary == null) {
+      selectWithAncestors(node, ancestors);
+    } else if (hasAutomaticSignal && httpClientBoundary != null) {
+      // `$http-client` is the compact cross-tier boundary. Next, route-handler,
+      // STACK, and database spans remain available in All spans, but an error,
+      // event, or customer span inside that server subtree only promotes the
+      // request boundary in Signal. Promoting the descendant and restoring its
+      // path is what made Signal grow into a near-copy of the full waterfall.
+      selectWithAncestors(httpClientBoundary.node, httpClientBoundary.ancestors);
     }
-    if (node.span.id !== trace.root.span.id) {
+    if (node.span.id !== trace.root.span.id && httpClientBoundary == null) {
       candidates.push(node);
     }
-    for (const child of node.children) visit(child, [...ancestors, node]);
+
+    const childBoundary = httpClientBoundary ?? (node.span.spanType === HTTP_CLIENT_SPAN_TYPE
+      ? { node, ancestors }
+      : null);
+    for (const child of node.children) visit(child, [...ancestors, node], childBoundary);
   };
-  visit(trace.root, []);
+  visit(trace.root, [], null);
 
   candidates.sort((left, right) => {
     const leftDuration = left.span.endMs == null ? Infinity : left.span.endMs - left.span.startMs;
@@ -185,11 +195,18 @@ export function isSystemSpanType(spanType: string): boolean {
   return spanType.startsWith("$");
 }
 
-/** True if the span, any of its events, or any descendant matches the needle (lowercase). */
-export function subtreeMatches(node: TraceNode, needle: string): boolean {
-  if (node.span.spanType.toLowerCase().includes(needle)) return true;
-  if (node.events.some((event) => event.eventType.toLowerCase().includes(needle))) return true;
-  return node.children.some((child) => subtreeMatches(child, needle));
+/**
+ * Whether the customer's own code deliberately created this span, as opposed to
+ * Hexclave autocapture (`$` types) or a library the OTel bridge picked up
+ * (`scope_name` is non-null). Used by signal mode; see traceSignalSpanIds for
+ * why the instrumentation scope is load-bearing rather than redundant with the
+ * type check.
+ */
+export function isCustomerAuthoredSpan(span: SpanInput): boolean {
+  return !isSystemSpanType(span.spanType)
+    && !INTERNAL_SDK_SPAN_TYPES.has(span.spanType)
+    && span.raw.producer === "sdk"
+    && span.raw.scope_name == null;
 }
 
 /**
@@ -222,90 +239,89 @@ export function getTraceScaleEnd(trace: Pick<Trace, "startMs" | "endMs" | "lates
   return Math.max(Math.min(observedEnd, nowMs), trace.startMs + 1);
 }
 
-/**
- * The parent a row renders under is its nearest ANCESTOR THAT WAS FETCHED, not
- * its literal last parent id — intermediate spans can fall outside the queried
- * time window (or be filtered out) without orphaning their whole subtree.
- * parent_span_ids is farthest-known first and nearest-known last, so we scan
- * from the end.
- */
-function nearestFetchedAncestor(parentSpanIds: string[], byId: Map<string, SpanInput>, selfId: string | null): string | null {
-  for (let i = parentSpanIds.length - 1; i >= 0; i--) {
-    const id = parentSpanIds[i];
-    if (id !== selfId && byId.has(id)) return id;
-  }
-  return null;
+function spanTreeKey(traceId: string, spanId: string): string {
+  // W3C ids are lowercase hex and therefore cannot contain the separator.
+  return `${traceId}:${spanId}`;
 }
 
 export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces: Trace[], unattachedEvents: EventInput[] } {
-  const byId = new Map<string, SpanInput>();
+  // This is the old tree-building contract applied to the new scalar schema:
+  // use the parent only when that exact row was fetched; otherwise the real span
+  // becomes a root. Never invent hierarchy that is absent from ClickHouse.
+  // W3C span ids are scoped to a trace, so every index uses the identity pair.
+  const byKey = new Map<string, SpanInput>();
   for (const span of spans) {
-    if (!byId.has(span.id)) byId.set(span.id, span);
+    const key = spanTreeKey(span.traceId, span.id);
+    if (!byKey.has(key)) byKey.set(key, span);
   }
 
-  // Each span has at most one nearest fetched parent. Hand-crafted input can
-  // still form a cycle, so deterministically cut one edge per cycle before
-  // constructing children; otherwise a fully cyclic component has no root and
-  // silently disappears from the UI.
+  // Each span has at most one fetched parent. Hand-crafted input can still form
+  // a cycle, so deterministically cut one edge per cycle before constructing
+  // children; otherwise a fully cyclic component has no root and disappears.
   const parentOf = new Map<string, string | null>();
-  for (const span of byId.values()) {
-    parentOf.set(span.id, nearestFetchedAncestor(span.parentSpanIds, byId, span.id));
+  for (const [key, span] of byKey) {
+    const parentKey = span.parentSpanId == null || span.parentSpanId === span.id
+      ? null
+      : spanTreeKey(span.traceId, span.parentSpanId);
+    parentOf.set(key, parentKey != null && byKey.has(parentKey) ? parentKey : null);
   }
   const resolved = new Set<string>();
-  for (const span of byId.values()) {
-    if (resolved.has(span.id)) continue;
+  for (const key of byKey.keys()) {
+    if (resolved.has(key)) continue;
     const path: string[] = [];
     const indexInPath = new Map<string, number>();
-    let currentId: string | null = span.id;
-    while (currentId != null && !resolved.has(currentId)) {
-      const cycleStart = indexInPath.get(currentId);
+    let currentKey: string | null = key;
+    while (currentKey != null && !resolved.has(currentKey)) {
+      const cycleStart = indexInPath.get(currentKey);
       if (cycleStart !== undefined) {
-        const cycleIds = path.slice(cycleStart);
-        cycleIds.sort((leftId, rightId) => {
-          const left = byId.get(leftId);
-          const right = byId.get(rightId);
+        const cycleKeys = path.slice(cycleStart);
+        cycleKeys.sort((leftKey, rightKey) => {
+          const left = byKey.get(leftKey);
+          const right = byKey.get(rightKey);
           if (left == null || right == null) {
             throw new Error("Cycle detection referenced a span outside the fetched span map");
           }
           return left.startMs - right.startMs || stringCompare(left.id, right.id);
         });
-        const cycleRootId = cycleIds.at(0);
-        if (cycleRootId == null) {
+        const cycleRootKey = cycleKeys.at(0);
+        if (cycleRootKey == null) {
           throw new Error("Cycle detection found an empty cycle");
         }
-        parentOf.set(cycleRootId, null);
+        parentOf.set(cycleRootKey, null);
         break;
       }
-      indexInPath.set(currentId, path.length);
-      path.push(currentId);
-      currentId = parentOf.get(currentId) ?? null;
+      indexInPath.set(currentKey, path.length);
+      path.push(currentKey);
+      currentKey = parentOf.get(currentKey) ?? null;
     }
-    for (const id of path) resolved.add(id);
+    for (const pathKey of path) resolved.add(pathKey);
   }
 
   const childrenOf = new Map<string, SpanInput[]>();
   const roots: SpanInput[] = [];
-  for (const span of byId.values()) {
-    const parentId = parentOf.get(span.id) ?? null;
-    if (parentId == null) {
+  for (const [key, span] of byKey) {
+    const parentKey = parentOf.get(key) ?? null;
+    if (parentKey == null) {
       roots.push(span);
     } else {
-      const siblings = childrenOf.get(parentId) ?? [];
+      const siblings = childrenOf.get(parentKey) ?? [];
       siblings.push(span);
-      childrenOf.set(parentId, siblings);
+      childrenOf.set(parentKey, siblings);
     }
   }
 
   const eventsOf = new Map<string, EventInput[]>();
   const unattachedEvents: EventInput[] = [];
   for (const event of events) {
-    const parentId = nearestFetchedAncestor(event.parentSpanIds, byId, null);
-    if (parentId == null) {
+    const ownerKey = event.traceId == null || event.spanId == null
+      ? null
+      : spanTreeKey(event.traceId, event.spanId);
+    if (ownerKey == null || !byKey.has(ownerKey)) {
       unattachedEvents.push(event);
     } else {
-      const attached = eventsOf.get(parentId) ?? [];
+      const attached = eventsOf.get(ownerKey) ?? [];
       attached.push(event);
-      eventsOf.set(parentId, attached);
+      eventsOf.set(ownerKey, attached);
     }
   }
 
@@ -314,10 +330,11 @@ export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces:
     const visited = new Set<string>();
 
     const buildNode = (span: SpanInput, depth: number): TraceNode => {
-      visited.add(span.id);
-      const ownEvents = [...(eventsOf.get(span.id) ?? [])].sort((a, b) => a.atMs - b.atMs);
-      const childSpans = [...(childrenOf.get(span.id) ?? [])]
-        .filter((child) => !visited.has(child.id))
+      const key = spanTreeKey(span.traceId, span.id);
+      visited.add(key);
+      const ownEvents = [...(eventsOf.get(key) ?? [])].sort((a, b) => a.atMs - b.atMs);
+      const childSpans = [...(childrenOf.get(key) ?? [])]
+        .filter((child) => !visited.has(spanTreeKey(child.traceId, child.id)))
         .sort((a, b) => a.startMs - b.startMs);
       return {
         span,
@@ -392,26 +409,6 @@ export function flattenTrace(trace: Trace): WaterfallRow[] {
   return rows;
 }
 
-export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  if (ms === 0) return "0s";
-  if (ms < 1) return "<1ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-  if (ms < 3_600_000) {
-    const totalSeconds = Math.round(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
-  }
-  if (ms < 86_400_000) {
-    const totalMinutes = Math.round(ms / 60_000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-  }
-  const totalHours = Math.round(ms / 3_600_000);
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
-}
+// Duration rendering is shared with the services page — see ../format.ts for why
+// it does not live here.
+export { formatDuration } from "../format";

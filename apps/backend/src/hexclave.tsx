@@ -1,7 +1,7 @@
 import { StackServerApp } from '@hexclave/next';
-import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
 
-export function getHexclaveServerApp() {
+function createHexclaveServerApp() {
   // Fail fast if the backend self-URL env var is missing — without it the SDK
   // would silently inherit `defaultBaseUrl` (https://api.stack-auth.com), which
   // is almost never what we want for backend self-calls.
@@ -14,16 +14,39 @@ export function getHexclaveServerApp() {
   // self-calls (quota debits in email-queue-step, send-test-email, analytics
   // events batch, etc.) survive a primary-port outage.
   getEnvVariable('NEXT_PUBLIC_STACK_API_URL');
+  const selfTelemetryEnabled = getEnvBoolean("HEXCLAVE_SELF_TELEMETRY_ENABLED");
   return new StackServerApp({
     projectId: 'internal',
     tokenStore: null,
     publishableClientKey: getEnvVariable('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY'),
     secretServerKey: getEnvVariable('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
-    // This app is the backend's control-plane client for quota and internal
-    // project operations. Backend self-observability is owned by the dedicated
-    // self-telemetry exporters; instrumenting this client's own quota calls
-    // feeds ingestion back into itself and can exhaust the local rate limiter.
-    analytics: { enabled: false },
-    observability: { enabled: false },
+    // The backend is an ordinary SDK producer owned by the internal project.
+    // This keeps its logs, errors, request spans, fetches, and library spans on
+    // the normal authenticated ingestion path instead of maintaining a second
+    // ClickHouse exporter with customer-tenancy fan-out.
+    analytics: { enabled: selfTelemetryEnabled },
+    observability: {
+      enabled: selfTelemetryEnabled,
+      // Healthy backend traces are deterministically sampled as complete SDK
+      // flush groups. Errors, failed requests/library work, and slow spans are
+      // promoted before the analytics batch transport is invoked.
+      traceSampleRate: 0.1,
+      // The backend's internal trace context must not become a customer-facing
+      // Hexclave correlation header on downstream calls. W3C trace propagation
+      // remains independent and follows the SDK's trusted-origin policy.
+      spanPropagation: { enabled: false },
+    },
+    telemetry: {
+      resource: {
+        service: { name: "hexclave-backend" },
+      },
+    },
   });
+}
+
+let hexclaveServerApp: ReturnType<typeof createHexclaveServerApp> | null = null;
+
+export function getHexclaveServerApp() {
+  hexclaveServerApp ??= createHexclaveServerApp();
+  return hexclaveServerApp;
 }

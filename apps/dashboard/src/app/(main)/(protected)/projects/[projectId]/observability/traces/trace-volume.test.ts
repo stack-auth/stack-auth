@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
-  getTraceVolumeGranularity,
   getTraceVolumeQuery,
   parseTraceVolumeRows,
 } from "./trace-volume";
+import { getBucketGranularity } from "../bucket-granularity";
 
 describe("trace volume", () => {
+  // The 7d row is 28 six-hour buckets, not 7 daily ones: the grain is shared
+  // with the services sparklines (see ../bucket-granularity), which the traces
+  // chart used to disagree with for this one range.
   it.each([
-    { hours: 1, bucketCount: 60, historySql: "INTERVAL 59 MINUTE", startFunction: "toStartOfMinute", stepSql: "INTERVAL 1 MINUTE" },
-    { hours: 24, bucketCount: 24, historySql: "INTERVAL 23 HOUR", startFunction: "toStartOfHour", stepSql: "INTERVAL 1 HOUR" },
-    { hours: 168, bucketCount: 7, historySql: "INTERVAL 6 DAY", startFunction: "toStartOfDay", stepSql: "INTERVAL 1 DAY" },
-    { hours: 720, bucketCount: 30, historySql: "INTERVAL 29 DAY", startFunction: "toStartOfDay", stepSql: "INTERVAL 1 DAY" },
-  ] as const)("uses the requested bucket grain for $hours hours", ({ hours, bucketCount, historySql, startFunction, stepSql }) => {
-    expect(getTraceVolumeGranularity(hours)).toMatchObject({
+    { hours: 1, bucketCount: 60, historySql: "INTERVAL 59 MINUTE", stepSql: "INTERVAL 1 MINUTE" },
+    { hours: 24, bucketCount: 24, historySql: "INTERVAL 23 HOUR", stepSql: "INTERVAL 1 HOUR" },
+    { hours: 168, bucketCount: 28, historySql: "INTERVAL 162 HOUR", stepSql: "INTERVAL 6 HOUR" },
+    { hours: 720, bucketCount: 30, historySql: "INTERVAL 29 DAY", stepSql: "INTERVAL 1 DAY" },
+  ] as const)("uses the requested bucket grain for $hours hours", ({ hours, bucketCount, historySql, stepSql }) => {
+    expect(getBucketGranularity(hours)).toMatchObject({
       bucketCount,
-      startFunction,
       stepSql,
     });
     const { query } = getTraceVolumeQuery(hours, null);
-    expect(query).toContain(`${startFunction}(r.started_at) AS bucket_start`);
+    expect(query).toContain(`toStartOfInterval(r.started_at, ${stepSql}) AS bucket_start`);
     expect(query).toContain(`STEP ${stepSql}`);
     expect(query).toContain(`range_end - ${historySql} AS range_start`);
     expect(query).toContain("WITH FILL");

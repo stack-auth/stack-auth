@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRequestContext, normalizeRequestLike, type AdapterServerApp } from "./adapter-core";
+import { createRequestContext, normalizeRequestLike, runGuardedCall, runGuardedRoute, type AdapterServerApp } from "./adapter-core";
 import { createHexclaveConvex } from "./convex";
 import { createHexclaveElysia, type ElysiaLikeForPlugin } from "./elysia";
 import { createHexclaveORPC } from "./orpc";
@@ -40,6 +40,106 @@ describe("adapter-core", () => {
     const { app, getUser } = makeApp();
     expect(() => createRequestContext(app, undefined)).toThrow(/could not find a request-like object/);
     expect(getUser).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The `required` rejection path is shared by every wrapped surface, and its
+   * subtlety is that ONE factory serves surfaces that return a Response (route
+   * handlers) and surfaces that can only throw (server actions/functions) — so
+   * the same factory has to be returned by the former and thrown by the latter.
+   * This used to be four hand-rolled copies; tested here once at the seam.
+   */
+  describe("guarded handler spine", () => {
+    const guardInfo = {
+      defaultSpanType: "test.surface",
+      data: {},
+      telemetry: undefined,
+      required: true,
+      unauthorized: undefined,
+      factoryUnauthorized: undefined,
+      surface: "route",
+    };
+
+    it("runs the handler and skips the rejection when a caller is authenticated", async () => {
+      const { app } = makeApp();
+      const handler = vi.fn(async () => Response.json({ ok: true }));
+      const response = await runGuardedRoute(app, { ...guardInfo, requestInput: makeRequest() }, handler);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(response.status).toBe(200);
+    });
+
+    it("answers an unauthenticated route with a 401 by default, without running the handler", async () => {
+      const { app } = makeApp({ user: null });
+      const handler = vi.fn(async () => Response.json({ ok: true }));
+      const response = await runGuardedRoute(app, { ...guardInfo, requestInput: makeRequest() }, handler);
+      expect(handler).not.toHaveBeenCalled();
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("signed in") });
+    });
+
+    it("returns a factory-produced Response from a route but throws a factory-produced Error", async () => {
+      const { app } = makeApp({ user: null });
+      const asResponse = await runGuardedRoute(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        factoryUnauthorized: () => new Response("nope", { status: 418 }),
+      }, async () => Response.json({ ok: true }));
+      expect(asResponse.status).toBe(418);
+
+      await expect(runGuardedRoute(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        factoryUnauthorized: () => Object.assign(new Error("nope"), { fromFactory: true }),
+      }, async () => Response.json({ ok: true }))).rejects.toMatchObject({ fromFactory: true });
+    });
+
+    it("prefers a per-handler factory over the factory-level default", async () => {
+      const { app } = makeApp({ user: null });
+      const response = await runGuardedRoute(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        unauthorized: () => new Response("per-handler", { status: 403 }),
+        factoryUnauthorized: () => new Response("factory", { status: 418 }),
+      }, async () => Response.json({ ok: true }));
+      expect(response.status).toBe(403);
+    });
+
+    it("always throws from a throw-only surface, whatever the factory produced", async () => {
+      const { app } = makeApp({ user: null });
+      const handler = vi.fn(async () => "unreachable");
+      await expect(runGuardedCall(app, { ...guardInfo, requestInput: makeRequest(), surface: "server action" }, handler))
+        .rejects.toThrow(/signed in to call this server action/);
+      expect(handler).not.toHaveBeenCalled();
+
+      // A Response-producing factory on a throw-only surface is thrown, not returned.
+      await expect(runGuardedCall(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        surface: "server action",
+        factoryUnauthorized: () => new Response("nope", { status: 418 }),
+      }, handler)).rejects.toBeInstanceOf(Response);
+    });
+
+    it("links the span to the request on every guarded surface", async () => {
+      const { app, withSpan } = makeApp();
+      await runGuardedRoute(app, { ...guardInfo, requestInput: makeRequest() }, async () => Response.json({ ok: true }));
+      await runGuardedCall(app, { ...guardInfo, requestInput: makeRequest(), surface: "server action" }, async () => "ok");
+      expect(withSpan).toHaveBeenCalledTimes(2);
+      for (const [, options] of withSpan.mock.calls) {
+        expect((options as { request?: unknown }).request).not.toBeUndefined();
+      }
+    });
+
+    it("telemetry: false runs the handler with no span at all", async () => {
+      const { app, withSpan } = makeApp();
+      const response = await runGuardedRoute(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        telemetry: false,
+      }, async () => Response.json({ ok: true }));
+      expect(response.status).toBe(200);
+      expect(withSpan).not.toHaveBeenCalled();
+    });
   });
 });
 

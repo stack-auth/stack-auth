@@ -40,12 +40,10 @@ import {
   getServiceDependenciesQuery,
   getServiceTimelineQuery,
   getServicesSummaryQuery,
-  isServiceTimeRangeHours,
   parseServiceDependencyRow,
   parseServiceSummaryRow,
   rankServiceAttention,
   relativeChange,
-  SERVICE_TIME_RANGES,
   serviceErrorRate,
   type ServiceAttentionSignal,
   type ServiceDependency,
@@ -53,6 +51,7 @@ import {
   type ServiceTimeline,
   type ServiceTimeRangeHours,
 } from "./services-data";
+import { isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, OBSERVABILITY_TIME_RANGES, queryObservability } from "../filters";
 import {
   attentionReasonDescription,
   attentionReasonLabel,
@@ -76,7 +75,7 @@ function identityKey(identity: ServiceIdentity): string {
 }
 
 function rangeLabelFor(hours: ServiceTimeRangeHours): string {
-  const range = SERVICE_TIME_RANGES.find((candidate) => candidate.hours === hours);
+  const range = OBSERVABILITY_TIME_RANGES.find((candidate) => candidate.hours === hours);
   if (range == null) throw new Error(`Unknown services time range: ${hours}`);
   return range.label;
 }
@@ -605,23 +604,17 @@ export default function PageClient() {
       const dependencyQuery = getServiceDependenciesQuery(hours);
       const timelineQuery = getServiceTimelineQuery(hours);
       const [summaryResponse, dependencyResponse, timelineResponse] = await Promise.all([
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: summaryQuery.query,
           params: summaryQuery.params,
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: dependencyQuery.query,
           params: dependencyQuery.params,
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: timelineQuery.query,
           params: timelineQuery.params,
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
       ]);
       if (requestSequence !== requestSequenceRef.current) return;
@@ -676,10 +669,10 @@ export default function PageClient() {
         selected={String(hours)}
         onSelect={(id) => {
           const parsed = Number(id);
-          if (!isServiceTimeRangeHours(parsed)) throw new Error(`Unknown services time range: ${id}`);
+          if (!isObservabilityTimeRangeHours(parsed)) throw new Error(`Unknown services time range: ${id}`);
           setHours(parsed);
         }}
-        options={SERVICE_TIME_RANGES.map((range) => ({ id: String(range.hours), label: range.label }))}
+        options={OBSERVABILITY_TIME_RANGE_OPTIONS}
         size="sm"
         glassmorphic={false}
       />

@@ -5,7 +5,6 @@ import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhous
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
-import { SPAN_ID_PREFIXES, toSpanId } from '@/lib/spans';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
@@ -36,6 +35,27 @@ function deterministicUuid(namespace: string): string {
   const d = ((parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + hex.slice(17, 20);
   const e = hex.slice(20, 32);
   return `${a}-${b}-${c}-${d}-${e}`;
+}
+
+/**
+ * Deterministic W3C ids for seed rows. Span identity is W3C (32/16 lowercase hex),
+ * and seeded spans must be re-derivable so a re-seed upserts the same
+ * ReplacingMergeTree rows instead of duplicating them — which rules out the random
+ * generators the SDK uses. sha256 is already the hash behind `deterministicUuid`;
+ * these just take hex slices of it directly rather than shaping a uuid first.
+ *
+ * The all-zero id is theoretically possible and invalid per spec; it is a
+ * 2^-128 sha256 collision with a fixed value, so a hard failure is the right
+ * response if it ever somehow happens.
+ */
+function deterministicW3cTraceId(namespace: string): string {
+  const traceId = createHash('sha256').update(namespace).digest('hex').slice(0, 32);
+  return traceId === '0'.repeat(32) ? throwErr(`Seed namespace ${namespace} hashed to the invalid all-zero trace id`) : traceId;
+}
+
+function deterministicW3cSpanId(namespace: string): string {
+  const spanId = createHash('sha256').update(namespace).digest('hex').slice(0, 16);
+  return spanId === '0'.repeat(16) ? throwErr(`Seed namespace ${namespace} hashed to the invalid all-zero span id`) : spanId;
 }
 
 /** Mulberry32 — small, fast, deterministic PRNG. */
@@ -1968,7 +1988,7 @@ async function seedBulkSignupsAndActivity(options: {
       });
 
       const navigationJourney = buildDummyNavigationJourney(index, v);
-      let clickPageViewSpanId: string | null = null;
+      let clickPageViewTrace: { traceId: string, spanId: string } | null = null;
       for (let p = 0; p < navigationJourney.length; p++) {
         // Keep each journey ordered while varying dwell time between pages.
         // The Paths query infers edges from timestamp order, so independently
@@ -1981,16 +2001,18 @@ async function seedBulkSignupsAndActivity(options: {
         // `v` is part of the namespace because a returning user can have
         // several visits on the same sampled day; each page view must remain a
         // distinct ReplacingMergeTree row.
-        const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`);
-        clickPageViewSpanId ??= spanId;
-        const prefixedSpanId = toSpanId(SPAN_ID_PREFIXES.pageView, spanId);
+        const namespace = `seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`;
+        const spanId = deterministicW3cSpanId(namespace);
+        const traceId = deterministicW3cTraceId(namespace);
+        clickPageViewTrace ??= { traceId, spanId };
         pageViewSpanRows.push({
-          trace_id: prefixedSpanId,
-          span_id: prefixedSpanId,
+          // A `$page-view` is one of the root activities, so it roots its own trace.
+          trace_id: traceId,
+          span_id: spanId,
           span_type: '$page-view',
           started_at: formatClickhouseTimestamp(pvTime),
           ended_at: formatClickhouseTimestamp(pvTime),
-          parent_span_ids: [],
+          parent_span_id: null,
           producer: 'sdk',
           data: JSON.stringify({
             path: navigationJourney[p],
@@ -2005,6 +2027,7 @@ async function seedBulkSignupsAndActivity(options: {
           refresh_token_id: null,
           session_replay_id: null,
           session_replay_segment_id: null,
+          page_view_span_id: null,
           // Seed rows are write-once; version = start ms is enough for uniqueness.
           version: pvTime.getTime(),
         });
@@ -2014,10 +2037,7 @@ async function seedBulkSignupsAndActivity(options: {
         const clickOffset = Math.floor(rand() * 1800) * 1000;
         // Clamp to `now` so the offset can't push the event into the future.
         const clickTime = new Date(Math.min(visitTime.getTime() + clickOffset, now.getTime()));
-        const pageViewParentId = toSpanId(
-          SPAN_ID_PREFIXES.pageView,
-          clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
-        );
+        const pageView = clickPageViewTrace ?? throwErr("A seeded visit must generate a page view before its click");
         clickhouseRows.push({
           event_type: '$click',
           event_at: formatClickhouseTimestamp(clickTime),
@@ -2029,10 +2049,11 @@ async function seedBulkSignupsAndActivity(options: {
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
-          // Raw seed inserts bypass the API's page_view_span_id-to-parent
-          // composition, so write the same canonical pv- ancestry directly.
-          parent_span_ids: [pageViewParentId],
-          trace_id: pageViewParentId,
+          // A click is an instant inside the page-view span, so it carries that
+          // span's identity (trace + enclosing span) plus the page correlation.
+          trace_id: pageView.traceId,
+          span_id: pageView.spanId,
+          page_view_span_id: pageView.spanId,
         });
       }
     }

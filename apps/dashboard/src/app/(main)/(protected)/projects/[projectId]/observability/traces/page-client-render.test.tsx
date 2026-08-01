@@ -81,9 +81,10 @@ describe("Traces page client", () => {
               span_id: "physical-root",
               span_type: "POST /api/latest/analytics/events/batch",
               started_at: "2026-07-28 23:47:02.756",
+              root_activity_at: "2026-07-28 23:47:02.756",
               ended_at: null,
               status_code: "unset",
-              parent_span_ids: [],
+              parent_span_id: null,
               user_display_name: "Administrator",
               user_primary_email: "admin@example.com",
               user_profile_image_url: null,
@@ -103,7 +104,7 @@ describe("Traces page client", () => {
           started_at: "2026-07-28 23:47:02.756",
           ended_at: null,
           status_code: "unset",
-          parent_span_ids: [],
+          parent_span_id: null,
         }],
       };
     });
@@ -114,5 +115,62 @@ describe("Traces page client", () => {
       expect(screen.getByTestId("trace-list").textContent).toBe("1 traces");
     });
     expect(screen.queryByText("Hexclave")).toBeNull();
+  });
+
+  /**
+   * Replaces a test that asserted the verbatim text of a hook's dependency array
+   * (`"}, [adminApp, hours]);"`) against the page's own source. That broke on
+   * reformat and would have passed had the dependency been added back through any
+   * other spelling. This checks the behavior the dependency exists to protect:
+   * the selected trace's span query must be issued once per selection, not again
+   * every time the root list grows.
+   */
+  it("does not re-query the selected trace when the root list grows", async () => {
+    const spanQueryMarker = "FROM default.spans";
+    let rootPage = 0;
+    queryAnalyticsMock.mockImplementation(async ({ query }: { query: string }) => {
+      if (query.includes("SELECT service_namespace, service_name")) return { result: [] };
+      if (query.includes("SELECT event_type")) return { result: [] };
+      if (query.includes("LEFT JOIN default.users AS u")) {
+        // Each call returns a different root, standing in for pagination
+        // extending the sidebar.
+        rootPage += 1;
+        return {
+          result: [{
+            trace_id: `trace-${rootPage}`,
+            span_id: `root-${rootPage}`,
+            span_type: "GET /api/thing",
+            started_at: "2026-07-28 23:47:02.756",
+            root_activity_at: "2026-07-28 23:47:02.756",
+            ended_at: null,
+            status_code: "unset",
+            parent_span_id: null,
+            user_display_name: null,
+            user_primary_email: null,
+            user_profile_image_url: null,
+            root_source: "span",
+            trace_service_namespaces: [""],
+            trace_service_names: ["stack-backend"],
+          }],
+        };
+      }
+      return { result: [] };
+    });
+
+    render(<PageClient />);
+    await waitFor(() => {
+      expect(screen.getByTestId("trace-list").textContent).toBe("1 traces");
+    });
+
+    const spanQueriesAfterFirstSelection = queryAnalyticsMock.mock.calls
+      .filter(([options]: [{ query: string }]) => options.query.includes(spanQueryMarker)).length;
+
+    // Let any effect scheduled by the root commit settle. A dependency on the
+    // root list would issue another span query here.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const spanQueriesAfterSettle = queryAnalyticsMock.mock.calls
+      .filter(([options]: [{ query: string }]) => options.query.includes(spanQueryMarker)).length;
+    expect(spanQueriesAfterSettle).toBe(spanQueriesAfterFirstSelection);
   });
 });

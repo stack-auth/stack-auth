@@ -5,8 +5,8 @@ import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
-import { resolveTelemetryTenancy } from "@/lib/self-telemetry-tenancy";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
+import { resolveCustomerRequestObservability } from "@/lib/customer-request-observability";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
@@ -388,12 +388,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
 
   const user = await queriesResults.userIfOnGlobalPrismaClient;
 
-  // Auth succeeded: attribute this request's OTel self-instrumentation spans to
-  // the calling project (only reached on success — failed auth throws above, so
-  // failed requests stay under project "internal"). userId/refreshTokenId are
-  // the token-derived (trusted) values; session/replay/page labels come from
-  // the x-hexclave-span-context header inside resolveTelemetryTenancy.
-  resolveTelemetryTenancy({
+  resolveCustomerRequestObservability({
     projectId,
     branchId,
     userId: userId ?? null,

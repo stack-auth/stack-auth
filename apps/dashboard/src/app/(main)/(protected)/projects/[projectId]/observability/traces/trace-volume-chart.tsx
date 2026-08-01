@@ -8,10 +8,10 @@ import {
 import { SpinnerGapIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import {
-  getTraceVolumeGranularity,
   type TraceTimeRangeHours,
   type TraceVolumeBucket,
 } from "./trace-volume";
+import { getBucketGranularity } from "../bucket-granularity";
 
 function formatBucket(bucketMs: number, hours: TraceTimeRangeHours): string {
   const date = new Date(bucketMs);
@@ -37,7 +37,7 @@ export function TraceVolumeChart({
   error: string | null,
   onRetry: () => Promise<void>,
 }) {
-  const granularity = getTraceVolumeGranularity(hours);
+  const granularity = getBucketGranularity(hours);
   const total = useMemo(
     () => buckets.reduce((sum, bucket) => sum + bucket.count, 0),
     [buckets],
@@ -58,7 +58,7 @@ export function TraceVolumeChart({
         label="Trace volume"
         right={(
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-            {total.toLocaleString()} traces · {granularity.bucketLabel}
+            {total.toLocaleString()} traces · {granularity.label}
           </span>
         )}
       />
@@ -83,7 +83,7 @@ export function TraceVolumeChart({
           <div
             className="flex h-full min-w-0 flex-col"
             role="img"
-            aria-label={`${total.toLocaleString()} traces, ${granularity.bucketLabel}`}
+            aria-label={`${total.toLocaleString()} traces, ${granularity.label}`}
           >
             <ol className="flex min-h-0 flex-1 items-end gap-px" aria-label="Trace counts by time bucket">
               {buckets.map((bucket) => {

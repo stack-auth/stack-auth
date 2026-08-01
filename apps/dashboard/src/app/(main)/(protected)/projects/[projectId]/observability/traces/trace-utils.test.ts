@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, deriveW3cTraceIdFromHcSpanId, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, spliceBridgedSubtraces, subtreeMatches, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, traceContainsSpanId, traceErrorCount, traceSignalSpanIds, traceSpanDisplayName, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -8,21 +8,47 @@ function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
     spanType: opts.spanType ?? id,
     startMs: opts.startMs ?? 1000,
     endMs: opts.endMs === undefined ? 2000 : opts.endMs,
-    parentSpanIds: opts.parentSpanIds ?? [],
-    raw: opts.raw ?? {},
+    parentSpanId: opts.parentSpanId ?? null,
+    // Default to the SDK producer: most fixtures here stand for spans the
+    // customer's own code created, which is what signal mode keys off.
+    raw: opts.raw ?? { producer: "sdk" },
   };
 }
 
 function event(eventType: string, opts: Partial<EventInput> = {}): EventInput {
   return {
+    traceId: opts.traceId === undefined ? "test-trace" : opts.traceId,
     eventType,
     atMs: opts.atMs ?? 1500,
-    parentSpanIds: opts.parentSpanIds ?? [],
+    spanId: opts.spanId ?? null,
     raw: opts.raw ?? {},
   };
 }
 
 describe("traceSpanDisplayName", () => {
+  it("shows the recorded library operation instead of the internal $lib-span discriminator", () => {
+    expect(traceSpanDisplayName(span("library", {
+      spanType: "$lib-span",
+      raw: {
+        data: {
+          name: "prisma:client:db_query",
+          tracer_name: "prisma",
+        },
+      },
+    }))).toBe("prisma:client:db_query");
+    expect(traceSpanDisplayName(span("unnamed-library", {
+      spanType: "$lib-span",
+      raw: { data: {} },
+    }))).toBe("$lib-span");
+    expect(traceSpanDisplayName(span("normalized-library", {
+      spanType: "STACK:-external-db-sync.poller.iteration",
+      raw: {
+        scope_name: "stack-backend",
+        data: { name: "STACK: external-db-sync.poller.iteration" },
+      },
+    }))).toBe("STACK: external-db-sync.poller.iteration");
+  });
+
   it("adds a safe route to generic HTTP root names", () => {
     expect(traceSpanDisplayName(span("root", {
       spanType: "POST",
@@ -34,15 +60,15 @@ describe("traceSpanDisplayName", () => {
 });
 
 describe("buildTraces", () => {
-  it("builds a tree from farthest-to-nearest parent paths and attaches events to the nearest fetched ancestor", () => {
+  it("builds a tree from scalar parents and attaches events to their enclosing span", () => {
     const spans = [
-      span("cs-root", { startMs: 1000, endMs: 5000 }),
-      span("cs-child", { startMs: 2000, endMs: 4000, parentSpanIds: ["cs-root"] }),
-      span("cs-grandchild", { startMs: 2500, endMs: 3000, parentSpanIds: ["cs-root", "cs-child"] }),
+      span("root", { startMs: 1000, endMs: 5000 }),
+      span("child", { startMs: 2000, endMs: 4000, parentSpanId: "root" }),
+      span("grandchild", { startMs: 2500, endMs: 3000, parentSpanId: "child" }),
     ];
     const events = [
-      event("added", { atMs: 2600, parentSpanIds: ["cs-root", "cs-child", "cs-grandchild"] }),
-      event("started", { atMs: 1100, parentSpanIds: ["cs-root"] }),
+      event("added", { atMs: 2600, spanId: "grandchild" }),
+      event("started", { atMs: 1100, spanId: "root" }),
     ];
 
     const { traces, unattachedEvents } = buildTraces(spans, events);
@@ -50,60 +76,69 @@ describe("buildTraces", () => {
     expect(unattachedEvents).toHaveLength(0);
 
     const trace = traces[0];
-    expect(trace.root.span.id).toBe("cs-root");
-    expect(trace.root.children.map((c) => c.span.id)).toEqual(["cs-child"]);
-    expect(trace.root.children[0].children.map((c) => c.span.id)).toEqual(["cs-grandchild"]);
+    expect(trace.root.span.id).toBe("root");
+    expect(trace.root.children.map((c) => c.span.id)).toEqual(["child"]);
+    expect(trace.root.children[0].children.map((c) => c.span.id)).toEqual(["grandchild"]);
     expect(trace.root.events.map((e) => e.eventType)).toEqual(["started"]);
     expect(trace.root.children[0].children[0].events.map((e) => e.eventType)).toEqual(["added"]);
     expect(trace.spanCount).toBe(3);
     expect(trace.eventCount).toBe(2);
     expect(trace.startMs).toBe(1000);
     expect(trace.endMs).toBe(5000);
-    expect(traceContainsSpanId(trace, "cs-root")).toBe(true);
-    expect(traceContainsSpanId(trace, "cs-grandchild")).toBe(true);
+    expect(traceContainsSpanId(trace, "root")).toBe(true);
+    expect(traceContainsSpanId(trace, "grandchild")).toBe(true);
     expect(traceContainsSpanId(trace, "missing")).toBe(false);
   });
 
-  it("nests bridged W3C-id spans that reference only their immediate parent", () => {
+  it("keeps one trace per trace id, newest first", () => {
     const { traces } = buildTraces([
-      span("otel-trace-root"),
-      span("otel-child", { parentSpanIds: ["otel-trace-root"] }),
-      span("otel-grandchild", { parentSpanIds: ["otel-child"] }),
+      span("older-root", { traceId: "older", startMs: 1000 }),
+      span("newer-root", { traceId: "newer", startMs: 9000 }),
+      span("newer-child", { traceId: "newer", startMs: 9100, parentSpanId: "newer-root" }),
     ], []);
 
-    expect(traces).toHaveLength(1);
-    expect(traces[0].root.span.id).toBe("otel-trace-root");
-    expect(traces[0].root.children[0].span.id).toBe("otel-child");
-    expect(traces[0].root.children[0].children[0].span.id).toBe("otel-grandchild");
+    expect(traces.map((trace) => trace.root.span.id)).toEqual(["newer-root", "older-root"]);
+    expect(traces[0].spanCount).toBe(2);
   });
 
-  it("re-parents to the nearest FETCHED ancestor when an intermediate span is missing", () => {
-    const spans = [
-      span("cs-root", { startMs: 1000 }),
-      // "cs-missing" is in the chain but was not fetched (outside time window)
-      span("cs-leaf", { startMs: 1200, parentSpanIds: ["cs-root", "cs-missing"] }),
-    ];
-    const { traces } = buildTraces(spans, []);
-    expect(traces).toHaveLength(1);
-    expect(traces[0].root.span.id).toBe("cs-root");
-    expect(traces[0].root.children.map((c) => c.span.id)).toEqual(["cs-leaf"]);
+  it("does not resolve a parent id that only exists in a different trace", () => {
+    // A span id is unique only WITHIN its trace, so a cross-trace id match is a
+    // coincidence — the span is an orphan of its own trace, not a child of the
+    // other one.
+    const { traces } = buildTraces([
+      span("shared-id", { traceId: "other-trace", startMs: 1000 }),
+      span("root", { traceId: "trace", startMs: 2000 }),
+      span("child", { traceId: "trace", startMs: 2100, parentSpanId: "shared-id" }),
+    ], []);
+
+    expect(traces
+      .filter((trace) => trace.root.span.traceId === "trace")
+      .map((trace) => trace.root.span.id)).toEqual(["child", "root"]);
   });
 
-  it("treats spans with no fetched ancestor as separate traces, newest first", () => {
-    const spans = [
-      span("a", { startMs: 1000 }),
-      span("b", { startMs: 9000, parentSpanIds: ["not-fetched"] }),
-    ];
-    const { traces } = buildTraces(spans, []);
-    expect(traces.map((t) => t.root.span.id)).toEqual(["b", "a"]);
+  it("keeps identical span ids from different W3C traces distinct", () => {
+    const { traces } = buildTraces([
+      span("shared-id", { traceId: "older", startMs: 1000 }),
+      span("shared-id", { traceId: "newer", startMs: 2000 }),
+    ], [
+      event("older-event", { traceId: "older", spanId: "shared-id" }),
+      event("newer-event", { traceId: "newer", spanId: "shared-id" }),
+    ]);
+
+    expect(traces.map((trace) => `${trace.root.span.traceId}:${trace.root.span.id}`)).toEqual([
+      "newer:shared-id",
+      "older:shared-id",
+    ]);
+    expect(traces[0].root.events.map((item) => item.eventType)).toEqual(["newer-event"]);
+    expect(traces[1].root.events.map((item) => item.eventType)).toEqual(["older-event"]);
   });
 
   it("marks a trace open (endMs null) when any span is open and tracks latestMs", () => {
     const spans = [
       span("root", { startMs: 1000, endMs: 8000 }),
-      span("open-child", { startMs: 2000, endMs: null, parentSpanIds: ["root"] }),
+      span("open-child", { startMs: 2000, endMs: null, parentSpanId: "root" }),
     ];
-    const events = [event("late", { atMs: 9500, parentSpanIds: ["root"] })];
+    const events = [event("late", { atMs: 9500, spanId: "root" })];
     const { traces } = buildTraces(spans, events);
     expect(traces[0].endMs).toBeNull();
     expect(traces[0].latestMs).toBe(9500);
@@ -114,15 +149,15 @@ describe("buildTraces", () => {
     // predate the span row's own started_at.
     const { traces } = buildTraces(
       [span("root", { startMs: 5000, endMs: 9000 })],
-      [event("early", { atMs: 3000, parentSpanIds: ["root"] })],
+      [event("early", { atMs: 3000, spanId: "root" })],
     );
     expect(traces[0].startMs).toBe(3000);
   });
 
-  it("returns events with no fetched ancestor as unattached", () => {
+  it("returns events with an unknown or absent enclosing span as unattached", () => {
     const { traces, unattachedEvents } = buildTraces(
       [span("root")],
-      [event("orphan", { parentSpanIds: ["rti-not-fetched"] }), event("bare", { parentSpanIds: [] })],
+      [event("orphan", { spanId: "not-fetched" }), event("bare", { spanId: null })],
     );
     expect(traces[0].eventCount).toBe(0);
     expect(unattachedEvents.map((e) => e.eventType)).toEqual(["orphan", "bare"]);
@@ -130,12 +165,12 @@ describe("buildTraces", () => {
 
   it("survives hand-crafted parent cycles without infinite recursion", () => {
     const spans = [
-      span("x", { parentSpanIds: ["y"] }),
-      span("y", { parentSpanIds: ["x"] }),
+      span("x", { parentSpanId: "y" }),
+      span("y", { parentSpanId: "x" }),
     ];
     const { traces } = buildTraces(spans, []);
-    // Both list each other, so both have a "fetched parent" — but the cycle
-    // guard must still terminate and every span must appear exactly once.
+    // Both name each other, so both have a parent inside the trace — but the
+    // cycle guard must still terminate and every span must appear exactly once.
     const seen = new Set<string>();
     for (const trace of traces) {
       for (const row of flattenTrace(trace)) {
@@ -149,6 +184,15 @@ describe("buildTraces", () => {
     expect(seen).toEqual(new Set(["x", "y"]));
   });
 
+  it("treats a self-parenting span as a root rather than looping", () => {
+    const { traces } = buildTraces([
+      span("root", { startMs: 1000 }),
+      span("self", { startMs: 1100, parentSpanId: "self" }),
+    ], []);
+
+    expect(traces.map((trace) => trace.root.span.id)).toEqual(["self", "root"]);
+  });
+
   it("dedupes duplicate span ids, keeping the first occurrence", () => {
     const spans = [
       span("dup", { spanType: "kept", startMs: 1000 }),
@@ -157,6 +201,21 @@ describe("buildTraces", () => {
     const { traces } = buildTraces(spans, []);
     expect(traces).toHaveLength(1);
     expect(traces[0].root.span.spanType).toBe("kept");
+  });
+});
+
+describe("buildTraces missing-parent tolerance", () => {
+  it("restores the old behavior by rendering a span with an unfetched parent as a real root", () => {
+    const { traces } = buildTraces([
+      span("root", { startMs: 1000, endMs: 9000 }),
+      span("leaf", { startMs: 1200, endMs: 1800, parentSpanId: "not-fetched" }),
+      span("leaf-child", { startMs: 1300, endMs: 1700, parentSpanId: "leaf" }),
+    ], []);
+
+    expect(traces.map((trace) => trace.root.span.id)).toEqual(["leaf", "root"]);
+    expect(traces[0].root.children.map((node) => node.span.id)).toEqual(["leaf-child"]);
+    expect(traces[0].spanCount).toBe(2);
+    expect(traces[1].spanCount).toBe(1);
   });
 });
 
@@ -176,10 +235,10 @@ describe("flattenTrace", () => {
   it("interleaves a span's events and child spans chronologically at depth+1", () => {
     const spans = [
       span("root", { startMs: 1000, endMs: 9000 }),
-      span("child-early", { startMs: 2000, endMs: 3000, parentSpanIds: ["root"] }),
-      span("child-late", { startMs: 6000, endMs: 7000, parentSpanIds: ["root"] }),
+      span("child-early", { startMs: 2000, endMs: 3000, parentSpanId: "root" }),
+      span("child-late", { startMs: 6000, endMs: 7000, parentSpanId: "root" }),
     ];
-    const events = [event("between", { atMs: 4000, parentSpanIds: ["root"] })];
+    const events = [event("between", { atMs: 4000, spanId: "root" })];
     const { traces } = buildTraces(spans, events);
     const rows = flattenTrace(traces[0]);
     expect(rows.map((r) => (r.kind === "span" ? r.node.span.id : r.event.eventType))).toEqual([
@@ -219,89 +278,184 @@ describe("zoomViewWindow / panViewWindow", () => {
   });
 });
 
-describe("subtreeMatches", () => {
-  it("matches span types, event types, and descendants", () => {
-    const { traces } = buildTraces(
-      [span("a", { spanType: "checkout" }), span("b", { spanType: "payment", parentSpanIds: ["a"] })],
-      [event("card_declined", { parentSpanIds: ["a", "b"] })],
-    );
-    expect(subtreeMatches(traces[0].root, "payment")).toBe(true);
-    expect(subtreeMatches(traces[0].root, "card_")).toBe(true);
-    expect(subtreeMatches(traces[0].root, "refund")).toBe(false);
-    expect(subtreeMatches(traces[0].root.children[0], "checkout")).toBe(false);
-  });
-});
 
 describe("trace signal selection", () => {
-  it("keeps causal paths to errors, events, custom spans, and slow client operations", () => {
+  it("keeps causal paths to errors, events, custom spans, and slow system spans", () => {
     const spans = [
-      span("otel-root", { startMs: 0, endMs: 1000 }),
-      span("otel-fast", { startMs: 10, endMs: 11, parentSpanIds: ["otel-root"] }),
-      span("otel-client", {
-        startMs: 20,
-        endMs: 900,
-        parentSpanIds: ["otel-root", "otel-fast"],
-        raw: { data: { "otel.span_kind": "client" } },
-      }),
-      span("otel-error-parent", { startMs: 30, endMs: 40, parentSpanIds: ["otel-root"] }),
-      span("otel-error", {
+      span("root", { spanType: "$page-view", startMs: 0, endMs: 1000 }),
+      span("fast", { spanType: "$render", startMs: 10, endMs: 11, parentSpanId: "root" }),
+      span("client", { spanType: "$http-client", startMs: 20, endMs: 900, parentSpanId: "fast" }),
+      span("error-parent", { spanType: "$middleware", startMs: 30, endMs: 40, parentSpanId: "root" }),
+      span("error", {
+        spanType: "$db-query",
         startMs: 31,
         endMs: 32,
-        parentSpanIds: ["otel-root", "otel-error-parent"],
-        raw: { status_code: "error" },
+        parentSpanId: "error-parent",
+        raw: { status_code: "error", producer: "sdk" },
       }),
-      span("cs-checkout", { startMs: 50, endMs: 60, parentSpanIds: ["otel-root"] }),
-      span("otel-event-owner", { startMs: 70, endMs: 80, parentSpanIds: ["otel-root"] }),
-      span("otel-noise", { startMs: 90, endMs: 91, parentSpanIds: ["otel-root"] }),
+      span("checkout", { spanType: "checkout", startMs: 50, endMs: 60, parentSpanId: "root" }),
+      span("event-owner", { spanType: "$render", startMs: 70, endMs: 80, parentSpanId: "root" }),
+      span("noise", { spanType: "$noise", startMs: 90, endMs: 91, parentSpanId: "root" }),
     ];
-    const events = [event("cart.updated", { atMs: 75, parentSpanIds: ["otel-root", "otel-event-owner"] })];
+    const events = [event("cart.updated", { atMs: 75, spanId: "event-owner" })];
     const { traces } = buildTraces(spans, events);
 
     expect([...traceSignalSpanIds(traces[0], 1)]).toMatchInlineSnapshot(`
       [
-        "otel-root",
-        "otel-error",
-        "otel-error-parent",
-        "cs-checkout",
-        "otel-event-owner",
-        "otel-client",
-        "otel-fast",
+        "root",
+        "error",
+        "error-parent",
+        "checkout",
+        "event-owner",
+        "client",
+        "fast",
       ]
     `);
     expect(traceErrorCount(traces[0])).toBe(1);
     expect([...traceSignalSpanIds(traces[0], 0, "noise")]).toEqual([
-      "otel-root",
-      "otel-error",
-      "otel-error-parent",
-      "cs-checkout",
-      "otel-event-owner",
-      "otel-noise",
+      "root",
+      "error",
+      "error-parent",
+      "checkout",
+      "event-owner",
+      "noise",
     ]);
   });
 
-  it("reduces a 3,000-span instrumentation fan-out to the root and 20 slow spans", () => {
+  it("reduces a 3,000-span system instrumentation fan-out to the root and 20 slow spans", () => {
     const spans = [
-      span("otel-root", { startMs: 0, endMs: 10_000 }),
-      ...Array.from({ length: 2999 }, (_, index) => span(`otel-noise-${index}`, {
+      span("root", { spanType: "$page-view", startMs: 0, endMs: 10_000 }),
+      ...Array.from({ length: 2999 }, (_, index) => span(`noise-${index}`, {
+        spanType: "$db-query",
         startMs: index + 1,
         endMs: index + 2,
-        parentSpanIds: ["otel-root"],
+        parentSpanId: "root",
       })),
     ];
     const { traces } = buildTraces(spans, []);
 
     expect(traces[0].spanCount).toBe(3000);
     expect([...traceSignalSpanIds(traces[0])]).toEqual([
-      "otel-root",
-      ...Array.from({ length: 20 }, (_, index) => `otel-noise-${index}`),
+      "root",
+      ...Array.from({ length: 20 }, (_, index) => `noise-${index}`),
     ]);
+  });
+
+  it("thins out an auto-instrumented fan-out but always keeps customer-authored spans", () => {
+    // A non-`$` span type alone does not mean the customer wrote it — an imported
+    // OpenTelemetry span like `prisma:query` also has one. Its instrumentation
+    // scope distinguishes it from deliberate `startSpan("checkout")` work even
+    // though both arrived through the authenticated SDK producer.
+    const spans = [
+      span("root", { spanType: "$page-view", startMs: 0, endMs: 1000 }),
+      span("checkout", { spanType: "checkout", startMs: 1, endMs: 2, parentSpanId: "root" }),
+      ...Array.from({ length: 50 }, (_, index) => span(`orm-${index}`, {
+        spanType: "prisma:query",
+        startMs: index + 1,
+        endMs: index + 2,
+        parentSpanId: "root",
+        raw: { producer: "sdk", scope_name: "prisma" },
+      })),
+    ];
+    const { traces } = buildTraces(spans, []);
+    // Root + the customer's own span only; the 50 library spans are noise.
+    expect([...traceSignalSpanIds(traces[0], 0)]).toEqual(["root", "checkout"]);
+  });
+
+  it("keeps internal API request fan-out compact without hiding customer spans", () => {
+    const spans = [
+      span("root", { spanType: "$page-view", startMs: 0, endMs: 10_000 }),
+      span("checkout", { spanType: "checkout", startMs: 1, endMs: 2, parentSpanId: "root" }),
+      ...Array.from({ length: 100 }, (_, index) => span(`request-${index}`, {
+        spanType: "hexclave.api.request",
+        startMs: index + 10,
+        endMs: index + 11,
+        parentSpanId: "root",
+        raw: { producer: "sdk", scope_name: null },
+      })),
+    ];
+    const { traces } = buildTraces(spans, []);
+
+    // The reserved request boundary is SDK-owned despite having no library
+    // scope. Signal keeps the true customer span plus only the 20 slow-context
+    // slots; All spans still contains every request boundary.
+    expect(traces[0].spanCount).toBe(102);
+    expect([...traceSignalSpanIds(traces[0])]).toEqual([
+      "root",
+      "checkout",
+      ...Array.from({ length: 19 }, (_, index) => `request-${index}`),
+    ]);
+    expect([...traceSignalSpanIds(traces[0], 0)]).toEqual(["root", "checkout"]);
+  });
+
+  it("collapses the auto-instrumented server subtree onto its $http-client boundary", () => {
+    const spans = [
+      span("refresh", { spanType: "$refresh-token", startMs: 0, endMs: 10_000 }),
+      span("replay", { spanType: "$session-replay", startMs: 10, endMs: 9000, parentSpanId: "refresh" }),
+      span("segment", { spanType: "$session-replay-segment", startMs: 20, endMs: 8000, parentSpanId: "replay" }),
+      span("page", { spanType: "$page-view", startMs: 30, endMs: 7000, parentSpanId: "segment" }),
+      span("client", { spanType: "$http-client", startMs: 40, endMs: 6000, parentSpanId: "page" }),
+      span("middleware", {
+        spanType: "middleware-GET",
+        startMs: 50,
+        endMs: 5900,
+        parentSpanId: "client",
+        raw: { producer: "sdk", scope_name: "next", status_code: "error" },
+      }),
+      span("get", {
+        spanType: "GET",
+        startMs: 60,
+        endMs: 5800,
+        parentSpanId: "middleware",
+        raw: { producer: "sdk", scope_name: "next" },
+      }),
+      span("route", {
+        spanType: "executing-api-route-app-page",
+        startMs: 70,
+        endMs: 5700,
+        parentSpanId: "get",
+        raw: { producer: "sdk", scope_name: "next" },
+      }),
+      span("api", {
+        spanType: "hexclave.api.request",
+        startMs: 80,
+        endMs: 5600,
+        parentSpanId: "route",
+        raw: { producer: "sdk", scope_name: null },
+      }),
+      span("stack", {
+        spanType: "STACK:-handling-API-request",
+        startMs: 90,
+        endMs: 5500,
+        parentSpanId: "api",
+        raw: { producer: "sdk", scope_name: "stack-backend" },
+      }),
+      span("response", {
+        spanType: "STACK:-creating-HTTP-response-from-smart-response",
+        startMs: 100,
+        endMs: 5400,
+        parentSpanId: "stack",
+        raw: { producer: "sdk", scope_name: "stack-backend" },
+      }),
+    ];
+    const events = [event("internal.diagnostic", { atMs: 110, spanId: "response" })];
+    const { traces } = buildTraces(spans, events);
+
+    expect(flattenTrace(traces[0]).filter((row) => row.kind === "span")).toHaveLength(spans.length);
+    expect(traceSignalSpanIds(traces[0], 20, "$refresh-token")).toEqual(new Set([
+      "refresh",
+      "client",
+      "page",
+      "segment",
+      "replay",
+    ]));
   });
 });
 
 describe("formatDuration", () => {
   it("formats across magnitudes", () => {
     expect(formatDuration(0)).toBe("0s");
-    expect(formatDuration(0.5)).toBe("<1ms");
+    expect(formatDuration(0.5)).toBe("500µs");
     expect(formatDuration(42)).toBe("42ms");
     expect(formatDuration(2500)).toBe("2.5s");
     expect(formatDuration(42_000)).toBe("42s");
@@ -314,52 +468,7 @@ describe("formatDuration", () => {
 
 describe("isSystemSpanType", () => {
   it("flags $-prefixed types as system", () => {
-    expect(isSystemSpanType("$session-replay")).toBe(true);
+    expect(isSystemSpanType("$page-view")).toBe(true);
     expect(isSystemSpanType("checkout")).toBe(false);
-  });
-});
-
-describe("spliceBridgedSubtraces", () => {
-  const hcUuid = "1b671a64-40d5-491e-99b0-da01ff1f3341";
-  const w3cTraceId = "1b671a6440d5491e99b0da01ff1f3341";
-
-  it("derives the W3C trace id from an hc- span id and rejects other shapes", () => {
-    expect(deriveW3cTraceIdFromHcSpanId(`hc-${hcUuid}`)).toBe(w3cTraceId);
-    expect(deriveW3cTraceIdFromHcSpanId(`pv-${hcUuid}`)).toBeNull();
-    expect(deriveW3cTraceIdFromHcSpanId("hc-not-a-uuid")).toBeNull();
-  });
-
-  it("reparents bridged backend spans under their bridge span so one tree renders", () => {
-    const spans = [
-      span("pv-page", { traceId: "rti-session", startMs: 1000, endMs: 9000 }),
-      span(`hc-${hcUuid}`, { traceId: "rti-session", spanType: "$http-client", startMs: 2000, endMs: 3000, parentSpanIds: ["rti-session", "pv-page"] }),
-      // The backend sub-trace the fetch caused: W3C ids, own trace id = derived hex.
-      span("aaaaaaaaaaaaaaaa", { traceId: w3cTraceId, startMs: 2100, endMs: 2900, parentSpanIds: [] }),
-      span("bbbbbbbbbbbbbbbb", { traceId: w3cTraceId, startMs: 2200, endMs: 2800, parentSpanIds: ["aaaaaaaaaaaaaaaa"] }),
-    ];
-
-    const spliced = spliceBridgedSubtraces(spans);
-    const backendRoot = spliced.find((candidate) => candidate.id === "aaaaaaaaaaaaaaaa");
-    const backendChild = spliced.find((candidate) => candidate.id === "bbbbbbbbbbbbbbbb");
-    expect(backendRoot?.parentSpanIds).toEqual(["rti-session", "pv-page", `hc-${hcUuid}`]);
-    expect(backendChild?.parentSpanIds).toEqual(["rti-session", "pv-page", `hc-${hcUuid}`, "aaaaaaaaaaaaaaaa"]);
-    // The bridge span itself and unrelated spans are untouched (same object).
-    expect(spliced.find((candidate) => candidate.id === `hc-${hcUuid}`)).toBe(spans[1]);
-    expect(spliced.find((candidate) => candidate.id === "pv-page")).toBe(spans[0]);
-
-    // End-to-end: buildTraces now yields ONE tree with the backend request
-    // nested under the fetch span.
-    const { traces } = buildTraces(spliced, []);
-    expect(traces).toHaveLength(1);
-    const page = traces[0].root.children.find((node) => node.span.id === "pv-page")
-      ?? traces[0].root; // pv may be root if rti- row absent from the fetch
-    const bridgeNode = (page.children.length > 0 ? page : traces[0].root).children.find((node) => node.span.id === `hc-${hcUuid}`);
-    expect(bridgeNode?.children.map((node) => node.span.id)).toEqual(["aaaaaaaaaaaaaaaa"]);
-    expect(bridgeNode?.children[0].children.map((node) => node.span.id)).toEqual(["bbbbbbbbbbbbbbbb"]);
-  });
-
-  it("returns the input array unchanged when no bridge spans exist", () => {
-    const spans = [span("cs-a"), span("cs-b", { parentSpanIds: ["cs-a"] })];
-    expect(spliceBridgedSubtraces(spans)).toBe(spans);
   });
 });

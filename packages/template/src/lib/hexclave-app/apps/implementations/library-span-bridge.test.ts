@@ -1,42 +1,51 @@
 import { gunzipSync } from "node:zlib";
-import { uuidToW3cSpanId, uuidToW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { generateW3cSpanId, generateW3cTraceId, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { context as contextApi, ROOT_CONTEXT, SpanStatusCode, trace as traceApi, type Context, type ContextManager, type Tracer, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StackServerApp } from "../interfaces/server-app";
-import { classifyLibrarySpanCategory, registerLibrarySpanBridge, resetLibrarySpanBridgeForTesting, type BeginLibrarySpanInfo, type LibrarySpanBridgeDeps } from "./library-span-bridge";
+import { classifyLibrarySpanCategory, isLibrarySpanBridgeTelemetrySuppressed, librarySpanTypeFromName, registerLibrarySpanBridge, resetLibrarySpanBridgeForTesting, runWithLibrarySpanBridgeTelemetrySuppressed, runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered, shouldIgnoreLibrarySpan, type BeginLibrarySpanInfo, type LibrarySpanBridgeDeps } from "./library-span-bridge";
 import { getServerAppInstrumentation } from "./server-app-impl";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
-const AMBIENT_SPAN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+// Stands in for a Hexclave withSpan frame the seam would resolve from ambient
+// context (contract case (b)).
+const AMBIENT_PARENT = { traceId: generateW3cTraceId(), spanId: generateW3cSpanId() };
 
 type SeamCall = {
   info: BeginLibrarySpanInfo,
-  nativeId: string,
-  parentPath: string[],
+  traceId: string,
+  spanId: string,
+  /** The parent the seam decided on — exactly what would land in `parent_span_id`. */
+  parentSpanId: string | null,
   ends: { endedAtMs: number, data: Record<string, unknown> }[],
 };
 
 /**
  * Fake seam standing in for server-app-impl._beginLibrarySpan: records every
- * call, mints native ids, and reproduces the seam's parenting contract — an
- * OTel parent's path wins outright, otherwise a configurable "ambient" chain
- * (contract case (b)), otherwise the empty project root (case (c)).
+ * call, mints W3C ids, and reproduces the seam's parenting contract — an OTel
+ * parent wins outright (join its trace, parent under its `recordedSpanId`),
+ * otherwise a configurable ambient parent (case (b)), otherwise a fresh trace
+ * root (case (c)).
  */
-function makeFakeSeam(options?: { ambientPath?: string[], decline?: boolean }) {
+function makeFakeSeam(options?: { ambientParent?: { traceId: string, spanId: string }, decline?: boolean }) {
   const calls: SeamCall[] = [];
   const deps: LibrarySpanBridgeDeps = {
     projectId: PROJECT_ID,
     beginLibrarySpan: (info) => {
       if (options?.decline) return null;
-      const nativeId = crypto.randomUUID();
-      const parentPath = info.otelParent !== null
-        ? [...info.otelParent.parentPath, info.otelParent.nativeId]
-        : [...options?.ambientPath ?? []];
-      const call: SeamCall = { info, nativeId, parentPath, ends: [] };
+      const ambient = options?.ambientParent ?? null;
+      // Mirrors _beginLibrarySpan: `recordedSpanId` may be null even when a
+      // parent entry exists (nearest OTel ancestor wrote no row), in which case
+      // this span roots its parent's trace rather than naming a phantom.
+      const traceId = info.otelParent?.traceId ?? ambient?.traceId ?? generateW3cTraceId();
+      const parentSpanId = info.otelParent !== null ? info.otelParent.recordedSpanId : ambient?.spanId ?? null;
+      const call: SeamCall = { info, traceId, spanId: generateW3cSpanId(), parentSpanId, ends: [] };
       calls.push(call);
       return {
-        nativeId,
-        parentPath,
+        traceId: call.traceId,
+        spanId: call.spanId,
+        sampled: true,
+        ambientSpanId: ambient?.spanId ?? info.otelParent?.ambientSpanId ?? null,
         end: (endedAtMs, data) => call.ends.push({ endedAtMs, data }),
       };
     },
@@ -124,10 +133,66 @@ describe("library-span-bridge", () => {
       expect(first.calls).toHaveLength(0);
       expect(second.calls).toHaveLength(1);
     });
+
+    it("suppresses library spans for the full async collector scope using the bridge's own context manager", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      expect(isLibrarySpanBridgeTelemetrySuppressed()).toBe(false);
+
+      await runWithLibrarySpanBridgeTelemetrySuppressed(async () => {
+        expect(isLibrarySpanBridgeTelemetrySuppressed()).toBe(true);
+        expect(traceApi.getTracer("prisma").startSpan("suppressed-before-await").isRecording()).toBe(false);
+        await Promise.resolve();
+        expect(isLibrarySpanBridgeTelemetrySuppressed()).toBe(true);
+        expect(traceApi.getTracer("prisma").startSpan("suppressed-after-await").isRecording()).toBe(false);
+      });
+
+      expect(isLibrarySpanBridgeTelemetrySuppressed()).toBe(false);
+      traceApi.getTracer("prisma").startSpan("recorded-outside-scope").end();
+      expect(calls.map((call) => call.info.name)).toEqual(["recorded-outside-scope"]);
+    });
+
+    it("detaches internal delivery from the sampled trace being exported", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      const tracer = traceApi.getTracer("next.js");
+
+      await tracer.startActiveSpan("request-being-exported", async (requestSpan) => {
+        expect(requestSpan.spanContext().traceFlags).toBe(1);
+
+        await runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered(async () => {
+          expect(isLibrarySpanBridgeTelemetrySuppressed()).toBe(true);
+          expect(traceApi.getSpan(contextApi.active())).toBeUndefined();
+
+          // A framework may still open a non-recording span around the fetch.
+          // It must not inherit sampled=1 and propagate that decision back to
+          // the analytics endpoint, or the endpoint traces its own delivery
+          // and bypasses the configured local trace sample rate forever.
+          const deliverySpan = tracer.startSpan("analytics-batch-delivery");
+          expect(deliverySpan.isRecording()).toBe(false);
+          expect(deliverySpan.spanContext().traceFlags).toBe(0);
+          deliverySpan.end();
+        });
+
+        requestSpan.end();
+      });
+
+      expect(calls.map((call) => call.info.name)).toEqual(["request-being-exported"]);
+    });
+
+    it("fails loud when collector suppression is entered before bridge registration", async () => {
+      await expect(runWithLibrarySpanBridgeTelemetrySuppressed(async () => "never"))
+        .rejects.toThrow(/requires the library-span bridge to be registered first/);
+    });
+
+    it("lets delivery run without suppression when the optional bridge was not registered", async () => {
+      await expect(runWithLibrarySpanBridgeTelemetrySuppressedIfRegistered(async () => "sent"))
+        .resolves.toBe("sent");
+    });
   });
 
   describe("span identity + registry mapping", () => {
-    it("derives the W3C span/trace ids from the seam's native uuid", async () => {
+    it("adopts the identity the seam resolved, so the OTel context and the stored row agree", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
       const before = Date.now();
@@ -137,8 +202,11 @@ describe("library-span-bridge", () => {
       expect(calls[0].info).toMatchObject({ name: "client:operation", tracerName: "prisma", otelParent: null });
       expect(calls[0].info.startedAtMs).toBeGreaterThanOrEqual(before);
       expect(calls[0].info.startedAtMs).toBeLessThanOrEqual(Date.now());
-      expect(spanContext.traceId).toBe(uuidToW3cTraceId(calls[0].nativeId));
-      expect(spanContext.spanId).toBe(uuidToW3cSpanId(calls[0].nativeId));
+      // The seam owns identity now (it mints the ids while resolving the parent),
+      // so the bridge must echo them rather than derive its own — otherwise the
+      // id a library reports and the id in ClickHouse would differ.
+      expect(spanContext.traceId).toBe(calls[0].traceId);
+      expect(spanContext.spanId).toBe(calls[0].spanId);
       expect(spanContext.traceFlags).toBe(1);
       span.end();
     });
@@ -148,8 +216,10 @@ describe("library-span-bridge", () => {
       await registerLibrarySpanBridge(deps);
       const span = traceApi.getTracer("prisma").startSpan("query");
       expect(span.isRecording()).toBe(false);
-      expect(span.spanContext().traceId).toMatch(/^[0-9a-f]{32}$/);
-      expect(span.spanContext().spanId).toMatch(/^[0-9a-f]{16}$/);
+      // A non-recording span still needs a USABLE identity: library code may put
+      // it in a traceparent, and an all-zero id would be rejected downstream.
+      expect(isW3cTraceId(span.spanContext().traceId)).toBe(true);
+      expect(isW3cSpanId(span.spanContext().spanId)).toBe(true);
       // None of these may throw into library code.
       span.setAttribute("db.system", "postgresql");
       span.setStatus({ code: SpanStatusCode.ERROR });
@@ -158,46 +228,120 @@ describe("library-span-bridge", () => {
     });
   });
 
-  describe("ignored tracers", () => {
-    it("never records spans from Hexclave's own internal tracer (telemetry feedback-loop guard)", async () => {
+  describe("capture policy", () => {
+    it("keeps the capture policy independently testable for the HMR-replaceable server seam", () => {
+      expect(shouldIgnoreLibrarySpan("prisma", "prisma:client:compile")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("@prisma/instrumentation", "prisma:client:serialize")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("prisma", "prisma:client:db_query")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("next.js", "middleware GET")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("stack-tracer", "STACK: handling API request")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("stack-tracer", "STACK: validating smart request")).toBe(false);
+      expect(shouldIgnoreLibrarySpan("stack-tracer", "STACK: wait(...)")).toBe(true);
+    });
+
+    it("records request work from Hexclave's internal tracer", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
-      // "stack-tracer" is @hexclave/shared's traceSpan tracer — its spans wrap
-      // SDK internals like the telemetry sender's retry wait(); recording them
-      // would let every failed batch send mint the row that fills the next
-      // batch, so the buffer could never drain.
+      const tracer = traceApi.getTracer("stack-tracer");
+      await tracer.startActiveSpan("STACK: handling API request", async (request) => {
+        tracer.startSpan("STACK: validating smart request").end();
+        request.end();
+      });
+      expect(calls.map((call) => call.info.name)).toEqual([
+        "STACK: handling API request",
+        "STACK: validating smart request",
+      ]);
+      expect(calls[1].parentSpanId).toBe(calls[0].spanId);
+    });
+
+    it("never records the retry timer from Hexclave's internal tracer (telemetry feedback-loop guard)", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      // wait() is used by delivery retries. Recording this one operation would
+      // let every failed send mint the row that fills the next batch forever.
       const span = traceApi.getTracer("stack-tracer").startSpan("STACK: wait(...)");
       expect(span.isRecording()).toBe(false);
       span.end();
       expect(calls).toHaveLength(0);
     });
 
-    it("never records framework runtime spans from the next.js tracer", async () => {
+    it("records framework runtime spans from the next.js tracer", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
       const span = traceApi.getTracer("next.js").startSpan("middleware GET");
-      expect(span.isRecording()).toBe(false);
+      expect(span.isRecording()).toBe(true);
       span.end();
-      expect(calls).toHaveLength(0);
+      expect(calls.map((call) => call.info.name)).toEqual(["middleware GET"]);
     });
 
-    it("a library span under an ignored active span falls back to ambient parenting", async () => {
-      const { calls, deps } = makeFakeSeam({ ambientPath: [AMBIENT_SPAN] });
+    it("keeps Prisma compile/serialize phases and their exact nesting", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      const tracer = traceApi.getTracer("prisma");
+      await tracer.startActiveSpan("prisma:client:operation", async (operation) => {
+        await tracer.startActiveSpan("prisma:client:compile", async (compile) => {
+          tracer.startSpan("prisma:client:db_query").end();
+          compile.end();
+        });
+        tracer.startSpan("prisma:client:serialize").end();
+        operation.end();
+      });
+
+      expect(calls.map((call) => call.info.name)).toEqual([
+        "prisma:client:operation",
+        "prisma:client:compile",
+        "prisma:client:db_query",
+        "prisma:client:serialize",
+      ]);
+      expect(calls[1].parentSpanId).toBe(calls[0].spanId);
+      expect(calls[2].parentSpanId).toBe(calls[1].spanId);
+      expect(calls[3].parentSpanId).toBe(calls[0].spanId);
+    });
+
+    it("does not drop similarly named phases from another library", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      traceApi.getTracer("custom-compiler").startSpan("prisma:client:compile").end();
+      expect(calls.map((call) => call.info.name)).toEqual(["prisma:client:compile"]);
+    });
+
+    it("a recorded Next.js span carries Prisma into the same trace", async () => {
+      const { calls, deps } = makeFakeSeam({ ambientParent: AMBIENT_PARENT });
       await registerLibrarySpanBridge(deps);
       await traceApi.getTracer("next.js").startActiveSpan("render route (app) /", async (outer) => {
         traceApi.getTracer("prisma").startSpan("client:operation").end();
         outer.end();
       });
-      // Only the Prisma span reached the seam; the ignored parent is not in
-      // the registry, so the child resolved via the ambient chain (case (b)).
-      expect(calls.map((call) => call.info.name)).toEqual(["client:operation"]);
-      expect(calls[0].info.otelParent).toBeNull();
-      expect(calls[0].parentPath).toEqual([AMBIENT_SPAN]);
+      expect(calls.map((call) => call.info.name)).toEqual(["render route (app) /", "client:operation"]);
+      expect(calls[0].parentSpanId).toBe(AMBIENT_PARENT.spanId);
+      expect(calls[1].parentSpanId).toBe(calls[0].spanId);
+      expect(calls[1].traceId).toBe(AMBIENT_PARENT.traceId);
+    });
+
+    it("an ignored internal span forwards its nearest recorded ancestor", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      const tracer = traceApi.getTracer("prisma");
+      await tracer.startActiveSpan("client:operation", async (recorded) => {
+        await traceApi.getTracer("stack-tracer").startActiveSpan("STACK: wait(...) ", async (phantom) => {
+          tracer.startSpan("engine:db_query").end();
+          phantom.end();
+        });
+        recorded.end();
+      });
+      const [outer, inner] = calls;
+      expect(calls.map((call) => call.info.name)).toEqual(["client:operation", "engine:db_query"]);
+      // The registry re-registered the phantom's own nearest RECORDED ancestor
+      // under the phantom's span id, so the grandchild names the Prisma span
+      // rather than the unwritten Next.js one.
+      expect(inner.info.otelParent).toEqual({ traceId: outer.traceId, recordedSpanId: outer.spanId, sampled: true, ambientSpanId: null });
+      expect(inner.parentSpanId).toBe(outer.spanId);
+      expect(inner.traceId).toBe(outer.traceId);
     });
   });
 
   describe("parenting", () => {
-    it("startActiveSpan nesting survives await boundaries and produces root-first parent paths", async () => {
+    it("startActiveSpan nesting survives await boundaries and keeps one coherent trace", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
       const tracer = traceApi.getTracer("prisma");
@@ -214,10 +358,13 @@ describe("library-span-bridge", () => {
       expect(calls.map((call) => call.info.name)).toEqual(["client:operation", "engine:query", "engine:db_query"]);
       const [outer, middle, inner] = calls;
       expect(outer.info.otelParent).toBeNull();
-      expect(middle.info.otelParent).toEqual({ nativeId: outer.nativeId, parentPath: [] });
-      expect(inner.info.otelParent).toEqual({ nativeId: middle.nativeId, parentPath: [outer.nativeId] });
-      // All three share the outer span's trace id (W3C trace coherence).
-      expect(inner.parentPath).toEqual([outer.nativeId, middle.nativeId]);
+      // Arbitrary OTel nesting depth collapses to one scalar parent per level;
+      // there is no ancestry array to compare any more, so trace coherence plus
+      // the immediate parent IS the whole assertion.
+      expect(middle.info.otelParent).toEqual({ traceId: outer.traceId, recordedSpanId: outer.spanId, sampled: true, ambientSpanId: null });
+      expect(inner.info.otelParent).toEqual({ traceId: middle.traceId, recordedSpanId: middle.spanId, sampled: true, ambientSpanId: null });
+      expect(new Set(calls.map((call) => call.traceId))).toEqual(new Set([outer.traceId]));
+      expect(inner.parentSpanId).toBe(middle.spanId);
     });
 
     it("concurrent active spans never cross-parent (ALS isolation)", async () => {
@@ -231,8 +378,10 @@ describe("library-span-bridge", () => {
       });
       await Promise.all([flow("a"), flow("b")]);
       const byName = new Map(calls.map((call) => [call.info.name, call]));
-      expect(byName.get("a:inner")?.info.otelParent?.nativeId).toBe(byName.get("a:outer")?.nativeId);
-      expect(byName.get("b:inner")?.info.otelParent?.nativeId).toBe(byName.get("b:outer")?.nativeId);
+      expect(byName.get("a:inner")?.info.otelParent?.recordedSpanId).toBe(byName.get("a:outer")?.spanId);
+      expect(byName.get("b:inner")?.info.otelParent?.recordedSpanId).toBe(byName.get("b:outer")?.spanId);
+      // The two flows must also be two DISTINCT traces, not one merged blob.
+      expect(byName.get("a:inner")?.traceId).not.toBe(byName.get("b:inner")?.traceId);
     });
 
     it("an explicit context argument wins over the active context", async () => {
@@ -242,7 +391,7 @@ describe("library-span-bridge", () => {
       const parent = tracer.startSpan("parent");
       const explicitContext = traceApi.setSpan(ROOT_CONTEXT, parent);
       const child = tracer.startSpan("child", undefined, explicitContext);
-      expect(calls[1].info.otelParent?.nativeId).toBe(calls[0].nativeId);
+      expect(calls[1].info.otelParent?.recordedSpanId).toBe(calls[0].spanId);
       child.end();
       parent.end();
     });
@@ -259,22 +408,25 @@ describe("library-span-bridge", () => {
       expect(calls[1].info.otelParent).toBeNull();
     });
 
-    it("with no OTel parent, the seam's ambient chain roots the span (contract case b)", async () => {
-      const { calls, deps } = makeFakeSeam({ ambientPath: [AMBIENT_SPAN] });
+    it("with no OTel parent, the seam's ambient context roots the span (contract case b)", async () => {
+      const { calls, deps } = makeFakeSeam({ ambientParent: AMBIENT_PARENT });
       await registerLibrarySpanBridge(deps);
       const tracer = traceApi.getTracer("prisma");
       await tracer.startActiveSpan("outer", async (outer) => {
         tracer.startSpan("inner").end();
         outer.end();
       });
-      // The outer span was handed otelParent null (seam resolves ambient); the
-      // inner span extends the outer's resolved path, keeping the ambient root.
+      // The outer span was handed otelParent null (the seam resolves ambient), so
+      // it joins the ambient span's TRACE; the inner span then nests under the
+      // outer one and inherits that same trace.
       expect(calls[0].info.otelParent).toBeNull();
-      expect(calls[0].parentPath).toEqual([AMBIENT_SPAN]);
-      expect(calls[1].parentPath).toEqual([AMBIENT_SPAN, calls[0].nativeId]);
+      expect(calls[0].parentSpanId).toBe(AMBIENT_PARENT.spanId);
+      expect(calls[0].traceId).toBe(AMBIENT_PARENT.traceId);
+      expect(calls[1].parentSpanId).toBe(calls[0].spanId);
+      expect(calls[1].traceId).toBe(AMBIENT_PARENT.traceId);
     });
 
-    it("a foreign (unmapped) span in context does not crash and falls back to ambient", async () => {
+    it("an extracted remote W3C span becomes the concrete cross-tier parent", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
       const foreign = traceApi.wrapSpanContext({
@@ -285,7 +437,14 @@ describe("library-span-bridge", () => {
       });
       const ctx = traceApi.setSpan(ROOT_CONTEXT, foreign);
       traceApi.getTracer("prisma").startSpan("query", undefined, ctx).end();
-      expect(calls[0].info.otelParent).toBeNull();
+      expect(calls[0].info.otelParent).toEqual({
+        traceId: "0123456789abcdef0123456789abcdef",
+        recordedSpanId: "0123456789abcdef",
+        sampled: true,
+        ambientSpanId: null,
+      });
+      expect(calls[0].traceId).toBe("0123456789abcdef0123456789abcdef");
+      expect(calls[0].parentSpanId).toBe("0123456789abcdef");
     });
   });
 
@@ -443,6 +602,16 @@ describe("library-span-bridge", () => {
     });
   });
 
+  describe("operation span type", () => {
+    it("keeps valid library operation names and safely normalizes arbitrary OTel names", () => {
+      expect(librarySpanTypeFromName("prisma:client:db_query")).toBe("prisma:client:db_query");
+      expect(librarySpanTypeFromName("HTTP GET /users")).toBe("HTTP-GET-users");
+      expect(librarySpanTypeFromName("123 query")).toBe("library.123-query");
+      expect(librarySpanTypeFromName("☃")).toBe("library.operation");
+      expect(librarySpanTypeFromName("a".repeat(100))).toBe("a".repeat(64));
+    });
+  });
+
   describe("end-to-end through the real server app seam", () => {
     function stubAnalyticsFetch() {
       const requests: { url: string, body: string }[] = [];
@@ -465,7 +634,7 @@ describe("library-span-bridge", () => {
       return requests;
     }
 
-    it("ships one $lib-span row nested under the ambient withSpan frame", async () => {
+    it("ships one operation-named library row with its instrumentation scope", async () => {
       const requests = stubAnalyticsFetch();
       const app = new StackServerApp({
         projectId: PROJECT_ID,
@@ -481,9 +650,11 @@ describe("library-span-bridge", () => {
       const registration = await instrumentation?.registerLibrarySpanBridge();
       expect(registration).not.toBeNull();
 
-      let nativeParentId = "";
+      let parentSpanId = "";
+      let parentTraceId = "";
       await app.withSpan("db-stuff", async (span) => {
-        nativeParentId = span.spanId;
+        parentSpanId = span.spanId;
+        parentTraceId = span.traceId;
         const otelSpan = traceApi.getTracer("prisma").startSpan("prisma:engine:db_query", {
           attributes: {
             "db.system": "postgresql",
@@ -496,21 +667,95 @@ describe("library-span-bridge", () => {
 
       const batchBodies = requests.filter((request) => request.url.includes("analytics")).map((request) => request.body);
       const spans = batchBodies.flatMap((body) => {
-        const payload = JSON.parse(body) as { spans?: { span_id: string, span_type: string, parent_span_ids: string[], started_at_ms: number, ended_at_ms: number | null, data: Record<string, unknown> }[] };
+        const payload = JSON.parse(body) as { spans?: { trace_id: string, span_id: string, span_type: string, parent_span_id: string | null, started_at_ms: number, ended_at_ms: number | null, scope_name?: string, data: Record<string, unknown> }[] };
         return payload.spans ?? [];
       });
-      const libSpan = spans.find((row) => row.span_type === "$lib-span");
+      const libSpan = spans.find((row) => row.span_type === "prisma:engine:db_query");
       expect(libSpan).not.toBeUndefined();
-      // Nested under the ambient withSpan frame via contract case (b).
-      expect(libSpan?.parent_span_ids).toEqual([nativeParentId]);
+      // Nested under the ambient withSpan frame via contract case (b): same
+      // trace, and the frame itself as the scalar parent.
+      expect(libSpan?.trace_id).toBe(parentTraceId);
+      expect(libSpan?.parent_span_id).toBe(parentSpanId);
       expect(libSpan?.ended_at_ms).not.toBeNull();
       expect(libSpan?.data["db.system"]).toBe("postgresql");
       expect(libSpan?.data["db.statement"]).toBeUndefined();
       expect(libSpan?.data.category).toBe("db");
       expect(libSpan?.data.name).toBe("prisma:engine:db_query");
       expect(libSpan?.data.tracer_name).toBe("prisma");
-      // The withSpan frame itself shipped as a normal custom span.
-      expect(spans.some((row) => row.span_type === "db-stuff" && row.span_id === nativeParentId)).toBe(true);
+      expect(libSpan?.scope_name).toBe("prisma");
+      // The withSpan frame itself shipped as a normal custom span, and — having
+      // no enclosing context — is the ROOT of the trace, which is what puts it
+      // in the trace inbox.
+      const parentRow = spans.find((row) => row.span_type === "db-stuff" && row.span_id === parentSpanId);
+      expect(parentRow).not.toBeUndefined();
+      expect(parentRow?.parent_span_id).toBeNull();
+      // Ids on the wire are W3C-shaped and never all-zero.
+      for (const row of spans) {
+        expect(isW3cTraceId(row.trace_id)).toBe(true);
+        expect(isW3cSpanId(row.span_id)).toBe(true);
+        if (row.parent_span_id !== null) expect(isW3cSpanId(row.parent_span_id)).toBe(true);
+      }
+    });
+
+    it("preserves browser → Next.js → SDK → Prisma hierarchy in one W3C trace", async () => {
+      const requests = stubAnalyticsFetch();
+      const app = new StackServerApp({
+        projectId: PROJECT_ID,
+        publishableClientKey: "pck_test",
+        secretServerKey: "ssk_test",
+        baseUrl: "https://api.example.test",
+        tokenStore: "memory",
+        noAutomaticPrefetch: true,
+        observability: { traceSampleRate: 0 },
+        telemetry: { resource: { service: { name: "test-server" } } },
+      });
+      const instrumentation = getServerAppInstrumentation(app);
+      expect(await instrumentation?.registerLibrarySpanBridge()).not.toBeNull();
+
+      const traceId = "0123456789abcdef0123456789abcdef";
+      const browserFetchSpanId = "1111111111111111";
+      const remoteContext = traceApi.setSpanContext(ROOT_CONTEXT, {
+        traceId,
+        spanId: browserFetchSpanId,
+        traceFlags: 1,
+        isRemote: true,
+      });
+      const nextTracer = traceApi.getTracer("next.js");
+      const prismaTracer = traceApi.getTracer("prisma");
+
+      await contextApi.with(remoteContext, async () => {
+        await nextTracer.startActiveSpan("GET", async (nextSpan) => {
+          await app.withSpan("hexclave.api.request", async () => {
+            await prismaTracer.startActiveSpan("prisma:client:operation", async (operation) => {
+              prismaTracer.startSpan("prisma:client:compile").end();
+              operation.end();
+            });
+          });
+          nextSpan.end();
+        });
+      });
+      await app.flush();
+
+      const spans = requests
+        .filter((request) => request.url.includes("analytics"))
+        .flatMap((request) => {
+          const payload = JSON.parse(request.body) as { spans?: { trace_id: string, span_id: string, span_type: string, parent_span_id: string | null }[] };
+          return payload.spans ?? [];
+        });
+      const byType = new Map(spans.map((span) => [span.span_type, span]));
+      const nextSpan = byType.get("GET");
+      const sdkSpan = byType.get("hexclave.api.request");
+      const operation = byType.get("prisma:client:operation");
+      const compile = byType.get("prisma:client:compile");
+      if (nextSpan === undefined || sdkSpan === undefined || operation === undefined || compile === undefined) {
+        throw new Error(`Expected complete cross-tier tree, received: ${[...byType.keys()].join(", ")}`);
+      }
+
+      expect(nextSpan.parent_span_id).toBe(browserFetchSpanId);
+      expect(sdkSpan.parent_span_id).toBe(nextSpan.span_id);
+      expect(operation.parent_span_id).toBe(sdkSpan.span_id);
+      expect(compile.parent_span_id).toBe(operation.span_id);
+      expect(new Set(spans.map((span) => span.trace_id))).toEqual(new Set([traceId]));
     });
   });
 });

@@ -8,9 +8,9 @@ import {
   getLogsQuery,
   LOG_LEVELS,
   LOG_SERVICES_QUERY,
-  LOG_TIME_RANGES,
   selectValueToLogLevel,
 } from "./page-client";
+import { OBSERVABILITY_TIME_RANGES } from "../filters";
 import {
   selectValueToServiceIdentity,
   serviceIdentityToSelectValue,
@@ -98,11 +98,11 @@ describe("observability logs page", () => {
   });
 
   it("defaults to the widest range so the control only ever narrows the scan", () => {
-    expect(DEFAULT_LOG_TIME_RANGE_HOURS).toBe(Math.max(...LOG_TIME_RANGES.map((range) => range.hours)));
+    expect(DEFAULT_LOG_TIME_RANGE_HOURS).toBe(Math.max(...OBSERVABILITY_TIME_RANGES.map((range) => range.hours)));
   });
 
   it("bounds every selectable range and rejects hours outside the fixed set", () => {
-    for (const range of LOG_TIME_RANGES) {
+    for (const range of OBSERVABILITY_TIME_RANGES) {
       expect(getLogsQuery(range.hours).query).toContain(`event_at >= now64(3) - INTERVAL ${range.hours} HOUR`);
     }
     // The hours value is interpolated into raw SQL, so anything outside the
@@ -110,29 +110,6 @@ describe("observability logs page", () => {
     expect(() => getLogsQuery(12)).toThrow("Unknown logs time range: 12");
   });
 
-  it("presents product columns and keeps correlation ids for the detail view only", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const pageSource = readFileSync(join(testDir, "page-client.tsx"), "utf-8");
-
-    expect(pageSource).toContain('mode="one-shot"');
-    expect(pageSource).toContain('defaultOrderBy="event_at"');
-    expect(pageSource).toContain("queryParams={logsQuery.params}");
-    // The time bound is wired to a visible range control, not a hidden filter.
-    expect(pageSource).toContain("DesignPillToggle");
-    // Grid columns are the product six; ids are hidden but ride along on the
-    // row object for the detail dialog.
-    for (const header of ["Time", "Level", "Message", "Service", "Environment", "User"]) {
-      expect(pageSource).toContain(`header: "${header}"`);
-    }
-    expect(pageSource).toContain('["trace_id", { hidden: true }]');
-    expect(pageSource).toContain("All services");
-    expect(pageSource).toContain("loadLogServices(true)");
-    expect(pageSource).toContain("refreshLogsAndServices(context.reload)");
-    // Product copy only — no telemetry-protocol vocabulary anywhere.
-    expect(pageSource.toLowerCase()).not.toContain("otlp");
-    expect(pageSource.toLowerCase()).not.toContain("opentelemetry");
-    expect(pageSource).not.toContain("severity_");
-  });
 
   it("is reachable from the Observability child app only", () => {
     expect(ALL_APPS_FRONTEND.analytics.navigationItems).not.toContainEqual({

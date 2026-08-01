@@ -1,18 +1,20 @@
 "use client";
 
 import { SimpleTooltip } from "@/components/ui";
-import { ClockIcon, CursorClickIcon, ListBulletsIcon } from "@phosphor-icons/react";
+import { ClockIcon, CursorClickIcon, KeyboardIcon, ListBulletsIcon } from "@phosphor-icons/react";
 import { formatReplayDuration } from "./replay-list-formatting";
 
 export function ReplayActivityMetrics({
   durationMs,
   eventCount,
   clickCount,
+  keystrokeCount,
   onActivate,
 }: {
   durationMs: number,
   eventCount: number,
   clickCount: number,
+  keystrokeCount: number,
   onActivate?: () => void,
 }) {
   const metrics = [
@@ -30,6 +32,11 @@ export function ReplayActivityMetrics({
       label: "Recorded clicks",
       value: clickCount.toLocaleString(),
       icon: CursorClickIcon,
+    },
+    {
+      label: "Recorded keystrokes",
+      value: keystrokeCount.toLocaleString(),
+      icon: KeyboardIcon,
     },
   ];
 

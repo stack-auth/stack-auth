@@ -1,11 +1,58 @@
-import { describe, expect, it } from "vitest";
-import { requireTelemetryResource, snapshotTelemetryOptions, telemetryOptionsToJson } from "./telemetry-config";
+import { afterEach, describe, expect, it } from "vitest";
+import { inferTelemetryResource, resolveTelemetryResource, snapshotTelemetryOptions, telemetryOptionsToJson } from "./telemetry-config";
 
 describe("telemetry resource config", () => {
-  it("fails loudly when delivery has no explicit service identity", () => {
-    expect(() => requireTelemetryResource(undefined)).toThrow(
-      "telemetry.resource with service.name is required",
-    );
+  const inferenceEnvVars = ["HEXCLAVE_SERVICE_NAME", "VERCEL_PROJECT_NAME", "npm_package_name", "SITE_NAME", "VERCEL_GIT_COMMIT_SHA", "COMMIT_REF", "npm_package_version", "VERCEL_ENV", "NODE_ENV"] as const;
+  // Indexed access, because @types/node declares NODE_ENV as a read-only literal
+  // property while the rest of process.env is a mutable string index.
+  // eslint-disable-next-line no-restricted-properties -- inferTelemetryResource reads the real process.env, so the test has to drive it directly; the generated env.ts indirection has no way to inject these.
+  const env = process.env as Record<string, string | undefined>;
+  const savedEnv = new Map(inferenceEnvVars.map((name) => [name, env[name]]));
+  const clearInferenceEnv = () => {
+    for (const name of inferenceEnvVars) delete env[name];
+  };
+  afterEach(() => {
+    for (const [name, value] of savedEnv) {
+      if (value === undefined) delete env[name];
+      else env[name] = value;
+    }
+  });
+
+  it("infers a tier-suffixed service identity when the app configured none", () => {
+    clearInferenceEnv();
+    env.VERCEL_PROJECT_NAME = "acme-shop";
+    env.VERCEL_GIT_COMMIT_SHA = "abc123";
+    env.VERCEL_ENV = "production";
+
+    expect(resolveTelemetryResource(undefined, "server")).toEqual({
+      service: { name: "acme-shop-server", version: "abc123" },
+      deploymentEnvironmentName: "production",
+    });
+    // The two halves of one isomorphic app must not collapse into one identity.
+    expect(resolveTelemetryResource(undefined, "browser").service.name).toBe("acme-shop-browser");
+  });
+
+  it("falls back to the bare tier when nothing names the service", () => {
+    clearInferenceEnv();
+    expect(inferTelemetryResource("browser")).toEqual({ service: { name: "browser" } });
+  });
+
+  it("treats a blank env value as absent rather than an empty service name", () => {
+    clearInferenceEnv();
+    env.VERCEL_PROJECT_NAME = "";
+    expect(inferTelemetryResource("server").service.name).toBe("server");
+  });
+
+  it("prefers an explicit resource over inference", () => {
+    clearInferenceEnv();
+    env.VERCEL_PROJECT_NAME = "ignored";
+    expect(resolveTelemetryResource({ resource: { service: { name: "checkout-api" } } }, "server")).toEqual({
+      service: { name: "checkout-api" },
+    });
+  });
+
+  it("still rejects an explicit resource that is malformed", () => {
+    expect(() => resolveTelemetryResource({ resource: { service: { name: "" } } }, "server")).toThrow();
   });
 
   it("snapshots nested service identity and primitive-array attributes", () => {

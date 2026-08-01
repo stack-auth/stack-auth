@@ -158,6 +158,12 @@ describe("hexclaveInstrumentation", () => {
     expect(() => hexclaveInstrumentation(app)).toThrow(/StackServerApp instance/);
   });
 
+  it("exposes a fail-loud collector suppression scope before registration", async () => {
+    const instrumentation = hexclaveInstrumentation(makeRealApp());
+    await expect(instrumentation.runWithTelemetrySuppressed(async () => "never"))
+      .rejects.toThrow(/requires the library-span bridge to be registered first/);
+  });
+
   it("register() installs the server fetch instrumentation and the uncaught-error monitor", async () => {
     const installSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_installServerFetchInstrumentation").mockImplementation(() => {});
     const monitorSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_installServerErrorMonitor").mockImplementation(() => {});
@@ -193,6 +199,34 @@ describe("hexclaveInstrumentation", () => {
     } finally {
       providerSpy.mockRestore();
       bridgeSpy.mockRestore();
+    }
+  });
+
+  it("can disable request attribution for an internal control-plane telemetry project", async () => {
+    const providerSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_setAmbientRequestProvider").mockImplementation(() => {});
+    const suppressionSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_setTelemetrySuppressionPredicate").mockImplementation(() => {});
+    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge").mockImplementation(async () => null);
+    const captureSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_captureServerRequestError").mockImplementation(async () => {});
+    try {
+      const isTelemetrySuppressed = () => true;
+      const instrumentation = hexclaveInstrumentation(makeRealApp(), {
+        requestAttribution: false,
+        isTelemetrySuppressed,
+      });
+      await instrumentation.register();
+      expect(providerSpy).toHaveBeenCalledWith(null);
+      expect(suppressionSpy).toHaveBeenCalledWith(isTelemetrySuppressed);
+
+      await instrumentation.onRequestError(new Error("boom"), {
+        path: "/customer-route",
+        headers: { cookie: "customer-session" },
+      });
+      expect(captureSpy).toHaveBeenCalledWith(expect.any(Error), expect.not.objectContaining({ request: expect.anything() }));
+    } finally {
+      providerSpy.mockRestore();
+      suppressionSpy.mockRestore();
+      bridgeSpy.mockRestore();
+      captureSpy.mockRestore();
     }
   });
 

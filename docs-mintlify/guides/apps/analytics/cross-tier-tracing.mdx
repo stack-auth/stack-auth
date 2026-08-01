@@ -1,18 +1,26 @@
 ---
 title: "Cross-Tier Tracing"
-description: "Backend spans automatically link to the client session that caused them — no glue code"
+description: "Backend spans automatically join the trace of the client request that caused them — no glue code"
 ---
 
-When your frontend calls your backend, Hexclave can automatically parent the backend's telemetry under the caller's client session — the same `$refresh-token` -> `$session-replay` -> `$session-replay-segment` tree your client-side [events and spans](/guides/apps/analytics/custom-events-and-spans) attach to. One trace then spans both tiers: the button click, the API call, the database work behind it.
+When your frontend calls your backend, Hexclave puts both tiers in **one trace**: the button click, the `fetch` it fires, and the database work behind it all share a `trace_id`, and the backend's top-level span names the browser's `$http-client` span as its `parent_span_id`. Nothing to wire up.
 
-**Zero config is the point.** With analytics enabled, the SDK already instruments every outgoing `fetch` and `XMLHttpRequest` in the browser: each request becomes a [`$http-client` span](#network-capture-http-client-spans), and requests to your own origin — and to your project's [trusted domains](#the-client-side) — carry `x-hexclave-span-context`, Hexclave's native context header. On the server, `withSpan({ request })` — or a [framework adapter](/guides/apps/analytics/framework-adapters) — completes the loop. You don't need any propagation glue.
+The hierarchy travels in the standard W3C [`traceparent`](https://www.w3.org/TR/trace-context/) header — the same header OpenTelemetry uses. That is the whole interop story: a Hexclave-instrumented frontend continues a trace into a non-Hexclave backend, an OTel-instrumented service continues a trace into a Hexclave one, and your existing collector, APM, or log pipeline can join on the same ids without a translation layer.
+
+**Zero config is the point.** With analytics enabled, the SDK already instruments every outgoing `fetch` and `XMLHttpRequest` in the browser: each request becomes a [`$http-client` span](#network-capture-http-client-spans), and head-sampled traces carry `traceparent`. On the server, `withSpan({ request })` — or a [framework adapter](/guides/apps/analytics/framework-adapters) — completes the loop. You don't need any propagation glue.
 
 ## How It Works
 
 Two halves, both automatic once set up:
 
-1. **Client**: with analytics enabled, the SDK wraps `fetch` and `XMLHttpRequest` and, for each outgoing request, (a) opens a `$http-client` span — the bridge node of the trace — and (b) attaches `x-hexclave-span-context` to requests going to your own origin, your project's trusted domains, and any origins you allowlist. The header carries the current tab's segment id, the current page-view span, any ambient custom spans (enclosing `withSpan` callbacks and global spans), and the id of the `$http-client` span for this very request.
-2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you) resolves the caller's sign-in session from the request and reads the header, so everything recorded inside nests under the caller's session, the page they were on, and the exact `fetch` that triggered the work.
+1. **Client**: with analytics enabled, the SDK wraps `fetch` and `XMLHttpRequest` and, for each outgoing request, (a) opens a `$http-client` span and (b) attaches eligible headers to requests going to your own origin, your project's trusted domains, and any origins you allowlist:
+   - **`traceparent`** — for a guaranteed-retained `$http-client` span, the standard W3C header carries its `trace_id` and `span_id`. This, and only this, establishes the hierarchy.
+   - **`x-hexclave-span-context`** — Hexclave's correlation header, carrying things W3C has no field for: the current tab's segment id, the session replay id, and the current `$page-view` span id. None of it is parentage; it's what lets you later ask "which tab / recording / page was this backend work for?".
+2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you) resolves the caller's sign-in session from the request's auth tokens, adopts the trace from `traceparent`, and stamps the correlation ids from the Hexclave header — so everything recorded inside is a descendant of the exact `fetch` that triggered the work, and filterable by the page and tab it came from.
+
+<Info>
+A request that arrives **without** a `traceparent` is a root activity in its own right: the SDK mints a fresh `trace_id` and gives the request's span a `NULL` `parent_span_id`. So a server that nobody traced into still produces complete, well-formed traces.
+</Info>
 
 ## The Client Side
 
@@ -42,19 +50,16 @@ export const hexclaveClientApp = new HexclaveClientApp({
 ```
 
 <Info>
-Cross-origin targets receive the header only if their CORS config allows it: add `x-hexclave-span-context` to the server's `Access-Control-Allow-Headers`.
+Cross-origin targets receive the headers only if their CORS config allows it: add both `traceparent` and `x-hexclave-span-context` to the server's `Access-Control-Allow-Headers`.
 </Info>
 
 Details worth knowing:
 
 - The trusted-domain list is fetched asynchronously the first time propagation needs it; until it loads — and permanently if loading fails — the policy falls back to same-origin plus `allowedOrigins`. Fail-closed, never fail-open.
 - Requests with `mode: "no-cors"` are skipped (browsers strip custom headers there anyway).
-- If you set the `x-hexclave-span-context` header yourself, the SDK never overwrites it — your intent wins.
+- If you set `traceparent` or `x-hexclave-span-context` yourself, the SDK never overwrites it — your intent wins. That is also the escape hatch for continuing a trace the SDK can't see.
 - The wrappers chain through the existing `fetch`/`XMLHttpRequest`, so they compose with other wrappers; if anything about propagation fails, the request goes out untouched.
-
-<Info>
-**Advanced**: alongside `x-hexclave-span-context`, propagated requests also carry a standard W3C `traceparent` header, so your own observability tools can correlate their server-side traces with the request that caused them — no setup required.
-</Info>
+- `traceparent` rides the same origin policy as the Hexclave header. Both reveal something about the caller, so neither escapes the policy.
 
 ### Other transports
 
@@ -62,7 +67,8 @@ Details worth knowing:
 
 ```tsx
 const headers = hexclaveClientApp.getSpanPropagationHeaders();
-// { "x-hexclave-span-context": "v1...." } — or {} when there is nothing to propagate
+// { traceparent: "00-<32 hex>-<16 hex>-01", "x-hexclave-span-context": "v1...." }
+// — correlation only for a head-dropped/pre-load span, or {} with no context
 
 // pin to a specific span instead of the ambient context:
 const pinned = span.getSpanPropagationHeaders();
@@ -70,16 +76,15 @@ const pinned = span.getSpanPropagationHeaders();
 
 Browser `navigator.sendBeacon` calls and WebSocket handshakes do not support
 custom HTTP headers, so the SDK cannot link these transports automatically. The
-server SDK restores context only from the `x-hexclave-span-context` request
-header. If your application carries that header value in a payload or protocol
-message, explicitly reconstruct a request with the value restored as that
-header before calling `withSpan(..., { request }, ...)`.
+server SDK reads context only from request headers. If your application carries
+these header values in a payload or protocol message, reconstruct a request with
+them restored as real headers before calling `withSpan(..., { request }, ...)`.
 
-`getSpanPropagationHeaders({ root: true })` drops the ambient custom spans but still carries the tab segment id — session attribution is identity, not parenting. `span.fetch(url)` is a convenience that performs a `fetch` with the header pinned to that span, following the same origin policy.
+`getSpanPropagationHeaders({ root: true })` suppresses ambient hierarchy so the receiving backend starts a fresh trace, while still carrying the tab segment id — correlation is identity, not parenting. `span.fetch(url)` is a convenience that performs a `fetch` with headers pinned to that span and follows the same origin policy. When the span's trace is head-sampled, `traceparent` names that exact span and the backend becomes its direct child; otherwise the request carries correlation only and becomes a separate backend root rather than pointing at a parent that may be dropped.
 
 ## Network Capture ($http-client spans)
 
-Every outgoing `fetch`/XHR request the SDK observes becomes a `$http-client` span — these are the bridge nodes that connect a page's activity to the backend work it caused. Each span records `method`, `url`, `transport` (`"fetch"` or `"xhr"`), and at completion `status`, plus `error`/`aborted`/`propagated` flags. The stored URL is origin + path only — query strings, fragments, and credentials are stripped before anything leaves the page.
+Every outgoing `fetch`/XHR request the SDK observes becomes a `$http-client` span — the node that connects a page's activity to the backend work it caused. It nests under the nearest enclosing span, falling back to the current `$page-view`, so the request and everything your server does for it appear inside the trace of the page that made it. Each span records `method`, `url`, `transport` (`"fetch"` or `"xhr"`), and at completion `status`, plus `error`/`aborted`/`propagated` flags. The stored URL is origin + path only — query strings, fragments, and credentials are stripped before anything leaves the page.
 
 Spans end when response **headers** arrive (a streaming response is not misreported as slow), and capped at 500 per page view. Configure capture with `observability.network`:
 
@@ -93,10 +98,10 @@ export const hexclaveClientApp = new HexclaveClientApp({
     resource: { service: { name: "stack-dashboard" } },
   },
   observability: {
+    traceSampleRate: 1,               // 0..1, one deterministic decision per trace
     network: {
       // enabled: false,             // turn off $http-client spans entirely
       capture: "all",                // or "errors-only": keep only failures
-      sampleRate: 1,                 // 0..1, applies to fast + successful requests
       // allowOrigins: ["https://api.example.com"],  // record ONLY these origins
       // denyOrigins: ["https://cdn.example.com"],   // never record these origins
       ignoreUrls: ["/health"],       // substring match on the full URL
@@ -105,9 +110,11 @@ export const hexclaveClientApp = new HexclaveClientApp({
 });
 ```
 
-Failures are **always kept**, regardless of `sampleRate` and even under `capture: "errors-only"`: responses with status >= 400, network errors, and slow requests (>= 3 seconds). Aborted requests don't count as failures — SPA data layers cancel superseded requests routinely. `allowOrigins` and `denyOrigins` are mutually exclusive (setting both throws at app construction).
+Sampling is deterministic per trace, so a sampled page keeps its complete browser-to-server tree rather than drawing independently for every request. Failures are **always kept**, regardless of `traceSampleRate` and even under `capture: "errors-only"`: responses with status >= 400, network errors, and slow requests (>= 3 seconds). Aborted requests don't count as failures — SPA data layers cancel superseded requests routinely. `allowOrigins` and `denyOrigins` are mutually exclusive (setting both throws at app construction).
 
-Network capture is independent of `spanPropagation`: `network` controls which requests get spans, `spanPropagation` controls which requests carry the context header. Only requests whose span is guaranteed to be stored (`capture: "all"` and drawn in by `sampleRate`) advertise their span id in the header — so the cross-tier links you see always resolve to a real span.
+Network capture is independent of `spanPropagation`: `network` controls which requests get spans, `spanPropagation` controls which requests carry the headers.
+
+`traceparent` rides only when the `$http-client` span is guaranteed to be stored (`capture: "all"`, a head-sampled trace, and a live delivery buffer), and then its sampled flag is `01`. A tentatively kept or pre-load span cannot promise that its parent row will exist, so it sends no `traceparent`; the backend request becomes a separate root trace instead of pointing at a missing parent. Correlation context can still ride independently.
 
 ## The Server Side
 
@@ -118,8 +125,8 @@ import { hexclaveServerApp } from "./hexclave";
 
 export async function POST(request: Request) {
   return await hexclaveServerApp.withSpan("checkout-api", { request }, async (span) => {
-    // this span — and everything created inside the callback —
-    // is parented under the caller's client session
+    // this span joins the caller's trace as a child of their $http-client span,
+    // and everything created inside the callback nests under it
     await span.trackEvent("payment-authorized", { amount: 129.99 });
     return Response.json({ ok: true });
   });
@@ -128,10 +135,11 @@ export async function POST(request: Request) {
 
 With `request`, the SDK resolves:
 
-- **From the session** (trusted): the caller's sign-in session (`$refresh-token` parent) and user id, read from the request's auth tokens. `userId` is derived automatically unless you override it.
-- **From the header** (labels): the tab segment id and any client-side custom parent spans. A header naming a different project is ignored wholesale.
+- **From the auth tokens** (trusted): the caller's sign-in session (`refresh_token_id`) and user id. `userId` is derived automatically unless you override it.
+- **From `traceparent`**: the sampled trace to join and the span to nest under. A missing or unsampled `traceparent` means this request *is* a root activity — fresh trace, `NULL` parent — because an unsampled context does not promise its parent row exists.
+- **From `x-hexclave-span-context`** (labels): the tab segment id, session replay id, and page-view span id, stamped as correlation columns. A header naming a different project is ignored wholesale. Because that header is also the caller's project claim, a `traceparent` without a matching claim is rejected as a unit: the request gets a fresh trace id and a `NULL` parent. A cross-project trace would otherwise appear as several disconnected roots because the named parent is intentionally unreadable to this project.
 
-Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextRequest`, or any object whose `headers` either exposes a `get(name)` method or is a plain record of string values. (Node's raw `req.headers` types values as `string | string[]`, so pass a small wrapper rather than the raw `req` — or use a [framework adapter](/guides/apps/analytics/framework-adapters).) Unauthenticated requests are fine — the span still records, just without session parents.
+Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextRequest`, or any object whose `headers` either exposes a `get(name)` method or is a plain record of string values. (Node's raw `req.headers` types values as `string | string[]`, so pass a small wrapper rather than the raw `req` — or use a [framework adapter](/guides/apps/analytics/framework-adapters).) Unauthenticated requests are fine — the span still records, just without user attribution.
 
 `startSpan` is synchronous and cannot resolve a request — use `withSpan(type, { request }, fn)` for request-linked spans.
 
@@ -146,8 +154,8 @@ On Next.js, once [`hexclaveInstrumentation().register()`](#server-side-instrumen
 ```tsx
 export async function POST() {
   return await hexclaveServerApp.withSpan("checkout-api", async (span) => {
-    // still parented under the caller's client session — the ambient
-    // request was resolved automatically
+    // still in the caller's trace — the ambient request was resolved
+    // automatically, `traceparent` and all
     return Response.json({ ok: true });
   });
 }
@@ -159,13 +167,13 @@ An explicit `request` always wins as an override, and it remains the framework-a
 
 The server tier gets the same treatment as the browser — and most of it needs no setup at all. Constructing a `HexclaveServerApp` eagerly installs:
 
-- **Outbound-fetch spans**: every `fetch` your server makes becomes a `$http-client` span, parented under the request context it happened in — so a browser request that fans out into three upstream calls shows all three in the same waterfall. The same `observability.network` options apply (no per-page cap on servers; requests to Hexclave's own API are never recorded).
+- **Outbound-fetch spans**: every `fetch` your server makes becomes a `$http-client` span, in the trace of the request context it happened in and parented by the enclosing span — so a browser request that fans out into three upstream calls shows all three in the same waterfall. The same `observability.network` options apply (no per-page cap on servers; requests to Hexclave's own API are never recorded).
 - **The uncaught-exception monitor**: uncaught server errors become [`$error` events](/guides/apps/analytics/errors-and-logs) — observation-only, it never changes your process's crash behavior.
 
 On Next.js, additionally wire up your `instrumentation.ts` for the two pieces that need framework hooks:
 
 ```ts instrumentation.ts
-import { hexclaveInstrumentation } from "@hexclave/next";
+import { hexclaveInstrumentation } from "@hexclave/next/next";
 import { hexclaveServerApp } from "./hexclave";
 
 const instrumentation = hexclaveInstrumentation(hexclaveServerApp);
@@ -182,9 +190,9 @@ If the Analytics app isn't enabled for your project, server telemetry disables i
 
 ## Multi-Hop Propagation
 
-Server→server hops continue the trace automatically: a `fetch` made inside a `withSpan({ request })` scope (or an adapter-wrapped handler) opens its own `$http-client` span carrying the original caller's context, and — for origins in the propagation policy — attaches the context header for that hop. The downstream service links up the same way: `withSpan(type, { request }, fn)` or an adapter.
+Server→server hops continue the trace automatically: a `fetch` made inside a `withSpan({ request })` scope (or an adapter-wrapped handler) opens its own `$http-client` span **in the caller's trace**, and — for origins in the propagation policy — sends a `traceparent` naming *that hop's* span. Each hop therefore parents to the hop above it, and the whole chain is one tree rather than a fan of siblings under the original browser request. The downstream service links up the same way: `withSpan(type, { request }, fn)` or an adapter. A non-Hexclave service in the middle of the chain that forwards `traceparent` (as any OTel-instrumented service does) keeps the chain intact.
 
-Servers have no "own origin", so the automatic header rides only to the propagation policy's origins: `spanPropagation.allowedOrigins` plus the trusted-domain defaults (the same exact-origin rules as in the browser, including the localhost dev allowance). For other transports (queues, RPC frameworks, trusted services outside the policy), carry the header yourself:
+Servers have no "own origin", so the automatic headers ride only to the propagation policy's origins: `spanPropagation.allowedOrigins` plus the trusted-domain defaults (the same exact-origin rules as in the browser, including the localhost dev allowance). For other transports (queues, RPC frameworks, trusted services outside the policy), carry the headers yourself:
 
 ```tsx
 await hexclaveServerApp.withSpan("orchestrate", { request }, async (span) => {
@@ -195,15 +203,15 @@ await hexclaveServerApp.withSpan("orchestrate", { request }, async (span) => {
 });
 ```
 
-Note that on the server, `span.fetch(url)` does **not** attach the header to arbitrary URLs (that would leak session labels to third parties) — add the origin to your project's trusted domains or `allowedOrigins`, or pass `span.getSpanPropagationHeaders()` explicitly to targets you trust.
+Note that on the server, `span.fetch(url)` does **not** attach the headers to arbitrary URLs (that would leak trace ids and session labels to third parties) — add the origin to your project's trusted domains or `allowedOrigins`, or pass `span.getSpanPropagationHeaders()` explicitly to targets you trust.
 
 ## Trust Model
 
 <Warning>
-The propagation header is client-controlled. The sign-in session and user id are resolved server-side from auth tokens and are trustworthy; the segment id and custom parent ids are best-effort labels. Use them for telemetry and debugging — never for authorization, billing, or security decisions.
+Both propagation headers are client-controlled. The sign-in session and user id are resolved server-side from auth tokens and are trustworthy; the trace/span ids from `traceparent` and the correlation ids from `x-hexclave-span-context` are best-effort labels. Use them for telemetry and debugging — never for authorization, billing, or security decisions.
 </Warning>
 
-Malformed, oversized, or unknown-version headers are silently ignored — propagation never causes a request to fail.
+Malformed, oversized, or unknown-version headers are silently ignored — propagation never causes a request to fail. A `traceparent` the SDK cannot parse simply means the request is treated as a new root activity.
 
 ## Options Reference
 
@@ -211,11 +219,12 @@ On the `observability` constructor option (client and server apps):
 
 | Option | Default | What it does |
 |---|---|---|
-| `spanPropagation.enabled` | `true` | Auto-attach the context header to outgoing `fetch`/XHR calls |
-| `spanPropagation.allowedOrigins` | `[]` | Extra origins (besides same-origin in the browser and the trusted-domain defaults) that receive the header; exact matches |
-| `spanPropagation.useTrustedDomains` | `true` | Also send the header to exact origins derived from the project's trusted domains (wildcards skipped), plus localhost/loopback targets when the project allows localhost |
+| `spanPropagation.enabled` | `true` | Auto-attach `traceparent` + the correlation header to outgoing `fetch`/XHR calls |
+| `spanPropagation.allowedOrigins` | `[]` | Extra origins (besides same-origin in the browser and the trusted-domain defaults) that receive the headers; exact matches |
+| `spanPropagation.useTrustedDomains` | `true` | Also send the headers to exact origins derived from the project's trusted domains (wildcards skipped), plus localhost/loopback targets when the project allows localhost |
+| `traceSampleRate` | `1` | Deterministic whole-trace sampling for healthy traces; failed and slow traces are promoted |
 | `network.enabled` | `true` | Record outgoing requests as `$http-client` spans |
 | `network.capture` | `"all"` | `"errors-only"` keeps only failures (status >= 400, network errors, >= 3s) |
-| `network.sampleRate` | `1` | Sampling for fast + successful requests; failures are always kept |
+| `network.sampleRate` | — | Deprecated alias for `traceSampleRate` |
 | `network.allowOrigins` / `network.denyOrigins` | — | Origin filters (exact matches; mutually exclusive) |
 | `network.ignoreUrls` | `[]` | URL substrings that are never recorded |

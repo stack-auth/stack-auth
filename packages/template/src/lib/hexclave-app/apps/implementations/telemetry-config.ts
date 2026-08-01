@@ -23,19 +23,71 @@ export function snapshotTelemetryOptions(options: TelemetryOptions | undefined):
   };
 }
 
+/**
+ * Drops the function-valued `waitUntil` hook, which cannot survive being
+ * serialized into the client payload and re-hydrated. The reverse direction
+ * needs no codec: what comes back is already a plain `{ resource }`.
+ */
 export function telemetryOptionsToJson(options: TelemetryOptions | undefined): TelemetryOptions | undefined {
   if (options?.resource === undefined) return undefined;
   return { resource: snapshotTelemetryResource(options.resource) };
 }
 
-export function telemetryOptionsFromJson(options: TelemetryOptions | undefined): TelemetryOptions | undefined {
-  return options;
+/**
+ * Guarded `process.env` read. There are no Node types in this package, and
+ * browser runtimes may not define `process` at all (bundlers that shim it are
+ * covered by the same path). A blank value counts as absent — CI systems
+ * routinely export empty strings.
+ */
+function readEnv(name: string): string | undefined {
+  // Untyped platform contract: narrowed at every step so a missing/odd `process`
+  // degrades to "not set" rather than throwing during app construction.
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  const value = proc?.env?.[name];
+  return value === undefined || value === "" ? undefined : value;
 }
 
-export function requireTelemetryResource(options: TelemetryOptions | undefined): TelemetryResource {
+/**
+ * Best-effort service identity for apps that did not configure `telemetry`.
+ *
+ * `service.name` used to be REQUIRED, which meant a bare `new StackClientApp(…)`
+ * threw at construction as soon as Analytics/Observability defaulted on — the
+ * SDK's own tests and e2e helpers all had to carry a `telemetry.resource` block.
+ * Inference keeps zero-config working while leaving the explicit option as the
+ * override for projects that genuinely run several services against one project
+ * (the reason the field exists at all).
+ *
+ * `tier` disambiguates the two halves of an isomorphic app, so a browser bundle
+ * and its server never collapse into one service identity by accident.
+ */
+export function inferTelemetryResource(tier: "browser" | "server"): TelemetryResource {
+  // npm_package_name is set by npm/pnpm/yarn when running through a script;
+  // the Vercel/Netlify vars cover built deployments where it is absent.
+  const inferredName = readEnv("HEXCLAVE_SERVICE_NAME")
+    ?? readEnv("VERCEL_PROJECT_NAME")
+    ?? readEnv("npm_package_name")
+    ?? readEnv("SITE_NAME");
+  const version = readEnv("VERCEL_GIT_COMMIT_SHA") ?? readEnv("COMMIT_REF") ?? readEnv("npm_package_version");
+  const environment = readEnv("VERCEL_ENV") ?? readEnv("NODE_ENV");
+  return snapshotTelemetryResource({
+    // Suffixing the tier keeps the two halves distinguishable; with no name at
+    // all the bare tier is still a truthful, low-cardinality identity.
+    service: {
+      name: inferredName === undefined ? tier : `${inferredName}-${tier}`,
+      ...version === undefined ? {} : { version },
+    },
+    ...environment === undefined ? {} : { deploymentEnvironmentName: environment },
+  });
+}
+
+/**
+ * The resource an app emits telemetry under: the caller's explicit
+ * `telemetry.resource` when set, otherwise an inferred one (see
+ * inferTelemetryResource). Never throws for a missing resource — only for one
+ * that is present and malformed.
+ */
+export function resolveTelemetryResource(options: TelemetryOptions | undefined, tier: "browser" | "server"): TelemetryResource {
   const resource = options?.resource;
-  if (resource === undefined) {
-    throw new Error("Hexclave telemetry: telemetry.resource with service.name is required when Analytics or Observability is enabled");
-  }
+  if (resource === undefined) return inferTelemetryResource(tier);
   return snapshotTelemetryResource(resource);
 }

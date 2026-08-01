@@ -8,9 +8,9 @@ import type { ServerUser } from "../lib/hexclave-app/users";
  *
  * Each adapter does exactly two things with the incoming request: resolve the
  * caller (`ctx.user`, lazily, cached per request) and wrap the framework's
- * handler in a `withSpan(type, { request }, …)` span — which is what links the
- * backend span to the caller's client session (`$refresh-token` /
- * `$session-replay` / `$session-replay-segment`) via the session plus the
+ * handler in a `withSpan(type, { request }, …)` span — which joins the backend
+ * span to the caller's active browser operation via `traceparent` and stamps
+ * refresh-token/replay correlation from the session plus the
  * `x-hexclave-span-context` header the browser SDK attaches automatically.
  * Consumers of an adapter never pass `{ request }` themselves.
  */
@@ -60,13 +60,13 @@ export function createRequestContext(app: AdapterServerApp, requestInput: unknow
 }
 
 /**
- * Per-adapter telemetry knob: `false` disables the span, `true`/undefined uses
- * the adapter's low-cardinality default span type (`trpc.procedure`,
- * `orpc.procedure`, `elysia.route`, `convex.function` — the variable bits like
- * path/method belong in `data`, not the type).
+ * Per-adapter telemetry knob: `false` disables the span, `true`/undefined keeps
+ * it. The span TYPE is deliberately not overridable — it must stay
+ * low-cardinality (`trpc.procedure`, `orpc.procedure`, `elysia.route`,
+ * `convex.function`), and the variable bits (path, method, name) belong in
+ * `data`, which is what `data` here extends.
  */
 export type AdapterTelemetryOptions = boolean | {
-  spanType?: string,
   data?: Record<string, unknown>,
 };
 
@@ -95,10 +95,9 @@ export async function runAdapterSpan<T>(
     return await fn(null);
   }
   const custom = typeof info.telemetry === "object" ? info.telemetry : undefined;
-  const spanType = custom?.spanType ?? info.defaultSpanType;
   const data = { ...info.data, ...custom?.data ?? {} };
   return await app.withSpan(
-    spanType,
+    info.defaultSpanType,
     { ...info.link, data, ...info.startedAtMs !== undefined ? { startedAtMs: info.startedAtMs } : {} },
     (span) => fn(span),
   );
@@ -125,4 +124,102 @@ export async function runRequestSpan<T>(
     ...info,
     link: { request: context.request },
   }, fn);
+}
+
+/**
+ * Produces the value an unauthenticated caller is rejected with. Adapters accept
+ * one at the factory level and one per handler; the factory-level default is
+ * deliberately SHARED between surfaces that can return a `Response` (route
+ * handlers) and surfaces that can only throw (server actions/functions), which
+ * is why the union covers both.
+ */
+export type UnauthorizedFactory = () => Response | Error | Promise<Response | Error>;
+
+/** The `required: true` message, in one place — it used to be written out per surface. */
+export function unauthorizedMessage(surface: string): string {
+  return `You must be signed in to call this ${surface}. (Hexclave: no valid session on the request.)`;
+}
+
+/**
+ * Resolves the rejection for a `required: true` call that had no session.
+ *
+ * Precedence — per-handler override, then the factory-level default, then the
+ * surface's own fallback. This exists because every wrapped surface needs the
+ * exact same three-tier lookup, and it was previously copy-pasted per surface
+ * (which is how the wordings drifted apart).
+ */
+async function resolveUnauthorized(
+  perHandler: UnauthorizedFactory | undefined,
+  factory: UnauthorizedFactory | undefined,
+  fallback: () => Response | Error,
+): Promise<Response | Error> {
+  if (perHandler !== undefined) return await perHandler();
+  if (factory !== undefined) return await factory();
+  return fallback();
+}
+
+export type GuardedHandlerInfo = {
+  /** Whatever the framework hands the adapter as the request (see normalizeRequestLike). */
+  requestInput: unknown,
+  defaultSpanType: string,
+  data: Record<string, unknown>,
+  telemetry: AdapterTelemetryOptions | undefined,
+  /** Reject unauthenticated callers before the handler runs. */
+  required: boolean | undefined,
+  unauthorized: UnauthorizedFactory | undefined,
+  factoryUnauthorized: UnauthorizedFactory | undefined,
+  /** Names the surface in the default rejection message, e.g. "route" / "server action". */
+  surface: string,
+  /** See runAdapterSpan. */
+  startedAtMs?: number,
+};
+
+/**
+ * The shared spine of every request-linked adapter wrapper: build the
+ * per-request context, open the request-linked span, resolve the caller, apply
+ * `required`, then run the handler inside the span's async extent.
+ *
+ * `runGuardedRoute` is the flavor for surfaces whose handler returns a
+ * `Response`, so an unauthenticated caller can be answered with one (a
+ * factory that produced an `Error` instead is thrown). `runGuardedCall` is the
+ * flavor for surfaces that can only reject by throwing.
+ */
+export async function runGuardedRoute(
+  app: AdapterServerApp,
+  info: GuardedHandlerInfo,
+  fn: (ctx: { user: AdapterUser | null, hexclave: HexclaveRequestContext }) => Response | Promise<Response>,
+): Promise<Response> {
+  const hexclave = createRequestContext(app, info.requestInput);
+  return await runRequestSpan(app, hexclave, info, async () => {
+    const user = await hexclave.getUser();
+    if (info.required === true && user === null) {
+      const rejection = await resolveUnauthorized(
+        info.unauthorized,
+        info.factoryUnauthorized,
+        () => Response.json({ error: unauthorizedMessage(info.surface) }, { status: 401 }),
+      );
+      if (rejection instanceof Response) return rejection;
+      throw rejection;
+    }
+    return await fn({ user, hexclave });
+  });
+}
+
+export async function runGuardedCall<T>(
+  app: AdapterServerApp,
+  info: GuardedHandlerInfo,
+  fn: (ctx: { user: AdapterUser | null, hexclave: HexclaveRequestContext }) => T | Promise<T>,
+): Promise<T> {
+  const hexclave = createRequestContext(app, info.requestInput);
+  return await runRequestSpan(app, hexclave, info, async () => {
+    const user = await hexclave.getUser();
+    if (info.required === true && user === null) {
+      throw await resolveUnauthorized(
+        info.unauthorized,
+        info.factoryUnauthorized,
+        () => new Error(unauthorizedMessage(info.surface)),
+      );
+    }
+    return await fn({ user, hexclave });
+  });
 }

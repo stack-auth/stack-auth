@@ -25,13 +25,8 @@ import {
   serviceIdentityToSelectValue,
   type ServiceIdentity,
 } from "../service-identity";
-
-export const LOG_TIME_RANGES = [
-  { label: "1h", hours: 1 },
-  { label: "24h", hours: 24 },
-  { label: "7d", hours: 168 },
-  { label: "30d", hours: 720 },
-] as const;
+import { ALL_SERVICES_SELECT_VALUE, isObservabilityTimeRangeHours, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, useServiceIdentityLoader } from "../filters";
+import { tryParseJson } from "../format";
 
 export const DEFAULT_LOG_TIME_RANGE_HOURS = 720;
 
@@ -39,7 +34,6 @@ export const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
 const ALL_LEVELS_SELECT_VALUE = "all";
-const ALL_SERVICES_SELECT_VALUE = "all";
 
 export function selectValueToLogLevel(value: string): LogLevel | null {
   if (value === ALL_LEVELS_SELECT_VALUE) return null;
@@ -86,7 +80,7 @@ export function getLogsQuery(
   query: string,
   params: Record<string, string | number>,
 } {
-  if (!LOG_TIME_RANGES.some((range) => range.hours === hours)) {
+  if (!isObservabilityTimeRangeHours(hours)) {
     throw new Error(`Unknown logs time range: ${hours}`);
   }
   if (level != null && !LOG_LEVELS.includes(level)) {
@@ -159,15 +153,6 @@ export function LogLevelChip({ level }: { level: string }) {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
-}
-
-function tryParseJson(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
 }
 
 function userLabel(row: RowData): string | null {
@@ -318,34 +303,8 @@ export default function PageClient() {
   const [servicesLoading, setServicesLoading] = useState(true);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const logsQuery = useMemo(() => getLogsQuery(hours, level, service), [hours, level, service]);
-  const logServicesRequestRef = useRef<{
-    adminApp: typeof adminApp,
-    promise: Promise<ServiceIdentity[]>,
-  } | null>(null);
 
-  const loadLogServices = useCallback((refresh = false) => {
-    const currentRequest = logServicesRequestRef.current;
-    if (!refresh && currentRequest?.adminApp === adminApp) return currentRequest.promise;
-
-    const promise = (async () => {
-      try {
-        const response = await adminApp.queryAnalytics({
-          query: LOG_SERVICES_QUERY,
-          params: {},
-          include_all_branches: false,
-          timeout_ms: 30000,
-        });
-        return response.result.map(parseServiceIdentityRow);
-      } catch (error) {
-        if (logServicesRequestRef.current?.adminApp === adminApp) {
-          logServicesRequestRef.current = null;
-        }
-        throw error;
-      }
-    })();
-    logServicesRequestRef.current = { adminApp, promise };
-    return promise;
-  }, [adminApp]);
+  const loadLogServices = useServiceIdentityLoader(adminApp, LOG_SERVICES_QUERY);
 
   useEffect(() => {
     let cancelled = false;
@@ -460,12 +419,8 @@ export default function PageClient() {
               />
               <DesignPillToggle
                 selected={String(hours)}
-                onSelect={(id) => {
-                  const range = LOG_TIME_RANGES.find((candidate) => String(candidate.hours) === id);
-                  if (range == null) throw new Error(`Unknown logs time range: ${id}`);
-                  setHours(range.hours);
-                }}
-                options={LOG_TIME_RANGES.map((range) => ({ label: range.label, id: String(range.hours) }))}
+                onSelect={(id) => setHours(parseObservabilityTimeRangeId(id))}
+                options={OBSERVABILITY_TIME_RANGE_OPTIONS}
                 size="sm"
                 glassmorphic={false}
               />

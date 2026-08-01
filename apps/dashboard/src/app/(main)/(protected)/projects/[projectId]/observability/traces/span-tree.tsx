@@ -3,9 +3,9 @@
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { SpinnerGapIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, SpinnerGapIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { formatDuration, traceErrorCount, traceSpanDisplayName, type Trace, type TraceNode } from "./trace-utils";
 import {
   conciseServiceIdentitySummary,
@@ -20,8 +20,8 @@ function DurationLabel({ startMs, endMs, nowMs }: { startMs: number, endMs: numb
     return <DesignBadge label="Open" color="green" size="sm" />;
   }
   if (endMs > nowMs) {
-    // Interval reaches into the future (e.g. $refresh-token runs until its
-    // expiry) — show elapsed-so-far instead of the misleading total.
+    // A clock-skewed or malformed interval reaches into the future; show
+    // elapsed-so-far instead of the misleading total.
     return (
       <span
         className="font-mono text-[11px] text-muted-foreground"
@@ -74,11 +74,17 @@ function TraceRow({
   nowMs,
   active,
   onSelectSpan,
+  nested = false,
+  expander,
 }: {
   trace: Trace,
   nowMs: number,
   active: boolean,
   onSelectSpan: (rootId: string) => void,
+  /** Indented because it happened on the page view above it. */
+  nested?: boolean,
+  /** Rendered for a page view that has activity nested under it. */
+  expander?: { expanded: boolean, childCount: number, loading: boolean, onToggle: () => void },
 }) {
   const root = trace.root;
   const userProfileImageUrl = stringValue(root.span.raw.user_profile_image_url);
@@ -88,41 +94,68 @@ function TraceRow({
   const serviceSummary = conciseServiceIdentitySummary(services);
 
   return (
-    <button
-      type="button"
-      className={cn(
+    <div className={cn("relative flex h-full w-full", nested && "pl-5")}>
+      {nested && (
+        // A plain rule rather than a full tree connector: one level of nesting is
+        // all this list can ever have (only a page view is nestable), so elbows
+        // would be decoration without information.
+        <span aria-hidden className="absolute bottom-0 left-2 top-0 w-px bg-border/50" />
+      )}
+      {expander != null && (
+        <button
+          type="button"
+          aria-expanded={expander.expanded}
+          aria-label={expander.expanded ? "Hide activity on this page view" : `Show ${expander.childCount} ${expander.childCount === 1 ? "activity" : "activities"} on this page view`}
+          onClick={(clickEvent) => {
+            // The row itself is a button; without this the toggle would also
+            // select the trace and swap the waterfall out from under the user.
+            clickEvent.stopPropagation();
+            expander.onToggle();
+          }}
+          className="absolute left-0 top-3 z-10 flex h-5 w-5 items-center justify-center rounded text-muted-foreground outline-none transition-colors duration-150 hover:bg-foreground/[0.08] hover:text-foreground hover:transition-none focus-visible:ring-1 focus-visible:ring-foreground/20"
+        >
+          {expander.loading
+            ? <SpinnerGapIcon className="h-3.5 w-3.5 animate-spin" />
+            : expander.expanded ? <CaretDownIcon className="h-3.5 w-3.5" /> : <CaretRightIcon className="h-3.5 w-3.5" />}
+        </button>
+      )}
+      <button
+        type="button"
+        className={cn(
         "grid h-full w-full grid-cols-[24px_minmax(0,1fr)] gap-2 border-b border-border/30 px-3 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/20",
+        expander != null && "pl-6",
         active && "bg-foreground/[0.06] hover:bg-foreground/[0.06]",
       )}
-      onClick={() => onSelectSpan(root.span.id)}
-    >
-      <TraceAvatar imageUrl={userProfileImageUrl} label={userProfile} />
-      <span className="min-w-0">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-foreground">
-            {traceSpanDisplayName(root.span)}
-          </span>
-          <DurationLabel startMs={trace.startMs} endMs={trace.endMs} nowMs={nowMs} />
-        </span>
-        <span className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-          <span
-            className="min-w-0 flex-1 truncate"
-            title={services.map(serviceIdentityLabel).join(", ")}
-          >
-            {serviceSummary}
-          </span>
-        </span>
-        <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">{new Date(trace.startMs).toLocaleString()}</span>
-          {errorCount > 0 && (
-            <span className="inline-flex shrink-0 items-center gap-1 font-medium text-red-600 dark:text-red-400">
-              <WarningCircleIcon className="h-3 w-3" />
-              {errorCount}
+        onClick={() => onSelectSpan(root.span.id)}
+      >
+        <TraceAvatar imageUrl={userProfileImageUrl} label={userProfile} />
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-foreground">
+              {traceSpanDisplayName(root.span)}
             </span>
-          )}
+            <DurationLabel startMs={trace.startMs} endMs={trace.endMs} nowMs={nowMs} />
+          </span>
+          <span className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+            <span
+              className="min-w-0 flex-1 truncate"
+              title={services.map(serviceIdentityLabel).join(", ")}
+            >
+              {serviceSummary}
+            </span>
+          </span>
+          <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate">{new Date(trace.startMs).toLocaleString()}</span>
+            {errorCount > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-1 font-medium text-red-600 dark:text-red-400">
+                <WarningCircleIcon className="h-3 w-3" />
+                {errorCount}
+              </span>
+            )}
+          </span>
         </span>
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -131,11 +164,25 @@ function TraceRow({
  * selected trace pane; keeping this list flat prevents automatic
  * instrumentation from multiplying every trace into hundreds of controls.
  */
+/** How many root activities happened on this page view, per the list query. */
+export function pageViewChildCount(trace: Trace): number {
+  const raw = trace.root.span.raw.child_count;
+  return typeof raw === "number" ? raw : Number(raw ?? 0) || 0;
+}
+
+type ListRow =
+  | { kind: "trace", key: string, trace: Trace, nested: boolean }
+  | { kind: "loader", key: string };
+
 export function SpanTreeList({
   traces,
   nowMs,
   activeSpanId,
   onSelectSpan,
+  expandedPageViewIds,
+  childrenByPageViewId,
+  loadingPageViewIds,
+  onTogglePageView,
   hasMore,
   loadingMore,
   loadMoreError,
@@ -143,9 +190,13 @@ export function SpanTreeList({
 }: {
   traces: Trace[],
   nowMs: number,
-  /** The parent trace currently shown in the waterfall. */
+  /** Root span id of the trace currently shown in the waterfall. */
   activeSpanId: string | null,
   onSelectSpan: (rootId: string) => void,
+  expandedPageViewIds: ReadonlySet<string>,
+  childrenByPageViewId: ReadonlyMap<string, Trace[]>,
+  loadingPageViewIds: ReadonlySet<string>,
+  onTogglePageView: (pageViewSpanId: string) => void,
   hasMore: boolean,
   loadingMore: boolean,
   loadMoreError: string | null,
@@ -153,27 +204,53 @@ export function SpanTreeList({
 }) {
   const scrollElementRef = useRef<HTMLDivElement>(null);
   const loaderRowVisible = hasMore || loadingMore || loadMoreError != null;
+
+  // Flattened for the virtualizer: it counts and positions ROWS, so an expanded
+  // page view has to contribute its children to that count rather than growing
+  // one row's height (which would break the estimate and the scroll math).
+  const rows = useMemo<ListRow[]>(() => {
+    const flattened: ListRow[] = [];
+    for (const trace of traces) {
+      const rootId = trace.root.span.id;
+      flattened.push({ kind: "trace", key: rootId, trace, nested: false });
+      if (!expandedPageViewIds.has(rootId)) continue;
+      for (const child of childrenByPageViewId.get(rootId) ?? []) {
+        // Prefixed so a child can never collide with the same trace appearing at
+        // top level (it cannot today, but the key must not depend on that).
+        flattened.push({ kind: "trace", key: `${rootId}>${child.root.span.id}`, trace: child, nested: true });
+      }
+    }
+    if (loaderRowVisible) flattened.push({ kind: "loader", key: "trace-list-loader" });
+    return flattened;
+  }, [childrenByPageViewId, expandedPageViewIds, loaderRowVisible, traces]);
+
   const virtualizer = useVirtualizer({
-    count: traces.length + (loaderRowVisible ? 1 : 0),
+    count: rows.length,
     getScrollElement: () => scrollElementRef.current,
     estimateSize: () => ESTIMATED_TRACE_ROW_HEIGHT,
     overscan: 10,
-    getItemKey: (index) => traces[index]?.root.span.id ?? "trace-list-loader",
+    getItemKey: (index) => rows[index]?.key ?? "trace-list-loader",
   });
   const virtualRows = virtualizer.getVirtualItems();
   const lastVirtualRowIndex = virtualRows.at(-1)?.index ?? -1;
 
   useEffect(() => {
-    if (lastVirtualRowIndex >= traces.length - 8 && hasMore && !loadingMore && loadMoreError == null) {
+    if (lastVirtualRowIndex >= rows.length - 8 && hasMore && !loadingMore && loadMoreError == null) {
       onLoadMore();
     }
-  }, [hasMore, lastVirtualRowIndex, loadMoreError, loadingMore, onLoadMore, traces.length]);
+  }, [hasMore, lastVirtualRowIndex, loadMoreError, loadingMore, onLoadMore, rows.length]);
 
   return (
     <div ref={scrollElementRef} className="h-full overflow-y-auto overscroll-contain">
       <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
         {virtualRows.map((virtualRow) => {
-          if (virtualRow.index === traces.length) {
+          // `.at()` rather than `[]`: an index read is typed as always-present,
+          // which would make this guard look dead. The virtualizer can briefly
+          // report an index past the array when rows shrink (a page view
+          // collapsing) before it re-measures.
+          const row = rows.at(virtualRow.index);
+          if (row == null) return null;
+          if (row.kind === "loader") {
             return (
               <div
                 key={virtualRow.key}
@@ -193,7 +270,9 @@ export function SpanTreeList({
               </div>
             );
           }
-          const trace = traces[virtualRow.index];
+          const trace = row.trace;
+          const rootId = trace.root.span.id;
+          const childCount = row.nested ? 0 : pageViewChildCount(trace);
           return (
             <div
               key={virtualRow.key}
@@ -203,8 +282,15 @@ export function SpanTreeList({
               <TraceRow
                 trace={trace}
                 nowMs={nowMs}
-                active={trace.root.span.id === activeSpanId}
+                active={rootId === activeSpanId}
                 onSelectSpan={onSelectSpan}
+                nested={row.nested}
+                expander={childCount === 0 ? undefined : {
+                  expanded: expandedPageViewIds.has(rootId),
+                  childCount,
+                  loading: loadingPageViewIds.has(rootId),
+                  onToggle: () => onTogglePageView(rootId),
+                }}
               />
             </div>
           );

@@ -1,5 +1,6 @@
 import { isDateValue, parseClickHouseDate } from "../../analytics/shared";
 import type { ServiceIdentity } from "../service-identity";
+import { getBucketGranularity, type BucketGranularity } from "../bucket-granularity";
 
 export type TraceTimeRangeHours = 1 | 24 | 168 | 720;
 
@@ -8,54 +9,6 @@ export type TraceVolumeBucket = {
   count: number,
 };
 
-type TraceVolumeGranularity = {
-  bucketLabel: string,
-  bucketCount: number,
-  historySql: string,
-  startFunction: string,
-  stepSql: string,
-};
-
-export function getTraceVolumeGranularity(hours: TraceTimeRangeHours): TraceVolumeGranularity {
-  switch (hours) {
-    case 1: {
-      return {
-        bucketLabel: "per minute",
-        bucketCount: 60,
-        historySql: "INTERVAL 59 MINUTE",
-        startFunction: "toStartOfMinute",
-        stepSql: "INTERVAL 1 MINUTE",
-      };
-    }
-    case 24: {
-      return {
-        bucketLabel: "per hour",
-        bucketCount: 24,
-        historySql: "INTERVAL 23 HOUR",
-        startFunction: "toStartOfHour",
-        stepSql: "INTERVAL 1 HOUR",
-      };
-    }
-    case 168: {
-      return {
-        bucketLabel: "per day",
-        bucketCount: 7,
-        historySql: "INTERVAL 6 DAY",
-        startFunction: "toStartOfDay",
-        stepSql: "INTERVAL 1 DAY",
-      };
-    }
-    case 720: {
-      return {
-        bucketLabel: "per day",
-        bucketCount: 30,
-        historySql: "INTERVAL 29 DAY",
-        startFunction: "toStartOfDay",
-        stepSql: "INTERVAL 1 DAY",
-      };
-    }
-  }
-}
 
 export function getTraceVolumeQuery(
   hours: TraceTimeRangeHours,
@@ -64,7 +17,7 @@ export function getTraceVolumeQuery(
   query: string,
   params: Record<string, string | number>,
 } {
-  const granularity = getTraceVolumeGranularity(hours);
+  const granularity = getBucketGranularity(hours);
   const serviceCondition = service == null ? "" : `
   AND r.trace_id IN (
     SELECT trace_id
@@ -76,10 +29,10 @@ export function getTraceVolumeQuery(
   return {
     query: `
 WITH
-  ${granularity.startFunction}(now64(3)) AS range_end,
+  toStartOfInterval(now64(3), ${granularity.stepSql}) AS range_end,
   range_end - ${granularity.historySql} AS range_start
 SELECT
-  ${granularity.startFunction}(r.started_at) AS bucket_start,
+  toStartOfInterval(r.started_at, ${granularity.stepSql}) AS bucket_start,
   count() AS trace_count
 FROM default.trace_roots AS r
 WHERE r.started_at >= range_start

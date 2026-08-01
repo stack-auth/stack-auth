@@ -77,14 +77,20 @@ describe("services queries", () => {
     expect(query).toContain("GROUP BY service_namespace, service_name, bucket_start");
   });
 
-  it("keeps the dependency edges direct and bridged, and bounded", () => {
+  it("derives every dependency edge from one scalar parent/child join, and bounds it", () => {
     const { query, params } = getServiceDependenciesQuery(24);
 
     expect(params).toEqual({ hours: 24 });
-    expect(query).toContain("arrayElement(child.parent_span_ids, -1) = parent.span_id");
     expect(query).toContain("child.trace_id = parent.trace_id");
-    expect(query).toContain("target.trace_id = lower(replaceAll(substring(source.span_id, 4), '-', ''))");
+    expect(query).toContain("child.parent_span_id = parent.span_id");
+    expect(query).toContain("WHERE child.parent_span_id IS NOT NULL");
     expect(query).toContain("LIMIT 500");
+    // Client→server edges come out of the same join now that both tiers share a
+    // trace id, so there is no second, id-shape-dependent edge source.
+    expect(query).not.toContain("bridged_edges");
+    expect(query).not.toContain("UNION ALL");
+    expect(query).not.toContain("startsWith(");
+    expect(query).not.toContain("parent_span_ids");
   });
 
   it("uses the same error definition in every query so the panels cannot disagree", () => {

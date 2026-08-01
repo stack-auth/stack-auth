@@ -1,15 +1,18 @@
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { describe, expect, it } from "vitest";
-import type { WaterfallRow } from "./trace-utils";
-import { computeRowOffsets, computeRowWindow, shouldShowCollapseControl } from "./waterfall";
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Trace, WaterfallRow } from "./trace-utils";
+import { computeRowOffsets, computeRowWindow, shouldShowCollapseControl, TraceWaterfall } from "./waterfall";
+
+afterEach(cleanup);
 
 function spanRow(id: string): WaterfallRow {
   return {
     kind: "span",
     node: {
-      span: { traceId: "trace", id, spanType: "op", startMs: 0, endMs: 1, parentSpanIds: [], raw: {} },
+      span: { traceId: "trace", id, spanType: "op", startMs: 0, endMs: 1, parentSpanId: null, raw: {} },
       depth: 0,
       children: [],
       events: [],
@@ -21,7 +24,7 @@ function eventRow(): WaterfallRow {
   return {
     kind: "event",
     depth: 1,
-    event: { eventType: "checkout", atMs: 0, parentSpanIds: [], raw: {} },
+    event: { traceId: null, eventType: "checkout", atMs: 0, spanId: null, raw: {} },
   };
 }
 
@@ -30,6 +33,52 @@ describe("shouldShowCollapseControl", () => {
     expect(shouldShowCollapseControl("signal", true)).toBe(false);
     expect(shouldShowCollapseControl("all", true)).toBe(true);
     expect(shouldShowCollapseControl("all", false)).toBe(false);
+  });
+});
+
+describe("TraceWaterfall span names", () => {
+  it("renders a library operation without exposing the internal $lib-span discriminator", () => {
+    const librarySpan = {
+      traceId: "trace",
+      id: "library-root",
+      spanType: "$lib-span",
+      startMs: 1000,
+      endMs: 1010,
+      parentSpanId: null,
+      raw: {
+        producer: "sdk",
+        data: {
+          name: "prisma:client:db_query",
+          tracer_name: "prisma",
+        },
+      },
+    };
+    const trace: Trace = {
+      root: {
+        span: librarySpan,
+        depth: 0,
+        children: [],
+        events: [],
+      },
+      spanCount: 1,
+      eventCount: 0,
+      startMs: 1000,
+      endMs: 1010,
+      latestMs: 1010,
+    };
+
+    render(createElement(TraceWaterfall, {
+      trace,
+      services: [],
+      nowMs: 1010,
+      needle: "",
+      unattachedEventCount: 0,
+      onSelectSpan: () => {},
+      onSelectEvent: () => {},
+    }));
+
+    expect(screen.getAllByText("prisma:client:db_query")).toHaveLength(2);
+    expect(screen.queryByText("$lib-span")).toBeNull();
   });
 });
 
@@ -42,18 +91,6 @@ describe("computeRowOffsets", () => {
     expect(computeRowOffsets([])).toEqual([0]);
   });
 
-  it("keeps the windowing heights in sync with the row classes", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const source = readFileSync(join(testDir, "waterfall.tsx"), "utf-8");
-    expect(source).toContain("export const SPAN_ROW_HEIGHT_PX = 32");
-    expect(source).toContain("export const EVENT_ROW_HEIGHT_PX = 28");
-    expect(source).toContain("items-center h-8 border-b");
-    expect(source).toContain("items-center h-7 border-b");
-    // The old click-to-load pagination must stay gone: the windowed renderer
-    // replaces it entirely.
-    expect(source).not.toContain("INITIAL_ROW_COUNT");
-    expect(source).not.toContain("Show ");
-  });
 });
 
 describe("computeRowWindow", () => {

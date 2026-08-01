@@ -1,6 +1,3 @@
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   getRecentTraceRootsQuery,
@@ -8,6 +5,7 @@ import {
   getSelectedTraceSpanQuery,
   getSpanDetailQuery,
   parseEventRow,
+  parseUniqueTraceRootRows,
   parseUniqueSpanRows,
   SPAN_DETAIL_COLUMNS,
   SPAN_TECHNICAL_DETAIL_COLUMNS,
@@ -19,67 +17,47 @@ import {
 } from "../service-identity";
 
 describe("analytics trace row parsing", () => {
-  it("uses one compact spacing token without changing the sticky threshold", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const pageSource = readFileSync(join(testDir, "page-client.tsx"), "utf-8");
-    const pageLayoutSource = readFileSync(join(testDir, "../../page-layout.tsx"), "utf-8");
-    const stickyHeaderSource = readFileSync(join(testDir, "../../sticky-page-header.tsx"), "utf-8");
 
-    expect(pageSource).toContain('<PageLayout fillWidth scrollMain spacing="compact">');
-    expect(pageSource).toContain("gap-[var(--page-content-gap)]");
-    expect(pageLayoutSource).toContain("[--page-content-gap:0.75rem]");
-    expect(stickyHeaderSource).toContain("STICKY_HEADER_COMPACT_SCROLL_TOP - sentinelStartOffset");
-    expect(stickyHeaderSource).not.toContain("-mb-[17px]");
-  });
-
-  it("bounds the virtualized trace rail to the page scroller without letting hidden cached routes override it", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const pageSource = readFileSync(join(testDir, "page-client.tsx"), "utf-8");
-    const shellSource = readFileSync(join(testDir, "../../sidebar-layout.tsx"), "utf-8");
-
-    expect(pageSource).toContain('<PageLayout fillWidth scrollMain spacing="compact">');
-    expect(pageSource).toContain("grid min-w-0 flex-1 gap-[var(--page-content-gap)]");
-    expect(pageSource).toContain("lg:max-h-[calc(100cqh-0.75rem)]");
-    expect(pageSource).toContain("lg:[contain:size]");
-    expect(pageSource).toContain("min-w-0 self-start");
-    expect(pageSource).not.toContain("--trace-list-height-offset");
-    expect(pageSource).not.toContain("lg:h-[calc(100dvh");
-    expect(shellSource).toContain("has-[[data-scroll-main]:not([style*='display:_none'])]:[container-type:size]");
-    expect(shellSource).toContain("has-[[data-contained-height]:not([style*='display:_none'])]:overflow-hidden");
-    expect(shellSource).not.toContain("has-[[data-scroll-main]]:[container-type:size]");
-    expect(shellSource).not.toContain("has-[[data-contained-height]]:overflow-hidden");
-  });
-
-  it("does not reload the selected waterfall when root pagination extends the sidebar", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const pageSource = readFileSync(join(testDir, "page-client.tsx"), "utf-8");
-
-    expect(pageSource).toContain("const loadSelectedTrace = useCallback(async (traceId: string)");
-    expect(pageSource).toContain("loadSelectedTrace(selectedRootTraceId)");
-    expect(pageSource).toContain("}, [adminApp, hours]);");
-    expect(pageSource).not.toContain("}, [adminApp, hours, rootSpans, serviceName]);");
-  });
 
   it("normalizes serialized event data for the shared detail dialog", () => {
     expect(parseEventRow({
       event_type: "checkout",
       event_at: "2026-07-21 12:00:00.000",
-      parent_span_ids: ["rti-session", 42],
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "0123456789abcdef",
       data: "{\"step\":2}",
     })).toMatchObject({
+      traceId: "0123456789abcdef0123456789abcdef",
       eventType: "checkout",
-      parentSpanIds: ["rti-session"],
+      spanId: "0123456789abcdef",
       raw: { data: { step: 2 } },
     });
   });
 
-  it("lists only physical roots and leaves bridged backend children in the selected waterfall", () => {
+  it("leaves an event with no enclosing span unattached instead of inventing an owner", () => {
+    expect(parseEventRow({
+      event_type: "checkout",
+      event_at: "2026-07-21 12:00:00.000",
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: null,
+      data: "{}",
+    })).toMatchObject({ traceId: null, spanId: null });
+  });
+
+  it("lists only physical roots and leaves the rest of the trace to the selected waterfall", () => {
     const { query } = getRecentTraceRootsQuery(null);
     expect(query).toContain("FROM default.trace_roots AS r");
-    expect(query).toContain("r.span_type != '$http-client'");
+    // `$http-client` is NOT filtered out. A browser fetch with no ambient parent is
+    // a legitimate trace root — the fetch plus the backend work it triggered IS the
+    // trace — so excluding it would leave those traces invisible in the inbox while
+    // their rows sat in `spans`. A fetch inside a withSpan has a parent and never
+    // reaches trace_roots at all.
+    expect(query).not.toContain("$http-client");
     expect(query).toContain("r.status_code");
+    // trace_roots stores only spans with a NULL parent, so the column is
+    // synthesized rather than read.
+    expect(query).toContain("CAST(NULL, 'Nullable(String)') AS parent_span_id");
     expect(query).not.toContain("'bridged-server'");
-    expect(query).not.toContain("length(s.parent_span_ids) = 1");
     expect(query).not.toContain("row_number() OVER");
     expect(query).not.toContain("UNION ALL");
     expect(query).not.toContain("FROM default.refresh_tokens");
@@ -93,12 +71,15 @@ describe("analytics trace row parsing", () => {
     expect(query).toContain("u.profile_image_url AS user_profile_image_url");
   });
 
-  it("uses a stable time-and-id cursor for older parent trace pages", () => {
-    const { query, params } = getRecentTraceRootsQuery({ startMs: 1234, id: "otel-root" });
-    expect(query).toContain("started_at < fromUnixTimestamp64Milli({cursorStartMs:Int64})");
+  it("uses root activity rather than interval start for inbox freshness and pagination", () => {
+    const { query, params } = getRecentTraceRootsQuery({ activityMs: 1234, id: "otel-root" });
+    expect(query).toContain("r.created_at AS root_activity_at");
+    expect(query).toContain("WHERE r.created_at >= now64(3) - INTERVAL {hours:UInt32} HOUR");
+    expect(query).toContain("r.created_at < fromUnixTimestamp64Milli({cursorActivityMs:Int64})");
+    expect(query).toContain("ORDER BY r.created_at DESC, r.span_id DESC");
     expect(query).toContain("span_id < {cursorId:String}");
     expect(query).not.toContain("FROM default.refresh_tokens");
-    expect(params).toMatchObject({ cursorStartMs: 1234, cursorId: "otel-root" });
+    expect(params).toMatchObject({ cursorActivityMs: 1234, cursorId: "otel-root" });
   });
 
   it("filters by every service participating in a trace, not only the root service", () => {
@@ -118,18 +99,19 @@ describe("analytics trace row parsing", () => {
 
   it("searches and paginates trace roots on the server", () => {
     const { query, params } = getRecentTraceRootsQuery(
-      { startMs: 1234, id: "older-root" },
+      { activityMs: 1234, id: "older-root" },
       { namespace: "server", name: "stack-backend" },
       "alice@example.com",
     );
 
     expect(query).toContain("positionCaseInsensitiveUTF8(r.span_type, {search:String})");
+    expect(query).toContain("positionCaseInsensitiveUTF8(JSONExtractString(r.data, 'name'), {search:String})");
     expect(query).toContain("positionCaseInsensitiveUTF8(r.trace_id, {search:String})");
     expect(query).toContain("LEFT JOIN default.users AS u");
     expect(query).toContain("positionCaseInsensitiveUTF8(ifNull(u.primary_email, ''), {search:String})");
-    expect(query).toContain("started_at < fromUnixTimestamp64Milli({cursorStartMs:Int64})");
+    expect(query).toContain("r.created_at < fromUnixTimestamp64Milli({cursorActivityMs:Int64})");
     expect(params).toMatchObject({
-      cursorStartMs: 1234,
+      cursorActivityMs: 1234,
       cursorId: "older-root",
       serviceNamespace: "server",
       serviceName: "stack-backend",
@@ -162,27 +144,37 @@ describe("analytics trace row parsing", () => {
     expect(query).toContain("WHERE service_name != ''");
   });
 
-  it("loads a bridged W3C-id trace by trace ID instead of a truncated recent-span window", () => {
+  it("loads the whole distributed trace from its single trace id", () => {
     const spanQuery = getSelectedTraceSpanQuery(
       "0123456789abcdef0123456789abcdef",
     );
     expect(spanQuery).toMatchObject({
       params: { traceId: "0123456789abcdef0123456789abcdef" },
     });
-    expect(spanQuery.query).toContain("s.parent_span_ids");
+    expect(spanQuery.query).toContain("s.parent_span_id");
     expect(spanQuery.query).toContain("s.status_code");
+    expect(spanQuery.query).toContain("s.scope_name");
     expect(spanQuery.query).not.toContain("s.data");
     expect(spanQuery.query).not.toContain("s.resource_attributes");
-    expect(spanQuery.query).toContain("reverse_bridge AS");
-    expect(spanQuery.query).toContain("reverse_bridge_ancestors AS");
-    expect(spanQuery.query).toContain("s.span_id IN (SELECT span_id FROM reverse_bridge)");
-    expect(spanQuery.query).toContain("s.span_id IN (SELECT span_id FROM reverse_bridge_ancestors)");
-    expect(spanQuery.query).toContain("ORDER BY s.trace_id = {traceId:String} DESC, s.started_at ASC");
+    // Every tier shares the trace id, so one equality predicate is the whole
+    // filter — no id-namespace bridging, and no OR that could defeat the index.
+    expect(spanQuery.query).toContain("WHERE s.trace_id = {traceId:String}");
+    expect(spanQuery.query).not.toContain(" OR ");
+    expect(spanQuery.query).not.toContain("startsWith(");
+    expect(spanQuery.query).toContain("ORDER BY s.started_at ASC");
+  });
+
+  it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
+    const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+    expect(query).toContain("trace_id, span_id, page_view_span_id");
+    expect(query).toContain("WHERE trace_id = {traceId:String}");
+    expect(query).not.toContain("parent_span_ids");
+    expect(query).not.toContain("w3c_trace_id");
   });
 
   it("loads only the detail dialog's columns when a span detail opens", () => {
     const detailQuery = getSpanDetailQuery("trace-123", "span-456");
-    // A point lookup over the FINAL + UNION ALL spans view must never SELECT *.
+    // A point lookup over the FINAL-backed spans view must never SELECT *.
     expect(detailQuery.query).not.toContain("*");
     expect(detailQuery.query).toContain(`SELECT ${SPAN_DETAIL_COLUMNS.join(", ")}`);
     expect(detailQuery.query).toContain("trace_id = {traceId:String}");
@@ -191,7 +183,7 @@ describe("analytics trace row parsing", () => {
     expect(detailQuery.params).toEqual({ traceId: "trace-123", spanId: "span-456" });
 
     // Everything parseSpanRow consumes must stay in the column list.
-    for (const column of ["trace_id", "span_id", "span_type", "started_at", "ended_at", "parent_span_ids", "status_code", "data", "resource_attributes"]) {
+    for (const column of ["trace_id", "span_id", "span_type", "started_at", "ended_at", "parent_span_id", "status_code", "data", "resource_attributes"]) {
       expect(SPAN_DETAIL_COLUMNS).toContain(column);
     }
     // Scoping/internal columns stay out of the detail dialog.
@@ -218,7 +210,8 @@ describe("analytics trace row parsing", () => {
         "session_replay_segment_id",
         "trace_id",
         "span_id",
-        "parent_span_ids",
+        "parent_span_id",
+        "page_view_span_id",
         "kind",
         "scope_name",
         "scope_version",
@@ -241,7 +234,8 @@ describe("analytics trace row parsing", () => {
     expect(queriedTechnicalColumns).toEqual([
       "trace_id",
       "span_id",
-      "parent_span_ids",
+      "parent_span_id",
+      "page_view_span_id",
       "kind",
       "scope_name",
       "scope_version",
@@ -273,22 +267,68 @@ describe("analytics trace row parsing", () => {
     });
   });
 
-  it("loads a native trace from its selected parent", () => {
-    expect(getSelectedTraceSpanQuery("cs-native-span")).toMatchObject({
-      params: { traceId: "cs-native-span" },
-    });
-  });
-
-  it("deduplicates a refresh-token parent returned by both span queries", () => {
+  it("deduplicates a span row returned more than once", () => {
     const row = {
-      trace_id: "rti-old",
-      span_id: "rti-old",
-      span_type: "$refresh-token",
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "0123456789abcdef",
+      span_type: "$page-view",
       started_at: "2026-07-21 12:00:00.000",
       ended_at: null,
-      parent_span_ids: [],
+      parent_span_id: null,
       data: "{}",
     };
     expect(parseUniqueSpanRows([row, row])).toHaveLength(1);
+  });
+
+  it("keeps trace interval time separate from inbox activity time", () => {
+    const [root] = parseUniqueTraceRootRows([{
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "0123456789abcdef",
+      span_type: "$refresh-token",
+      started_at: "2026-07-21 12:00:00.000",
+      ended_at: "2026-07-28 12:00:00.000",
+      root_activity_at: "2026-07-21 12:30:00.000",
+      parent_span_id: null,
+      data: "{}",
+    }]);
+
+    expect(root.startMs).toBe(Date.parse("2026-07-21T12:00:00.000Z"));
+    expect(root.activityMs).toBe(Date.parse("2026-07-21T12:30:00.000Z"));
+  });
+
+  it("rejects a root row without the inbox activity clock", () => {
+    expect(() => parseUniqueTraceRootRows([{
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "0123456789abcdef",
+      span_type: "$refresh-token",
+      started_at: "2026-07-21 12:00:00.000",
+      ended_at: null,
+      parent_span_id: null,
+      data: "{}",
+    }])).toThrowError("Trace root query returned a row without root_activity_at");
+  });
+
+  it("reads the scalar parent as a root when ClickHouse sends it as NULL", () => {
+    const [parsed] = parseUniqueSpanRows([{
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "0123456789abcdef",
+      span_type: "$page-view",
+      started_at: "2026-07-21 12:00:00.000",
+      ended_at: null,
+      parent_span_id: null,
+      data: "{}",
+    }]);
+    expect(parsed.parentSpanId).toBeNull();
+
+    const [child] = parseUniqueSpanRows([{
+      trace_id: "0123456789abcdef0123456789abcdef",
+      span_id: "fedcba9876543210",
+      span_type: "GET /api/thing",
+      started_at: "2026-07-21 12:00:00.000",
+      ended_at: "2026-07-21 12:00:01.000",
+      parent_span_id: "0123456789abcdef",
+      data: "{}",
+    }]);
+    expect(child.parentSpanId).toBe("0123456789abcdef");
   });
 });

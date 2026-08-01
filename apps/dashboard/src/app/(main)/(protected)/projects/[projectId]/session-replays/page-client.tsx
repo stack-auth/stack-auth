@@ -79,6 +79,16 @@ type RecordingListRow = {
   key: string,
 };
 
+type ReplayActivityCounts = {
+  clickCount: number,
+  keystrokeCount: number,
+};
+
+const EMPTY_REPLAY_ACTIVITY_COUNTS: ReplayActivityCounts = {
+  clickCount: 0,
+  keystrokeCount: 0,
+};
+
 type ChunkRow = {
   id: string,
   batchId: string,
@@ -571,7 +581,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     if (!lockedUserId) return;
     setAppliedFilters((prev) => prev.userId === lockedUserId ? prev : { ...prev, userId: lockedUserId, userLabel: prev.userLabel || "" });
   }, [lockedUserId]);
-  const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
+  const [activityCountsByReplayId, setActivityCountsByReplayId] = useState<Map<string, ReplayActivityCounts>>(new Map());
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [standaloneReplay, setStandaloneReplay] = useState<RecordingRow | null>(null);
   const [standaloneReplayError, setStandaloneReplayError] = useState<string | null>(null);
@@ -671,20 +681,31 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     const ids = recordings.map(r => r.id);
     runAsynchronously(async () => {
       const res = await serverApp.queryAnalytics({
-        query: `SELECT session_replay_id, count() as cnt
+        query: `SELECT
+                  session_replay_id,
+                  countIf(event_type = '$click') AS click_count,
+                  sumIf(JSONExtractUInt(toString(data), 'count'), event_type = '$keystroke') AS keystroke_count
                 FROM default.events
-                WHERE event_type = '$click'
+                WHERE event_type IN ('$click', '$keystroke')
                   AND session_replay_id IN ({ids:Array(String)})
                 GROUP BY session_replay_id`,
         params: { ids },
         include_all_branches: false,
         timeout_ms: 15000,
       });
-      const map = new Map<string, number>();
+      const map = new Map<string, ReplayActivityCounts>();
       for (const row of res.result) {
-        map.set(row.session_replay_id as string, Number(row.cnt));
+        if (typeof row.session_replay_id !== "string") {
+          throw new Error("Session replay activity query returned a non-string session_replay_id");
+        }
+        const clickCount = Number(row.click_count);
+        const keystrokeCount = Number(row.keystroke_count);
+        if (!Number.isFinite(clickCount) || !Number.isFinite(keystrokeCount)) {
+          throw new Error("Session replay activity query returned a non-numeric count");
+        }
+        map.set(row.session_replay_id, { clickCount, keystrokeCount });
       }
-      setClickCountsByReplayId(map);
+      setActivityCountsByReplayId(map);
     }, { noErrorLogging: true });
   }, [isStandaloneReplayPage, recordings, serverApp]);
 
@@ -1901,6 +1922,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                           {recordingListRows.map(({ replay: r, key }) => {
                             const isSelected = r.id === selectedRecordingId;
                             const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
+                            const activityCounts = activityCountsByReplayId.get(r.id) ?? EMPTY_REPLAY_ACTIVITY_COUNTS;
                             return (
                               <div
                                 key={key}
@@ -1931,7 +1953,8 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                                   <ReplayActivityMetrics
                                     durationMs={durationMs}
                                     eventCount={r.eventCount}
-                                    clickCount={clickCountsByReplayId.get(r.id) ?? 0}
+                                    clickCount={activityCounts.clickCount}
+                                    keystrokeCount={activityCounts.keystrokeCount}
                                     onActivate={() => setSelectedRecordingId(r.id)}
                                   />
                                 </div>

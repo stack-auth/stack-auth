@@ -33,14 +33,16 @@ describe("ReplayActivityMetrics", () => {
         durationMs={7 * 60 * 1000 + 16 * 1000}
         eventCount={7512}
         clickCount={64}
+        keystrokeCount={913}
       />,
     );
 
-    expect(screen.getByLabelText("Replay activity").textContent).toBe("7m 16s7,51264");
+    expect(screen.getByLabelText("Replay activity").textContent).toBe("7m 16s7,51264913");
     expect(screen.getByText("7m 16s").closest("[data-tooltip]")?.getAttribute("data-tooltip")).toBe("Replay duration: 7m 16s");
     expect(screen.getByText("7,512").closest("[data-tooltip]")?.getAttribute("data-tooltip")).toBe("Recorded events: 7,512");
     expect(screen.getByText("64").closest("[data-tooltip]")?.getAttribute("data-tooltip")).toBe("Recorded clicks: 64");
-    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(3);
+    expect(screen.getByText("913").closest("[data-tooltip]")?.getAttribute("data-tooltip")).toBe("Recorded keystrokes: 913");
+    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(4);
   });
 
   it("keeps metric tooltip triggers inside the replay row's click target", () => {
@@ -50,6 +52,7 @@ describe("ReplayActivityMetrics", () => {
         durationMs={7 * 60 * 1000 + 16 * 1000}
         eventCount={7512}
         clickCount={64}
+        keystrokeCount={913}
         onActivate={onActivate}
       />,
     );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_UUID_RE, buildTraceparent, getTelemetryResourceError, snapshotTelemetryResource, truncateUtf8Bytes, uuidToW3cSpanId, uuidToW3cTraceId } from "./analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, formatTraceparent, generateW3cSpanId, generateW3cTraceId, getTelemetryResourceError, isW3cSpanId, isW3cTraceId, parseTraceparent, snapshotTelemetryResource, truncateUtf8Bytes, uuidToW3cSpanId, uuidToW3cTraceId } from "./analytics-wire";
 
 describe("telemetry resource", () => {
   it("accepts the explicit service identity and bounded primitive attributes", () => {
@@ -78,60 +78,6 @@ describe("truncateUtf8Bytes", () => {
   });
 });
 
-describe("uuidToW3cTraceId", () => {
-  it("strips dashes and lowercases", () => {
-    expect(uuidToW3cTraceId("1B671A64-40D5-491E-99B0-DA01FF1F3341")).toBe("1b671a6440d5491e99b0da01ff1f3341");
-  });
-
-  it("round-trips every crypto.randomUUID shape", () => {
-    for (let i = 0; i < 100; i++) {
-      const uuid = crypto.randomUUID();
-      const traceId = uuidToW3cTraceId(uuid);
-      expect(traceId).toMatch(/^[0-9a-f]{32}$/);
-      // Reconstructing the uuid from the hex must yield the original.
-      const rebuilt = `${traceId.slice(0, 8)}-${traceId.slice(8, 12)}-${traceId.slice(12, 16)}-${traceId.slice(16, 20)}-${traceId.slice(20)}`;
-      expect(rebuilt).toBe(uuid.toLowerCase());
-    }
-  });
-
-  it("throws on non-uuid input", () => {
-    expect(() => uuidToW3cTraceId("not-a-uuid")).toThrow(`Expected a telemetry uuid, got: "not-a-uuid"`);
-    expect(() => uuidToW3cTraceId("1b671a6440d5491e99b0da01ff1f3341")).toThrow();
-    expect(() => uuidToW3cTraceId("")).toThrow();
-  });
-});
-
-describe("uuidToW3cSpanId", () => {
-  it("takes the lower 8 bytes", () => {
-    expect(uuidToW3cSpanId("1B671A64-40D5-491E-99B0-DA01FF1F3341")).toBe("99b0da01ff1f3341");
-  });
-
-  it("is never all-zero for RFC 4122 uuids (variant bits make the first hex char 8-b)", () => {
-    for (let i = 0; i < 100; i++) {
-      const spanId = uuidToW3cSpanId(crypto.randomUUID());
-      expect(spanId).toMatch(/^[89ab][0-9a-f]{15}$/);
-    }
-  });
-
-  it("fails loud on the (regex-admitted but never generated) all-zero lower half", () => {
-    const degenerate = "1b671a64-40d5-491e-0000-000000000000";
-    expect(TELEMETRY_UUID_RE.test(degenerate)).toBe(true);
-    expect(() => uuidToW3cSpanId(degenerate)).toThrow();
-  });
-});
-
-describe("buildTraceparent", () => {
-  it("emits a sampled v00 traceparent derived from the uuid", () => {
-    expect(buildTraceparent("1B671A64-40D5-491E-99B0-DA01FF1F3341")).toBe("00-1b671a6440d5491e99b0da01ff1f3341-99b0da01ff1f3341-01");
-  });
-
-  it("always matches the W3C traceparent grammar", () => {
-    for (let i = 0; i < 20; i++) {
-      expect(buildTraceparent(crypto.randomUUID())).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
-    }
-  });
-});
-
 describe("wire type lists", () => {
   it("keeps the system type lists $-prefixed and unique", () => {
     for (const list of [SYSTEM_EVENT_TYPES, CLIENT_SYSTEM_SPAN_TYPES]) {
@@ -141,8 +87,74 @@ describe("wire type lists", () => {
   });
 
   it("includes the new wire types the ingestion route must accept", () => {
+    expect(SYSTEM_EVENT_TYPES).toContain("$keystroke");
     expect(SYSTEM_EVENT_TYPES).toContain("$error");
     expect(SYSTEM_EVENT_TYPES).toContain("$log");
     expect(CLIENT_SYSTEM_SPAN_TYPES).toContain("$http-client");
+  });
+});
+
+describe("W3C trace context", () => {
+  it("derives stable lifecycle trace and span ids from a UUID", () => {
+    const uuid = "12345678-1234-4123-8123-123456789abc";
+    expect(uuidToW3cTraceId(uuid)).toBe("12345678123441238123123456789abc");
+    expect(uuidToW3cSpanId(uuid)).toBe("8123123456789abc");
+    expect(() => uuidToW3cTraceId("not-a-uuid")).toThrow(/Expected a telemetry uuid/);
+  });
+
+  it("generates ids of the right shape that are never the all-zero id", () => {
+    for (let i = 0; i < 50; i++) {
+      const traceId = generateW3cTraceId();
+      const spanId = generateW3cSpanId();
+      expect(isW3cTraceId(traceId)).toBe(true);
+      expect(isW3cSpanId(spanId)).toBe(true);
+    }
+  });
+
+  it("rejects the all-zero ids the spec forbids, and wrong-length hex", () => {
+    expect(isW3cTraceId("0".repeat(32))).toBe(false);
+    expect(isW3cSpanId("0".repeat(16))).toBe(false);
+    expect(isW3cTraceId("abc")).toBe(false);
+    // A span id is not a trace id and vice versa.
+    expect(isW3cTraceId(generateW3cSpanId())).toBe(false);
+    expect(isW3cSpanId(generateW3cTraceId())).toBe(false);
+    // Uppercase hex is not the canonical form.
+    expect(isW3cTraceId("A".repeat(32))).toBe(false);
+  });
+
+  it("round-trips a traceparent, preserving the sampled flag in both directions", () => {
+    for (const sampled of [true, false]) {
+      const context = { traceId: generateW3cTraceId(), spanId: generateW3cSpanId(), sampled };
+      const parsed = parseTraceparent(formatTraceparent(context));
+      expect(parsed).toEqual(context);
+    }
+    expect(formatTraceparent({ traceId: "a".repeat(32), spanId: "b".repeat(16), sampled: true }))
+      .toBe(`00-${"a".repeat(32)}-${"b".repeat(16)}-01`);
+  });
+
+  it("rejects malformed traceparents and the forbidden ff version", () => {
+    const valid = `00-${"a".repeat(32)}-${"b".repeat(16)}-01`;
+    expect(parseTraceparent(valid)).not.toBeNull();
+    expect(parseTraceparent(`ff-${"a".repeat(32)}-${"b".repeat(16)}-01`)).toBeNull();
+    expect(parseTraceparent(`00-${"0".repeat(32)}-${"b".repeat(16)}-01`)).toBeNull();
+    expect(parseTraceparent(`00-${"a".repeat(32)}-${"0".repeat(16)}-01`)).toBeNull();
+    expect(parseTraceparent(`00-${"a".repeat(31)}-${"b".repeat(16)}-01`)).toBeNull();
+    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}`)).toBeNull();
+    expect(parseTraceparent("")).toBeNull();
+    expect(parseTraceparent(undefined)).toBeNull();
+    expect(parseTraceparent(42)).toBeNull();
+  });
+
+  it("accepts an unknown future version and trailing fields (forward compatibility)", () => {
+    // The spec requires parsing the first three fields identically and ignoring
+    // anything after them, so a newer sender must not break this tier.
+    const parsed = parseTraceparent(`01-${"a".repeat(32)}-${"b".repeat(16)}-01-extra`);
+    expect(parsed).toEqual({ traceId: "a".repeat(32), spanId: "b".repeat(16), sampled: true });
+  });
+
+  it("treats reserved traceFlags bits as set-but-ignored", () => {
+    // 0xfe has every bit but `sampled`; 0xff has all of them.
+    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}-fe`)?.sampled).toBe(false);
+    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}-ff`)?.sampled).toBe(true);
   });
 });

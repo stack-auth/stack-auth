@@ -1251,6 +1251,12 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
 // These PREWHERE fields are immutable for a span ID, so filtering them before
 // FINAL preserves replacement semantics while avoiding JSON reads for the much
 // larger population of operational spans.
+//
+// The column list is deliberately the INTERSECTION of what spans and events both
+// have, because PAGE_VIEWS_AND_CLICKS_SQL unions the two and ClickHouse pairs
+// UNION ALL branches positionally. No span-identity column is selected: these
+// queries only ever aggregate page views and clicks, so carrying hierarchy here
+// would be dead weight that has to be kept in sync with two schemas.
 const PAGE_VIEWS_FROM_SPANS_SQL = `
   SELECT
     CAST('$page-view', 'LowCardinality(String)') AS event_type,
@@ -1263,8 +1269,7 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
     refresh_token_id,
     session_replay_id,
     session_replay_segment_id,
-    created_at,
-    parent_span_ids
+    created_at
   FROM analytics_internal.spans FINAL
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
@@ -1287,8 +1292,7 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     refresh_token_id,
     session_replay_id,
     session_replay_segment_id,
-    created_at,
-    parent_span_ids
+    created_at
   FROM analytics_internal.events
   PREWHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}

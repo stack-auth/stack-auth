@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { generateW3cSpanId, generateW3cTraceId, isW3cSpanId, isW3cTraceId, parseTraceparent, uuidToW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventTracker, withSpanImpl } from "./event-tracker";
 import { HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP } from "./network-capture";
-import { decodeSpanContextHeader, installFetchSpanPropagation } from "./span-propagation";
-import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
+import { decodeSpanContextHeader, installFetchSpanPropagation, TRACEPARENT_HEADER } from "./span-propagation";
+import { setAsyncContextModeForTesting } from "./span-context-state";
 
 const TEST_RESOURCE = { service: { name: "test-client" } } as const;
 
@@ -34,12 +35,264 @@ function getSentEventTypes(sentBodies: string[]) {
 
 describe("EventTracker", () => {
   beforeEach(() => {
-    __setAsyncContextModeForTesting("auto");
+    setAsyncContextModeForTesting("auto");
   });
 
   afterEach(() => {
-    __setAsyncContextModeForTesting("auto");
+    setAsyncContextModeForTesting("auto");
     vi.useRealTimers();
+  });
+
+  it("samples at flush: drops healthy traces and promotes error spans, logs, and events", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      traceSampleRate: 0,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const healthy = tracker.startSpan("healthy-work");
+      const healthyEnd = healthy.end();
+      await advancePastFlush();
+      await healthyEnd;
+      expect(sentBodies).toHaveLength(0);
+
+      const failed = tracker.startSpan("failed-work", { data: { error: "boom" } });
+      const failedEnd = failed.end();
+      await advancePastFlush();
+      await failedEnd;
+
+      expect(sentBodies).toHaveLength(1);
+      const payload = JSON.parse(sentBodies[0]) as {
+        spans?: { span_type: string, trace_id: string }[],
+      };
+      const spanTypes = payload.spans?.map((span) => span.span_type);
+      expect(spanTypes).toContain("$page-view");
+      expect(spanTypes).toContain("failed-work");
+      expect(new Set(payload.spans?.map((span) => span.trace_id)).size).toBe(1);
+
+      const logDelivery = tracker.trackLogEvent({
+        message: "checkout failed",
+        level: "error",
+      });
+      await advancePastFlush();
+      await logDelivery;
+      expect(sentBodies).toHaveLength(2);
+      const logPayload = JSON.parse(sentBodies[1]) as {
+        events?: { event_type: string, level?: string }[],
+      };
+      expect(logPayload.events).toEqual([
+        expect.objectContaining({ event_type: "$log", level: "error" }),
+      ]);
+
+      tracker.trackErrorEvent({ message: "uncaught checkout failure" });
+      await advancePastFlush();
+      expect(sentBodies).toHaveLength(3);
+      const errorPayload = JSON.parse(sentBodies[2]) as {
+        events?: { event_type: string }[],
+      };
+      expect(errorPayload.events).toEqual([
+        expect.objectContaining({ event_type: "$error" }),
+      ]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  // The headline shape: ONE page visit is ONE trace. Before this, a page view
+  // scattered into a near-empty page-view trace plus one trace per fetch per
+  // custom span, with nothing but a correlation column tying them together —
+  // which made cross-tier links unreadable, because the backend spans hung off
+  // whichever isolated fetch trace happened to trigger them.
+  it("puts a page view, its events, its custom spans and its fetches in ONE trace", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button>Buy</button>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const custom = tracker.startSpan("checkout");
+      const fetchSpan = tracker.beginHttpRequestSpan({ url: "https://api.example.com/orders", method: "POST", transport: "fetch" });
+      fetchSpan?.end({ status: 200, errored: false, aborted: false, propagated: true });
+      custom.end().catch(() => {});
+      await advancePastFlush();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+        events: { event_type: string, trace_id?: string }[],
+        spans: { span_type: string, trace_id: string, span_id: string, parent_span_id: string | null }[],
+      };
+      const pageView = payload.spans.find((span) => span.span_type === "$page-view")!;
+      expect(pageView.parent_span_id).toBeNull();
+
+      const byType = new Map(payload.spans.map((span) => [span.span_type, span]));
+      for (const spanType of ["checkout", "$http-client"]) {
+        const span = byType.get(spanType)!;
+        expect(span.trace_id).toBe(pageView.trace_id);
+        expect(span.parent_span_id).toBe(pageView.span_id);
+      }
+      expect(payload.events.find((event) => event.event_type === "$click")!.trace_id).toBe(pageView.trace_id);
+      // …and the page view is the ONLY root, so the traces list shows one entry.
+      expect(payload.spans.filter((span) => span.parent_span_id === null)).toHaveLength(1);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("keeps early pages under the refresh root, then uses the replay segment only after it materializes", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const traceId = "12345678123441238123123456789abc";
+    const refreshSpanId = "8123123456789abc";
+    const segmentId = "aaaaaaaa-aaaa-4aaa-8bbb-bbbbbbbbbbbb";
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sessionRootContext: { traceId, spanId: refreshSpanId },
+      sessionReplayEnabled: true,
+      sessionReplaySegmentId: segmentId,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const earlyPageId = tracker.getCurrentPageViewSpanId();
+      await advancePastFlush();
+
+      tracker.markSessionReplaySegmentMaterialized(segmentId, { traceId, spanId: refreshSpanId });
+      const replayPageId = tracker.getCurrentPageViewSpanId();
+      expect(replayPageId).not.toBe(earlyPageId);
+      const request = tracker.beginHttpRequestSpan({ url: "https://api.example.com/orders", method: "POST", transport: "fetch" });
+      request?.end({ status: 200, errored: false, aborted: false, propagated: true });
+      await advancePastFlush();
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as {
+        spans: { span_type: string, trace_id: string, span_id: string, parent_span_id: string | null }[],
+      }).spans);
+      const earlyPage = spans.find((span) => span.span_id === earlyPageId);
+      const replayPage = spans.find((span) => span.span_id === replayPageId);
+      const http = spans.find((span) => span.span_type === "$http-client");
+      expect(earlyPage).toEqual(expect.objectContaining({
+        trace_id: traceId,
+        parent_span_id: refreshSpanId,
+      }));
+      expect(replayPage).toEqual(expect.objectContaining({
+        trace_id: traceId,
+        parent_span_id: uuidToW3cSpanId(segmentId),
+      }));
+      expect(http).toEqual(expect.objectContaining({
+        trace_id: traceId,
+        parent_span_id: replayPage?.span_id,
+      }));
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("ignores stale segment acknowledgements and restarts the page when the refresh root changes", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const oldRoot = { traceId: "11111111111141118111111111111111", spanId: "8111111111111111" };
+    const newRoot = { traceId: "22222222222242228222222222222222", spanId: "8222222222222222" };
+    const currentSegment = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sessionRootContext: oldRoot,
+      sessionReplayEnabled: true,
+      sessionReplaySegmentId: currentSegment,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const initialPageId = tracker.getCurrentPageViewSpanId();
+      tracker.markSessionReplaySegmentMaterialized("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", newRoot);
+      expect(tracker.getCurrentPageViewSpanId()).toBe(initialPageId);
+
+      tracker.markSessionReplaySegmentMaterialized(currentSegment, newRoot);
+      const rotatedPageId = tracker.getCurrentPageViewSpanId();
+      expect(rotatedPageId).not.toBe(initialPageId);
+      await advancePastFlush();
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as {
+        spans: { span_id: string, trace_id: string, parent_span_id: string | null }[],
+      }).spans);
+      expect(spans.find((span) => span.span_id === initialPageId)).toEqual(expect.objectContaining({
+        trace_id: oldRoot.traceId,
+        parent_span_id: oldRoot.spanId,
+      }));
+      expect(spans.find((span) => span.span_id === rotatedPageId)).toEqual(expect.objectContaining({
+        trace_id: newRoot.traceId,
+        parent_span_id: uuidToW3cSpanId(currentSegment),
+      }));
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  // Regression: autocapture used to stamp only `page_view_span_id`, which is a
+  // correlation column, so every click/error/console line in a browser session
+  // belonged to no trace and could not be found from the traces UI (its span
+  // query is `WHERE trace_id = ?`) or from customer SQL.
+  it("puts auto-captured events inside the current $page-view span's trace", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button>Open project</button><form id=\"quiz\"></form>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      document.querySelector("#quiz")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await advancePastFlush();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+        events: { event_type: string, trace_id?: string, span_id?: string, page_view_span_id?: string }[],
+        spans: { span_type: string, trace_id: string, span_id: string }[],
+      };
+      const pageView = payload.spans.find((span) => span.span_type === "$page-view")!;
+      expect(pageView).toBeDefined();
+      for (const eventType of ["$click", "$form-submit"]) {
+        const event = payload.events.find((candidate) => candidate.event_type === eventType)!;
+        expect(event.trace_id).toBe(pageView.trace_id);
+        expect(event.span_id).toBe(pageView.span_id);
+        // Correlation still rides alongside the hierarchy, unchanged.
+        expect(event.page_view_span_id).toBe(pageView.span_id);
+      }
+    } finally {
+      tracker.stop();
+    }
   });
 
   it("captures events when browser globals are exposed as accessor descriptors", async () => {
@@ -74,7 +327,7 @@ describe("EventTracker", () => {
       await advancePastFlush();
 
       expect(JSON.parse(sentBodies[0])).toMatchObject({
-        schema_version: 2,
+        schema_version: 3,
         resource: TEST_RESOURCE,
       });
       // Dead-click classification marks the buffered $click in place —
@@ -84,6 +337,131 @@ describe("EventTracker", () => {
           "$click",
         ]
       `);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("keeps keystroke capture disabled by default", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"shortcut\">Shortcut target</button>";
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      document.querySelector("#shortcut")?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "k" }));
+      await advancePastFlush();
+
+      expect(getSentEventTypes(sentBodies)).not.toContain("$keystroke");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("debounces opted-in keydowns into a count without capturing key values or typed text", async () => {
+    vi.useFakeTimers();
+    const performanceOriginMs = Date.now();
+    const performanceNowSpy = vi.spyOn(performance, "now").mockImplementation(() => Date.now() - performanceOriginMs);
+    document.body.innerHTML = "<input id=\"search\" type=\"text\" value=\"private search\">";
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      keystrokeCapture: { enabled: true, maskAllInputs: false },
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const input = document.querySelector("#search");
+      if (input === null) throw new Error("search input missing");
+      const startedAtMs = Date.now();
+      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "s" }));
+      await vi.advanceTimersByTimeAsync(200);
+      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "e" }));
+      await vi.advanceTimersByTimeAsync(200);
+      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "c" }));
+
+      // Trailing debounce: nothing is buffered until the burst has been idle.
+      await vi.advanceTimersByTimeAsync(499);
+      await tracker.flush();
+      expect(sentBodies).toHaveLength(1);
+      expect(getSentEventTypes(sentBodies)).not.toContain("$keystroke");
+
+      await vi.advanceTimersByTimeAsync(1);
+      await tracker.flush();
+
+      const events = sentBodies.flatMap((body) => (JSON.parse(body) as {
+        events?: { event_type: string, event_at_ms: number, data: Record<string, unknown> }[],
+      }).events ?? []);
+      const keystrokes = events.filter((event) => event.event_type === "$keystroke");
+      expect(keystrokes).toEqual([expect.objectContaining({
+        event_at_ms: startedAtMs,
+        data: expect.objectContaining({ count: 3, duration_ms: 400 }),
+      })]);
+      for (const body of sentBodies) {
+        expect(body).not.toContain("private search");
+        expect(body).not.toContain('"key"');
+        expect(body).not.toContain('"code"');
+      }
+    } finally {
+      tracker.stop();
+      performanceNowSpy.mockRestore();
+    }
+  });
+
+  it("excludes masked inputs, password fields, and blocked replay subtrees from keystroke counts", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `
+      <input id="masked" type="text">
+      <input id="password" type="password">
+      <div class="rr-mask" contenteditable="true" id="masked-text">hidden</div>
+      <div class="private"><button id="blocked">Blocked</button></div>
+      <button id="visible">Visible shortcut</button>
+    `;
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      resource: TEST_RESOURCE,
+      keystrokeCapture: {
+        enabled: true,
+        maskAllInputs: true,
+        blockSelector: ".private",
+      },
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      for (const selector of ["#masked", "#password", "#masked-text", "#blocked", "#visible"]) {
+        document.querySelector(selector)?.dispatchEvent(new KeyboardEvent("keydown", {
+          bubbles: true,
+          key: "x",
+        }));
+      }
+      await vi.advanceTimersByTimeAsync(500);
+      await tracker.flush();
+
+      const events = sentBodies.flatMap((body) => (JSON.parse(body) as {
+        events?: { event_type: string, data: Record<string, unknown> }[],
+      }).events ?? []);
+      expect(events.filter((event) => event.event_type === "$keystroke")).toEqual([
+        expect.objectContaining({ data: expect.objectContaining({ count: 1 }) }),
+      ]);
     } finally {
       tracker.stop();
     }
@@ -468,13 +846,22 @@ describe("EventTracker", () => {
       await advancePastFlush();
       await expect(promise).resolves.toBeUndefined();
 
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, data: Record<string, unknown>, parent_span_ids?: string[] }[] };
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+        events: { event_type: string, data: Record<string, unknown>, trace_id?: string, span_id?: string }[],
+        spans?: { span_type: string, trace_id: string, span_id: string }[],
+      };
       expect(payload.events.map((event) => event.event_type)).toEqual(["checkout_completed"]);
       const custom = payload.events[0];
       expect(custom.data).toEqual({ cart_size: 3 });
-      // No parents were given and no globals are set — the key is omitted
-      // entirely (the server stamps system ancestry on every event anyway).
-      expect(custom.parent_span_ids).toBeUndefined();
+      // No parent given and no globals set, so the event falls back to the
+      // current `$page-view` span: an event is only ever findable through its
+      // trace, and the page view is the operation it happened inside. It still
+      // never MINTS a trace — a fabricated trace id would show up in the trace
+      // inbox as a phantom root.
+      const pageView = payload.spans?.find((span) => span.span_type === "$page-view");
+      expect(custom.span_id).toBe(pageView?.span_id);
+      expect(custom.trace_id).toBe(pageView?.trace_id);
+      expect(custom.span_id).toBe(tracker.getCurrentPageViewSpanId());
     } finally {
       tracker.stop();
     }
@@ -497,7 +884,11 @@ describe("EventTracker", () => {
       await expect(tracker.trackCustomEvent("ok", [1, 2] as any)).rejects.toThrow(/plain JSON-serializable object/);
       await expect(tracker.trackCustomEvent("ok", { big: "x".repeat(64_001) })).rejects.toThrow(/at most 64000 bytes/);
       await expect(tracker.trackCustomEvent("ok", { big: "é".repeat(32_001) })).rejects.toThrow(/at most 64000 bytes/);
-      await expect(tracker.trackCustomEvent("ok", {}, { parentIds: ["not-a-uuid"] })).rejects.toThrow(/parent ids must be span uuids/);
+      // Parent ids are now W3C, so the validation message is about hex shape.
+      await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "not-a-trace", spanId: "1111111111111111" } })).rejects.toThrow(/must be 32 lowercase hex characters and not all-zero/);
+      await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "0".repeat(32), spanId: "1111111111111111" } })).rejects.toThrow(/not all-zero/);
+      await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "a".repeat(32), spanId: "0".repeat(16) } })).rejects.toThrow(/must be 16 lowercase hex characters and not all-zero/);
+      await expect(tracker.trackCustomEvent("ok", {}, { links: [{ traceId: "a".repeat(32), spanId: "nope" }] })).rejects.toThrow(/Invalid link spanId/);
 
       expect(() => tracker.startSpan("$reserved")).toThrow(/reserved for system telemetry/);
 
@@ -535,15 +926,21 @@ describe("EventTracker", () => {
 
       // Start + setData + end within one flush window: exactly ONE wire row,
       // carrying the latest state (ended, merged data).
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_id: string, span_type: string, ended_at_ms: number | null, data: Record<string, unknown>, parent_span_ids: string[] }[] };
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { trace_id: string, span_id: string, span_type: string, ended_at_ms: number | null, data: Record<string, unknown>, parent_span_id: string | null }[] };
       const customSpans = getCustomSpans(payload);
       expect(customSpans).toHaveLength(1);
       const row = customSpans[0];
       expect(row.span_id).toBe(span.spanId);
+      expect(row.trace_id).toBe(span.traceId);
       expect(row.span_type).toBe("checkout-flow");
       expect(row.ended_at_ms).not.toBeNull();
       expect(row.data).toEqual({ cart_size: 3, coupon: "SAVE10" });
-      expect(row.parent_span_ids).toEqual([]);
+      // No enclosing custom context, so the page view encloses it — the span
+      // lands in the trace of the page it was started on rather than minting a
+      // top-level trace of its own.
+      expect(row.parent_span_id).toBe(tracker.getCurrentPageViewSpanId());
+      expect(isW3cTraceId(row.trace_id)).toBe(true);
+      expect(isW3cSpanId(row.span_id)).toBe(true);
     } finally {
       tracker.stop();
     }
@@ -599,7 +996,7 @@ describe("EventTracker", () => {
     }
   });
 
-  it("parents children and events under global spans and handle chains (span2.trackEvent inherits everything)", async () => {
+  it("parents children and events under the nearest ambient span (global span, then handle)", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
@@ -616,64 +1013,99 @@ describe("EventTracker", () => {
       const checkout = tracker.startSpan("checkout-flow");
       tracker.setGlobalSpan(checkout);
 
-      // Child created via the handle: chain = [checkout].
+      // Child created via the handle: its parent is the handle, exactly.
       const payment = checkout.startSpan("payment-step");
-      // Event tracked via the child handle: parents = ambient (checkout) +
-      // payment's chain (checkout, deduped) + payment itself.
+      // Event tracked via the child handle: the handle pins ITSELF as parent, so
+      // `payment` wins over the ambient global span — a span has one parent, and
+      // handle-based nesting is exact where ambient context is only a guess.
       const eventPromise = payment.trackEvent("card_declined", { code: "51" });
 
-      // A raw uuid explicitly extends the known global path.
-      const rawParent = "0f000000-0000-4000-8000-00000000cccc";
-      tracker.trackCustomEvent("hint_shown", {}, { parentIds: [rawParent] }).catch(() => {});
+      // A serialized context explicitly overrides ambient entirely.
+      const explicit = { traceId: generateW3cTraceId(), spanId: generateW3cSpanId() };
+      tracker.trackCustomEvent("hint_shown", {}, { parent: explicit }).catch(() => {});
 
       await advancePastFlush();
       await expect(eventPromise).resolves.toBeUndefined();
 
       const payload = JSON.parse(sentBodies[0] ?? "{}") as {
-        events: { event_type: string, parent_span_ids?: string[] }[],
-        spans?: { span_id: string, parent_span_ids: string[] }[],
+        events: { event_type: string, trace_id?: string, span_id?: string }[],
+        spans?: { trace_id: string, span_id: string, parent_span_id: string | null }[],
       };
-      const paymentRow = payload.spans!.find((row) => row.span_id === payment.spanId);
-      expect(paymentRow!.parent_span_ids).toEqual([checkout.spanId]);
+      const paymentRow = payload.spans!.find((row) => row.span_id === payment.spanId)!;
+      expect(paymentRow.parent_span_id).toBe(checkout.spanId);
+      expect(paymentRow.trace_id).toBe(checkout.traceId);
 
-      const declined = payload.events.find((event) => event.event_type === "card_declined");
-      expect(declined!.parent_span_ids).toEqual([checkout.spanId, payment.spanId]);
+      const declined = payload.events.find((event) => event.event_type === "card_declined")!;
+      expect(declined.span_id).toBe(payment.spanId);
+      expect(declined.trace_id).toBe(checkout.traceId);
 
-      const hint = payload.events.find((event) => event.event_type === "hint_shown");
-      expect(hint!.parent_span_ids).toEqual([checkout.spanId, rawParent]);
+      const hint = payload.events.find((event) => event.event_type === "hint_shown")!;
+      expect(hint.span_id).toBe(explicit.spanId);
+      expect(hint.trace_id).toBe(explicit.traceId);
 
-      // Ending a global span auto-unsets it: subsequent events have no parents.
+      // Ending a global span auto-unsets it: subsequent events fall back to the
+      // page view rather than staying attached to the ended span. They stay in
+      // the same TRACE, because the global span was itself started on this page
+      // and therefore already lived in the page view's trace.
       checkout.end().catch(() => {});
       tracker.trackCustomEvent("after_end").catch(() => {});
       await advancePastFlush();
-      const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
-      const after = second.events.find((event) => event.event_type === "after_end");
-      expect(after!.parent_span_ids).toBeUndefined();
+      const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, trace_id?: string, span_id?: string }[] };
+      const after = second.events.find((event) => event.event_type === "after_end")!;
+      expect(after.span_id).not.toBe(checkout.spanId);
+      expect(after.span_id).toBe(tracker.getCurrentPageViewSpanId());
+      expect(after.trace_id).toBe(checkout.traceId);
     } finally {
       tracker.stop();
     }
   });
 
-  it("rejects sibling global spans instead of flattening them into a false path", () => {
+  it("two global spans in different traces: the NEAREST is the parent, the other becomes a link", async () => {
+    // Replaces the old "reject sibling global spans" rule. Flattening two
+    // unrelated spans into one ancestry path was a lie, so the old model refused
+    // outright; a scalar parent has no such problem — the loser is simply not an
+    // ancestor, and `links` is the standard way to say "causally related, not my
+    // parent". Registering a second global span is therefore legal now.
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
       resource: TEST_RESOURCE,
-      sendBatch: async () => Result.ok(new Response()),
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
       sessionReplaySegmentId: "segment",
     });
 
     try {
+      tracker.start();
       const left = tracker.startSpan("left", { root: true });
       const right = tracker.startSpan("right", { root: true });
+      expect(left.traceId).not.toBe(right.traceId);
       tracker.setGlobalSpan(left);
+      tracker.setGlobalSpan(right);
 
-      expect(() => tracker.setGlobalSpan(right)).toThrow(/one ancestry path/);
+      const child = tracker.startSpan("child");
+      await advancePastFlush();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+        spans?: { span_type: string, trace_id: string, span_id: string, parent_span_id: string | null, links?: { trace_id: string, span_id: string }[] }[],
+      };
+      const childRow = getCustomSpans(payload).find((row) => row.span_id === child.spanId)!;
+      // Ambient contexts are ordered outermost-first, so the LAST registered
+      // global span is the nearest and wins the single parent slot.
+      expect(childRow.parent_span_id).toBe(right.spanId);
+      expect(childRow.trace_id).toBe(right.traceId);
+      // `left` is provably NOT an ancestor (different trace), so it is demoted
+      // to a link rather than silently dropped.
+      expect(childRow.links).toEqual([{ trace_id: left.traceId, span_id: left.spanId }]);
     } finally {
       tracker.stop();
     }
   });
 
-  it("continues a span tree from a serialized SpanRef with full ancestry", async () => {
+  it("continues a trace from a serialized SpanContext handed over from another tier", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
@@ -687,20 +1119,21 @@ describe("EventTracker", () => {
 
     try {
       tracker.start();
-      // Simulates a span minted on another tier (e.g. the server) and passed
-      // through JSON: the ref carries its own ancestor chain.
-      const serverRef = {
-        spanId: "0f000000-0000-4000-8000-00000000dddd",
-        parentSpanIds: ["0f000000-0000-4000-8000-00000000eeee"],
-      };
-      const child = tracker.startSpan("client-continuation", { parentIds: [serverRef] });
+      // Simulates a span minted on another tier (e.g. the server, via page
+      // props) and passed through JSON. A bare span id would be useless here —
+      // a span id only identifies a span WITHIN its trace — which is why the
+      // serializable currency is the {traceId, spanId} pair.
+      const serverSpan = { traceId: generateW3cTraceId(), spanId: generateW3cSpanId() };
+      const child = tracker.startSpan("client-continuation", { parent: serverSpan });
       await advancePastFlush();
 
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_id: string, span_type: string, parent_span_ids: string[] }[] };
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { trace_id: string, span_id: string, span_type: string, parent_span_id: string | null }[] };
       const customSpans = getCustomSpans(payload);
       expect(customSpans[0].span_id).toBe(child.spanId);
-      expect(customSpans[0].parent_span_ids).toEqual([serverRef.parentSpanIds[0], serverRef.spanId]);
-      expect(child.ref()).toEqual({ spanId: child.spanId, parentSpanIds: [serverRef.parentSpanIds[0], serverRef.spanId] });
+      expect(customSpans[0].parent_span_id).toBe(serverSpan.spanId);
+      // Joining the server's TRACE is the whole point: same trace id, new span.
+      expect(customSpans[0].trace_id).toBe(serverSpan.traceId);
+      expect(child.spanContext()).toEqual({ traceId: serverSpan.traceId, spanId: child.spanId });
     } finally {
       tracker.stop();
     }
@@ -836,22 +1269,26 @@ describe("EventTracker", () => {
 
     await tracker.flush();
     const payload = JSON.parse(sentBodies[0] ?? "{}") as {
-      events: { event_type: string, parent_span_ids?: string[] }[],
-      spans?: { span_id: string, span_type: string, ended_at_ms: number | null, parent_span_ids: string[] }[],
+      events: { event_type: string, trace_id?: string, span_id?: string }[],
+      spans?: { trace_id: string, span_id: string, span_type: string, ended_at_ms: number | null, parent_span_id: string | null }[],
     };
     const outerRow = payload.spans!.find((row) => row.span_type === "outer-flow")!;
-    expect(outerRow.ended_at_ms).not.toBeNull();   // auto-ended on settle
-    expect(outerRow.parent_span_ids).toEqual([]);  // its own parents come from the ENCLOSING context
+    expect(outerRow.ended_at_ms).not.toBeNull();     // auto-ended on settle
+    expect(outerRow.parent_span_id).toBeNull();      // its own parent comes from the ENCLOSING context
     const innerRow = payload.spans!.find((row) => row.span_id === innerSpanId)!;
-    expect(innerRow.parent_span_ids).toEqual([outerRow.span_id]);
+    expect(innerRow.parent_span_id).toBe(outerRow.span_id);
+    expect(innerRow.trace_id).toBe(outerRow.trace_id);
     const innerEvent = payload.events.find((event) => event.event_type === "inner_event")!;
-    expect(innerEvent.parent_span_ids).toEqual([outerRow.span_id]);
+    expect(innerEvent.span_id).toBe(outerRow.span_id);
+    expect(innerEvent.trace_id).toBe(outerRow.trace_id);
 
     // The frame is gone after withSpan settles: no ambient parent here.
     tracker.trackCustomEvent("after_frame").catch(() => {});
     await tracker.flush();
-    const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
-    expect(second.events.find((event) => event.event_type === "after_frame")!.parent_span_ids).toBeUndefined();
+    const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, trace_id?: string, span_id?: string }[] };
+    const afterFrame = second.events.find((event) => event.event_type === "after_frame")!;
+    expect(afterFrame.trace_id).toBeUndefined();
+    expect(afterFrame.span_id).toBeUndefined();
   });
 
   it("withSpan records data.error, ends the span, and rethrows on failure", async () => {
@@ -880,7 +1317,7 @@ describe("EventTracker", () => {
     expect(row.data).toEqual({ error: "boom" });
   });
 
-  it("root drops all ambient parents and excludeParentIds filters the FINAL merged list", async () => {
+  it("root:true starts a NEW trace, while a sibling without it stays in the enclosing one", async () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
@@ -891,18 +1328,24 @@ describe("EventTracker", () => {
       },
     });
 
+    let outerTraceId = "";
+    let detachedTraceId = "";
     await withSpanImpl(
       (type, options) => tracker.startSpan(type, options),
       "outer",
       async (outer) => {
+        outerTraceId = outer.traceId;
         const detached = tracker.startSpan("detached", { root: true });
-        expect(detached.ref().parentSpanIds).toEqual([]);
+        detachedTraceId = detached.traceId;
+        // `root` drops the AMBIENT parent, which under W3C also means leaving
+        // the trace: a root activity by definition begins its own trace.
+        expect(detached.spanContext()).toEqual({ traceId: detachedTraceId, spanId: detached.spanId });
+        expect(detachedTraceId).not.toBe(outerTraceId);
 
-        const child = tracker.startSpan("child");   // chain: [outer]
-        // Excluding outer removes it from the final list even though it
-        // re-enters via child's frozen chain — deliberate final-list semantics:
-        // this row is a child of `child` but NOT a descendant of `outer`.
-        tracker.trackCustomEvent("evt", {}, { parentIds: [child], excludeParentIds: [outer] }).catch(() => {});
+        const child = tracker.startSpan("child");   // ambient parent: outer
+        // An explicit parent overrides ambient entirely, so this event hangs off
+        // `child` and not off the enclosing `outer` frame.
+        tracker.trackCustomEvent("evt", {}, { parent: child }).catch(() => {});
         child.end().catch(() => {});
         detached.end().catch(() => {});
       },
@@ -910,14 +1353,20 @@ describe("EventTracker", () => {
 
     await tracker.flush();
     const payload = JSON.parse(sentBodies[0] ?? "{}") as {
-      events: { event_type: string, parent_span_ids?: string[] }[],
-      spans?: { span_id: string, span_type: string, parent_span_ids: string[] }[],
+      events: { event_type: string, trace_id?: string, span_id?: string }[],
+      spans?: { trace_id: string, span_id: string, span_type: string, parent_span_id: string | null }[],
     };
     const outerRow = payload.spans!.find((row) => row.span_type === "outer")!;
     const childRow = payload.spans!.find((row) => row.span_type === "child")!;
-    expect(payload.spans!.find((row) => row.span_type === "detached")!.parent_span_ids).toEqual([]);
-    expect(childRow.parent_span_ids).toEqual([outerRow.span_id]);
-    expect(payload.events.find((event) => event.event_type === "evt")!.parent_span_ids).toEqual([childRow.span_id]);
+    const detachedRow = payload.spans!.find((row) => row.span_type === "detached")!;
+    expect(detachedRow.parent_span_id).toBeNull();
+    expect(detachedRow.trace_id).toBe(detachedTraceId);
+    expect(isW3cTraceId(detachedRow.trace_id)).toBe(true);
+    expect(childRow.parent_span_id).toBe(outerRow.span_id);
+    expect(childRow.trace_id).toBe(outerTraceId);
+    const evt = payload.events.find((event) => event.event_type === "evt")!;
+    expect(evt.span_id).toBe(childRow.span_id);
+    expect(evt.trace_id).toBe(outerTraceId);
   });
 
   it("passes every batch-send promise to registerBackgroundTask (waitUntil hook)", async () => {
@@ -1015,12 +1464,12 @@ describe("EventTracker ambient modes + span handle kit", () => {
   }
 
   afterEach(() => {
-    __setAsyncContextModeForTesting("auto");
+    setAsyncContextModeForTesting("auto");
     vi.useRealTimers();
   });
 
   it("ambient parenting drops suspended sync frames after await (exact-only)", async () => {
-    __setAsyncContextModeForTesting("sync-stack");
+    setAsyncContextModeForTesting("sync-stack");
     vi.useFakeTimers();
 
     const sentBodies: string[] = [];
@@ -1037,11 +1486,15 @@ describe("EventTracker ambient modes + span handle kit", () => {
         tracker.trackCustomEvent("post_await").catch(() => {});
       });
       await advancePastFlush();
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
-      const prologue = payload.events.find((event) => event.event_type === "in_prologue")?.parent_span_ids;
-      const postAwait = payload.events.find((event) => event.event_type === "post_await")?.parent_span_ids;
-      expect(prologue).toEqual([spanId]);
-      expect(postAwait).toBeUndefined();
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, trace_id?: string, span_id?: string }[] };
+      const prologue = payload.events.find((event) => event.event_type === "in_prologue");
+      const postAwait = payload.events.find((event) => event.event_type === "post_await");
+      expect(prologue?.span_id).toBe(spanId);
+      // Fails CLOSED after the await: the suspended frame is NOT reused. What
+      // remains is the page-view fallback (the one enclosing span that is always
+      // provably current), never a guess at the flow's own span.
+      expect(postAwait?.span_id).not.toBe(spanId);
+      expect(postAwait?.span_id).toBe(tracker.getCurrentPageViewSpanId());
     } finally {
       tracker.stop();
     }
@@ -1060,21 +1513,25 @@ describe("EventTracker ambient modes + span handle kit", () => {
       });
       await advancePastFlush();
       const payload = JSON.parse(sentBodies[0] ?? "{}") as {
-        events: { event_type: string, parent_span_ids?: string[] }[],
-        spans: { span_id: string, span_type: string, parent_span_ids: string[], ended_at_ms: number | null }[],
+        events: { event_type: string, trace_id?: string, span_id?: string }[],
+        spans: { trace_id: string, span_id: string, span_type: string, parent_span_id: string | null, ended_at_ms: number | null }[],
       };
       const inner = payload.spans.find((row) => row.span_type === "inner")!;
-      expect(inner.parent_span_ids).toEqual([parent.spanId]);
+      expect(inner.parent_span_id).toBe(parent.spanId);
+      expect(inner.trace_id).toBe(parent.traceId);
       expect(inner.ended_at_ms).not.toBeNull();
       const evt = payload.events.find((event) => event.event_type === "evt")!;
-      expect(evt.parent_span_ids).toEqual([parent.spanId, inner.span_id]);
+      // `child.trackEvent` pins the CHILD, not the whole chain — the child handle
+      // is the exact enclosing span.
+      expect(evt.span_id).toBe(inner.span_id);
+      expect(evt.trace_id).toBe(parent.traceId);
     } finally {
       tracker.stop();
     }
   });
 
   it("span.run re-binds the span for a callback's window", async () => {
-    __setAsyncContextModeForTesting("sync-stack");
+    setAsyncContextModeForTesting("sync-stack");
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies);
@@ -1086,23 +1543,43 @@ describe("EventTracker ambient modes + span handle kit", () => {
         tracker.trackCustomEvent("from_callback").catch(() => {});
       });
       await advancePastFlush();
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, trace_id?: string, span_id?: string }[] };
       const evt = payload.events.find((event) => event.event_type === "from_callback")!;
-      expect(evt.parent_span_ids).toEqual([span.spanId]);
+      expect(evt.span_id).toBe(span.spanId);
+      expect(evt.trace_id).toBe(span.traceId);
     } finally {
       tracker.stop();
     }
   });
 
-  it("span.getSpanPropagationHeaders pins the header to the span's frozen chain + segment identity", () => {
+  it("span.getSpanPropagationHeaders pins traceparent to exactly this span, and correlation to the segment", () => {
     const tracker = makeTracker([]);
     const parent = tracker.startSpan("outer");
     const child = parent.startSpan("inner");
-    const decoded = decodeSpanContextHeader(child.getSpanPropagationHeaders()["x-hexclave-span-context"]);
-    expect(decoded).toEqual({
+    const headers = child.getSpanPropagationHeaders();
+    // HIERARCHY: exactly this span, sampled — an explicitly pinned custom span is
+    // always stored, unlike an auto-captured fetch that may be sampled out.
+    expect(parseTraceparent(headers[TRACEPARENT_HEADER])).toEqual({
+      traceId: child.traceId,
+      spanId: child.spanId,
+      sampled: true,
+    });
+    // CORRELATION: no span ids of ours in here any more, only the tab identity.
+    expect(decodeSpanContextHeader(headers["x-hexclave-span-context"])).toEqual({
       projectId: "internal",
       sessionReplaySegmentId: SEG,
-      customParentSpanIds: [parent.spanId, child.spanId],
+    });
+  });
+
+  it("does not advertise a manually pinned span from a head-dropped trace", () => {
+    const tracker = makeTracker([], { traceSampleRate: 0 });
+    const span = tracker.startSpan("head-dropped");
+
+    const headers = span.getSpanPropagationHeaders();
+    expect(headers[TRACEPARENT_HEADER]).toBeUndefined();
+    expect(decodeSpanContextHeader(headers["x-hexclave-span-context"])).toEqual({
+      projectId: "internal",
+      sessionReplaySegmentId: SEG,
     });
   });
 
@@ -1141,15 +1618,35 @@ describe("EventTracker ambient modes + span handle kit", () => {
       const span = tracker.startSpan("flow");
 
       await span.fetch("/api/x");
-      const attached = new Headers(calls[0].init?.headers).get("x-hexclave-span-context");
-      expect(decodeSpanContextHeader(attached)?.customParentSpanIds).toEqual([span.spanId]);
+      const attached = new Headers(calls[0].init?.headers);
+      // The pinned span rides as `traceparent`; the backend's withSpan({ request })
+      // nests under exactly this span, immune to ambient ambiguity.
+      expect(parseTraceparent(attached.get(TRACEPARENT_HEADER))).toEqual({
+        traceId: span.traceId,
+        spanId: span.spanId,
+        sampled: true,
+      });
+      expect(decodeSpanContextHeader(attached.get("x-hexclave-span-context"))).toEqual({
+        projectId: "internal",
+        sessionReplaySegmentId: SEG,
+      });
 
       await span.fetch("https://third-party.example/x");
       expect(calls[1].init).toBeUndefined();
 
-      const explicit = "v1.explicit-wins";
-      await span.fetch("/api/y", { headers: { "x-hexclave-span-context": explicit } });
-      expect(new Headers(calls[2].init?.headers).get("x-hexclave-span-context")).toBe(explicit);
+      // Per-header precedence: a caller who pinned traceparent by hand keeps it,
+      // and still gets our correlation header.
+      const explicitTraceparent = "00-11111111111111111111111111111111-1111111111111111-01";
+      await span.fetch("/api/y", { headers: { [TRACEPARENT_HEADER]: explicitTraceparent } });
+      const third = new Headers(calls[2].init?.headers);
+      expect(third.get(TRACEPARENT_HEADER)).toBe(explicitTraceparent);
+      expect(third.get("x-hexclave-span-context")).not.toBeNull();
+
+      const explicitContext = "v1.explicit-wins";
+      await span.fetch("/api/z", { headers: { "x-hexclave-span-context": explicitContext } });
+      const fourth = new Headers(calls[3].init?.headers);
+      expect(fourth.get("x-hexclave-span-context")).toBe(explicitContext);
+      expect(fourth.get(TRACEPARENT_HEADER)).not.toBeNull();
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1717,13 +2214,13 @@ describe("EventTracker $http-client spans", () => {
   }
 
   type WireSpan = {
+    trace_id: string,
     span_id: string,
     span_type: string,
     ended_at_ms: number | null,
-    parent_span_ids: string[],
+    parent_span_id: string | null,
     data: Record<string, unknown>,
     page_view_span_id?: string,
-    http_client_span_id?: string,
   };
 
   function allSpans(sentBodies: string[]): WireSpan[] {
@@ -1735,7 +2232,7 @@ describe("EventTracker $http-client spans", () => {
     vi.restoreAllMocks();
   });
 
-  it("records a $http-client span with sanitized url, page ancestry, and outcome data", async () => {
+  it("records a $http-client span with sanitized url, page correlation, and outcome data", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies);
@@ -1750,10 +2247,13 @@ describe("EventTracker $http-client spans", () => {
 
       const spans = allSpans(sentBodies).filter((span) => span.span_type === "$http-client");
       expect(spans).toHaveLength(1);
+      // The page view is BOTH: correlation (the column) and — with no nearer
+      // ambient span — the parent, so the request and the backend work it
+      // triggers land in the trace of the page that made it.
       expect(spans[0].page_view_span_id).toBe(pageViewSpanId);
+      expect(spans[0].parent_span_id).toBe(pageViewSpanId);
       expect(spans[0].ended_at_ms).toBeTypeOf("number");
-      // A $http-client span never names a bridge span itself.
-      expect(spans[0].http_client_span_id).toBeUndefined();
+      expect(handle?.spanContext).toEqual({ traceId: spans[0].trace_id, spanId: spans[0].span_id });
       expect(spans[0].data).toMatchObject({
         method: "POST",
         // Query strings are stripped at capture (they routinely carry tokens).
@@ -1767,7 +2267,7 @@ describe("EventTracker $http-client spans", () => {
     }
   });
 
-  it("parents under the ambient custom chain (fetch inside withSpan nests under it)", async () => {
+  it("parents under the nearest ambient custom span (fetch inside withSpan nests under it)", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies);
@@ -1780,7 +2280,8 @@ describe("EventTracker $http-client spans", () => {
       await advancePastFlush();
 
       const httpSpans = allSpans(sentBodies).filter((span) => span.span_type === "$http-client");
-      expect(httpSpans[0].parent_span_ids).toEqual([parent.spanId]);
+      expect(httpSpans[0].parent_span_id).toBe(parent.spanId);
+      expect(httpSpans[0].trace_id).toBe(parent.traceId);
     } finally {
       tracker.stop();
     }

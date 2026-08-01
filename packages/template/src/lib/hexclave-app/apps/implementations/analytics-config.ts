@@ -15,6 +15,15 @@ export type AnalyticsReplayOptions = {
    */
   enabled?: boolean,
   /**
+   * Whether to capture debounced keyboard-activity counts for session replays.
+   * Key values and typed text are never captured. Keystrokes inside inputs
+   * masked by `maskAllInputs`, password fields, and blocked replay subtrees are
+   * excluded entirely.
+   *
+   * @default false
+   */
+  captureKeystrokes?: boolean,
+  /**
    * Whether to mask the content of all `<input>` elements.
    *
    * @default true
@@ -81,6 +90,7 @@ export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | und
   return {
     ...analyticsOptions?.replays,
     enabled: analyticsOptions?.replays?.enabled ?? true,
+    captureKeystrokes: analyticsOptions?.replays?.captureKeystrokes ?? false,
   };
 }
 

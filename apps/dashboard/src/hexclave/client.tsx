@@ -31,6 +31,7 @@ export const hexclaveClientApp = new StackClientApp({
     // not just $click/$page-view. Off by default for customer apps.
     integritySignals: !isRemoteDevelopmentEnvironment,
     replays: {
+      captureKeystrokes: !isPreview && !isRemoteDevelopmentEnvironment,
       maskAllInputs: false,
       enabled: !isPreview && !isRemoteDevelopmentEnvironment,
     },

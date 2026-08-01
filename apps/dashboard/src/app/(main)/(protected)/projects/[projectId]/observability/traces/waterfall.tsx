@@ -13,6 +13,7 @@ import {
   spanHasError,
   traceErrorCount,
   traceSignalSpanIds,
+  traceSpanDisplayName,
   zoomViewWindow,
   type EventInput,
   type SpanInput,
@@ -241,6 +242,7 @@ export function TraceWaterfall({
   services,
   nowMs,
   needle,
+  unattachedEventCount,
   onSelectSpan,
   onSelectEvent,
 }: {
@@ -251,6 +253,15 @@ export function TraceWaterfall({
   nowMs: number,
   /** Lowercase search text; matching routine spans are promoted into Signal mode. */
   needle: string,
+  /**
+   * Events that could not be placed in the tree — their enclosing span was not
+   * fetched, or they carry no enclosing span at all. Surfaced as a count rather
+   * than dropped: an event that exists but renders nowhere reads as data loss,
+   * and unlike a span there is no sensible placeholder position for it (an event
+   * has one moment, not an interval, so hanging it off the root would assert a
+   * containment that is not in the data).
+   */
+  unattachedEventCount: number,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
 }) {
@@ -320,8 +331,8 @@ export function TraceWaterfall({
     setCollapsedSpanIds(defaultCollapsedSpanIds(trace.root));
   }, [rootSpanId, trace.root]);
 
-  // The scale is clamped to "now": a $refresh-token's expiry a year out must
-  // not compress everything that actually happened into a sliver. Future
+  // The scale is clamped to "now" so a malformed or clock-skewed future end
+  // cannot compress everything that actually happened into a sliver. Future
   // interval ends render as a fading stub instead. The epsilon keeps
   // zero-length traces from dividing by zero.
   const scaleStart = trace.startMs;
@@ -433,7 +444,7 @@ export function TraceWaterfall({
           {/* Trace header */}
           <div className="border-b border-border/50 px-4 py-3">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate font-mono text-sm font-semibold">{trace.root.span.spanType}</span>
+              <span className="truncate font-mono text-sm font-semibold">{traceSpanDisplayName(trace.root.span)}</span>
               {trace.endMs == null ? (
                 <DesignBadge label="Open" color="green" size="sm" />
               ) : trace.endMs > nowMs ? (
@@ -450,6 +461,13 @@ export function TraceWaterfall({
                 <TraceHeaderStat icon={<StackIcon className="h-3.5 w-3.5" />} value={trace.spanCount.toLocaleString()} label={`${trace.spanCount.toLocaleString()} ${trace.spanCount === 1 ? "span" : "spans"}`} />
                 <TraceHeaderStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={trace.eventCount} label={`${trace.eventCount} ${trace.eventCount === 1 ? "event" : "events"}`} />
                 <TraceHeaderStat icon={<ClockIcon className="h-3.5 w-3.5" />} value={new Date(trace.startMs).toLocaleTimeString()} label={`Started ${new Date(trace.startMs).toLocaleString()}`} />
+                {unattachedEventCount > 0 && (
+                  <TraceHeaderStat
+                    icon={<ChartLineIcon className="h-3.5 w-3.5" />}
+                    value={`+${unattachedEventCount}`}
+                    label={`${unattachedEventCount} ${unattachedEventCount === 1 ? "event has" : "events have"} no enclosing span in this trace, so ${unattachedEventCount === 1 ? "it is" : "they are"} not placed in the waterfall`}
+                  />
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center rounded p-1 text-muted-foreground">
@@ -576,7 +594,7 @@ export function TraceWaterfall({
                     )}
                     <span className={cn("h-2 w-2 shrink-0 rounded-[3px]", hasError ? "bg-red-500" : spanColorClass(span.spanType))} />
                     <span className={cn("font-mono text-[11px] truncate", isSystemSpanType(span.spanType) ? "text-muted-foreground" : "font-medium")}>
-                      {span.spanType}
+                      {traceSpanDisplayName(span)}
                     </span>
                     {hasError && <WarningCircleIcon className="h-3.5 w-3.5 shrink-0 text-red-500" weight="fill" />}
                   </div>

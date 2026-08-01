@@ -3,7 +3,7 @@ title: "Framework Adapters"
 description: "One-line Next.js, TanStack Start, tRPC, oRPC, Elysia, and Convex integration — auth and session-linked telemetry together"
 ---
 
-The framework adapters wire Hexclave into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that is automatically linked to the caller's client session via [cross-tier tracing](/guides/apps/analytics/cross-tier-tracing) — you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
+The framework adapters wire Hexclave into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that joins the caller's trace via [cross-tier tracing](/guides/apps/analytics/cross-tier-tracing) — it reads the incoming `traceparent` for you, so you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
 
 The tRPC, oRPC, Elysia, and Convex adapters ship as subpath exports of every Hexclave SDK package — import from `@hexclave/js/trpc`, `@hexclave/js/orpc`, `@hexclave/js/elysia`, or `@hexclave/js/convex` (the same subpaths exist on `@hexclave/react`, `@hexclave/next`, and `@hexclave/tanstack-start`). They have zero runtime dependency on the frameworks they adapt: you hand them your own framework instances.
 
@@ -56,7 +56,7 @@ import { hexclaveServerApp } from "@/hexclave";
 const hexclave = createHexclaveNext(hexclaveServerApp);
 
 export const GET = hexclave.routeHandler(async ({ request, user }) => {
-  // runs inside a `next.route` span linked to the caller's client session;
+  // runs inside a `next.route` span that joins the caller's trace;
   // user is non-null because of `required: true`
   return Response.json({ orders: await listOrdersFor(user) });
 }, { required: true });
@@ -64,7 +64,7 @@ export const GET = hexclave.routeHandler(async ({ request, user }) => {
 
 `routeHandler` keeps Next.js's `(request, context)` signature, so export the wrapped function directly; your handler receives `{ request, context, user, hexclave }` as a single object (`context` is Next's second argument, e.g. `{ params }`). With `required: true`, unauthenticated calls get a JSON `401` before your handler runs — pass `unauthorized: () => Response` to customize it.
 
-Server actions receive no `Request`, so the adapter reads the ambient headers from `next/headers` — they carry both the session cookies and the `x-hexclave-span-context` header, because the browser SDK's patched fetch instruments React's action POSTs like any other same-origin request:
+Server actions receive no `Request`, so the adapter reads the ambient headers from `next/headers` — they carry the session cookies as well as `traceparent` and `x-hexclave-span-context`, because the browser SDK's patched fetch instruments React's action POSTs like any other same-origin request:
 
 ```ts app/actions.ts
 "use server";
@@ -74,7 +74,7 @@ import { hexclaveServerApp } from "@/hexclave";
 const hexclave = createHexclaveNext(hexclaveServerApp);
 
 export const createOrder = hexclave.serverAction(async ({ user }, formData: FormData) => {
-  // runs inside a `next.server-action` span linked to the caller's client session
+  // runs inside a `next.server-action` span that joins the caller's trace
 }, { name: "createOrder", required: true });
 ```
 
@@ -95,7 +95,7 @@ const hexclave = createHexclaveTanStackStart(hexclaveServerApp);
 
 export const getOrders = createServerFn({ method: "GET" }).handler(
   hexclave.serverFn(async ({ ctx, user }) => {
-    // runs inside a `tanstack-start.server-function` span linked to the caller's client session
+    // runs inside a `tanstack-start.server-function` span that joins the caller's trace
   }, { name: "getOrders", required: true }),
 );
 ```
@@ -134,7 +134,7 @@ export const publicProcedure = t.procedure.use(hexclave.middleware());
 export const protectedProcedure = t.procedure.use(hexclave.middleware({ required: true }));
 ```
 
-Procedures then have `ctx.user` (the caller, or `null` on public procedures) and run inside a `trpc.procedure` span linked to the caller's session:
+Procedures then have `ctx.user` (the caller, or `null` on public procedures) and run inside a `trpc.procedure` span that joins the caller's trace:
 
 ```ts
 export const appRouter = router({
@@ -196,7 +196,7 @@ new Elysia()
   .resolve(hexclave.resolveUser)  // adds `user` and `hexclave` to every route's context
   .get("/me", ({ user }) => user, { beforeHandle: hexclave.requireUser })
   .post("/checkout", hexclave.handler(async ({ user, hexclave }) => {
-    // runs inside an `elysia.route` span linked to the caller's session
+    // runs inside an `elysia.route` span that joins the caller's trace
   }), { beforeHandle: hexclave.requireUser });
 ```
 
@@ -209,7 +209,7 @@ One honest limitation: Elysia has no around-middleware, so the plugin's span is 
 
 ## Convex
 
-Convex is the special case: clients talk to Convex over WebSockets and functions receive no request object, so spans are attributed to the **user only** — they don't (yet) nest under the caller's browser tab.
+Convex is the special case: clients talk to Convex over WebSockets and functions receive no request object, so there is no `traceparent` to continue. Spans are attributed to the **user only** and root their own trace — they can't (yet) join the trace of the client-side interaction that called them.
 
 First wire up auth (see the [Convex integration guide](/guides/integrations/convex/overview) for the full setup):
 
@@ -248,4 +248,4 @@ The wrapped handler receives `{ ctx, args, user, hexclave }` as a single object.
 | tRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `createContext` |
 | oRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `wrapFetchHandler` |
 | Elysia | `resolveUser` | `requireUser` / `requireUserWith` guard | `plugin` (all routes) / `handler(fn)` (full fidelity) |
-| Convex | `hexclave.function` | `{ required: true }` | user-attributed only (no request over WebSockets) |
+| Convex | `hexclave.function` | `{ required: true }` | user-attributed only (no request, so no `traceparent`, over WebSockets) |

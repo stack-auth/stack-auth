@@ -1,6 +1,6 @@
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context";
 import type { RequestLike } from "../lib/hexclave-app/common";
-import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, createRequestContext, HexclaveRequestContext, runRequestSpan } from "./adapter-core";
+import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequestContext, runGuardedCall, runGuardedRoute, UnauthorizedFactory } from "./adapter-core";
 
 /**
  * Hexclave adapter for TanStack Start. Wraps the two server surfaces: server
@@ -70,12 +70,11 @@ export type HexclaveTanStackStartRouteHandlerOptions = {
 export type HexclaveTanStackStartFactoryOptions = {
   /**
    * Default `unauthorized` for every wrapped surface (a per-handler
-   * `unauthorized` always wins). The type is the union of what the surfaces
-   * accept because one factory serves both: a returned `Response` is sent by
-   * route handlers, anything else is thrown (server functions throw whatever
-   * is returned — return an `Error` there).
+   * `unauthorized` always wins). One factory serves both surfaces, so it may
+   * produce either: a returned `Response` is sent by route handlers, an `Error`
+   * is thrown (server functions can only throw, so return an `Error` there).
    */
-  unauthorized?: () => Response | Error | Promise<Response | Error>,
+  unauthorized?: UnauthorizedFactory,
 };
 
 export function createHexclaveTanStackStart(app: AdapterServerApp, factoryOptions?: HexclaveTanStackStartFactoryOptions) {
@@ -91,26 +90,16 @@ export function createHexclaveTanStackStart(app: AdapterServerApp, factoryOption
       options?: HexclaveTanStackStartServerFnOptions,
     ) => {
       return async (ctx: TCtx): Promise<TResult> => {
-        const hexclave = createRequestContext(app, getAmbientRequestLike());
-        return await runRequestSpan(app, hexclave, {
+        return await runGuardedCall(app, {
+          requestInput: getAmbientRequestLike(),
           defaultSpanType: "tanstack-start.server-function",
           data: { ...options?.name !== undefined ? { name: options.name } : {} },
           telemetry: options?.telemetry,
-        }, async () => {
-          const user = await hexclave.getUser();
-          if (options?.required && user === null) {
-            if (options.unauthorized !== undefined) {
-              throw options.unauthorized();
-            }
-            if (factoryOptions?.unauthorized !== undefined) {
-              // Server functions reject by throwing; whatever the shared
-              // factory default produces (normally an Error) is thrown as-is.
-              throw await factoryOptions.unauthorized();
-            }
-            throw new Error("You must be signed in to call this server function. (Hexclave: no valid session on the request.)");
-          }
-          return await fn({ ctx, user, hexclave });
-        });
+          required: options?.required,
+          unauthorized: options?.unauthorized,
+          factoryUnauthorized: factoryOptions?.unauthorized,
+          surface: "server function",
+        }, ({ user, hexclave }) => fn({ ctx, user, hexclave }));
       };
     },
 
@@ -125,28 +114,16 @@ export function createHexclaveTanStackStart(app: AdapterServerApp, factoryOption
       options?: HexclaveTanStackStartRouteHandlerOptions,
     ) => {
       return async (ctx: TCtx): Promise<Response> => {
-        const hexclave = createRequestContext(app, ctx.request);
-        return await runRequestSpan(app, hexclave, {
+        return await runGuardedRoute(app, {
+          requestInput: ctx.request,
           defaultSpanType: "tanstack-start.route",
           data: { path: new URL(ctx.request.url).pathname, method: ctx.request.method },
           telemetry: options?.telemetry,
-        }, async () => {
-          const user = await hexclave.getUser();
-          if (options?.required && user === null) {
-            if (options.unauthorized !== undefined) {
-              return await options.unauthorized();
-            }
-            if (factoryOptions?.unauthorized !== undefined) {
-              const result = await factoryOptions.unauthorized();
-              // The factory-level default is shared with server functions, so
-              // it may produce an Error instead of a Response — throw it then.
-              if (result instanceof Response) return result;
-              throw result;
-            }
-            return Response.json({ error: "You must be signed in to call this route. (Hexclave: no valid session on the request.)" }, { status: 401 });
-          }
-          return await fn({ ctx, request: ctx.request, user, hexclave });
-        });
+          required: options?.required,
+          unauthorized: options?.unauthorized,
+          factoryUnauthorized: factoryOptions?.unauthorized,
+          surface: "route",
+        }, ({ user, hexclave }) => fn({ ctx, request: ctx.request, user, hexclave }));
       };
     },
   };

@@ -5,15 +5,12 @@ import {
   type ServiceIdentity,
 } from "../service-identity";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { isObservabilityTimeRangeHours, type ObservabilityTimeRangeHours } from "../filters";
+import { getBucketGranularity, type BucketGranularity } from "../bucket-granularity";
 
-export const SERVICE_TIME_RANGES = [
-  { label: "1h", hours: 1 },
-  { label: "24h", hours: 24 },
-  { label: "7d", hours: 168 },
-  { label: "30d", hours: 720 },
-] as const;
-
-export type ServiceTimeRangeHours = (typeof SERVICE_TIME_RANGES)[number]["hours"];
+// The selectable ranges are shared across the Observability pages; only the
+// default differs per page.
+export type ServiceTimeRangeHours = ObservabilityTimeRangeHours;
 
 export const DEFAULT_SERVICE_TIME_RANGE_HOURS: ServiceTimeRangeHours = 24;
 
@@ -25,12 +22,8 @@ export const DEFAULT_SERVICE_TIME_RANGE_HOURS: ServiceTimeRangeHours = 24;
  */
 export const MAX_TIMELINE_SERVICES = 50;
 
-export function isServiceTimeRangeHours(hours: number): hours is ServiceTimeRangeHours {
-  return SERVICE_TIME_RANGES.some((range) => range.hours === hours);
-}
-
 function assertServiceTimeRange(hours: number): asserts hours is ServiceTimeRangeHours {
-  if (!isServiceTimeRangeHours(hours)) {
+  if (!isObservabilityTimeRangeHours(hours)) {
     throw new Error(`Unsupported services time range: ${hours}`);
   }
 }
@@ -65,12 +58,6 @@ export type ServiceSummary = {
   lastErrorAt: string | null,
 };
 
-export type ServiceHealth = "clear" | "errors";
-
-export function serviceHealth(summary: ServiceSummary): ServiceHealth {
-  return summary.errorCount > 0 ? "errors" : "clear";
-}
-
 export type ServiceDependency = {
   source: ServiceIdentity,
   target: ServiceIdentity,
@@ -90,66 +77,14 @@ export type ServiceTimeline = {
   buckets: ServiceTimelineBucket[],
 };
 
-export type ServiceBucketGranularity = {
-  /** Human-readable cadence, e.g. "per hour". */
-  label: string,
-  /** The same width as a duration noun, e.g. "hour", so copy can say "in the last hour". */
-  bucketNoun: string,
-  bucketCount: number,
-  stepMs: number,
-  stepSql: string,
-  historySql: string,
-};
+export type ServiceBucketGranularity = BucketGranularity;
 
 /**
  * Bucket widths are chosen so every range yields 24-60 points: enough for a
  * sparkline to show shape, few enough that the last bucket still represents a
  * recent-enough slice to read as "right now".
  */
-export function getServiceBucketGranularity(hours: ServiceTimeRangeHours): ServiceBucketGranularity {
-  switch (hours) {
-    case 1: {
-      return {
-        label: "per minute",
-        bucketNoun: "minute",
-        bucketCount: 60,
-        stepMs: 60_000,
-        stepSql: "INTERVAL 1 MINUTE",
-        historySql: "INTERVAL 59 MINUTE",
-      };
-    }
-    case 24: {
-      return {
-        label: "per hour",
-        bucketNoun: "hour",
-        bucketCount: 24,
-        stepMs: 3_600_000,
-        stepSql: "INTERVAL 1 HOUR",
-        historySql: "INTERVAL 23 HOUR",
-      };
-    }
-    case 168: {
-      return {
-        label: "per 6 hours",
-        bucketNoun: "6 hours",
-        bucketCount: 28,
-        stepMs: 21_600_000,
-        stepSql: "INTERVAL 6 HOUR",
-        historySql: "INTERVAL 162 HOUR",
-      };
-    }
-    case 720: {
-      return {
-        label: "per day",
-        bucketNoun: "day",
-        bucketCount: 30,
-        stepMs: 86_400_000,
-        stepSql: "INTERVAL 1 DAY",
-        historySql: "INTERVAL 29 DAY",
-      };
-    }
-  }
-}
+export const getServiceBucketGranularity = getBucketGranularity;
 
 /**
  * One definition of "this span failed", shared by the summary, timeline and
@@ -295,6 +230,10 @@ ORDER BY service_namespace ASC, service_name ASC, bucket_start ASC
  * A dependency is a cross-service immediate parent/child relationship inside
  * one trace. Restricting both sides before the join keeps the scan bounded and
  * avoids inventing edges from shared attributes or coincidental span names.
+ *
+ * Client→server calls need no special handling: the tiers share a `trace_id` and
+ * the server span's `parent_span_id` is the client fetch span, so the plain
+ * parent/child join already produces the browser→backend edge.
  */
 export function getServiceDependenciesQuery(hours: number): {
   query: string,
@@ -308,20 +247,19 @@ WITH recent_spans AS (
   SELECT
     trace_id,
     span_id,
-    parent_span_ids,
+    parent_span_id,
     coalesce(service_namespace, '') AS service_namespace,
     service_name,
     started_at,
     ended_at,
     status_code,
-    data,
-    kind
+    data
   FROM default.spans
   WHERE started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
     AND service_name IS NOT NULL
     AND service_name != ''
 ),
-direct_edges AS (
+dependency_edges AS (
   SELECT
     parent.service_namespace AS source_service_namespace,
     parent.service_name AS source_service_name,
@@ -334,39 +272,12 @@ direct_edges AS (
   FROM recent_spans AS child
   INNER JOIN recent_spans AS parent
     ON child.trace_id = parent.trace_id
-    AND arrayElement(child.parent_span_ids, -1) = parent.span_id
-  WHERE length(child.parent_span_ids) > 0
+    AND child.parent_span_id = parent.span_id
+  WHERE child.parent_span_id IS NOT NULL
     AND (
       child.service_namespace != parent.service_namespace
       OR child.service_name != parent.service_name
     )
-),
-bridged_edges AS (
-  SELECT
-    source.service_namespace AS source_service_namespace,
-    source.service_name AS source_service_name,
-    target.service_namespace AS target_service_namespace,
-    target.service_name AS target_service_name,
-    target.started_at AS edge_started_at,
-    target.ended_at AS edge_ended_at,
-    target.status_code AS edge_status_code,
-    target.data AS edge_data
-  FROM recent_spans AS source
-  INNER JOIN recent_spans AS target
-    ON target.trace_id = lower(replaceAll(substring(source.span_id, 4), '-', ''))
-    AND target.parent_span_ids[1] = right(target.trace_id, 16)
-  WHERE startsWith(source.span_id, 'hc-')
-    AND target.kind = 'server'
-    AND length(target.parent_span_ids) = 1
-    AND (
-      source.service_namespace != target.service_namespace
-      OR source.service_name != target.service_name
-    )
-),
-dependency_edges AS (
-  SELECT * FROM direct_edges
-  UNION ALL
-  SELECT * FROM bridged_edges
 )
 SELECT
   source_service_namespace,
@@ -541,10 +452,6 @@ export function serviceErrorRate(summary: ServiceSummary): number | null {
   if (summary.sampledSpanCount > 0) return null;
   if (summary.requestCount === 0) return null;
   return summary.errorCount / summary.requestCount;
-}
-
-export function serviceRateIsComparable(summary: ServiceSummary): boolean {
-  return summary.sampledSpanCount === 0;
 }
 
 export type ServiceAttentionReason =

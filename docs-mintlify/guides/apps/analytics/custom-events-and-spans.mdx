@@ -1,31 +1,59 @@
 ---
 title: "Custom Events & Spans"
-description: "Record your own product telemetry — events and spans that automatically join Hexclave's session tree"
+description: "Record your own product telemetry — events and spans that automatically join the trace they happened in"
 ---
 
-Hexclave's shared telemetry foundation accepts both product facts and code intervals. With `trackEvent` and `startSpan`/`withSpan`, you can record your own **events** (points in time) and **spans** (intervals with a start and end), and they automatically nest under the user's session — so a `checkout` span you create in the browser lands in the same tree as the session replay and sign-in session it happened in.
+Hexclave's shared telemetry foundation accepts both product facts and code intervals. With `trackEvent` and `startSpan`/`withSpan`, you can record your own **events** (points in time) and **spans** (intervals with a start and end), and they automatically join the trace they happened in — so a `checkout` span you create in the browser lands in the same trace as the `fetch` it fires and the backend work that `fetch` causes.
 
 ## Overview
 
 - **`trackEvent`**: record a point-in-time fact, like `item-added` or `export-finished`
 - **`startSpan` / `withSpan`**: record an interval, like a checkout flow or a background job
-- **Automatic parenting**: your telemetry nests under the current session, tab, and any enclosing spans without manual wiring
+- **Automatic parenting**: your telemetry nests under any enclosing span without manual wiring, and inherits its trace
+- **Standards-based**: span identity is [W3C trace context](https://www.w3.org/TR/trace-context/) — the same `trace_id`/`span_id`/`parent_span_id` model OpenTelemetry uses, so Hexclave traces interoperate with any OTel-compatible tooling you already run
 - **Queryable**: product events appear in **Analytics -> Events**; spans appear in **Analytics -> Observability -> Traces**; both remain queryable in **Analytics -> Explore -> Queries**
 
 Custom events and spans require the Analytics app to be enabled (**Apps -> Analytics** in your dashboard). Their SDK switches remain independent: `analytics.enabled` controls events, while `observability.enabled` controls spans. Events and custom spans also use independent usage items.
 
 ## How It Works
 
-Every user session forms a span tree. Hexclave writes the system levels for you; your custom telemetry attaches underneath:
+Every span carries three fields, and nothing else determines its place in the tree:
 
-| Span type | Id | Parents | Meaning |
-|---|---|---|---|
-| `$refresh-token` | `rti-<id>` | — | One sign-in session; ends when the token expires |
-| `$session-replay` | `sri-<id>` | `rti-` | One session replay recording |
-| `$session-replay-segment` | `srsi-<id>` | `rti-`, `sri-` | One browser tab |
-| your custom types | `cs-<id>` | the above + custom ancestors | Whatever you record |
+| Field | Shape | Meaning |
+|---|---|---|
+| `trace_id` | 32 hex characters | The trace this span belongs to; identical for every span in the trace |
+| `span_id` | 16 hex characters | This span, unique within its trace |
+| `parent_span_id` | 16 hex characters, or `NULL` | The span directly above this one. `NULL` means **this span is the trace root** |
 
-Each row in the dataset carries a `parent_span_ids` array — one ancestry path ordered from the farthest known ancestor to the immediate or owning span. The first entry is not guaranteed to be the absolute trace root when earlier ancestors were unavailable or truncated. Span ids are prefixed by type (as in the table above), while scalar columns like `refresh_token_id` and `user_id` stay raw UUIDs.
+That's the whole model: a span has exactly one parent, and finding a trace's root means looking for `parent_span_id IS NULL`. These are literally W3C trace-context ids — the same values a `traceparent` header carries — so a Hexclave trace can be read, joined, or continued by any OpenTelemetry-compatible collector, backend, or debugging tool without a translation layer.
+
+### What a trace covers
+
+An authenticated browser trace starts at its **sign-in session** and preserves the lifecycle tree:
+
+```text
+$refresh-token
+└─ $session-replay
+   └─ $session-replay-segment
+      └─ $page-view
+         └─ $http-client
+            └─ backend request and database spans
+```
+
+When replay capture is disabled, `$page-view` sits directly under `$refresh-token`. Everything that happens while a page is open belongs below that page: `$away`/`$offline`, auto-captured events, logs, your own spans, and every `$http-client` request, including the backend and database work continued through `traceparent`.
+
+A backend request without an accepted `traceparent`, or explicitly independent work started with `root: true`, still starts its own ordinary W3C trace.
+
+Resolution order is: an explicit `parent` → the nearest enclosing span → the current `$page-view` → nothing. The page view is only the *last resort*, so a `fetch` inside `withSpan("checkout")` still nests under `checkout`. Pass `root: true` to start a genuinely independent trace.
+
+Events are instants rather than activities, so they never root a trace — they name the span they happened inside, which in a browser bottoms out at the page view. That is what puts clicks, captured errors and console logs in the page's trace rather than in no trace at all.
+
+The lifecycle IDs also remain available in `refresh_token_id`,
+`session_replay_id`, `session_replay_segment_id`, and `page_view_span_id`.
+Those columns make direct filtering cheap; `parent_span_id` remains the source
+of truth for the tree.
+
+Ids are raw values with no prefixes or namespaces: `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex, while `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs.
 
 ## Tracking Events
 
@@ -71,30 +99,31 @@ A span is written immediately as an open interval and re-written whenever its da
 
 | Member | What it does |
 |---|---|
-| `spanId`, `spanType`, `isEnded` | Identity and state |
+| `traceId`, `spanId`, `spanType`, `isEnded` | Identity and state |
 | `setData(data)` | Shallow-merges into the span's data and re-writes it |
 | `end(options?)` | Ends the span (idempotent); an explicit `endedAtMs` is clamped to never precede the start |
-| `trackEvent(type, data?, options?)` | Records an event with this span (and its full ancestor chain) as parent |
+| `trackEvent(type, data?, options?)` | Records an event inside this span |
 | `startSpan(type, options?)` / `withSpan(type, fn)` | Creates a child span |
 | `run(fn)` | Re-enters the span as the ambient parent for `fn` — for timers and third-party callbacks |
-| `ref()` | A serializable `{ spanId, parentSpanIds }` reference you can store or pass around |
+| `spanContext()` | A serializable `{ traceId, spanId }` you can store, JSON-encode, or pass around |
 | `getSpanPropagationHeaders()` / `fetch(input, init?)` | Cross-tier propagation pinned to this span — see [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) |
 
-`startSpan` throws when its input is invalid. When the *environment* makes telemetry impossible — during server-side rendering on a client app, with analytics disabled, or when the app has no persistent token store (e.g. `tokenStore: "memory"`) — it returns an **inert** span instead: all methods are safe to call, `ref()` keeps the id the span would have had, and nothing is ever recorded. Isomorphic code (a hook running on both server render and hydration) therefore never needs environment branches around span calls. Invalid input still throws identically on the inert path, and span methods return promises that reject when their update cannot be recorded.
+`spanContext()` is the currency of span identity everywhere: pass it as a `parent`, put it in a queue message, serialize it into page props. It always carries the trace id alongside the span id, because a span id on its own is only unique *within* its trace — which is why the SDK never accepts a bare id string as a parent.
+
+`startSpan` throws when its input is invalid. When the *environment* makes telemetry impossible — during server-side rendering on a client app, with analytics disabled, or when the app has no persistent token store (e.g. `tokenStore: "memory"`) — it returns an **inert** span instead: all methods are safe to call, `spanContext()` keeps the identity the span would have had, and nothing is ever recorded. Isomorphic code (a hook running on both server render and hydration) therefore never needs environment branches around span calls. Invalid input still throws identically on the inert path, and span methods return promises that reject when their update cannot be recorded.
 
 ## Parenting
 
 ### Ambient parents
 
-When you track an event or start a span, its parents are resolved from context automatically:
+When you track an event or start a span, its parent is resolved from context automatically. Candidate ambient parents are ordered outermost-first:
 
 1. **Global spans** — anything registered with `hexclaveClientApp.setGlobalSpan(span)`; useful for app-wide context like "current document open". Ending a span automatically unregisters it; `clearGlobalSpan(span)` unregisters it early.
 2. **Enclosing `withSpan` callbacks** — outermost first.
-3. **The session tree** — the current tab segment, replay, and sign-in session are attached server-side.
 
-Explicit `parentIds` extend the ambient ancestry path. Span handles and refs
-must describe the same branch; sibling or unrelated refs are rejected rather
-than flattened into false ancestry.
+A span has exactly one parent, so the **innermost** candidate wins and the new span joins its trace. Outer candidates that belong to a *different* trace are not discarded — they are recorded as [`links`](#links) instead, which is the honest way to say "related, but not my parent".
+
+Session identity (`refresh_token_id`, `session_replay_id`, `session_replay_segment_id`) and the current `page_view_span_id` are attached as correlation columns in addition to the lifecycle parent edges, so direct filters do not require walking the tree.
 
 ### Ambient extent (servers vs. browsers)
 
@@ -102,7 +131,7 @@ For ambient parenting to work, the SDK has to answer one question every time you
 
 **On the server**, the runtime answers the question for you: `AsyncLocalStorage` tracks each async flow, so the SDK always knows which callback the current code belongs to — before an `await`, after an `await`, with any number of concurrent requests. Server ambient parenting is therefore always exact across the full async extent of `withSpan`.
 
-**In the browser**, no such primitive exists. The SDK can only be *certain* while your callback runs synchronously — from the moment it starts until its first `await`. After that, app-level calls stop seeing the span as an ambient parent. You can get a *missing* link, but never a *wrong* one (a missing parent is visible and fixable; a wrong parent would silently corrupt traces).
+**In the browser**, no such primitive exists. The SDK can only be *certain* while your callback runs synchronously — from the moment it starts until its first `await`. After that, app-level calls stop seeing the span as an ambient parent. You can end up with a *missing* parent, but never a *wrong* one (a missing parent is visible and fixable; a wrong parent would silently corrupt traces).
 
 After an `await` in the browser, use the handle directly — `span.trackEvent` / `span.withSpan` / `span.fetch` — or use `span.run(...)` only to synchronously rebind an app-level tracking call. The browser fallback does not preserve ambient context across another `await`:
 
@@ -113,28 +142,50 @@ await hexclaveClientApp.withSpan("checkout", async (span) => {
   await fetch("/api/pay");                 // callback pauses
 
   hexclaveClientApp.trackEvent("step-2");  // no ambient parent after await
-  span.trackEvent("step-3");               // linked: the handle names its parent
+  span.trackEvent("step-3");               // exact: the handle IS the parent
 });
 ```
 
-`step-2` still carries the full session ancestry (sign-in / replay / tab) — those parents come from the session's identity, not from inference — so it still appears under this user's tab. It is only missing from the `checkout` span's subtree: a visible gap in the waterfall, fixable by switching that one call to `span.trackEvent` (or synchronously calling it inside `span.run(() => ...)`).
+`step-2` still carries the session and page-view correlation columns (sign-in / replay / tab / page) — those come from the session's identity, not from inference — so it is still findable for this user and tab. What it loses is its place in the `checkout` span's trace: a visible gap in the waterfall, fixable by switching that one call to `span.trackEvent` (or synchronously calling it inside `span.run(() => ...)`).
 
 ### Explicit control
 
-All tracking calls accept parenting options:
+All tracking calls accept the same three parenting options:
 
 ```tsx
 hexclaveClientApp.trackEvent("audit-log", { action: "delete" }, {
-  parentIds: [importSpan],   // add explicit parents
-  root: true,                // drop ALL ambient parents; only parentIds apply
+  parent: importSpan,          // this item's ONE parent; overrides ambient context
+  // root: true,               // instead: start a brand-new trace
+  // links: [uploadSpan],      // related work that is NOT the parent
 });
 ```
 
-- `parentIds`: an ordered ancestry path of `Span` handles, `ref()` objects, or raw span-id strings. Handles and refs contribute their frozen path and must be compatible. Raw strings have no ancestry metadata, so their array order explicitly declares farthest-to-nearest parentage.
-- `root: true`: drops all ambient parents (global spans and enclosing `withSpan` frames). Session attribution is identity, not parenting — it is always kept.
-- `excludeParentIds`: removes specific spans from the final merged parent list.
+- **`parent`** — a `Span` handle or a `spanContext()` object (`{ traceId, spanId }`). It is singular and it *replaces* the ambient parent rather than adding to it: a span has one parent, so there is nothing to merge. The new span joins `parent`'s trace.
+- **`root: true`** — drops the ambient parent, so this item becomes a trace root: a genuinely fresh `trace_id` with `parent_span_id` set to `NULL`. Use it for work that isn't caused by the surrounding code (a background poller started inside a request handler, say). Session and page correlation is identity, not parenting, so it is always kept.
+- **`links`** — see below.
 
-A span's ancestor path is frozen at creation, ordered farthest-to-nearest, and capped at 10 entries (the nearest ancestors are kept).
+An explicit `parent` wins over `root`, and both win over ambient context.
+
+### Links
+
+`links` records spans that are **causally related but not this span's parent** — the case a strict one-parent tree can't express as parentage:
+
+```tsx
+// When enqueueing, store the producing span's identity alongside the payload:
+await queue.push({ payload, cause: span.spanContext() });
+
+// Later the worker's span has ONE parent (the worker run it is part of) and
+// links back to every producer whose work it is flushing:
+await hexclaveServerApp.withSpan("flush-queue", {
+  links: jobs.map((job) => job.cause),
+}, async () => {
+  await flush(jobs);
+});
+```
+
+Each link is a `Span` handle or a `spanContext()` object, and may point into a *different* trace — that's the point. The SDK also creates links for you: when several ambient spans from different traces are in scope, the innermost becomes the parent and the rest become links, so no relationship is silently dropped and none is silently invented.
+
+Since a span has one parent, there is no ancestor chain to keep, no depth cap, and no path to reconcile: a span's position in its trace is fully described by `parent_span_id`.
 
 ## Server-Side Telemetry
 
@@ -168,7 +219,7 @@ export const hexclaveServerApp = new HexclaveServerApp({
 ```
 
 <Warning>
-`setGlobalSpan` is app-instance state. On a server handling concurrent requests through one shared app instance, a global span set in one request becomes a parent in all of them — prefer explicit `parentIds` or the span handle on servers.
+`setGlobalSpan` is app-instance state. On a server handling concurrent requests through one shared app instance, a global span set in one request becomes a candidate parent in all of them — prefer an explicit `parent` or the span handle on servers.
 </Warning>
 
 ## Validation Rules & Limits
@@ -177,9 +228,9 @@ export const hexclaveServerApp = new HexclaveServerApp({
 |---|---|
 | Event/span type names | Start with a letter; then letters, digits, `_`, `.`, `:`, `-`; at most 64 characters. `$`-prefixed names are reserved for system telemetry. |
 | `data` payloads | Plain JSON-serializable object, at most 64,000 bytes serialized (for spans, the limit applies to the accumulated merged data) |
-| Parent chain | At most 10 ancestors; on overflow the nearest 10 are kept (with a console warning) |
-| Parent ids | Span handles, `ref()` objects, or raw unprefixed span UUIDs |
-| `userId` and scalar session ids | Raw UUIDs (without span-type prefixes) |
+| `parent` / `links` entries | `Span` handles or `spanContext()` objects — never a bare id string |
+| Trace and span ids | W3C shapes: `trace_id` is 32 hex characters, `span_id` and `parent_span_id` are 16; never all-zero, and a span is never its own parent |
+| `userId` and correlation ids | UUIDs (`user_id`, `refresh_token_id`, `session_replay_id`, `session_replay_segment_id`) |
 | Browser flush | Every 10 seconds, or at 50 buffered items / ~64 KB, plus on tab hide |
 | Server flush | Next microtask; no timer — `await` or `flush()` is the delivery guarantee |
 
@@ -187,7 +238,7 @@ Invalid `trackEvent` input rejects its returned promise. Invalid `startSpan`/`wi
 
 ## Querying Your Telemetry
 
-Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, events in `events`. Ids in `span_id`/`parent_span_ids` are prefixed; scalar columns (`user_id`, `refresh_token_id`, `session_replay_id`, `session_replay_segment_id`) are raw UUIDs.
+Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, events in `events`. `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex W3C ids; `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs. Nothing is prefixed.
 
 Duration stats per custom span type:
 
@@ -204,30 +255,52 @@ GROUP BY service_name, name
 ORDER BY total DESC;
 ```
 
-All events inside a given custom span (note the `cs-` prefix when matching against `parent_span_ids`):
+All events recorded inside a given span (an event names its enclosing span directly):
 
 ```sql
 SELECT event_type, event_at, data, user_id
 FROM events
-WHERE has(parent_span_ids, 'cs-1f9f9c58-6a3a-4d2b-9d6e-3f0a5b7c8d9e')  -- 'cs-' + your span's id
+WHERE span_id = '4bf92f3577b34da6'   -- your span's id
 ORDER BY event_at;
 ```
 
-The full span tree for one sign-in session:
+One whole trace, in tree order:
 
 ```sql
-SELECT service_name, trace_id, span_id, name, started_at, ended_at, parent_span_ids
+SELECT service_name, span_id, parent_span_id, name, started_at, ended_at
 FROM spans
-WHERE refresh_token_id = '5a3c1b2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'  -- a refresh token id
+WHERE trace_id = '0af7651916cd43dd8448eb211c80319c'
 ORDER BY started_at;
+```
+
+The roots of every trace a user produced today — root spans are exactly the ones with no parent:
+
+```sql
+SELECT trace_id, name, started_at, ended_at
+FROM spans
+WHERE user_id = '5a3c1b2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
+  AND parent_span_id IS NULL
+  AND started_at > today()
+ORDER BY started_at DESC;
+```
+
+Everything that happened during one sign-in session or one browser tab can be selected directly without walking the tree:
+
+```sql
+SELECT trace_id, span_id, name, started_at
+FROM spans
+WHERE refresh_token_id = '5a3c1b2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
+ORDER BY started_at;
+-- likewise: session_replay_segment_id (one tab), page_view_span_id (one page view)
 ```
 
 Things to know when writing queries:
 
 - `events.data` is a native ClickHouse JSON column (`data.url` works); `spans.attributes` is a JSON **string** — use `JSONExtractString(attributes, 'key')` and friends.
 - `service_name` and `service_namespace` identify the logical producer configured in `telemetry.resource`; filter or group by both when namespaces are in use.
-- Open spans have `ended_at IS NULL`. `$refresh-token` spans end at the token's *expiry*, which is often in the future — it is not a "last activity" timestamp.
+- Open spans have `ended_at IS NULL`.
 - Custom span updates are last-`updated_at_ms`-wins: re-writes of the same span collapse to the latest version automatically.
+- `span_id` is unique only *within* a trace, so join spans on `(trace_id, span_id)` — matching `parent_span_id` alone across traces can collide.
 
 ## Next Steps
 

@@ -1,9 +1,9 @@
 ---
 title: "Errors & Logs"
-description: "Automatic error and console log capture, plus structured logging — $error and $log events in the same session tree as everything else"
+description: "Automatic error and console log capture, plus structured logging — $error and $log events in the same trace as everything else"
 ---
 
-Hexclave Observability captures **`$error` occurrences** from uncaught errors on both tiers and **`$log` records** from console output or `app.logger`. They use dedicated `errors` and `logs` read models while retaining the same session and trace ancestry as [custom telemetry](/guides/apps/analytics/custom-events-and-spans).
+Hexclave Observability captures **`$error` occurrences** from uncaught errors on both tiers and **`$log` records** from console output or `app.logger`. They use dedicated `errors` and `logs` read models while carrying the same trace context and session correlation as [custom telemetry](/guides/apps/analytics/custom-events-and-spans): each record names the trace it happened in (`trace_id`), the span it happened inside (`span_id`), and the page, tab, and sign-in session it came from.
 
 ## Automatic Error Capture
 
@@ -91,7 +91,7 @@ Each call becomes a `$log` event with the message as `message` and a log level (
 
 The logger is built for hot paths: it's fire-and-forget, guaranteed never to throw into your code, and bounded (messages truncate at 8 KB). In environments where logs can't be delivered at all, it warns once in the console and drops silently.
 
-**Logs inherit context automatically** — console-captured and `app.logger` logs alike. On the client, a log carries the current page view and any enclosing `withSpan` frames. On the server, a log emitted inside a `withSpan({ request })` scope — or any [adapter](/guides/apps/analytics/framework-adapters)-wrapped handler, or (on Next.js with [`hexclaveInstrumentation().register()`](/guides/apps/analytics/cross-tier-tracing#bare-calls-on-next-js) in place) any bare `logger` call inside a request scope — links to the caller's client session, page, and the exact fetch that triggered the request, with no context threading:
+**Logs inherit context automatically** — console-captured and `app.logger` logs alike. On the client, a log names its enclosing `withSpan` span and carries the current page view. On the server, a log emitted inside a `withSpan({ request })` scope — or any [adapter](/guides/apps/analytics/framework-adapters)-wrapped handler, or (on Next.js with [`hexclaveInstrumentation().register()`](/guides/apps/analytics/cross-tier-tracing#bare-calls-on-next-js) in place) any bare `logger` call inside a request scope — lands in the caller's trace, alongside the exact `fetch` that triggered the request, with no context threading:
 
 ```tsx
 export const POST = hexclave.routeHandler(async ({ user }) => {
@@ -123,12 +123,21 @@ ORDER BY occurrences DESC;
 Warn-or-worse logs with their trace context:
 
 ```sql
-SELECT event_at, service_name, level, message, data, user_id, parent_span_ids
+SELECT event_at, service_name, level, message, data, user_id, trace_id, span_id
 FROM logs
 WHERE service_name = 'stack-backend'
   AND level IN ('warn', 'error')
 ORDER BY event_at DESC
 LIMIT 100;
+```
+
+Because `trace_id` is shared across both tiers, one id pivots from a backend log to the browser `fetch` that caused it:
+
+```sql
+SELECT service_name, span_id, parent_span_id, name, started_at, ended_at
+FROM spans
+WHERE trace_id = '0af7651916cd43dd8448eb211c80319c'  -- from the log above
+ORDER BY started_at;
 ```
 
 Use the explicit `service_name` column to separate browser, API, worker, and mobile telemetry that shares a Hexclave project. A record with no service is invalid ingestion, not an "unknown" service bucket.

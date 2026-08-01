@@ -8,11 +8,13 @@ import type { TelemetryResource } from "./telemetry-config";
 import { beginHttpClientSpanCore, sanitizeHttpClientUrl, shouldCaptureNetworkRequest, type HttpRequestSpanHandle, type NetworkCaptureConfig } from "./network-capture";
 import type { SessionRecorder } from "./session-replay";
 import { createSpanHandle } from "./span-handle";
-import { getAmbientSpanRefs } from "./span-context";
+import { getAmbientSpanContexts } from "./span-context";
 // Runtime-safe: span-propagation only imports TYPES from the telemetry modules.
-import { buildFetchInitWithSpanContext, encodeSpanContextHeader, SPAN_CONTEXT_HEADER, type RequestSpanInfo } from "./span-propagation";
-import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, type RequestSpanInfo } from "./span-propagation";
+import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { generateW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { generateUuid } from "./telemetry-transport";
+import { isTraceSampled } from "./trace-sampling";
 
 /**
  * Lazily-loading front for the browser analytics runtime (EventTracker +
@@ -59,6 +61,8 @@ export type ClientAnalyticsDeps = {
   resource: TelemetryResource,
   sendEventBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
   sendReplayBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
+  /** Resolves the stable refresh-token root before the browser tracker starts. */
+  getSessionRootContext: () => Promise<SpanContext>,
   /** Replay options incl. the enabled flag; the recorder module is not even fetched when disabled. */
   replayOptions: AnalyticsReplayOptions,
   /** Enables product autocapture independently from the shared telemetry transport. */
@@ -68,6 +72,8 @@ export type ClientAnalyticsDeps = {
   integritySignals: boolean,
   /** Normalized ObservabilityOptions.network — $http-client volume control. */
   networkCapture: NetworkCaptureConfig,
+  /** Shared deterministic healthy-trace rate used by propagation and flush. */
+  traceSampleRate: number,
   /** SDK-own-URL recursion guard for $http-client spans — see EventTrackerDeps. */
   shouldIgnoreFetchUrl: (url: string) => boolean,
   /** Normalized ObservabilityOptions.errorCapture — the global $error capture installs eagerly from this facade. */
@@ -92,7 +98,7 @@ export class ClientAnalytics {
   private _bufferGeneration = 0;
   // Console-capture logs that arrived before the tracker loaded — see
   // PRELOAD_CONSOLE_LOG_CAP. Drained (generation-checked) on load.
-  private readonly _pendingConsoleLogs: { log: LogEmitItem, parentIds: string[], eventAtMs: number, generation: number }[] = [];
+  private readonly _pendingConsoleLogs: { log: LogEmitItem, parent: SpanContext | null, eventAtMs: number, generation: number }[] = [];
   // The installed global error capture (null when disabled or non-browser).
   // Kept for tests; there is no facade teardown that would uninstall it.
   private _errorCapture: ClientErrorCapture | null = null;
@@ -160,6 +166,7 @@ export class ClientAnalytics {
     // must never take event tracking down with it.
     const trackerImport = Result.fromPromise(import("./event-tracker"));
     const recorderImport = this._deps.replayOptions.enabled ? Result.fromPromise(import("./session-replay")) : null;
+    const sessionRootResultPromise = Result.fromPromise(this._deps.getSessionRootContext());
 
     const trackerModule = await trackerImport;
     if (trackerModule.status === "error") {
@@ -171,15 +178,34 @@ export class ClientAnalytics {
       resource: this._deps.resource,
       sendBatch: this._deps.sendEventBatch,
       sessionReplaySegmentId: this._segmentId,
+      sessionReplayEnabled: this._deps.replayOptions.enabled,
       productAnalyticsEnabled: this._deps.productAnalyticsEnabled,
+      keystrokeCapture: {
+        enabled: this._deps.replayOptions.enabled === true && this._deps.replayOptions.captureKeystrokes === true,
+        maskAllInputs: this._deps.replayOptions.maskAllInputs ?? true,
+        blockClass: this._deps.replayOptions.blockClass,
+        blockSelector: this._deps.replayOptions.blockSelector,
+      },
       registerBackgroundTask: this._deps.registerBackgroundTask,
       getPropagationPolicy: this._deps.getPropagationPolicy,
       integritySignals: this._deps.integritySignals,
       networkCapture: this._deps.networkCapture,
+      traceSampleRate: this._deps.traceSampleRate,
       shouldIgnoreFetchUrl: this._deps.shouldIgnoreFetchUrl,
     });
     this._tracker = tracker;
     tracker.start();
+    // Trace identity can require anonymous sign-up or token refresh. Neither is
+    // allowed to hold the DOM listeners hostage: start with a local page trace,
+    // then rotate to the authenticated hierarchy when the root becomes ready.
+    runAsynchronously(async () => {
+      const sessionRootResult = await sessionRootResultPromise;
+      if (sessionRootResult.status === "error") {
+        console.warn("Hexclave analytics: failed to resolve the authenticated session trace; browser capture will continue with local trace roots.", sessionRootResult.error);
+        return;
+      }
+      tracker.setSessionRootContext(sessionRootResult.data);
+    }, { noErrorLogging: true });
     // Transfer still-live pre-load global spans; they were validated mutually
     // compatible at registration and the fresh tracker has no ambient state to
     // conflict with. NOTE: their handles' end() only cleans the facade's (now
@@ -197,7 +223,7 @@ export class ClientAnalytics {
       if (item.generation !== this._bufferGeneration) continue;
       // Fire-and-forget (pre-caught): delivery failures already warn inside
       // the tracker's flush path.
-      tracker.trackLogEvent(item.log, item.log.data, { root: true, parentIds: item.parentIds }, { eventAtMs: item.eventAtMs }).catch(() => {});
+      tracker.trackLogEvent(item.log, item.log.data, { root: true, ...item.parent !== null ? { parent: item.parent } : {} }, { eventAtMs: item.eventAtMs }).catch(() => {});
     }
 
     if (recorderImport !== null) {
@@ -210,6 +236,11 @@ export class ClientAnalytics {
           resource: this._deps.resource,
           sendBatch: this._deps.sendReplayBatch,
           sessionReplaySegmentId: this._segmentId,
+          onSessionRotation: () => this.setSessionReplaySegmentId(generateUuid()),
+          onSessionReplaySegmentMaterialized: async (segmentId) => {
+            const sessionRootContext = await this._deps.getSessionRootContext();
+            this._tracker?.markSessionReplaySegmentMaterialized(segmentId, sessionRootContext);
+          },
         }, this._deps.replayOptions);
         this._recorder.start();
       }
@@ -217,18 +248,40 @@ export class ClientAnalytics {
     return tracker;
   }
 
-  private _preloadAmbientRefs(): SpanRef[] {
-    const refs: SpanRef[] = [];
+  private _preloadAmbientContexts(): SpanContext[] {
+    const contexts: SpanContext[] = [];
     for (const span of this._preloadGlobalSpans) {
-      if (!span.isEnded) refs.push(span.ref());
+      if (!span.isEnded) contexts.push(span.spanContext());
     }
-    refs.push(...getAmbientSpanRefs());
-    return refs;
+    contexts.push(...getAmbientSpanContexts());
+    return contexts;
   }
 
-  /** See EventTracker.getAmbientParentRefs — used by cross-tier span propagation. */
-  getAmbientParentRefs(): SpanRef[] {
-    return this._tracker !== null ? this._tracker.getAmbientParentRefs() : this._preloadAmbientRefs();
+  /**
+   * The enclosing span for a pre-load EVENT: resolved synchronously because the
+   * browser sync-stack ambient frames close at the first await. Null when there is
+   * no enclosing span (events never mint a trace of their own).
+   */
+  private _resolvePreloadEnclosingSpan(options: TrackOptions | undefined): { span: SpanContext | null } | { error: string } {
+    const resolved = resolveSpanParent({
+      explicit: options?.parent,
+      ambient: this._preloadAmbientContexts(),
+      links: options?.links,
+      root: options?.root,
+    });
+    if ("error" in resolved) return resolved;
+    return { span: resolved.parentSpanId === null ? null : { traceId: resolved.traceId, spanId: resolved.parentSpanId } };
+  }
+
+  /** See EventTracker.getAmbientSpanContexts — used by cross-tier propagation. */
+  getAmbientSpanContexts(): SpanContext[] {
+    return this._tracker !== null ? this._tracker.getAmbientSpanContexts() : this._preloadAmbientContexts();
+  }
+
+  /** See EventTracker.getPageViewSpanContext. Null pre-load: the tab's first
+   * page view is minted by the tracker, so nothing encloses a pre-load request. */
+  getPageViewSpanContext(): SpanContext | null {
+    return this._tracker?.getPageViewSpanContext() ?? null;
   }
 
   getSessionReplaySegmentId(): string {
@@ -271,13 +324,8 @@ export class ClientAnalytics {
     if (nameError) return rejectedPreCaught(nameError);
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
-    const resolved = resolveParentIds({
-      explicit: options?.parentIds,
-      ambient: this._preloadAmbientRefs(),
-      root: options?.root,
-      exclude: options?.excludeParentIds,
-    });
-    if ("error" in resolved) return rejectedPreCaught(resolved.error);
+    const enclosing = this._resolvePreloadEnclosingSpan(options);
+    if ("error" in enclosing) return rejectedPreCaught(enclosing.error);
     const eventAtMs = Date.now();
     const generation = this._bufferGeneration;
     return preCaught((async () => {
@@ -285,11 +333,10 @@ export class ClientAnalytics {
       if (generation !== this._bufferGeneration) {
         throw new Error("Hexclave analytics: analytics buffer cleared");
       }
-      // Re-submit with the pre-resolved chain as explicit raw parents plus
-      // root: raw ids reconstruct the exact path (declared-next in array
-      // order), and root drops the tracker's ambient context, which may have
-      // changed since this call happened.
-      await tracker.trackCustomEvent(eventType, data, { root: true, parentIds: resolved.ids }, { eventAtMs });
+      // Re-submit with the pre-resolved context as an explicit parent plus root:
+      // a SpanContext names the parent exactly, and root drops the tracker's own
+      // ambient context, which may have changed since this call happened.
+      await tracker.trackCustomEvent(eventType, data, { root: true, ...enclosing.span !== null ? { parent: enclosing.span } : {} }, { eventAtMs });
     })());
   }
 
@@ -305,8 +352,8 @@ export class ClientAnalytics {
     }
     const dataError = getCustomTelemetryDataError(log.data);
     if (dataError) return rejectedPreCaught(dataError);
-    const resolved = resolveParentIds({ ambient: this._preloadAmbientRefs() });
-    if ("error" in resolved) return rejectedPreCaught(resolved.error);
+    const enclosing = this._resolvePreloadEnclosingSpan(undefined);
+    if ("error" in enclosing) return rejectedPreCaught(enclosing.error);
     const eventAtMs = Date.now();
     const generation = this._bufferGeneration;
     if (log.origin === "console") {
@@ -316,7 +363,7 @@ export class ClientAnalytics {
       if (this._pendingConsoleLogs.length >= PRELOAD_CONSOLE_LOG_CAP) {
         this._pendingConsoleLogs.shift();
       }
-      this._pendingConsoleLogs.push({ log, parentIds: resolved.ids, eventAtMs, generation });
+      this._pendingConsoleLogs.push({ log, parent: enclosing.span, eventAtMs, generation });
       return preCaught(Promise.resolve());
     }
     return preCaught((async () => {
@@ -324,7 +371,7 @@ export class ClientAnalytics {
       if (generation !== this._bufferGeneration) {
         throw new Error("Hexclave analytics: analytics buffer cleared");
       }
-      await tracker.trackLogEvent(log, log.data, { root: true, parentIds: resolved.ids }, { eventAtMs });
+      await tracker.trackLogEvent(log, log.data, { root: true, ...enclosing.span !== null ? { parent: enclosing.span } : {} }, { eventAtMs });
     })());
   }
 
@@ -353,11 +400,11 @@ export class ClientAnalytics {
       return this._tracker.startSpan(spanType, options);
     }
     assertValidSpanStartInput(spanType, options);
-    const resolved = resolveParentIds({
-      explicit: options?.parentIds,
-      ambient: this._preloadAmbientRefs(),
+    const resolved = resolveSpanParent({
+      explicit: options?.parent,
+      ambient: this._preloadAmbientContexts(),
+      links: options?.links,
       root: options?.root,
-      exclude: options?.excludeParentIds,
     });
     if ("error" in resolved) {
       throw new Error(`Hexclave analytics: ${resolved.error}`);
@@ -371,10 +418,12 @@ export class ClientAnalytics {
     let handle!: { span: Span, markInert: () => void };
     const control = { markInert: () => handle.markInert() };
     handle = createSpanHandle({
-      spanId: generateUuid(),
+      traceId: resolved.traceId,
+      spanId: generateW3cSpanId(),
       spanType,
       startedAtMs: options?.startedAtMs ?? Date.now(),
-      parentSpanIds: resolved.ids,
+      parentSpanId: resolved.parentSpanId,
+      links: resolved.links,
       // Pre-load spans predate the tab's first $page-view span — see the
       // module comment.
       pageViewSpanId: null,
@@ -386,12 +435,10 @@ export class ClientAnalytics {
         this._preloadSpanControls.delete(control);
       },
       capabilities: {
-        // These route through the facade, so they transparently switch to the
-        // tracker once it arrives.
         trackEvent: (childEventType, childData, trackOptions) => this.trackCustomEvent(childEventType, childData, trackOptions),
         startChildSpan: (childType, childOptions) => this.startSpan(childType, childOptions),
-        getSpanPropagationHeaders: (span) => ({ [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(this._spanPropagationContext(span)) }),
-        fetch: (span, input, init) => this._spanFetch(span, input, init),
+        getSpanPropagationHeaders: (span) => this._preloadSpanPropagationHeaders(span),
+        fetch: (span, input, init) => this._preloadSpanFetch(span, input, init),
       },
     });
     this._preloadSpanControls.add(control);
@@ -426,20 +473,31 @@ export class ClientAnalytics {
       await this._ensureLoaded();
     }, { noErrorLogging: true });
 
-    const resolved = resolveParentIds({ ambient: this._preloadAmbientRefs() });
-    const parentSpanIds = "error" in resolved ? [] : resolved.ids;
+    const ambientResolved = resolveSpanParent({ ambient: this._preloadAmbientContexts() });
+    // Ambient contexts come from our own handles, so an error is unreachable; a
+    // fresh root must never break the caller's request either way.
+    const parent = "error" in ambientResolved ? resolveSpanParent({ ambient: [] }) : ambientResolved;
+    if ("error" in parent) {
+      throw new Error(`Hexclave analytics: ${parent.error}`);
+    }
 
     // `handle` is assigned synchronously below; the closures can only fire after.
     let handle!: HttpRequestSpanHandle;
     const control = { markInert: () => handle.markInert() };
     handle = beginHttpClientSpanCore({
       config: this._deps.networkCapture,
+      sampled: isTraceSampled(parent.traceId, this._deps.traceSampleRate),
       sanitizedUrl,
       method: info.method,
       transport: info.transport,
-      parentSpanIds,
+      traceId: parent.traceId,
+      parentSpanId: parent.parentSpanId,
       pageViewSpanId: null,
       enqueueRow: (row) => this._adoptRowWhenLoaded(row),
+      // Adoption is generation-checked for sign-in privacy. Until the tracker
+      // owns the row, a session rotation may intentionally discard it, so a
+      // remote child must not name it as a parent.
+      propagationEligible: false,
       onEnded: () => this._preloadSpanControls.delete(control),
     });
     this._preloadSpanControls.add(control);
@@ -457,30 +515,33 @@ export class ClientAnalytics {
     })());
   }
 
-  // Mirrors EventTracker._spanPropagationContext / _spanFetch for pre-load
-  // handles: same frozen-chain pinning, same origin policy — just without a
-  // page ancestry (pre-load spans have none) and with the facade's segment id.
-  private _spanPropagationContext(span: Span) {
-    const ref = span.ref();
-    return {
-      projectId: this._deps.projectId,
-      sessionReplaySegmentId: this.getSessionReplaySegmentId(),
-      customParentSpanIds: [...ref.parentSpanIds, ref.spanId],
-    };
+  // A pre-load custom span is generation-checked just like a pre-load network
+  // span: sign-in rotation may discard it before the tracker owns its row.
+  // Preserve the useful correlation claim but never promise the span as a
+  // remote parent, even if the runtime finishes loading while the handle lives.
+  private _preloadSpanPropagationHeaders(_span: Span): Record<string, string> {
+    const segmentId = this.getSessionReplaySegmentId();
+    return buildPropagationHeaderValues({
+      traceparent: null,
+      context: {
+        projectId: this._deps.projectId,
+        ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
+      },
+    });
   }
 
-  private _spanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  private _preloadSpanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
       const policy = this._deps.getPropagationPolicy();
       const initWithHeader = buildFetchInitWithSpanContext({
         input,
         init,
-        headerValue: encodeSpanContextHeader(this._spanPropagationContext(span)),
+        headerValues: this._preloadSpanPropagationHeaders(span),
         selfOrigin: policy.selfOrigin,
         allowedOrigins: policy.allowedOrigins,
         allowLocalhost: policy.allowLocalhost,
       });
-      return globalThis.fetch(input, initWithHeader ?? init);
+      return globalThis.fetch(input, initWithHeader?.init ?? init);
     } catch {
       // Propagation must never break the caller's actual request.
       return globalThis.fetch(input, init);
@@ -496,11 +557,9 @@ export class ClientAnalytics {
       console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
       return;
     }
-    const existing = [...this._preloadGlobalSpans].filter((candidate) => !candidate.isEnded).map((candidate) => candidate.ref());
-    const resolved = resolveParentIds({ ambient: [...existing, span.ref()] });
-    if ("error" in resolved) {
-      throw new Error(`Hexclave analytics: ${resolved.error}`);
-    }
+    // No compatibility check: the nearest ambient context wins as parent and any
+    // other global span in a different trace becomes a link — see
+    // EventTracker.setGlobalSpan.
     this._preloadGlobalSpans.add(span);
   }
 

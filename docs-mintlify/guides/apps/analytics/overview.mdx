@@ -56,7 +56,7 @@ Replay recording is on by default as part of analytics capture; set `analytics.r
 
 ## Identify Every Service
 
-Analytics and Observability records are always attributed to the application that produced them. Configure that identity explicitly through `telemetry.resource`:
+Analytics and Observability records are always attributed to the application that produced them. Hexclave infers that identity from your environment, so nothing is required to get started. Override it through `telemetry.resource` when you want the name pinned:
 
 ```ts
 import { HexclaveClientApp, HexclaveServerApp } from "@hexclave/js";
@@ -83,7 +83,9 @@ export const hexclaveServerApp = new HexclaveServerApp({
 });
 ```
 
-`service.name` is required whenever Analytics or Observability is enabled. Hexclave does not infer it from the SDK package, framework, hostname, request URL, project, or runtime, and does not fall back to a generic `Hexclave` service. This keeps telemetry unambiguous when several browser apps, mobile apps, APIs, or workers share one Hexclave project.
+`telemetry.resource` is optional. When you omit it, Hexclave infers a service identity so telemetry works with no configuration at all: `service.name` comes from `HEXCLAVE_SERVICE_NAME`, `VERCEL_PROJECT_NAME`, `npm_package_name`, or `SITE_NAME`, suffixed with `-browser` or `-server` so the two halves of an isomorphic app stay distinguishable (falling back to a bare `browser` / `server` when nothing names the app). `version` comes from `VERCEL_GIT_COMMIT_SHA`, `COMMIT_REF`, or `npm_package_version`, and `deploymentEnvironmentName` from `VERCEL_ENV` or `NODE_ENV`.
+
+Set it explicitly when the inferred name would be ambiguous — most importantly when several browser apps, mobile apps, APIs, or workers share one Hexclave project, since that is where a guessed name stops being meaningful. An explicit `resource` is validated strictly and never merged with the inferred one.
 
 The complete public shape is:
 
@@ -165,6 +167,8 @@ export const hexclaveClientApp = new HexclaveClientApp({
     replays: {
       // Set to false to opt out of replay recording. Defaults to true.
       enabled: true,
+      // Optional. Defaults to false. Captures debounced counts, never key values.
+      captureKeystrokes: true,
       // Optional. Defaults to true.
       maskAllInputs: true,
     },
@@ -172,7 +176,9 @@ export const hexclaveClientApp = new HexclaveClientApp({
 });
 ```
 
-`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
+`captureKeystrokes` is disabled by default. When enabled, the SDK records one debounced `$keystroke` event per typing burst with only a count and timing metadata; it never records key values or typed text. Keystrokes in masked inputs, password fields, or elements covered by `blockClass` / `blockSelector` are excluded entirely.
+
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. That same setting also keeps their keystrokes out of keyboard-activity counts.
 
 ### Disabling Analytics Capture in the SDK
 

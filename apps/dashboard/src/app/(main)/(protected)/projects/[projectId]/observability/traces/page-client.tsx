@@ -23,7 +23,6 @@ import {
 import { SpanTreeList } from "./span-tree";
 import {
   buildTraces,
-  spliceBridgedSubtraces,
   traceContainsSpanId,
   type EventInput,
   type SpanInput,
@@ -46,6 +45,8 @@ import {
   parseServiceIdentityRow,
   type ServiceIdentity,
 } from "../service-identity";
+import { ALL_SERVICES_SELECT_VALUE, OBSERVABILITY_TIME_RANGE_OPTIONS, parseObservabilityTimeRangeId, queryObservability, useServiceIdentityLoader } from "../filters";
+import { tryParseJson } from "../format";
 
 const TRACE_SPAN_STRUCTURE_SELECT_SQL = `
 SELECT
@@ -54,14 +55,18 @@ SELECT
   s.span_type,
   s.started_at,
   s.ended_at,
-  s.parent_span_ids,
-  s.status_code
+  s.parent_span_id,
+  s.status_code,
+  s.scope_name,
+  -- Needed by traceSignalSpanIds to tell spans the customer's own code authored
+  -- from auto-instrumented library/framework noise. Both arrive through the SDK;
+  -- scope_name is the instrumentation marker.
+  s.producer
 FROM default.spans AS s
 `;
 
 const ROOT_PAGE_SIZE = 200;
 const SEARCH_DEBOUNCE_MS = 300;
-const ALL_SERVICES_SELECT_VALUE = "all";
 
 export const TRACE_SERVICES_QUERY = `
 SELECT service_namespace, service_name
@@ -73,7 +78,7 @@ LIMIT 500
 `;
 
 export type TraceRootCursor = {
-  startMs: number,
+  activityMs: number,
   id: string,
 };
 
@@ -95,6 +100,7 @@ export function getRecentTraceRootsQuery(
   const searchCondition = search === "" ? "" : `
     AND (
       positionCaseInsensitiveUTF8(r.span_type, {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(JSONExtractString(r.data, 'name'), {search:String}) > 0
       OR positionCaseInsensitiveUTF8(r.trace_id, {search:String}) > 0
       OR positionCaseInsensitiveUTF8(r.span_id, {search:String}) > 0
       OR arrayExists(service -> positionCaseInsensitiveUTF8(service.1, {search:String}) > 0, ts.services)
@@ -108,10 +114,13 @@ export function getRecentTraceRootsQuery(
       OR positionCaseInsensitiveUTF8(ifNull(u.display_name, ''), {search:String}) > 0
       OR positionCaseInsensitiveUTF8(ifNull(u.primary_email, ''), {search:String}) > 0
     )`;
+  // `started_at` remains the trace interval shown in the waterfall. Inbox
+  // freshness uses ingestion/update activity instead, so a long-lived session
+  // stays discoverable when its virtual refresh-token root is synced again.
   const cursorCondition = cursor == null ? "" : `
     AND (
-      r.started_at < fromUnixTimestamp64Milli({cursorStartMs:Int64})
-      OR (r.started_at = fromUnixTimestamp64Milli({cursorStartMs:Int64}) AND r.span_id < {cursorId:String})
+      r.created_at < fromUnixTimestamp64Milli({cursorActivityMs:Int64})
+      OR (r.created_at = fromUnixTimestamp64Milli({cursorActivityMs:Int64}) AND r.span_id < {cursorId:String})
     )`;
   return {
     query: `
@@ -121,13 +130,95 @@ SELECT
   r.span_type,
   r.started_at,
   r.ended_at,
+  r.created_at AS root_activity_at,
   r.status_code,
+  r.scope_name,
   r.data,
-  CAST([], 'Array(String)') AS parent_span_ids,
+  -- trace_roots only ever holds spans with a NULL parent, so the column is not
+  -- stored; synthesizing it keeps these rows parseable by the same row parser
+  -- the waterfall's span rows use.
+  CAST(NULL, 'Nullable(String)') AS parent_span_id,
   u.display_name AS user_display_name,
   u.primary_email AS user_primary_email,
   u.profile_image_url AS user_profile_image_url,
   'span' AS root_source,
+  -- How many other root activities happened on this page view. Only ever
+  -- non-zero for a $page-view row, because a page view is the only root that
+  -- other roots point at; drives the expand affordance in the list.
+  coalesce(child.child_count, 0) AS child_count,
+  arrayMap(service -> service.1, ts.services) AS trace_service_namespaces,
+  arrayMap(service -> service.2, ts.services) AS trace_service_names
+FROM default.trace_roots AS r
+LEFT JOIN default.users AS u ON toString(u.id) = r.user_id
+LEFT JOIN (
+  SELECT page_view_span_id, count() AS child_count
+  FROM default.trace_roots
+  WHERE created_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+    AND page_view_span_id IS NOT NULL
+  GROUP BY page_view_span_id
+) AS child ON child.page_view_span_id = r.span_id
+LEFT JOIN (
+  SELECT
+    trace_id,
+    arraySort(groupUniqArray(tuple(coalesce(service_namespace, ''), service_name))) AS services
+  FROM default.trace_services
+  WHERE service_name != ''
+  GROUP BY trace_id
+) AS ts ON ts.trace_id = r.trace_id
+WHERE r.created_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+  -- Top level only. A root that names a page view is shown nested under it
+  -- instead (see getPageViewChildrenQuery); without this the list repeats every
+  -- request a page made as its own sibling row, which is ~15 extra rows per
+  -- page visit on a browser-heavy project.
+  AND r.page_view_span_id IS NULL
+  ${serviceCondition}${searchCondition}${cursorCondition}
+ORDER BY r.created_at DESC, r.span_id DESC
+LIMIT ${ROOT_PAGE_SIZE}
+`,
+    params: {
+      ...(cursor == null ? {} : { cursorActivityMs: cursor.activityMs, cursorId: cursor.id }),
+      ...(service == null ? {} : {
+        serviceNamespace: service.namespace,
+        serviceName: service.name,
+      }),
+      ...(search === "" ? {} : { search }),
+    },
+  };
+}
+
+/**
+ * The root activities that happened on one page view — the requests the page
+ * made, plus any custom spans it started. Shown nested under the page view in
+ * the list rather than as its own top-level row.
+ *
+ * Deliberately NOT paginated: a page view with more root activities than this
+ * cap is already pathological, and a nested "load more" inside a virtualized
+ * list is a lot of machinery for a case nobody has hit. The cap is surfaced in
+ * the UI instead of silently truncating.
+ */
+export const PAGE_VIEW_CHILDREN_CAP = 200;
+
+export function getPageViewChildrenQuery(pageViewSpanId: string): {
+  query: string,
+  params: Record<string, string | number>,
+} {
+  return {
+    query: `
+SELECT
+  r.trace_id AS trace_id,
+  r.span_id,
+  r.span_type,
+  r.started_at,
+  r.ended_at,
+  r.status_code,
+  r.scope_name,
+  r.data,
+  CAST(NULL, 'Nullable(String)') AS parent_span_id,
+  u.display_name AS user_display_name,
+  u.primary_email AS user_primary_email,
+  u.profile_image_url AS user_profile_image_url,
+  'span' AS root_source,
+  0 AS child_count,
   arrayMap(service -> service.1, ts.services) AS trace_service_namespaces,
   arrayMap(service -> service.2, ts.services) AS trace_service_names
 FROM default.trace_roots AS r
@@ -140,64 +231,30 @@ LEFT JOIN (
   WHERE service_name != ''
   GROUP BY trace_id
 ) AS ts ON ts.trace_id = r.trace_id
-WHERE r.started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-  AND r.span_type != '$http-client'
-  ${serviceCondition}${searchCondition}${cursorCondition}
-ORDER BY r.started_at DESC, r.span_id DESC
-LIMIT ${ROOT_PAGE_SIZE}
+WHERE r.page_view_span_id = {pageViewSpanId:String}
+ORDER BY r.started_at ASC, r.span_id ASC
+LIMIT ${PAGE_VIEW_CHILDREN_CAP}
 `,
-    params: {
-      ...(cursor == null ? {} : { cursorStartMs: cursor.startMs, cursorId: cursor.id }),
-      ...(service == null ? {} : {
-        serviceNamespace: service.namespace,
-        serviceName: service.name,
-      }),
-      ...(search === "" ? {} : { search }),
-    },
+    params: { pageViewSpanId },
   };
 }
 
-// Bridge CTE: the W3C trace ids derivable from this trace's `$http-client`
-// spans (uuid after `hc-`, dash-stripped — the exact `traceparent` the SDK
-// sent). Selecting `trace_id IN bridged` alongside the native trace pulls the
-// backend sub-traces (stored under those W3C trace ids) that those fetches
-// caused into the SAME result set; spliceBridgedSubtraces (trace-utils.ts)
-// then reparents them under their bridge span at render time. Pure read-time
-// join — ingestion never correlates the two namespaces.
-const BRIDGED_TRACE_IDS_CTE_SQL = `
-WITH forward_bridged AS (
-  SELECT lower(replaceAll(substring(span_id, 4), '-', '')) AS w3c_trace_id
-  FROM default.spans
-  WHERE trace_id = {traceId:String} AND startsWith(span_id, 'hc-')
-),
-reverse_bridge AS (
-  SELECT span_id, parent_span_ids
-  FROM default.spans
-  WHERE startsWith(span_id, 'hc-')
-    AND lower(replaceAll(substring(span_id, 4), '-', '')) = lower({traceId:String})
-),
-reverse_bridge_ancestors AS (
-  SELECT arrayJoin(parent_span_ids) AS span_id
-  FROM reverse_bridge
-)
-`;
-
+// One trace id is the whole query. A client fetch and every backend span it
+// caused share a `trace_id` (the SDK propagates it as `traceparent`), so there
+// is nothing left to bridge across id namespaces at read time — which is the
+// point of the W3C model.
 export function getSelectedTraceSpanQuery(traceId: string): {
   query: string,
   params: Record<string, string | number>,
 } {
   return {
     query: `
-${BRIDGED_TRACE_IDS_CTE_SQL}
 ${TRACE_SPAN_STRUCTURE_SELECT_SQL}
 WHERE s.trace_id = {traceId:String}
-  OR s.trace_id IN (SELECT w3c_trace_id FROM forward_bridged)
-  OR s.span_id IN (SELECT span_id FROM reverse_bridge)
-  OR s.span_id IN (SELECT span_id FROM reverse_bridge_ancestors)
--- A long-lived refresh-token trace can bridge to more than 10,000 backend
--- spans. Keep its native session/replay/page/http rows ahead of bridged detail
--- so LIMIT can never discard the selected root and leave a blank waterfall.
-ORDER BY s.trace_id = {traceId:String} DESC, s.started_at ASC
+-- Oldest-first so that if a pathological trace exceeds the LIMIT, what survives
+-- is the beginning of the trace including its root, rather than an arbitrary
+-- slice that would render as a waterfall with no root.
+ORDER BY s.started_at ASC
 LIMIT 10000
 `,
     params: { traceId },
@@ -207,8 +264,8 @@ LIMIT 10000
 // Every column the span detail dialog shows (RowDetailDialog renders all
 // returned columns, and parseSpanRow needs trace_id/span_id/span_type/
 // started_at plus the data/resource_attributes JSON blobs). Enumerated
-// instead of SELECT * because default.spans is a FINAL + UNION ALL view: an
-// explicit list keeps this point lookup from reading columns we never display
+// instead of SELECT * because default.spans is a FINAL-backed view: an explicit
+// list keeps this point lookup from reading columns we never display
 // and keeps the dialog stable if the view ever grows internal columns.
 // project_id/branch_id are deliberately excluded — the analytics endpoint
 // already scopes every row to the current project/branch, so they'd be
@@ -231,7 +288,8 @@ export const SPAN_DETAIL_COLUMNS: readonly string[] = [
   "session_replay_segment_id",
   "trace_id",
   "span_id",
-  "parent_span_ids",
+  "parent_span_id",
+  "page_view_span_id",
   "kind",
   "scope_name",
   "scope_version",
@@ -252,7 +310,8 @@ export const SPAN_DETAIL_COLUMNS: readonly string[] = [
 export const SPAN_TECHNICAL_DETAIL_COLUMNS: readonly string[] = [
   "trace_id",
   "span_id",
-  "parent_span_ids",
+  "parent_span_id",
+  "page_view_span_id",
   "kind",
   "scope_name",
   "scope_version",
@@ -291,8 +350,7 @@ export function getSelectedTraceEventQuery(traceId: string, hours: number): {
 } {
   return {
     query: `
-${BRIDGED_TRACE_IDS_CTE_SQL}
-SELECT event_type, event_at, data, user_id, parent_span_ids,
+SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
        refresh_token_id, session_replay_id, session_replay_segment_id
 FROM (
   SELECT * FROM default.events
@@ -303,7 +361,7 @@ FROM (
   UNION ALL
   SELECT * FROM default.span_events
 )
-WHERE (trace_id = {traceId:String} OR trace_id IN (SELECT w3c_trace_id FROM forward_bridged))
+WHERE trace_id = {traceId:String}
   AND event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
 ORDER BY event_at ASC
 LIMIT 5000
@@ -312,23 +370,7 @@ LIMIT 5000
   };
 }
 
-const TIME_RANGES = [
-  { label: "1h", hours: 1 },
-  { label: "24h", hours: 24 },
-  { label: "7d", hours: 168 },
-  { label: "30d", hours: 720 },
-] as const;
-
 const CARD_CLASSES = "rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-zinc-900/90";
-
-function tryParseJson(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
 
 function parseSpanRow(row: Record<string, unknown>): SpanInput | null {
   const traceId = row.trace_id;
@@ -337,16 +379,15 @@ function parseSpanRow(row: Record<string, unknown>): SpanInput | null {
   const startedAt = row.started_at;
   if (typeof traceId !== "string" || typeof id !== "string" || typeof spanType !== "string" || !isDateValue(startedAt)) return null;
   const endedAt = row.ended_at;
-  const parentSpanIds = Array.isArray(row.parent_span_ids)
-    ? row.parent_span_ids.filter((value): value is string => typeof value === "string")
-    : [];
   return {
     traceId,
     id,
     spanType,
     startMs: parseClickHouseDate(startedAt).getTime(),
     endMs: isDateValue(endedAt) ? parseClickHouseDate(endedAt).getTime() : null,
-    parentSpanIds,
+    // ClickHouse sends a NULL Nullable(String) as null; an empty string would be
+    // a written-but-empty parent, which is not a real span id either.
+    parentSpanId: typeof row.parent_span_id === "string" && row.parent_span_id !== "" ? row.parent_span_id : null,
     raw: {
       ...row,
       data: tryParseJson(row.data),
@@ -359,13 +400,15 @@ export function parseEventRow(row: Record<string, unknown>): EventInput | null {
   const eventType = row.event_type;
   const eventAt = row.event_at;
   if (typeof eventType !== "string" || !isDateValue(eventAt)) return null;
-  const parentSpanIds = Array.isArray(row.parent_span_ids)
-    ? row.parent_span_ids.filter((value): value is string => typeof value === "string")
-    : [];
+  const traceId = typeof row.trace_id === "string" && row.trace_id !== "" ? row.trace_id : null;
+  const spanId = typeof row.span_id === "string" && row.span_id !== "" ? row.span_id : null;
   return {
+    traceId: traceId !== null && spanId !== null ? traceId : null,
     eventType,
     atMs: parseClickHouseDate(eventAt).getTime(),
-    parentSpanIds,
+    // Events that happened outside any span (a bare `trackEvent`) have no
+    // enclosing span id and stay unattached rather than guessing an owner.
+    spanId: traceId !== null && spanId !== null ? spanId : null,
     // Depending on the analytics response surface, events.data can arrive as
     // either decoded JSON or its serialized representation. Normalize it just
     // like spans so the shared detail dialog always renders structured data.
@@ -374,12 +417,36 @@ export function parseEventRow(row: Record<string, unknown>): EventInput | null {
 }
 
 export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[] {
-  const spansById = new Map<string, SpanInput>();
+  // Keyed by the PAIR, not the span id: a span id is unique only within its trace
+  // (which is why `trace_roots`' ORDER BY includes trace_id). Keying by span id
+  // alone silently dropped one of two same-id rows from different traces, which
+  // under-reported the inbox — previously masked because prefixed native ids made
+  // cross-namespace collisions impossible.
+  const spansByTraceAndId = new Map<string, SpanInput>();
   for (const row of rows) {
     const span = parseSpanRow(row);
-    if (span != null && !spansById.has(span.id)) spansById.set(span.id, span);
+    if (span === null) continue;
+    const key = `${span.traceId}:${span.id}`;
+    if (!spansByTraceAndId.has(key)) spansByTraceAndId.set(key, span);
   }
-  return [...spansById.values()];
+  return [...spansByTraceAndId.values()];
+}
+
+type TraceRootSpan = SpanInput & {
+  activityMs: number,
+};
+
+export function parseUniqueTraceRootRows(rows: Record<string, unknown>[]): TraceRootSpan[] {
+  return parseUniqueSpanRows(rows).map((span) => {
+    const activityAt = span.raw.root_activity_at;
+    if (!isDateValue(activityAt)) {
+      throw new Error("Trace root query returned a row without root_activity_at");
+    }
+    return {
+      ...span,
+      activityMs: parseClickHouseDate(activityAt).getTime(),
+    };
+  });
 }
 
 function EmptyState({ title, children }: { title: string, children?: React.ReactNode }) {
@@ -417,11 +484,18 @@ export default function PageClient() {
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const [rootSpans, setRootSpans] = useState<SpanInput[]>([]);
+  const [rootSpans, setRootSpans] = useState<TraceRootSpan[]>([]);
+  // Page-view expansion. Children are fetched once per page view and kept, so
+  // collapsing and re-expanding does not re-query; the list is already scoped to
+  // a time range, so there is no staleness window worth invalidating for.
+  const [expandedPageViewIds, setExpandedPageViewIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [childrenByPageViewId, setChildrenByPageViewId] = useState<ReadonlyMap<string, Trace[]>>(() => new Map());
+  const [loadingPageViewIds, setLoadingPageViewIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedSpans, setSelectedSpans] = useState<SpanInput[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<EventInput[]>([]);
-  // "Now" reference for the waterfall/list: fixed at load time so intervals
-  // reaching into the future (e.g. $refresh-token expiry) render as ongoing.
+  // "Now" reference for the waterfall/list: fixed at load time so a span that is
+  // still open (no ended_at) renders as ongoing up to a stable edge instead of
+  // growing on every re-render.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [rootLoading, setRootLoading] = useState(true);
   const [rootLoadingMore, setRootLoadingMore] = useState(false);
@@ -441,34 +515,8 @@ export default function PageClient() {
   const traceRequestSeqRef = useRef(0);
   const traceVolumeRequestSeqRef = useRef(0);
   const detailRequestSeqRef = useRef(0);
-  const traceServicesRequestRef = useRef<{
-    adminApp: typeof adminApp,
-    promise: Promise<ServiceIdentity[]>,
-  } | null>(null);
 
-  const loadTraceServices = useCallback(() => {
-    const currentRequest = traceServicesRequestRef.current;
-    if (currentRequest?.adminApp === adminApp) return currentRequest.promise;
-
-    const promise = (async () => {
-      try {
-        const response = await adminApp.queryAnalytics({
-          query: TRACE_SERVICES_QUERY,
-          params: {},
-          include_all_branches: false,
-          timeout_ms: 30000,
-        });
-        return response.result.map(parseServiceIdentityRow);
-      } catch (error) {
-        if (traceServicesRequestRef.current?.adminApp === adminApp) {
-          traceServicesRequestRef.current = null;
-        }
-        throw error;
-      }
-    })();
-    traceServicesRequestRef.current = { adminApp, promise };
-    return promise;
-  }, [adminApp]);
+  const loadTraceServices = useServiceIdentityLoader(adminApp, TRACE_SERVICES_QUERY);
 
   const loadRoots = useCallback(async () => {
     const seq = ++rootRequestSeqRef.current;
@@ -478,17 +526,15 @@ export default function PageClient() {
     try {
       const rootQuery = getRecentTraceRootsQuery(null, service, debouncedSearch);
       const [recentRootsResponse, nextServices] = await Promise.all([
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: rootQuery.query,
           params: { ...rootQuery.params, hours },
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
         loadTraceServices(),
       ]);
       const recentRootRows = recentRootsResponse.result;
       if (seq !== rootRequestSeqRef.current) return;
-      const nextRoots = parseUniqueSpanRows(recentRootRows);
+      const nextRoots = parseUniqueTraceRootRows(recentRootRows);
       setServices(nextServices);
       setService((current) => (
         current == null || nextServices.some((candidate) => serviceIdentityEquals(candidate, current))
@@ -497,7 +543,7 @@ export default function PageClient() {
       ));
       setRootSpans(nextRoots);
       const lastRoot = nextRoots.at(-1);
-      setRootCursor(lastRoot == null ? null : { startMs: lastRoot.startMs, id: lastRoot.id });
+      setRootCursor(lastRoot == null ? null : { activityMs: lastRoot.activityMs, id: lastRoot.id });
       setHasMoreRoots(recentRootRows.length === ROOT_PAGE_SIZE);
       setSelectedRootId((currentRootId) => (
         currentRootId != null && nextRoots.some((span) => span.id === currentRootId)
@@ -519,11 +565,9 @@ export default function PageClient() {
     setTraceVolumeError(null);
     try {
       const volumeQuery = getTraceVolumeQuery(hours, service);
-      const response = await adminApp.queryAnalytics({
+      const response = await queryObservability(adminApp, {
         query: volumeQuery.query,
         params: volumeQuery.params,
-        include_all_branches: false,
-        timeout_ms: 30000,
       });
       if (seq !== traceVolumeRequestSeqRef.current) return;
       setTraceVolume(parseTraceVolumeRows(response.result));
@@ -543,21 +587,19 @@ export default function PageClient() {
     setRootLoadMoreError(null);
     try {
       const rootQuery = getRecentTraceRootsQuery(rootCursor, service, debouncedSearch);
-      const response = await adminApp.queryAnalytics({
+      const response = await queryObservability(adminApp, {
         query: rootQuery.query,
         params: { ...rootQuery.params, hours },
-        include_all_branches: false,
-        timeout_ms: 30000,
       });
       const nextPageRows = response.result;
       if (seq !== rootRequestSeqRef.current) return;
-      const nextPage = parseUniqueSpanRows(nextPageRows);
-      setRootSpans((currentRoots) => parseUniqueSpanRows([
+      const nextPage = parseUniqueTraceRootRows(nextPageRows);
+      setRootSpans((currentRoots) => parseUniqueTraceRootRows([
         ...currentRoots.map((span) => span.raw),
         ...nextPageRows,
-      ]).sort((a, b) => b.startMs - a.startMs || stringCompare(b.id, a.id)));
+      ]).sort((a, b) => b.activityMs - a.activityMs || stringCompare(b.id, a.id)));
       const lastRoot = nextPage.at(-1);
-      setRootCursor(lastRoot == null ? null : { startMs: lastRoot.startMs, id: lastRoot.id });
+      setRootCursor(lastRoot == null ? null : { activityMs: lastRoot.activityMs, id: lastRoot.id });
       setHasMoreRoots(response.result.length === ROOT_PAGE_SIZE);
     } catch (error) {
       if (seq !== rootRequestSeqRef.current) return;
@@ -580,17 +622,13 @@ export default function PageClient() {
       const spanQuery = getSelectedTraceSpanQuery(traceId);
       const eventQuery = getSelectedTraceEventQuery(traceId, hours);
       const [spansResponse, eventsResponse] = await Promise.all([
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: spanQuery.query,
           params: spanQuery.params,
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
-        adminApp.queryAnalytics({
+        queryObservability(adminApp, {
           query: eventQuery.query,
           params: eventQuery.params,
-          include_all_branches: false,
-          timeout_ms: 30000,
         }),
       ]);
       if (seq !== traceRequestSeqRef.current) return;
@@ -655,15 +693,49 @@ export default function PageClient() {
 
   const { traces: rootTraces } = useMemo(() => buildTraces(rootSpans, []), [rootSpans]);
 
+  const togglePageView = useCallback((pageViewSpanId: string) => {
+    setExpandedPageViewIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(pageViewSpanId)) next.delete(pageViewSpanId);
+      else next.add(pageViewSpanId);
+      return next;
+    });
+    // Fetch only on first expand. Errors surface as the row simply not expanding
+    // rather than an alert: this is a progressive-disclosure affordance on a list
+    // that still works without it, so interrupting the whole page would be worse
+    // than the row staying closed.
+    if (childrenByPageViewId.has(pageViewSpanId) || loadingPageViewIds.has(pageViewSpanId)) return;
+    setLoadingPageViewIds((previous) => new Set(previous).add(pageViewSpanId));
+    runAsynchronouslyWithAlert((async () => {
+      try {
+        const childQuery = getPageViewChildrenQuery(pageViewSpanId);
+        const response = await queryObservability(adminApp, childQuery);
+        const childSpans = parseUniqueSpanRows(response.result);
+        const { traces } = buildTraces(childSpans, []);
+        setChildrenByPageViewId((previous) => new Map(previous).set(pageViewSpanId, traces));
+      } finally {
+        setLoadingPageViewIds((previous) => {
+          const next = new Set(previous);
+          next.delete(pageViewSpanId);
+          return next;
+        });
+      }
+    })());
+  }, [adminApp, childrenByPageViewId, loadingPageViewIds]);
+
   const searchNeedle = search.trim().toLowerCase();
 
-  const selectedTrace = useMemo<Trace | null>(() => {
-    if (selectedRootId == null) return null;
-    // Reparent the backend sub-traces (pulled in via the bridged CTE)
-    // under their $http-client bridge spans before building the tree — this is
-    // what renders one connected client→server waterfall.
-    const { traces } = buildTraces(spliceBridgedSubtraces(selectedSpans), selectedEvents);
-    return traces.find((trace) => traceContainsSpanId(trace, selectedRootId)) ?? null;
+  const { selectedTrace, unattachedEventCount } = useMemo<{ selectedTrace: Trace | null, unattachedEventCount: number }>(() => {
+    if (selectedRootId == null) return { selectedTrace: null, unattachedEventCount: 0 };
+    // Every tier of the request already shares one trace id, so the client
+    // page-view → $http-client → backend request → db chain builds into a single
+    // connected waterfall with no read-time reparenting.
+    const { traces, unattachedEvents } = buildTraces(selectedSpans, selectedEvents);
+    return {
+      selectedTrace: traces.find((trace) => traceContainsSpanId(trace, selectedRootId)) ?? null,
+      // Counted, not discarded — see TraceWaterfall's unattachedEventCount.
+      unattachedEventCount: unattachedEvents.length,
+    };
   }, [selectedEvents, selectedRootId, selectedSpans]);
 
   const openEventDetail = useCallback((raw: Record<string, unknown>) => {
@@ -678,11 +750,9 @@ export default function PageClient() {
     setDetailLoading(true);
     try {
       const detailQuery = getSpanDetailQuery(span.traceId, span.id);
-      const response = await adminApp.queryAnalytics({
+      const response = await queryObservability(adminApp, {
         query: detailQuery.query,
         params: detailQuery.params,
-        include_all_branches: false,
-        timeout_ms: 30000,
       });
       if (seq !== detailRequestSeqRef.current) return;
       const detailResult = response.result.at(0);
@@ -726,19 +796,15 @@ export default function PageClient() {
           disabled={rootLoading}
         />
         <div className="flex items-center gap-1 whitespace-nowrap text-xs">
-          <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} parent ${rootTraces.length === 1 ? "trace" : "traces"}`} />
+          <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} ${rootTraces.length === 1 ? "trace" : "traces"}`} />
           <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
           <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
         </div>
         <span className="h-5 w-px shrink-0 bg-border/60" aria-hidden />
         <DesignPillToggle
           selected={String(hours)}
-          onSelect={(id) => {
-            const range = TIME_RANGES.find((candidate) => String(candidate.hours) === id);
-            if (range == null) throw new Error(`Unknown trace time range: ${id}`);
-            setHours(range.hours);
-          }}
-          options={TIME_RANGES.map((range) => ({ label: range.label, id: String(range.hours) }))}
+          onSelect={(id) => setHours(parseObservabilityTimeRangeId(id))}
+          options={OBSERVABILITY_TIME_RANGE_OPTIONS}
           size="sm"
           glassmorphic={false}
         />
@@ -775,7 +841,7 @@ export default function PageClient() {
           <DesignAlert
             variant="warning"
             title="Selected trace is unusually large"
-            description="Showing the first 10,000 spans nested under this parent trace."
+            description="Showing the earliest 10,000 spans in this trace."
           />
         )}
 
@@ -837,6 +903,10 @@ export default function PageClient() {
                     nowMs={nowMs}
                     activeSpanId={selectedRootId}
                     onSelectSpan={(rootId) => setSelectedRootId(rootId)}
+                    expandedPageViewIds={expandedPageViewIds}
+                    childrenByPageViewId={childrenByPageViewId}
+                    loadingPageViewIds={loadingPageViewIds}
+                    onTogglePageView={togglePageView}
                     hasMore={hasMoreRoots}
                     loadingMore={rootLoadingMore}
                     loadMoreError={rootLoadMoreError}
@@ -868,6 +938,7 @@ export default function PageClient() {
                 services={selectedTraceServices}
                 nowMs={nowMs}
                 needle={searchNeedle}
+                unattachedEventCount={unattachedEventCount}
                 onSelectSpan={(span) => runAsynchronouslyWithAlert(openSpanDetail(span))}
                 onSelectEvent={(event) => openEventDetail(event.raw)}
               />

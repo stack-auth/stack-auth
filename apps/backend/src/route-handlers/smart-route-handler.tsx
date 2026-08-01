@@ -1,7 +1,8 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
-import { runWithTelemetryTenancyHolder } from "@/lib/self-telemetry-tenancy";
+import { runWithInternalRequestObservability } from "@/lib/internal-observability";
+import { isTelemetryIngestionPath } from "@/lib/telemetry-ingestion-paths";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
@@ -71,11 +72,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
     concurrentRequestsInProcess++;
     try {
       const requestId = generateSecureRandomString(80);
-      // The tenancy holder must be ambient BEFORE the OTel root span opens so
-      // every span of this request (including auth-time spans that end before
-      // parseAuth resolves) records the holder and can be attributed to the
-      // calling project at export time. See lib/self-telemetry-tenancy.ts.
-      return await runWithTelemetryTenancyHolder(async () => await traceSpan({
+      return await runWithInternalRequestObservability(req, requestId, async () => await traceSpan({
         description: 'handling API request',
         attributes: {
           "stack.request.request-id": requestId,
@@ -136,7 +133,17 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             ...allowedLongRequestPathPrefixes,
             ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
           ];
-          const warnAfterSeconds = allAllowedLongRequestPaths.includes(req.nextUrl.pathname) || allAllowedLongRequestPathPrefixes.some(prefix => req.nextUrl.pathname.startsWith(prefix)) ? 240 : 12;
+          // Collector requests are background delivery, not a user-facing
+          // request critical path. During a development cold compile they can
+          // wait behind Next/package work for longer than 12 seconds while
+          // remaining safely queued by the SDK; flagging each one as a serverless
+          // timeout obscures real slow requests. Exact path matching keeps this
+          // exemption off arbitrary analytics subroutes.
+          const warnAfterSeconds = isTelemetryIngestionPath(req.nextUrl.pathname)
+            || allAllowedLongRequestPaths.includes(req.nextUrl.pathname)
+            || allAllowedLongRequestPathPrefixes.some(prefix => req.nextUrl.pathname.startsWith(prefix))
+            ? 240
+            : 12;
           runAsynchronously(async () => {
             await wait(warnAfterSeconds * 1000);
             if (!hasRequestFinished) {

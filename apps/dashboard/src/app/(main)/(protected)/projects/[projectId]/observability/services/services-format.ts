@@ -1,4 +1,7 @@
+import { formatDuration } from "../format";
 import { parseServiceTimestamp, type ServiceAttentionReason } from "./services-data";
+
+export { formatDuration };
 
 /**
  * Compact count formatting for dense table cells. Values below 10k stay exact
@@ -10,13 +13,6 @@ export function formatCount(value: number): string {
   if (value < 10_000) return value.toLocaleString();
   if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 100_000 ? 1 : 0)}k`;
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
-}
-
-export function formatDuration(durationMs: number | null): string {
-  if (durationMs == null) return "—";
-  if (durationMs < 1) return `${Math.round(durationMs * 1000)}µs`;
-  if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
-  return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)}s`;
 }
 
 export function formatPercent(ratio: number, fractionDigits = 1): string {
