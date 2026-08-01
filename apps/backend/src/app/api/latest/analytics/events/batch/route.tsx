@@ -3,25 +3,47 @@ import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { increasePlanItemQuantity, tryDecreasePlanItemQuantities, type MeteredPlanItemId } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { buildBatchSpanRows, getBatchParentPathError, insertSpans } from "@/lib/spans";
+import { buildBatchSpanLinkRows, buildBatchSpanRows, getBatchDuplicateSpanIdError, insertSpanLinks, insertSpans } from "@/lib/spans";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, HTTP_CLIENT_SPAN_TYPE, LOG_LEVELS, PAGE_VIEW_SPAN_TYPE, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_UUID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, HTTP_CLIENT_SPAN_TYPE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
 // Hoisted to shared so the SDK, the propagation-header codec, and this route
-// validate identically — local drift 400s whole batches.
+// validate identically — local drift 400s whole batches. UUIDs are for DATABASE
+// identities only (batch/user/refresh-token/replay/segment ids); span identity is
+// W3C trace context.
 const UUID_RE = TELEMETRY_UUID_RE;
+
+// The all-zero trace/span ids are explicitly invalid per the W3C spec, and the
+// regexes alone would accept them. A row carrying one would look joinable but
+// match nothing, so reject at the boundary instead of storing a poison value.
+const ALL_ZERO_TRACE_ID = "0".repeat(32);
+const ALL_ZERO_SPAN_ID = "0".repeat(16);
+
+function isUsableW3cTraceId(value: string): boolean {
+  return W3C_TRACE_ID_RE.test(value) && value !== ALL_ZERO_TRACE_ID;
+}
+
+function isUsableW3cSpanId(value: string): boolean {
+  return W3C_SPAN_ID_RE.test(value) && value !== ALL_ZERO_SPAN_ID;
+}
+
+const W3C_TRACE_ID_ERROR = "must be 32 lowercase hex characters and not all-zero";
+const W3C_SPAN_ID_ERROR = "must be 16 lowercase hex characters and not all-zero";
 
 const LOG_EVENT_TYPE = "$log";
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
+// Links are a niche affordance; a low cap keeps one span from ballooning the batch
+// (and the span_links insert) while staying far above any plausible real use.
+const MAX_SPAN_LINKS = 32;
 const MAX_COMPRESSED_BYTES = 1 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
 
@@ -88,9 +110,10 @@ export const POST = createSmartRouteHandler({
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
       // Versions the BATCH body the way the propagation header's `v1.` prefix
       // versions the header — so the wire contract can evolve without guessing
-      // from field shapes. This ingestion surface is unreleased, so v2 replaces
-      // the earlier pre-release shape directly.
-      schema_version: yupNumber().defined().integer().oneOf([2]),
+      // from field shapes. This ingestion surface is unreleased, so v3 (W3C span
+      // identity) replaces the earlier pre-release shapes outright rather than
+      // being accepted alongside them.
+      schema_version: yupNumber().defined().integer().oneOf([3]),
       resource: yupMixed().defined().test(
         "telemetry-resource",
         "Invalid telemetry resource",
@@ -102,8 +125,8 @@ export const POST = createSmartRouteHandler({
       // derive one from.
       user_id: yupString().optional().matches(UUID_RE, "Invalid user_id"),
       // Server/admin auth only: the caller's resolved request context, forwarded
-      // by the server SDK's withSpan({ request }) so a backend span parents under
-      // the client session ($refresh-token/$session-replay/$session-replay-segment).
+      // by the server SDK's withSpan({ request }) as scalar lifecycle correlation.
+      // Cross-tier ancestry itself comes from W3C trace_id/parent_span_id.
       // Trusted here because server auth is the customer's secret key; rejected
       // under client auth, where the same values come from the session itself.
       refresh_token_id: yupString().optional().matches(UUID_RE, "Invalid refresh_token_id"),
@@ -118,18 +141,16 @@ export const POST = createSmartRouteHandler({
           ),
           event_at_ms: yupNumber().defined().integer().min(0),
           data: yupMixed().defined(),
-          // Custom ancestor chain, root-first, raw span uuids. System ancestry
-          // (refresh-token/replay/segment/page-view) is composed server-side on top.
-          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).optional().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
-          // The `$page-view` span this event happened on — client tab state the
-          // server cannot derive, so it rides per-item (a batch can straddle a
-          // navigation). Untrusted label, same trust model as the segment id.
-          page_view_span_id: yupString().optional().matches(UUID_RE, "Invalid page_view_span_id"),
-          // The `$http-client` span this event happened under. Only meaningful
-          // when the fetch is the item's NEAREST known ancestor (server SDK
-          // items whose custom chain came entirely from the propagation
-          // header) — see buildBatchSpanRows for the composition rule.
-          http_client_span_id: yupString().optional().matches(UUID_RE, "Invalid http_client_span_id"),
+          // The ENCLOSING span this event happened inside. An event is an instant,
+          // so unlike a span it never roots a trace: both fields are absent for an
+          // event recorded outside any span.
+          trace_id: yupString().optional().test("event-trace-id", `trace_id ${W3C_TRACE_ID_ERROR}`, (value) => value === undefined || isUsableW3cTraceId(value)),
+          span_id: yupString().optional().test("event-span-id", `span_id ${W3C_SPAN_ID_ERROR}`, (value) => value === undefined || isUsableW3cSpanId(value)),
+          // CORRELATION, not ancestry: which `$page-view` span this event happened
+          // on. Client tab state the server cannot derive, so it rides per-item (a
+          // batch can straddle a navigation). Untrusted label, same trust model as
+          // the segment id.
+          page_view_span_id: yupString().optional().test("event-page-view-span-id", `page_view_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value === undefined || isUsableW3cSpanId(value)),
           // `$log` items only: the human-readable message + log level.
           // Structured attributes ride in `data` like any other event.
           message: yupString().optional().test(
@@ -143,6 +164,12 @@ export const POST = createSmartRouteHandler({
           `Event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
           (event) => isPlainObjectWithinLimit(event.data),
         ).test(
+          // A lone trace_id or span_id cannot be joined to anything, so it is
+          // malformed rather than partially useful.
+          "event-span-identity-pairing",
+          "trace_id and span_id must be provided together",
+          (event) => (event.trace_id === undefined) === (event.span_id === undefined),
+        ).test(
           "log-fields",
           `message/level are required for ${LOG_EVENT_TYPE} events and forbidden for any other event type`,
           (event) => event.event_type === LOG_EVENT_TYPE
@@ -152,13 +179,16 @@ export const POST = createSmartRouteHandler({
       ).optional().max(MAX_EVENTS),
       spans: yupArray(
         yupObject({
-          span_id: yupString().defined().matches(UUID_RE, "Invalid span_id"),
-          // Custom names, the client-writable system autocapture types
-          // ($page-view, $away, …), or the server-SDK-minted system types
-          // ($lib-span — gated to server/admin auth by the request-level test
-          // below, since field-level schemas can't see auth.type). All other
-          // `$…` span types are backend-derived and can never be written
-          // through this endpoint.
+          // W3C identity, minted entirely by the SDK and stored verbatim.
+          trace_id: yupString().defined().test("span-trace-id", `trace_id ${W3C_TRACE_ID_ERROR}`, (value) => isUsableW3cTraceId(value)),
+          span_id: yupString().defined().test("span-span-id", `span_id ${W3C_SPAN_ID_ERROR}`, (value) => isUsableW3cSpanId(value)),
+          // null means this span IS the trace root — one of the root activities
+          // (a browser fetch, a page view, a bare withSpan, or a request that
+          // arrived with no traceparent).
+          parent_span_id: yupString().nullable().defined().test("span-parent-span-id", `parent_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value == null || isUsableW3cSpanId(value)),
+          // Custom operation names, client-writable system autocapture types,
+          // or the legacy server-SDK `$lib-span` type. New library spans put
+          // their actual operation here and carry their tracer in scope_name.
           span_type: yupString().defined().test(
             "span-type",
             `span_type must be one of ${[...CLIENT_SYSTEM_SPAN_TYPES, ...SERVER_SYSTEM_SPAN_TYPES].join(", ")} or a custom name matching ${CUSTOM_TELEMETRY_NAME_RE}`,
@@ -167,39 +197,44 @@ export const POST = createSmartRouteHandler({
           ),
           started_at_ms: yupNumber().defined().integer().min(0),
           ended_at_ms: yupNumber().nullable().defined().integer().min(0),
-          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).defined().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
           data: yupMixed().defined().test(
             "span-data",
             `Span data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
             (value) => isPlainObjectWithinLimit(value),
           ),
           updated_at_ms: yupNumber().defined().integer().min(0),
+          scope_name: yupString().optional().test(
+            "span-scope-name-size",
+            `scope_name must be a non-empty string of at most ${TELEMETRY_SCOPE_NAME_MAX_BYTES} UTF-8 bytes`,
+            (value) => value === undefined || (value !== "" && Buffer.byteLength(value, "utf8") <= TELEMETRY_SCOPE_NAME_MAX_BYTES),
+          ),
           // See the event-level page_view_span_id above.
-          page_view_span_id: yupString().optional().matches(UUID_RE, "Invalid page_view_span_id"),
-          // See the event-level http_client_span_id above.
-          http_client_span_id: yupString().optional().matches(UUID_RE, "Invalid http_client_span_id"),
+          page_view_span_id: yupString().optional().test("span-page-view-span-id", `page_view_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value === undefined || isUsableW3cSpanId(value)),
+          // Non-hierarchical references to other spans (see TrackOptions.links in
+          // the SDK). A link may point into ANOTHER trace — that is the point.
+          links: yupArray(
+            yupObject({
+              trace_id: yupString().defined().test("link-trace-id", `link trace_id ${W3C_TRACE_ID_ERROR}`, (value) => isUsableW3cTraceId(value)),
+              span_id: yupString().defined().test("link-span-id", `link span_id ${W3C_SPAN_ID_ERROR}`, (value) => isUsableW3cSpanId(value)),
+            }).defined(),
+          ).optional().max(MAX_SPAN_LINKS),
         }).defined().test(
           "span-interval",
           "ended_at_ms must be greater than or equal to started_at_ms",
           (span) => span.ended_at_ms == null || span.ended_at_ms >= span.started_at_ms,
         ).test(
-          "page-view-span-parent",
-          "A $page-view span must not carry page_view_span_id, http_client_span_id, or parent_span_ids, and a span must not name itself as its page_view_span_id",
-          // The parent_span_ids null check looks redundant (the field is
-          // declared defined), but yup runs object-level tests even when field
-          // validation is failing, so a span item missing parent_span_ids
-          // still reaches this test. Missing = compliant here; the field-level
-          // `defined()` error rejects the request either way.
-          (span) => (
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            span.span_type !== PAGE_VIEW_SPAN_TYPE || (span.page_view_span_id == null && span.http_client_span_id == null && (span.parent_span_ids == null || span.parent_span_ids.length === 0))
-          ) && (span.page_view_span_id == null || span.page_view_span_id !== span.span_id),
+          // A self-parent is a one-node cycle: the tree builder would either loop or
+          // have to silently drop the edge. Kept as its own test (rather than merged
+          // with the page-view check below) so the 400 names the offending field —
+          // a validation error that says "one of these two things" makes the caller
+          // guess which.
+          "span-self-parent",
+          "A span must not name itself as its parent_span_id",
+          (span) => span.parent_span_id == null || span.parent_span_id !== span.span_id,
         ).test(
-          "http-client-span-parent",
-          "A $http-client span must not carry http_client_span_id, and a span must not name itself as its http_client_span_id",
-          (span) => (
-            span.span_type !== HTTP_CLIENT_SPAN_TYPE || span.http_client_span_id == null
-          ) && (span.http_client_span_id == null || span.http_client_span_id !== span.span_id),
+          "span-self-page-view",
+          "A span must not name itself as its page_view_span_id",
+          (span) => span.page_view_span_id == null || span.page_view_span_id !== span.span_id,
         ),
       ).optional().max(MAX_SPANS),
     }).defined().test(
@@ -207,19 +242,22 @@ export const POST = createSmartRouteHandler({
       "A batch must contain at least one event or span",
       (body) => (body.events?.length ?? 0) + (body.spans?.length ?? 0) >= 1,
     ).test(
-      "single-parent-path",
-      "parent_span_ids must describe one ancestry path without duplicates or self-parenting",
-      // This cross-item test runs on the raw cast value even while item-level
-      // field validation is failing (yup runs a parent schema's tests
-      // regardless of child errors), so it must tolerate malformed items:
-      // anything not shaped well enough for the path check is skipped here and
-      // rejected by its own field-level errors instead.
+      // The only cross-item rule left: with a scalar parent there are no ancestry
+      // PATHS to cross-check, but two rows sharing a span id in one batch would
+      // silently collapse in the ReplacingMergeTree, losing one of them.
+      //
+      // This runs on the raw cast value even while item-level field validation is
+      // failing (yup runs a parent schema's tests regardless of child errors), so
+      // it tolerates malformed items: anything without a string span_id is skipped
+      // here and rejected by its own field-level error instead.
+      "unique-span-ids",
+      "Two spans in one batch must not share a span_id",
       (body) => {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        const spans = Array.isArray(body.spans) ? body.spans.filter((span) => span != null && typeof span.span_id === "string" && Array.isArray(span.parent_span_ids)) : [];
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        const events = Array.isArray(body.events) ? body.events.filter((event) => event != null && (event.parent_span_ids == null || Array.isArray(event.parent_span_ids))) : [];
-        return getBatchParentPathError(spans, events) === null;
+        const spanIds = (Array.isArray(body.spans) ? body.spans : [])
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the cast type claims non-null items, but yup runs this before item validation
+          .filter((span) => span != null && typeof span.span_id === "string")
+          .map((span) => span.span_id);
+        return new Set(spanIds).size === spanIds.length;
       },
     ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }).test(
@@ -262,8 +300,14 @@ export const POST = createSmartRouteHandler({
         (event) => event == null || typeof event.event_type !== "string" || canWriteTelemetrySignal(event.event_type, "event", origin),
       );
       const spansAllowed = !Array.isArray(req.body.spans) || req.body.spans.every(
+        // An instrumentation scope is server-only. Browsers may define custom
+        // span names, but cannot label them as trusted library instrumentation
+        // to bypass billing or customer-authored-span classification.
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        (span) => span == null || typeof span.span_type !== "string" || canWriteTelemetrySignal(span.span_type, "span", origin),
+        (span) => span == null
+          || typeof span.span_type !== "string"
+          || (canWriteTelemetrySignal(span.span_type, "span", origin)
+            && (span.scope_name === undefined || origin === "server")),
       );
       return eventsAllowed && spansAllowed;
     },
@@ -402,12 +446,22 @@ export const POST = createSmartRouteHandler({
       (event) => classifyTelemetrySignal(event.event_type, "event").billingItem === "analytics_events",
     ).length;
     const billableSpanCount = spans.filter(
-      (span) => classifyTelemetrySignal(span.span_type, "span").billingItem === "analytics_spans",
+      // Auto-instrumented library spans carry an authenticated server-only
+      // scope_name. Their operation-shaped span_type must not turn the same
+      // automatic work that `$lib-span` represented into billable custom spans.
+      (span) => span.scope_name === undefined
+        && classifyTelemetrySignal(span.span_type, "span").billingItem === "analytics_spans",
     ).length;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     let eventsBillingTeamIdForRefund: string | null = null;
     let spansBillingTeamIdForRefund: string | null = null;
-    if (billingTeamId != null && arePlanLimitsEnforced()) {
+    // The internal project is the platform's own observability sink, not a
+    // customer billing scope. Metering it would make telemetry ingestion
+    // depend on Bulldozer and create a startup failure loop: the backend emits
+    // a request span, its batch waits for the billing service, and a billing
+    // outage turns the telemetry batch itself into a 500. Customer projects
+    // continue through the normal fail-closed quota path below.
+    if (projectId !== "internal" && billingTeamId != null && arePlanLimitsEnforced()) {
       const debitResult = await tryDecreasePlanItemQuantities(billingTeamId, [
         { itemId: ITEM_IDS.analyticsEvents, quantity: billableEventCount },
         { itemId: ITEM_IDS.analyticsSpans, quantity: billableSpanCount },
@@ -445,6 +499,7 @@ export const POST = createSmartRouteHandler({
         sessionReplaySegmentId,
         serverNowMs: Date.now(),
       });
+      const spanLinkRows = buildBatchSpanLinkRows({ spans, projectId, branchId });
 
       // Each destination has its own stable deduplication token, so all
       // independent ClickHouse writes can run concurrently. A partial commit
@@ -460,10 +515,17 @@ export const POST = createSmartRouteHandler({
           sessionReplaySegmentId,
           runtime,
           resource,
+          // The authenticated SDK path is always an SDK producer. Metering is
+          // decided above; internal platform telemetry is explicitly unmetered.
+          producer: "sdk",
         }, body.batch_id),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),
+        // No dedup token: span_links is a ReplacingMergeTree keyed by the link's
+        // full identity, so a retried batch collapses on its own key rather than
+        // needing insert-level deduplication.
+        insertSpanLinks(clickhouseClient, spanLinkRows),
       ]);
     } catch (error) {
       await Promise.all([

@@ -1,110 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { SPAN_ID_PREFIXES, buildBatchSpanRows, buildEventSpanFields, getBatchParentPathError, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId, wireSpanIdPrefix } from "./spans";
+import { buildBatchSpanLinkRows, buildBatchSpanRows, clientUpdatedAtSpanVersion, getBatchDuplicateSpanIdError, insertSessionReplaySpans, insertSpanLinks, insertSpans, type BatchSpanWireItem } from "./spans";
+import type { ClickHouseClient } from "./clickhouse";
 
-describe("toSpanId", () => {
-  it("prefixes raw ids without touching the raw value", () => {
-    expect(toSpanId(SPAN_ID_PREFIXES.sessionReplay, "abc")).toBe("sri-abc");
-    expect(toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, "seg")).toBe("srsi-seg");
-    expect(toSpanId(SPAN_ID_PREFIXES.refreshToken, "rt1")).toBe("rti-rt1");
-  });
+// W3C ids: 32 hex for traces, 16 hex for spans. Written out literally rather than
+// generated so the assertions below read as identity pass-through — which is the
+// single most important property of this module now that the SDK owns identity.
+const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const TRACE_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const SPAN_ROOT = "1111111111111111";
+const SPAN_CHILD = "2222222222222222";
+const SPAN_PAGE_VIEW = "3333333333333333";
 
-  it("only accepts known prefixes (compile-time constraint)", () => {
-    // @ts-expect-error — arbitrary strings are not valid span id prefixes
-    toSpanId("xx-", "abc");
-    // @ts-expect-error — an already-prefixed value is not a valid prefix
-    toSpanId("sri-abc", "def");
-  });
-});
-
-describe("monotoneEndSpanVersion", () => {
-  it("is the span end as epoch ms, so later ends always win the ReplacingMergeTree", () => {
-    const earlier = new Date("2026-01-01T00:00:00.000Z");
-    const later = new Date("2026-01-01T00:05:00.000Z");
-    expect(monotoneEndSpanVersion(later)).toBeGreaterThan(monotoneEndSpanVersion(earlier));
-    expect(monotoneEndSpanVersion(earlier)).toBe(earlier.getTime());
-  });
-});
-
-describe("toSessionReplaySegmentSpanId", () => {
-  it("scopes the stable per-tab segment id to its replay", () => {
-    expect(toSessionReplaySegmentSpanId("replay-a", "same-tab")).toBe("srsi-replay-a:same-tab");
-    expect(toSessionReplaySegmentSpanId("replay-a", "same-tab")).not.toBe(
-      toSessionReplaySegmentSpanId("replay-b", "same-tab"),
-    );
-  });
-});
-
-describe("getBatchParentPathError", () => {
-  const makeSpan = (spanId: string, parentSpanIds: string[]) => ({
-    span_id: spanId,
-    span_type: "test",
-    started_at_ms: 1,
-    ended_at_ms: null,
-    parent_span_ids: parentSpanIds,
-    data: {},
-    updated_at_ms: 1,
-  });
-
-  it("accepts one path and rejects a flattened sibling as event ancestry", () => {
-    const root = makeSpan("root", []);
-    const left = makeSpan("left", ["root"]);
-    const right = makeSpan("right", ["root"]);
-
-    expect(getBatchParentPathError(
-      [root, left, right],
-      [{ parent_span_ids: ["root", "right"] }],
-    )).toBeNull();
-    expect(getBatchParentPathError(
-      [root, left, right],
-      [{ parent_span_ids: ["root", "left", "right"] }],
-    )).toMatch(/one ancestry path/);
-  });
-
-  it("rejects duplicates and span self-parenting without database reads", () => {
-    expect(getBatchParentPathError(
-      [makeSpan("self", ["self"])],
-      [],
-    )).toMatch(/must not include itself/);
-    expect(getBatchParentPathError(
-      [],
-      [{ parent_span_ids: ["same", "same"] }],
-    )).toMatch(/must not contain duplicates/);
-  });
-});
-
-describe("buildEventSpanFields", () => {
-  it("lists all known ancestors root-first: refresh-token, replay, segment", () => {
-    expect(buildEventSpanFields({ sessionReplayId: "s1", sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
-      parent_span_ids: ["rti-r1", "sri-s1", "srsi-s1:seg1"],
-    });
-  });
-
-  it("omits the segment parent when there is no replay to scope its identity", () => {
-    expect(buildEventSpanFields({ sessionReplayId: null, sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
-      parent_span_ids: ["rti-r1"],
-    });
-  });
-
-  it("includes refresh-token and replay when there is a replay but no segment", () => {
-    expect(buildEventSpanFields({ sessionReplayId: "s1", refreshTokenId: "r1" })).toEqual({
-      parent_span_ids: ["rti-r1", "sri-s1"],
-    });
-  });
-
-  it("emits an empty parent list when nothing is known", () => {
-    expect(buildEventSpanFields({})).toEqual({ parent_span_ids: [] });
+describe("clientUpdatedAtSpanVersion", () => {
+  it("clamps a client clock to [1, now + 5min] so a skewed clock cannot mask later updates forever", () => {
+    const nowMs = new Date("2026-01-01T00:10:00.000Z").getTime();
+    expect(clientUpdatedAtSpanVersion(nowMs - 1_000, nowMs)).toBe(nowMs - 1_000);
+    expect(clientUpdatedAtSpanVersion(0, nowMs)).toBe(1);
+    expect(clientUpdatedAtSpanVersion(nowMs + 60 * 60 * 1000, nowMs)).toBe(nowMs + 5 * 60 * 1000);
   });
 });
 
 describe("insertSessionReplaySpans", () => {
-  it("emits a replay span and a segment span in one insert with the right ids and parents", async () => {
-    const captured: any[] = [];
-    const client = {
-      insert: vi.fn(async (args: any) => {
-        captured.push(args);
-      }),
-    } as any;
-
+  it("materializes refresh-token -> replay -> segment using scalar W3C parents", async () => {
+    const insert = vi.fn(async () => {});
+    const client = { insert } as unknown as ClickHouseClient;
     const replayStartedAt = new Date("2026-01-01T00:00:00.000Z");
     const replayLastEventAt = new Date("2026-01-01T00:05:00.000Z");
     const segmentStartedAt = new Date("2026-01-01T00:01:00.000Z");
@@ -113,93 +32,60 @@ describe("insertSessionReplaySpans", () => {
     await insertSessionReplaySpans(client, {
       projectId: "p1",
       branchId: "b1",
-      replayId: "replay1",
-      sessionReplaySegmentId: "seg1",
+      replayId: "22222222-2222-4222-8222-222222222222",
+      sessionReplaySegmentId: "33333333-3333-4333-8333-333333333333",
       projectUserId: "user1",
-      refreshTokenId: "rt1",
+      refreshTokenId: "11111111-1111-4111-8111-111111111111",
       replayStartedAt,
       replayLastEventAt,
       segmentStartedAt,
       segmentLastEventAt,
-      resource: {
-        service: { namespace: "commerce", name: "storefront", version: "abc123", instanceId: "iad-1" },
-        deploymentEnvironmentName: "preview",
-        attributes: { region: "iad1" },
-      },
+      resource: { service: { name: "storefront" } },
     });
 
-    expect(client.insert).toHaveBeenCalledTimes(1);
-    expect(captured[0].table).toBe("analytics_internal.spans");
-    expect(captured[0].clickhouse_settings).toMatchObject({
-      async_insert: 1,
-      wait_for_async_insert: 1,
-    });
-    const rows = captured[0].values;
-    expect(rows).toHaveLength(2);
-
-    const [replaySpan, segmentSpan] = rows;
-
-    expect(replaySpan).toMatchObject({
-      trace_id: "rti-rt1",
-      span_id: "sri-replay1",
-      span_type: "$session-replay",
-      parent_span_ids: ["rti-rt1"],
-      project_id: "p1",
-      branch_id: "b1",
-      user_id: "user1",
-      refresh_token_id: "rt1",
-      session_replay_id: "replay1",
-      session_replay_segment_id: null,
-      service_namespace: "commerce",
-      service_name: "storefront",
-      service_version: "abc123",
-      service_instance_id: "iad-1",
-      deployment_environment_name: "preview",
-      resource_attributes: JSON.stringify({ region: "iad1" }),
-      // version is the span's own end (epoch ms) so the latest-end row wins in the
-      // ReplacingMergeTree regardless of insert order.
-      version: replayLastEventAt.getTime(),
-    });
-    expect(replaySpan.started_at).toBe(replayStartedAt);
-    expect(replaySpan.ended_at).toBe(replayLastEventAt);
-
-    expect(segmentSpan).toMatchObject({
-      trace_id: "rti-rt1",
-      span_id: "srsi-replay1:seg1",
-      span_type: "$session-replay-segment",
-      parent_span_ids: ["rti-rt1", "sri-replay1"],
-      session_replay_id: "replay1",
-      session_replay_segment_id: "seg1",
-      version: segmentLastEventAt.getTime(),
-    });
-    expect(segmentSpan.started_at).toBe(segmentStartedAt);
-    expect(segmentSpan.ended_at).toBe(segmentLastEventAt);
-  });
-
-  it("does not call insert when given an empty row list (insertSpans guard)", async () => {
-    const client = { insert: vi.fn() } as any;
-    const { insertSpans } = await import("./spans");
-    await insertSpans(client, []);
-    expect(client.insert).not.toHaveBeenCalled();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      table: "analytics_internal.spans",
+      values: [
+        expect.objectContaining({
+          trace_id: "11111111111141118111111111111111",
+          span_id: "8222222222222222",
+          parent_span_id: "8111111111111111",
+          span_type: "$session-replay",
+          session_replay_segment_id: null,
+          version: replayLastEventAt.getTime(),
+        }),
+        expect.objectContaining({
+          trace_id: "11111111111141118111111111111111",
+          span_id: "8333333333333333",
+          parent_span_id: "8222222222222222",
+          span_type: "$session-replay-segment",
+          session_replay_segment_id: "33333333-3333-4333-8333-333333333333",
+          version: segmentLastEventAt.getTime(),
+        }),
+      ],
+    }));
   });
 });
 
-describe("wireSpanIdPrefix", () => {
-  it("routes $page-view to pv-, other client system types to sas-, and custom names to cs-", () => {
-    expect(wireSpanIdPrefix("$page-view")).toBe("pv-");
-    expect(wireSpanIdPrefix("$away")).toBe("sas-");
-    expect(wireSpanIdPrefix("$offline")).toBe("sas-");
-    expect(wireSpanIdPrefix("checkout-flow")).toBe("cs-");
+describe("getBatchDuplicateSpanIdError", () => {
+  const span = (spanId: string): BatchSpanWireItem => ({
+    trace_id: TRACE_A,
+    span_id: spanId,
+    parent_span_id: null,
+    span_type: "checkout-flow",
+    started_at_ms: 1,
+    ended_at_ms: null,
+    data: {},
+    updated_at_ms: 1,
   });
 
-  it("routes $lib-span into the cs- namespace (wire parent chains are type-blind, so a dedicated prefix would break lib→lib parent linkage)", () => {
-    expect(wireSpanIdPrefix("$lib-span")).toBe("cs-");
+  it("accepts distinct span ids", () => {
+    expect(getBatchDuplicateSpanIdError([span(SPAN_ROOT), span(SPAN_CHILD)])).toBeNull();
   });
 
-  it("asserts on $ types that are not wire-writable (backend-derived or unknown)", () => {
-    expect(() => wireSpanIdPrefix("$session-replay")).toThrowError(/not a writable system span type/);
-    expect(() => wireSpanIdPrefix("$refresh-token")).toThrowError(/not a writable system span type/);
-    expect(() => wireSpanIdPrefix("$made-up")).toThrowError(/not a writable system span type/);
+  it("rejects two rows sharing a span id, which would silently collapse in the ReplacingMergeTree", () => {
+    expect(getBatchDuplicateSpanIdError([span(SPAN_ROOT), span(SPAN_ROOT)]))
+      .toBe(`Duplicate span_id "${SPAN_ROOT}" in one batch`);
   });
 });
 
@@ -219,86 +105,53 @@ describe("buildBatchSpanRows", () => {
     },
     serverNowMs: NOW_MS,
   };
-  const baseSpan = {
-    span_id: "0f000000-0000-4000-8000-000000000001",
+  const baseSpan: BatchSpanWireItem = {
+    trace_id: TRACE_A,
+    span_id: SPAN_ROOT,
+    parent_span_id: null,
     span_type: "checkout-flow",
     started_at_ms: NOW_MS - 60_000,
     ended_at_ms: null,
-    parent_span_ids: [] as string[],
     data: {},
     updated_at_ms: NOW_MS - 60_000,
   };
 
-  it("prefixes the span id and every client parent with cs- and prepends the full system ancestry root-first", () => {
+  it("stores W3C identity verbatim — no prefixing, no rewriting, no composed ancestry", () => {
+    // THE behavioural contract of this module. The previous model rewrote the span
+    // id with a kind prefix, derived a trace id from the session, and assembled a
+    // parent array server-side; a regression to any of that would silently break
+    // every cross-tier join, so assert pass-through explicitly.
     const rows = buildBatchSpanRows({
       ...baseOpts,
-      spans: [{
-        ...baseSpan,
-        parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa", "0f000000-0000-4000-8000-00000000bbbb"],
-      }],
+      spans: [{ ...baseSpan, span_id: SPAN_CHILD, parent_span_id: SPAN_ROOT }],
     });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].trace_id).toBe("rti-rt1");
-    expect(rows[0].span_id).toBe(`cs-${baseSpan.span_id}`);
-    expect(rows[0].parent_span_ids).toEqual([
-      "rti-rt1",
-      "sri-replay1",
-      "srsi-replay1:seg1",
-      "cs-0f000000-0000-4000-8000-00000000aaaa",
-      "cs-0f000000-0000-4000-8000-00000000bbbb",
-    ]);
-  });
-
-  it("degrades the system ancestry with the same gating as event rows (refresh-token only, then none)", () => {
-    const refreshTokenOnly = buildBatchSpanRows({
-      ...baseOpts,
-      sessionReplayId: null,
-      sessionReplaySegmentId: null,
-      spans: [baseSpan],
-    });
-    expect(refreshTokenOnly[0].parent_span_ids).toEqual(["rti-rt1"]);
-
-    const serverAuth = buildBatchSpanRows({
-      ...baseOpts,
-      userId: null,
-      refreshTokenId: null,
-      sessionReplayId: null,
-      sessionReplaySegmentId: null,
-      spans: [baseSpan],
-    });
-    expect(serverAuth[0].parent_span_ids).toEqual([]);
-    expect(serverAuth[0].user_id).toBeNull();
-    expect(serverAuth[0].refresh_token_id).toBeNull();
-  });
-
-  it("links nested $lib-span rows: a child's cs-prefixed parent reference matches the parent row's own span_id", () => {
-    // Server-auth shape (no session ancestry) — the only way $lib-span rows
-    // arrive in practice. The parent lib span ends AFTER the child, so the
-    // child's parent reference must resolve purely from the shared cs-
-    // namespace, never from batch-local type knowledge.
-    const parentLibSpanId = "0f000000-0000-4000-8000-00000000cccc";
-    const rows = buildBatchSpanRows({
-      ...baseOpts,
-      userId: null,
-      refreshTokenId: null,
-      sessionReplayId: null,
-      sessionReplaySegmentId: null,
-      spans: [
-        { ...baseSpan, span_id: parentLibSpanId, span_type: "$lib-span", ended_at_ms: NOW_MS - 1_000 },
-        { ...baseSpan, span_type: "$lib-span", ended_at_ms: NOW_MS - 2_000, parent_span_ids: [parentLibSpanId] },
-      ],
-    });
-    expect(rows[0].span_id).toBe(`cs-${parentLibSpanId}`);
-    expect(rows[1].span_id).toBe(`cs-${baseSpan.span_id}`);
-    expect(rows[1].parent_span_ids).toEqual([`cs-${parentLibSpanId}`]);
-    expect(rows[1].trace_id).toBe(`cs-${parentLibSpanId}`);
-    expect(rows[1].span_type).toBe("$lib-span");
-  });
-
-  it("keeps open intervals open and fills identity columns raw (unprefixed)", () => {
-    const rows = buildBatchSpanRows({ ...baseOpts, spans: [baseSpan] });
     expect(rows[0]).toMatchObject({
-      trace_id: "rti-rt1",
+      trace_id: TRACE_A,
+      span_id: SPAN_CHILD,
+      parent_span_id: SPAN_ROOT,
+    });
+  });
+
+  it("keeps a null parent as null, which is how the trace_roots view identifies trace roots", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, span_type: "$page-view" }],
+    });
+    expect(rows[0]).toMatchObject({
+      trace_id: TRACE_A,
+      parent_span_id: null,
+      refresh_token_id: "rt1",
+      session_replay_id: "replay1",
+      session_replay_segment_id: "seg1",
+    });
+  });
+
+  it("stamps session and page identity as scalar correlation columns, never as ancestry", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, page_view_span_id: SPAN_PAGE_VIEW }],
+    });
+    expect(rows[0]).toMatchObject({
       span_type: "checkout-flow",
       ended_at: null,
       project_id: "p1",
@@ -306,16 +159,41 @@ describe("buildBatchSpanRows", () => {
       user_id: "user1",
       team_id: null,
       refresh_token_id: "rt1",
+      session_replay_id: "replay1",
+      session_replay_segment_id: "seg1",
+      page_view_span_id: SPAN_PAGE_VIEW,
       service_namespace: "commerce",
       service_name: "storefront",
       service_version: "abc123",
       service_instance_id: "iad-1",
       deployment_environment_name: "preview",
       resource_attributes: JSON.stringify({ region: "iad1" }),
-      session_replay_id: "replay1",
-      session_replay_segment_id: "seg1",
     });
     expect(rows[0].started_at).toEqual(new Date(baseSpan.started_at_ms));
+    // Session identity must NOT have leaked into the hierarchy.
+    expect(rows[0].parent_span_id).toBeNull();
+    expect(rows[0].trace_id).toBe(TRACE_A);
+  });
+
+  it("leaves page correlation null when the client named no page view", () => {
+    const rows = buildBatchSpanRows({ ...baseOpts, spans: [baseSpan] });
+    expect(rows[0].page_view_span_id).toBeNull();
+  });
+
+  it("stores an authenticated library instrumentation scope separately from its operation name", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{
+        ...baseSpan,
+        span_type: "prisma:client:db_query",
+        scope_name: "prisma",
+      }],
+    });
+    expect(rows[0]).toMatchObject({
+      span_type: "prisma:client:db_query",
+      scope_name: "prisma",
+      scope_version: null,
+    });
   });
 
   it("uses the client updated_at_ms as the version, clamped to [1, now + 5min]", () => {
@@ -323,8 +201,8 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [
         { ...baseSpan, updated_at_ms: NOW_MS - 1_000 },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", updated_at_ms: 0 },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000003", updated_at_ms: NOW_MS + 60 * 60 * 1000 },
+        { ...baseSpan, span_id: SPAN_CHILD, updated_at_ms: 0 },
+        { ...baseSpan, span_id: SPAN_PAGE_VIEW, updated_at_ms: NOW_MS + 60 * 60 * 1000 },
       ],
     });
     expect(rows[0].version).toBe(NOW_MS - 1_000);
@@ -350,70 +228,110 @@ describe("buildBatchSpanRows", () => {
     expect(rows[0].version).toBe(endedAtMs);
   });
 
-  it("refuses non-client-writable $-prefixed span types even if a caller bypasses the route schema", () => {
-    expect(() => buildBatchSpanRows({
-      ...baseOpts,
-      spans: [{ ...baseSpan, span_type: "$session-replay" }],
-    })).toThrowError(/not a writable system span type/);
-  });
-
-  it("prefixes a $page-view span id with pv- and other system autocapture spans with sas-", () => {
-    const rows = buildBatchSpanRows({
-      ...baseOpts,
-      spans: [
-        { ...baseSpan, span_type: "$page-view" },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$away" },
-      ],
-    });
-    expect(rows[0].span_id).toBe(`pv-${baseSpan.span_id}`);
-    expect(rows[0].span_type).toBe("$page-view");
-    expect(rows[1].span_id).toBe("sas-0f000000-0000-4000-8000-000000000002");
-    expect(rows[1].span_type).toBe("$away");
-  });
-
   it("classifies HTTP autocapture as a client span without guessing kinds for other SDK spans", () => {
     const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [
         { ...baseSpan, span_type: "$http-client" },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$page-view" },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000003", span_type: "checkout-flow" },
+        { ...baseSpan, span_id: SPAN_CHILD, span_type: "$page-view" },
+        { ...baseSpan, span_id: SPAN_PAGE_VIEW, span_type: "checkout-flow" },
       ],
     });
-
     expect(rows.map((row) => row.kind)).toEqual(["client", "internal", "internal"]);
   });
 
-  it("inserts the pv- ancestor between the system ancestry and the custom chain", () => {
+  it("accepts a $page-view span as a trace root and a $http-client span with a parent", () => {
+    // Both are root ACTIVITIES, but only a page view is always unparented: a fetch
+    // issued inside a withSpan legitimately nests under that span, in the same
+    // trace. Neither shape is special-cased any more.
     const rows = buildBatchSpanRows({
       ...baseOpts,
-      spans: [{
-        ...baseSpan,
-        page_view_span_id: "0f000000-0000-4000-8000-00000000cccc",
-        parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"],
-      }],
+      spans: [
+        { ...baseSpan, span_type: "$page-view", parent_span_id: null },
+        { ...baseSpan, span_id: SPAN_CHILD, span_type: "$http-client", parent_span_id: SPAN_ROOT },
+      ],
     });
-    expect(rows[0].parent_span_ids).toEqual([
-      "rti-rt1",
-      "sri-replay1",
-      "srsi-replay1:seg1",
-      "pv-0f000000-0000-4000-8000-00000000cccc",
-      "cs-0f000000-0000-4000-8000-00000000aaaa",
+    expect(rows[0].parent_span_id).toBeNull();
+    expect(rows[1].parent_span_id).toBe(SPAN_ROOT);
+  });
+
+  it("refuses a span that names itself as its own parent or its own page view", () => {
+    // The route schema rejects both; these asserts keep the invariant for any
+    // future non-route caller. A self-parent is a one-node cycle that the
+    // dashboard's cycle-cut logic would then have to absorb, and a page view that
+    // happened "on itself" is meaningless.
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, parent_span_id: baseSpan.span_id }],
+    })).toThrowError(/must not name itself as its parent_span_id/);
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, page_view_span_id: baseSpan.span_id }],
+    })).toThrowError(/must not name itself as its page_view_span_id/);
+  });
+
+  it("refuses a batch with duplicate span ids", () => {
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [baseSpan, { ...baseSpan, span_type: "other" }],
+    })).toThrowError(/Duplicate span_id/);
+  });
+});
+
+describe("buildBatchSpanLinkRows", () => {
+  const baseSpan: BatchSpanWireItem = {
+    trace_id: TRACE_A,
+    span_id: SPAN_ROOT,
+    parent_span_id: null,
+    span_type: "consume-job",
+    started_at_ms: 1,
+    ended_at_ms: 2,
+    data: {},
+    updated_at_ms: 2,
+  };
+
+  it("keys each link by the OWNER's trace, so a cross-trace link stays visible from the trace that declared it", () => {
+    const rows = buildBatchSpanLinkRows({
+      projectId: "p1",
+      branchId: "b1",
+      spans: [{ ...baseSpan, links: [{ trace_id: TRACE_B, span_id: SPAN_CHILD }] }],
+    });
+    expect(rows).toEqual([{
+      project_id: "p1",
+      branch_id: "b1",
+      trace_id: TRACE_A,
+      owner_span_id: SPAN_ROOT,
+      linked_trace_id: TRACE_B,
+      linked_span_id: SPAN_CHILD,
+    }]);
+  });
+
+  it("flattens links across every span in the batch", () => {
+    const rows = buildBatchSpanLinkRows({
+      projectId: "p1",
+      branchId: "b1",
+      spans: [
+        { ...baseSpan, links: [{ trace_id: TRACE_B, span_id: SPAN_CHILD }] },
+        { ...baseSpan, span_id: SPAN_CHILD, links: [{ trace_id: TRACE_A, span_id: SPAN_ROOT }] },
+      ],
+    });
+    expect(rows.map((row) => [row.owner_span_id, row.linked_span_id])).toEqual([
+      [SPAN_ROOT, SPAN_CHILD],
+      [SPAN_CHILD, SPAN_ROOT],
     ]);
   });
 
-  it("refuses a $page-view span that carries page or custom ancestry, and a span naming itself as its page", () => {
-    expect(() => buildBatchSpanRows({
-      ...baseOpts,
-      spans: [{ ...baseSpan, span_type: "$page-view", page_view_span_id: "0f000000-0000-4000-8000-00000000cccc" }],
-    })).toThrowError(/must not itself carry page_view_span_id, http_client_span_id, or parent_span_ids/);
-    expect(() => buildBatchSpanRows({
-      ...baseOpts,
-      spans: [{ ...baseSpan, span_type: "$page-view", parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"] }],
-    })).toThrowError(/must not itself carry page_view_span_id, http_client_span_id, or parent_span_ids/);
-    expect(() => buildBatchSpanRows({
-      ...baseOpts,
-      spans: [{ ...baseSpan, span_type: "$away", page_view_span_id: baseSpan.span_id }],
-    })).toThrowError(/must not name itself/);
+  it("emits nothing for spans without links", () => {
+    expect(buildBatchSpanLinkRows({ projectId: "p1", branchId: "b1", spans: [baseSpan] })).toEqual([]);
+  });
+});
+
+describe("insert guards", () => {
+  it("does not call insert when given an empty row list", async () => {
+    const insert = vi.fn(async () => {});
+    const client = { insert } as unknown as ClickHouseClient;
+    await insertSpans(client, []);
+    await insertSpanLinks(client, []);
+    expect(insert).not.toHaveBeenCalled();
   });
 });

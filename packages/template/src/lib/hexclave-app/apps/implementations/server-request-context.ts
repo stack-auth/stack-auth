@@ -1,11 +1,15 @@
+import { loadAsyncLocalStorage, type AsyncLocalStorageLike } from "@hexclave/shared/dist/utils/async-local-storage";
+import type { SpanContext } from "./telemetry-core";
+
 /**
  * Ambient server request context for `withSpan({ request })` / `trackEvent({ request })`.
  *
  * Resolved ONCE from an incoming request — the caller's refresh token + user
- * (server-trusted, from the session) and the client-propagated session-replay
- * context (untrusted labels, from the `x-hexclave-span-context` header) — then made
+ * (server-trusted, from the session), the incoming W3C `traceparent` (which trace
+ * this request belongs to), and the client-propagated correlation context
+ * (untrusted labels, from the `x-hexclave-span-context` header) — then made
  * ambient for the duration of the callback so every span/event created inside,
- * including bare `serverApp.trackEvent(...)` calls, links to the same client
+ * including bare `serverApp.trackEvent(...)` calls, joins the same trace and
  * session without threading the context by hand.
  *
  * AsyncLocalStorage-backed (see span-context.ts for the same rationale) so
@@ -14,22 +18,24 @@
  * expose ambient request context rather than risking cross-request attribution.
  */
 
-/** The resolved, prefix-free context. Ids are raw uuids; the backend applies `rti-`/`sri-`/`srsi-`/`pv-`/`cs-`. */
+/** The resolved request context. */
 export type ServerRequestSpanContext = {
   userId: string | null,
   refreshTokenId: string | null,
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
-  // The caller's current $page-view span (from the propagation header) —
-  // untrusted label, stamped per-item so backend telemetry nests under the
-  // page the user was on when they triggered this request.
+  // CORRELATION: the caller's current $page-view span (from the propagation
+  // header) — an untrusted label, stamped per-item so backend telemetry reports
+  // which page the user was on when they triggered this request.
   pageViewSpanId: string | null,
-  // The `$http-client` span the caller's SDK opened for THIS request (from the
-  // propagation header) — the cross-tier bridge node. Untrusted label. Emitted
-  // per-item only when the fetch is the item's nearest known ancestor; see
-  // httpClientSpanIdForServerItem in server-app-impl.
-  httpClientSpanId: string | null,
-  customParentSpanIds: string[],
+  /**
+   * HIERARCHY: the span named by the incoming `traceparent` — normally the
+   * caller's `$http-client` fetch. This is the OUTERMOST ambient parent for
+   * everything the request does, which is what puts the client fetch and the
+   * backend work it triggered in ONE trace. Null when the request arrived with no
+   * usable traceparent, in which case the request itself roots a new trace.
+   */
+  incomingParent: SpanContext | null,
 };
 
 /**
@@ -51,37 +57,11 @@ export function withExplicitServerUser(
     sessionReplayId: null,
     sessionReplaySegmentId: null,
     pageViewSpanId: null,
-    httpClientSpanId: null,
-    customParentSpanIds: [],
+    incomingParent: null,
   };
 }
 
-type AsyncLocalStorageLike = {
-  run: <T>(store: ServerRequestSpanContext, fn: () => T) => T,
-  getStore: () => ServerRequestSpanContext | undefined,
-};
-
-let als: AsyncLocalStorageLike | null = null;
-let alsInitPromise: Promise<void> | null = null;
-
-async function ensureAsyncContext(): Promise<void> {
-  if (alsInitPromise) return await alsInitPromise;
-  alsInitPromise = (async () => {
-    try {
-      // Opaque specifier so bundlers leave this as a runtime dynamic import — it
-      // simply rejects in the browser and resolves to the built-in everywhere
-      // node-like. Mirrors span-context.ts.
-      const specifier = "node:async_hooks";
-      const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as { AsyncLocalStorage?: new () => AsyncLocalStorageLike };
-      if (typeof mod.AsyncLocalStorage === "function") {
-        als = new mod.AsyncLocalStorage();
-      }
-    } catch {
-      als = null;
-    }
-  })();
-  return await alsInitPromise;
-}
+let als: AsyncLocalStorageLike<ServerRequestSpanContext> | null = null;
 
 /** The ambient request context, or null when not inside a `{ request }` scope. */
 export function getServerRequestContext(): ServerRequestSpanContext | null {
@@ -91,9 +71,12 @@ export function getServerRequestContext(): ServerRequestSpanContext | null {
 /** Runs `fn` with `context` ambient. Awaits the ALS load first so the very first
  * call gets per-request isolation rather than racing the module load. */
 export async function runWithServerRequestContext<T>(context: ServerRequestSpanContext, fn: () => Promise<T>): Promise<T> {
-  await ensureAsyncContext();
+  als ??= await loadAsyncLocalStorage<ServerRequestSpanContext>("server-request-context");
   if (als) {
     return await als.run(context, fn);
   }
+  // Fails closed: with no exact async-context primitive we expose NO ambient
+  // request context rather than risk attributing one request's telemetry to
+  // another's session.
   return await fn();
 }

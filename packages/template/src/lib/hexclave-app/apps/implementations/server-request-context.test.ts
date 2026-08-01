@@ -9,9 +9,17 @@ const requestContext: ServerRequestSpanContext = {
   refreshTokenId: "33333333-3333-4333-8333-333333333333",
   sessionReplayId: "44444444-4444-4444-8444-444444444444",
   sessionReplaySegmentId: "segment-a",
-  pageViewSpanId: "66666666-6666-4666-8666-666666666666",
-  httpClientSpanId: "77777777-7777-4777-8777-777777777777",
-  customParentSpanIds: ["55555555-5555-4555-8555-555555555555"],
+  pageViewSpanId: "6666666666666666",
+  incomingParent: { traceId: "77777777777777777777777777777777", spanId: "7777777777777777" },
+};
+
+const detached: ServerRequestSpanContext = {
+  userId: OTHER_USER,
+  refreshTokenId: null,
+  sessionReplayId: null,
+  sessionReplaySegmentId: null,
+  pageViewSpanId: null,
+  incomingParent: null,
 };
 
 describe("withExplicitServerUser", () => {
@@ -20,27 +28,14 @@ describe("withExplicitServerUser", () => {
     expect(withExplicitServerUser(requestContext, REQUEST_USER)).toEqual(requestContext);
   });
 
-  it("detaches all request ancestry (incl. the http-client bridge span) when an explicit user differs", () => {
-    expect(withExplicitServerUser(requestContext, OTHER_USER)).toEqual({
-      userId: OTHER_USER,
-      refreshTokenId: null,
-      sessionReplayId: null,
-      sessionReplaySegmentId: null,
-      pageViewSpanId: null,
-      httpClientSpanId: null,
-      customParentSpanIds: [],
-    });
+  it("detaches the incoming trace parent and every session id when an explicit user differs", () => {
+    // Dropping `incomingParent` is the load-bearing part: keeping it would nest
+    // this user's telemetry inside the OTHER user's trace, which is exactly the
+    // mixed-identity leak this function exists to prevent.
+    expect(withExplicitServerUser(requestContext, OTHER_USER)).toEqual(detached);
   });
 
   it("does not attach an explicitly attributed user to anonymous request ancestry", () => {
-    expect(withExplicitServerUser({ ...requestContext, userId: null }, OTHER_USER)).toEqual({
-      userId: OTHER_USER,
-      refreshTokenId: null,
-      sessionReplayId: null,
-      sessionReplaySegmentId: null,
-      pageViewSpanId: null,
-      httpClientSpanId: null,
-      customParentSpanIds: [],
-    });
+    expect(withExplicitServerUser({ ...requestContext, userId: null }, OTHER_USER)).toEqual(detached);
   });
 });
