@@ -32,6 +32,12 @@ const DELTA_WARNING_THRESHOLD_SECONDS = 30;
 /** Consider an email stuck in rendering/sending if it started more than this many ms ago. */
 const STUCK_EMAIL_TIMEOUT_MS = 20 * 60 * 1000;
 
+/** How many emails a tenancy may send within BURST_SEND_WINDOW_MINUTES regardless of its capacity rate. */
+const BURST_SEND_LIMIT = 10;
+
+/** The sliding window over which BURST_SEND_LIMIT is counted. */
+const BURST_SEND_WINDOW_MINUTES = 10;
+
 const calculateRetryBackoffMs = (attemptCount: number): number => {
   return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
 };
@@ -204,6 +210,7 @@ async function failEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWher
 }
 
 export const _forTesting = {
+  claimEmailsForSending,
   failEmailsStuckInSending,
   STUCK_EMAIL_TIMEOUT_MS,
   updateLastExecutionTime,
@@ -560,7 +567,6 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
       ]);
       const capacity = calculateCapacityRate(stats, boostExpiresAt);
       const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
-      if (quota <= 0) continue;
       const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
       if (rows.length === 0) continue;
       plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
@@ -579,7 +585,14 @@ function stochasticQuota(value: number): number {
 }
 
 async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: string, limit: number): Promise<EmailOutbox[]> {
-  // Claim queued emails for sending
+  // Claim queued emails for sending, at least `limit` of them (the tenancy's capacity rate for this
+  // step) but always enough to stay at BURST_SEND_LIMIT claims within the burst window. Without the
+  // burst, a tenancy at the default capacity of 200 emails/hour would wait ~18s on average before its
+  // first email leaves the queue, which is far too slow for things like sign-in codes; letting small
+  // senders briefly exceed their nominal hourly capacity is a deliberate trade for that latency.
+  // The burst is counted over claims (`startedSendingAt`) rather than completed sends so that a claim
+  // by a concurrent, unsynchronized worker counts against the window as soon as it commits, and it is
+  // computed inside the claiming statement itself so the two cannot drift apart.
   // Note: queueReadyEmails() handles the time-based logic, so we just look for isQueued = TRUE
   return await tx.$queryRaw<EmailOutbox[]>(Prisma.sql`
     WITH selected AS (
@@ -593,7 +606,18 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
         AND "startedSendingAt" IS NULL
         AND "isQueued" = TRUE
       ORDER BY "priority" DESC, "scheduledAt" ASC, "createdAt" ASC
-      LIMIT ${limit}
+      LIMIT GREATEST(
+        ${limit}::bigint,
+        GREATEST(
+          0::bigint,
+          ${BURST_SEND_LIMIT}::bigint - (
+            SELECT COUNT(*)
+            FROM "EmailOutbox" AS recent
+            WHERE recent."tenancyId" = ${tenancyId}::uuid
+              AND recent."startedSendingAt" >= NOW() - make_interval(mins => ${BURST_SEND_WINDOW_MINUTES}::int)
+          )
+        )
+      )
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e

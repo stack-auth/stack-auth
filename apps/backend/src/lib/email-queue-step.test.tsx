@@ -1,10 +1,10 @@
 import { EmailOutboxCreatedWith } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { _forTesting } from "./email-queue-step";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
-const { failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS, updateLastExecutionTime } = _forTesting;
+const { claimEmailsForSending, failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS, updateLastExecutionTime } = _forTesting;
 
 describe.sequential("updateLastExecutionTime", () => {
   const metadataKeys: string[] = [];
@@ -153,5 +153,72 @@ describe.sequential("failEmailsStuckInSending", () => {
     expect(after.nextSendRetryAt).toBeNull();
     expect(after.isQueued).toBe(true); // unchanged: we do not unclaim stuck rows
     expect(after.status).toBe("SERVER_ERROR");
+  });
+});
+
+describe.sequential("claimEmailsForSending burst allowance", () => {
+  const testRunTag = `claim-send-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const testFilter = { tsxSource: `/* ${testRunTag} */` };
+
+  const makeRow = async (startedSendingAt: Date | null) => {
+    const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+    return await globalPrismaClient.emailOutbox.create({
+      data: {
+        tenancyId: tenancy.id,
+        tsxSource: testFilter.tsxSource,
+        themeId: null,
+        isHighPriority: false,
+        to: { type: "custom-emails", emails: ["claim-test@example.com"] },
+        extraRenderVariables: {},
+        shouldSkipDeliverabilityCheck: true,
+        createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+        scheduledAt: new Date(0),
+        isQueued: true,
+        renderedByWorkerId: "00000000-0000-0000-0000-000000000000",
+        startedRenderingAt: new Date(0),
+        finishedRenderingAt: new Date(0),
+        renderedHtml: "<p>claim</p>",
+        renderedText: "claim",
+        renderedSubject: "claim",
+        renderedIsTransactional: false,
+        startedSendingAt,
+      },
+    });
+  };
+
+  afterEach(async () => {
+    await globalPrismaClient.emailOutbox.deleteMany({ where: testFilter });
+  });
+
+  it("claims up to the burst limit when the rate quota is zero", async () => {
+    const rows = await Promise.all(Array.from({ length: 10 }, () => makeRow(null)));
+    const claimed = await claimEmailsForSending(globalPrismaClient, rows[0].tenancyId, 0);
+
+    expect(claimed).toHaveLength(10);
+  });
+
+  it("does not claim more after the burst limit has been reached", async () => {
+    const rows = await Promise.all(Array.from({ length: 11 }, () => makeRow(null)));
+    const firstClaim = await claimEmailsForSending(globalPrismaClient, rows[0].tenancyId, 0);
+    const secondClaim = await claimEmailsForSending(globalPrismaClient, rows[0].tenancyId, 0);
+
+    expect(firstClaim).toHaveLength(10);
+    expect(secondClaim).toHaveLength(0);
+  });
+
+  it("does not count claims older than the burst window", async () => {
+    const oldRows = await Promise.all(Array.from({ length: 10 }, () => makeRow(new Date(Date.now() - 11 * 60 * 1000))));
+    const pendingRows = await Promise.all(Array.from({ length: 3 }, () => makeRow(null)));
+    const claimed = await claimEmailsForSending(globalPrismaClient, pendingRows[0].tenancyId, 0);
+
+    expect(claimed).toHaveLength(3);
+    expect(oldRows).toHaveLength(10);
+  });
+
+  it("uses the rate quota when it exceeds the burst allowance", async () => {
+    const rows = await Promise.all(Array.from({ length: 12 }, () => makeRow(null)));
+    const claimed = await claimEmailsForSending(globalPrismaClient, rows[0].tenancyId, 12);
+
+    expect(claimed).toHaveLength(12);
   });
 });
