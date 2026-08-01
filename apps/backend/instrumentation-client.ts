@@ -7,6 +7,8 @@ import { getBrowserCompatibilityReport } from "@hexclave/shared/dist/utils/brows
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
 
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+
 Sentry.init({
   ...sentryBaseConfig,
 

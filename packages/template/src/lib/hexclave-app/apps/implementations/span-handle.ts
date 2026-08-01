@@ -1,6 +1,6 @@
 import { runWithSpanFrame } from "./span-context";
-import { assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
-import { generateUuid } from "./telemetry-transport";
+import { generateW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, resolveEndedAtMs, resolveSpanParent, withSpanImpl, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 
 /**
  * The shared span lifecycle state machine. Every span handle in the SDK —
@@ -18,11 +18,15 @@ import { generateUuid } from "./telemetry-transport";
  * couple this module to every environment's buffering and policy details.
  */
 export type SpanCoreOptions = {
+  traceId: string,
   spanId: string,
   spanType: string,
   startedAtMs: number,
-  parentSpanIds: readonly string[],
-  /** null = the row carries no page ancestry (frozen at creation, like the chain). */
+  /** null = this span IS the trace root (frozen at creation, like the trace id). */
+  parentSpanId: string | null,
+  /** Non-hierarchical references, frozen at creation. */
+  links?: readonly SpanContext[],
+  /** null = the row carries no page correlation (frozen at creation). */
   pageViewSpanId: string | null,
   initialData: Record<string, unknown>,
   /**
@@ -49,6 +53,7 @@ export type SpanCoreOptions = {
 };
 
 export type SpanCore = {
+  readonly traceId: string,
   readonly spanId: string,
   readonly spanType: string,
   isEnded: () => boolean,
@@ -56,7 +61,7 @@ export type SpanCore = {
   markInert: () => void,
   setData: (data: Record<string, unknown>) => Promise<void>,
   end: (endedAtMs: number | undefined) => Promise<void>,
-  ref: () => SpanRef,
+  spanContext: () => SpanContext,
 };
 
 export function createSpanCore(opts: SpanCoreOptions): SpanCore {
@@ -73,14 +78,16 @@ export function createSpanCore(opts: SpanCoreOptions): SpanCore {
   const enqueue = (endedAtMs: number | null): Promise<void> => {
     if (inert || opts.isSuppressed?.() === true) return Promise.resolve();
     return opts.enqueueRow({
+      trace_id: opts.traceId,
       span_id: opts.spanId,
+      parent_span_id: opts.parentSpanId,
       span_type: opts.spanType,
       started_at_ms: opts.startedAtMs,
       ended_at_ms: endedAtMs,
-      parent_span_ids: [...opts.parentSpanIds],
       data: { ...accumulatedData },
       updated_at_ms: nextVersion(),
       ...opts.pageViewSpanId !== null ? { page_view_span_id: opts.pageViewSpanId } : {},
+      ...opts.links !== undefined && opts.links.length > 0 ? { links: opts.links.map((link) => ({ trace_id: link.traceId, span_id: link.spanId })) } : {},
     });
   };
 
@@ -89,6 +96,7 @@ export function createSpanCore(opts: SpanCoreOptions): SpanCore {
   enqueue(null).catch(() => {});
 
   return {
+    traceId: opts.traceId,
     spanId: opts.spanId,
     spanType: opts.spanType,
     isEnded: () => ended,
@@ -113,19 +121,19 @@ export function createSpanCore(opts: SpanCoreOptions): SpanCore {
       endPromise = enqueue(resolvedEndedAtMs);
       return endPromise;
     },
-    ref: () => ({ spanId: opts.spanId, parentSpanIds: [...opts.parentSpanIds] }),
+    spanContext: () => ({ traceId: opts.traceId, spanId: opts.spanId }),
   };
 }
 
 /**
  * The environment-specific capabilities of a public Span handle. Everything
  * else about the handle (versioning, data accumulation, ended semantics,
- * withSpan/run/ref) is identical across environments and owned by
+ * withSpan/run/spanContext) is identical across environments and owned by
  * createSpanHandle; these four differ per site:
  *
- * - `trackEvent` / `startChildSpan` receive options that ALREADY carry this
- *   span appended to parentIds; they only need to route to the environment's
- *   tracker (browser buffer, server-key buffer, pre-load queue).
+ * - `trackEvent` / `startChildSpan` receive options whose `parent` is ALREADY
+ *   pinned to this span; they only need to route to the environment's tracker
+ *   (browser buffer, server-key buffer, pre-load queue).
  * - `getSpanPropagationHeaders` / `fetch` build the cross-tier header from
  *   environment state (segment identity, origin policy).
  */
@@ -148,15 +156,21 @@ export type SpanHandle = {
 
 /**
  * Builds a public Span handle on top of the shared state machine. The handle
- * appends itself to parentIds for trackEvent/startSpan/withSpan (the frozen
- * chain is identity, not state — see the startSpan call sites), and implements
- * run() via the ambient span-frame primitive.
+ * pins ITSELF as the parent for trackEvent/startSpan/withSpan — handle-based
+ * nesting is exact in every environment and under any concurrency, unlike
+ * ambient context — and implements run() via the ambient span-frame primitive.
+ *
+ * Pinning OVERRIDES a caller-supplied `parent`: `span.startSpan(...)` means "a
+ * child of THIS span" by construction, so honouring a different parent would
+ * make the method name lie. Callers who want another parent use the app-level
+ * `startSpan({ parent })` instead.
  */
 export function createSpanHandle(opts: SpanHandleOptions): SpanHandle {
   const { capabilities, ...coreOptions } = opts;
   const core = createSpanCore(coreOptions);
 
   const span: Span = {
+    traceId: core.traceId,
     spanId: core.spanId,
     spanType: core.spanType,
     get isEnded() {
@@ -165,15 +179,15 @@ export function createSpanHandle(opts: SpanHandleOptions): SpanHandle {
     setData: (data: Record<string, unknown>) => core.setData(data),
     end: (endOptions?: { endedAtMs?: number }) => core.end(endOptions?.endedAtMs),
     trackEvent: (eventType: string, data?: Record<string, unknown>, trackOptions?: TrackOptions) =>
-      capabilities.trackEvent(eventType, data, { ...trackOptions, parentIds: [...trackOptions?.parentIds ?? [], span] }),
+      capabilities.trackEvent(eventType, data, { ...trackOptions, parent: span }),
     startSpan: (childType: string, childOptions?: StartSpanOptions) =>
-      capabilities.startChildSpan(childType, { ...childOptions, parentIds: [...childOptions?.parentIds ?? [], span] }),
+      capabilities.startChildSpan(childType, { ...childOptions, parent: span }),
     withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
       withSpanImpl((type, options) => span.startSpan(type, options), childType, optionsOrFn, maybeFn),
-    run: <T,>(fn: () => T) => runWithSpanFrame(span.ref(), fn),
+    run: <T,>(fn: () => T) => runWithSpanFrame(span.spanContext(), fn),
     getSpanPropagationHeaders: () => capabilities.getSpanPropagationHeaders(span),
     fetch: (input: RequestInfo | URL, init?: RequestInit) => capabilities.fetch(span, input, init),
-    ref: () => core.ref(),
+    spanContext: () => core.spanContext(),
   };
 
   return { span, markInert: core.markInert };
@@ -186,14 +200,16 @@ export function createSpanHandle(opts: SpanHandleOptions): SpanHandle {
  * environment around every span call, so instead of throwing we hand back a
  * handle with the full state machine (invalid USAGE still fails loudly:
  * malformed data, endedAtMs before start, setData after end) whose lifecycle
- * operations resolve immediately and never emit a row. ref() returns the id
- * the span would have had, so serialized refs stay structurally valid.
+ * operations resolve immediately and never emit a row. spanContext() returns the
+ * identity the span would have had, so serialized contexts stay structurally
+ * valid (and a real span in a later environment can still link to them).
  */
 export function createInertSpanHandle(opts: {
+  traceId: string,
   spanId: string,
   spanType: string,
   startedAtMs: number,
-  parentSpanIds: readonly string[],
+  parentSpanId: string | null,
   initialData: Record<string, unknown>,
 }): Span {
   const { span } = createSpanHandle({
@@ -212,15 +228,16 @@ export function createInertSpanHandle(opts: {
         // Children still validate like real spans — inertness covers only
         // environment unavailability, never invalid input.
         assertValidSpanStartInput(childType, childOptions);
-        const resolved = resolveParentIds({ explicit: childOptions.parentIds, ambient: [], root: childOptions.root, exclude: childOptions.excludeParentIds });
+        const resolved = resolveSpanParent({ explicit: childOptions.parent, ambient: [], links: childOptions.links, root: childOptions.root });
         if ("error" in resolved) {
           throw new Error(`Hexclave analytics: ${resolved.error}`);
         }
         return createInertSpanHandle({
-          spanId: generateUuid(),
+          traceId: resolved.traceId,
+          spanId: generateW3cSpanId(),
           spanType: childType,
           startedAtMs: childOptions.startedAtMs ?? Date.now(),
-          parentSpanIds: resolved.ids,
+          parentSpanId: resolved.parentSpanId,
           initialData: { ...childOptions.data ?? {} },
         });
       },

@@ -1,13 +1,10 @@
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, TELEMETRY_UUID_RE } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, generateW3cTraceId, isW3cSpanId, isW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import { runWithSpanContext } from "./span-context";
-// Runtime-safe: span-propagation only imports TYPES from this package's
-// telemetry modules, so this value import cannot create a runtime cycle.
-import { mergeParentSpanPath, type ParentSpanPathPart } from "./span-propagation";
 
 /**
  * Environment-independent core of the custom telemetry API: the public types
- * (Span & friends), input validation, parent-path resolution, and the shared
+ * (Span & friends), input validation, parent resolution, and the shared
  * withSpan() driver. Split out of event-tracker.ts so environments that never
  * ship the browser tracker (server bundles) — and browser bundles BEFORE the
  * lazily-loaded tracker module arrives — can validate input and build span
@@ -15,56 +12,44 @@ import { mergeParentSpanPath, type ParentSpanPathPart } from "./span-propagation
  * re-exports everything here for compatibility.
  */
 
-// Raw parent ids that fail this locally would 400 the entire batch
-// server-side, so they must never enter the buffer. Hoisted to shared so the
-// tracker, header codec, server buffer, and batch route validate identically.
-const UUID_RE = TELEMETRY_UUID_RE;
-
 /**
- * Serializable form of a span's identity + full custom ancestor chain. Survives
- * JSON boundaries (page props, headers), so a span started on one tier can be
- * continued as a parent on another with full ancestry — unlike a bare uuid
- * string, which contributes only itself.
+ * A span's W3C identity: the trace it belongs to plus its own span id. This is
+ * the ONE currency of span identity across every tier and boundary — it survives
+ * JSON (page props, headers), and unlike a bare span id it is globally
+ * meaningful, because a span id only identifies a span WITHIN its trace.
  */
-export type SpanRef = {
+export type SpanContext = {
+  traceId: string,
   spanId: string,
-  parentSpanIds: string[],
 };
 
-/**
- * Anything accepted as a parent: a raw span uuid (contributes only itself — its
- * ancestors are unknowable), a serialized SpanRef, or a live Span handle (both
- * contribute their full ancestor chain plus themselves).
- */
-export type ParentRef = string | SpanRef | Span;
+/** Anything accepted as a parent: a serialized SpanContext or a live Span handle. */
+export type ParentRef = SpanContext | Span;
 
 export type TrackOptions = {
-  parentIds?: ParentRef[],
   /**
-   * Drop ALL ambient parents (global spans + enclosing withSpan context); only
-   * explicit parentIds apply. This is the opt-out for ambient parenting.
+   * The span this item belongs under. Overrides ambient context entirely — a
+   * span has exactly one parent, so an explicit one is never merged with the
+   * enclosing scope.
+   */
+  parent?: ParentRef,
+  /**
+   * Start a NEW trace: ignore ambient context (global spans + the enclosing
+   * withSpan scope) so this item becomes a trace root. Combined with an explicit
+   * `parent`, the parent still wins — `root` only drops the AMBIENT parent.
    */
   root?: boolean,
   /**
-   * Drop specific parent span ids from the FINAL merged parent list, after both
-   * ambient parents and explicit `parentIds` have been expanded. This can remove
-   * an explicit parent too; e.g. `{ parentIds: [span], excludeParentIds: [span] }`
-   * produces no parent for `span`. An excluded span stays excluded even when it
-   * re-enters via a kept child's frozen chain, which means "descendants of the
-   * excluded span" queries will not match this item (by design; that is the
-   * literal meaning of the option, not a dedupe bug).
+   * Non-hierarchical references to other spans: causally related work that is
+   * not this item's parent (e.g. a second ambient span from an unrelated flow,
+   * or the producer of a queued message). Stored in `analytics_internal.span_links`.
    */
-  excludeParentIds?: ParentRef[],
+  links?: ParentRef[],
 };
 
-export type StartSpanOptions = {
+export type StartSpanOptions = TrackOptions & {
   data?: Record<string, unknown>,
-  parentIds?: ParentRef[],
   startedAtMs?: number,
-  /** See TrackOptions.root. */
-  root?: boolean,
-  /** See TrackOptions.excludeParentIds. */
-  excludeParentIds?: ParentRef[],
 };
 
 /**
@@ -77,6 +62,8 @@ export type StartSpanOptions = {
  * may throw before creating an update.
  */
 export type Span = {
+  /** The trace this span belongs to; shared with every ancestor and descendant. */
+  readonly traceId: string,
   readonly spanId: string,
   readonly spanType: string,
   readonly isEnded: boolean,
@@ -84,7 +71,7 @@ export type Span = {
   setData(data: Record<string, unknown>): Promise<void>,
   /** Idempotent; repeated calls return the first call's promise. */
   end(options?: { endedAtMs?: number }): Promise<void>,
-  /** Tracks an event with this span (and its full ancestor chain) as a parent. */
+  /** Tracks an event inside this span. */
   trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
   /** Starts a child span of this span. */
   startSpan(spanType: string, options?: StartSpanOptions): Span,
@@ -106,10 +93,11 @@ export type Span = {
    */
   run<T>(fn: () => T): Promise<Awaited<T>>,
   /**
-   * The cross-tier propagation headers pinned to exactly this span (and its
-   * frozen ancestor chain) — for transports the SDK cannot instrument (XHR,
-   * sendBeacon, WebSocket handshakes). Setting this header on a fetch also
-   * overrides the automatic ambient one.
+   * The cross-tier propagation headers pinned to exactly this span — the
+   * standard `traceparent` carrying this span's W3C context plus the Hexclave
+   * correlation header. For transports the SDK cannot instrument (XHR,
+   * sendBeacon, WebSocket handshakes). Setting these headers on a fetch also
+   * overrides the automatic ambient ones.
    */
   getSpanPropagationHeaders(): Record<string, string>,
   /**
@@ -119,29 +107,32 @@ export type Span = {
    * the automatic wrapper and never overwrites an explicitly-set header.
    */
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>,
-  /** Serializable identity + full custom ancestor chain (see SpanRef). */
-  ref(): SpanRef,
+  /** This span's W3C identity — the serializable form accepted as a `parent`. */
+  spanContext(): SpanContext,
 };
 
 export type SpanUpdateRow = {
+  trace_id: string,
   span_id: string,
+  /** null means this span IS the trace root. */
+  parent_span_id: string | null,
   span_type: string,
   started_at_ms: number,
   ended_at_ms: number | null,
-  parent_span_ids: string[],
   data: Record<string, unknown>,
   updated_at_ms: number,
-  // The `$page-view` span this span happened on (raw uuid). Client tab state
-  // the server cannot derive — composed into system ancestry server-side (with
-  // the pv- prefix). Frozen at span creation; never set on $page-view rows.
+  /** OTel instrumentation scope/tracer name. Present only for auto-instrumented library spans. */
+  scope_name?: string,
+  // CORRELATION, not ancestry: the `$page-view` span this span happened on.
+  // Client tab state the server cannot derive, so it rides per-item (a batch can
+  // straddle a navigation). Frozen at span creation; never set on $page-view rows.
   page_view_span_id?: string,
-  // The `$http-client` span of the request that carried this item to the
-  // server (raw uuid; hc- prefix applied by the ingestion route, AFTER the
-  // custom chain). Only ever set by the SERVER telemetry buffer, and only on
-  // items whose custom chain came entirely from the propagation header — the
-  // nearest-known-ancestor contract; see httpClientSpanIdForServerItem in
-  // server-app-impl. Never set on $page-view or $http-client rows.
-  http_client_span_id?: string,
+  /**
+   * Non-hierarchical references to other spans; see TrackOptions.links. Wire
+   * shape is snake_case like every other field on this row, so it is NOT
+   * `SpanContext` — the camelCase form is the SDK-facing type only.
+   */
+  links?: { trace_id: string, span_id: string }[],
 };
 
 // Keep fire-and-forget telemetry from becoming an unhandled rejection while
@@ -268,64 +259,110 @@ export function assertValidSpanStartInput(spanType: string, options: StartSpanOp
   }
 }
 
+/** Normalizes a ParentRef to its W3C context. A live Span exposes `spanContext()`;
+ * a plain SpanContext (e.g. deserialized from page props) is already one. */
+function parentRefToSpanContext(ref: ParentRef): SpanContext {
+  return "spanContext" in ref && typeof ref.spanContext === "function" ? ref.spanContext() : ref;
+}
+
+function getSpanContextError(context: SpanContext, role: string): string | null {
+  if (!isW3cTraceId(context.traceId)) {
+    return `Invalid ${role} traceId ${JSON.stringify(context.traceId)}: must be 32 lowercase hex characters and not all-zero`;
+  }
+  if (!isW3cSpanId(context.spanId)) {
+    return `Invalid ${role} spanId ${JSON.stringify(context.spanId)}: must be 16 lowercase hex characters and not all-zero`;
+  }
+  return null;
+}
+
+/** Where a new span or event sits in the trace graph. */
+export type ResolvedSpanParent = {
+  traceId: string,
+  /** null means the item starts a NEW trace (it is the root activity). */
+  parentSpanId: string | null,
+  /** Non-hierarchical references; empty when there are none. */
+  links: SpanContext[],
+};
+
 /**
- * Merges ambient parents (e.g. global spans) and explicit ParentRefs into one
- * farthest-known-to-nearest-known path. Each Span/SpanRef contributes its full
- * frozen ancestor path plus itself, so incompatible branches are rejected
- * instead of flattened. Raw ids declare successive parents in array order
- * because no ancestry metadata exists for the SDK to verify.
+ * Resolves the ONE parent of a new span/event, W3C-style.
+ *
+ * A span has exactly one parent, so this picks rather than merges:
+ *  - an explicit `parent` always wins (the caller stated their intent);
+ *  - otherwise the NEAREST ambient context — `ambient` is ordered
+ *    outermost-first (global spans, then enclosing withSpan frames), so the last
+ *    entry is the innermost scope;
+ *  - `root` drops ambient entirely, so with no explicit parent the item becomes a
+ *    trace root with a fresh trace id.
+ *
+ * The old model rejected "two unrelated ambient spans" outright because it had to
+ * flatten them into one path. Here the extra ones are simply not ancestors, so
+ * any ambient context from a DIFFERENT trace than the chosen parent is recorded
+ * as a LINK — provably not an ancestor (different trace), and links are exactly
+ * the standard representation for that. Same-trace ambient entries need no link:
+ * they are plausibly ancestors of the parent already.
  */
-export function resolveParentIds(opts: {
-  explicit?: ParentRef[],
-  ambient?: SpanRef[],
-  /** Ignore ambient parents entirely; only explicit ones apply. */
-  root?: boolean,
+export function resolveSpanParent(opts: {
+  explicit?: ParentRef,
+  ambient?: readonly SpanContext[],
+  links?: readonly ParentRef[],
   /**
-   * Ids to drop from the FINAL merged list (each ParentRef contributes only its
-   * own id here, not its chain) — see TrackOptions.excludeParentIds.
+   * An ancestor of LAST RESORT: used only when neither an explicit parent nor an
+   * ambient context supplies one, and — unlike an ambient context — never turned
+   * into a link when something else wins. In the browser this is the current
+   * `$page-view`, which encloses everything on the page but is not a peer
+   * operation competing for parenthood; the relationship is already recorded on
+   * every row as `page_view_span_id`, so linking it too would be noise.
+   * Dropped by `root: true` like ambient context.
    */
-  exclude?: ParentRef[],
-}): { ids: string[] } | { error: string } {
-  const parts: ParentSpanPathPart[] = [];
-  if (!opts.root) {
-    for (const ambient of opts.ambient ?? []) {
-      parts.push({ kind: "known-path", ids: [...ambient.parentSpanIds, ambient.spanId] });
+  fallbackParent?: SpanContext | null,
+  /** Ignore ambient and fallback context entirely; only an explicit parent applies. */
+  root?: boolean,
+}): ResolvedSpanParent | { error: string } {
+  const ambient = opts.root ? [] : opts.ambient ?? [];
+  for (const context of ambient) {
+    // Ambient contexts come from our own live spans, so a failure here means a
+    // handle was constructed with a malformed identity — fail loud rather than
+    // silently reparenting to a new trace.
+    const error = getSpanContextError(context, "ambient parent");
+    if (error !== null) return { error };
+  }
+
+  let parent: SpanContext | null = null;
+  if (opts.explicit !== undefined) {
+    const explicit = parentRefToSpanContext(opts.explicit);
+    const error = getSpanContextError(explicit, "parent");
+    if (error !== null) return { error };
+    parent = explicit;
+  } else {
+    parent = ambient.at(-1) ?? null;
+  }
+  if (parent === null && !opts.root && opts.fallbackParent != null) {
+    const error = getSpanContextError(opts.fallbackParent, "fallback parent");
+    if (error !== null) return { error };
+    parent = opts.fallbackParent;
+  }
+
+  const links: SpanContext[] = [];
+  for (const ref of opts.links ?? []) {
+    const context = parentRefToSpanContext(ref);
+    const error = getSpanContextError(context, "link");
+    if (error !== null) return { error };
+    links.push({ traceId: context.traceId, spanId: context.spanId });
+  }
+  if (parent !== null) {
+    for (const context of ambient) {
+      if (context.traceId === parent.traceId) continue;
+      if (links.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) continue;
+      links.push({ traceId: context.traceId, spanId: context.spanId });
     }
   }
-  for (const parent of opts.explicit ?? []) {
-    if (typeof parent === "string") {
-      parts.push({ kind: "declared-next", id: parent });
-    } else {
-      const ref = "ref" in parent && typeof parent.ref === "function" ? parent.ref() : parent as SpanRef;
-      parts.push({ kind: "known-path", ids: [...ref.parentSpanIds, ref.spanId] });
-    }
-  }
-  const excludeIds = new Set<string>();
-  for (const excluded of opts.exclude ?? []) {
-    const id = typeof excluded === "string"
-      ? excluded
-      : "ref" in excluded && typeof excluded.ref === "function" ? excluded.ref().spanId : (excluded as SpanRef).spanId;
-    if (!UUID_RE.test(id)) {
-      return { error: `Invalid excluded parent span id ${JSON.stringify(id)}: excludeParentIds must be span uuids` };
-    }
-    excludeIds.add(id);
-  }
-  for (const part of parts) {
-    const ids = part.kind === "known-path" ? part.ids : [part.id];
-    for (const id of ids) {
-      if (!UUID_RE.test(id)) {
-        return { error: `Invalid parent span id ${JSON.stringify(id)}: parent ids must be span uuids` };
-      }
-    }
-  }
-  const mergedResult = mergeParentSpanPath(parts);
-  if ("error" in mergedResult) return mergedResult;
-  const merged = mergedResult.ids.filter((id) => !excludeIds.has(id));
-  if (merged.length > CUSTOM_TELEMETRY_MAX_PARENT_CHAIN) {
-    console.warn(`Hexclave analytics: parent chain exceeds ${CUSTOM_TELEMETRY_MAX_PARENT_CHAIN} spans; keeping the ${CUSTOM_TELEMETRY_MAX_PARENT_CHAIN} nearest ancestors`);
-    return { ids: merged.slice(-CUSTOM_TELEMETRY_MAX_PARENT_CHAIN) };
-  }
-  return { ids: merged };
+
+  return {
+    traceId: parent?.traceId ?? generateW3cTraceId(),
+    parentSpanId: parent?.spanId ?? null,
+    links,
+  };
 }
 
 /**
@@ -347,7 +384,7 @@ export async function withSpanImpl<T>(
     return await rejectedPreCaught("withSpan() requires a callback function");
   }
   const span = startSpan(spanType, options);
-  return await runWithSpanContext(span.ref(), async () => {
+  return await runWithSpanContext(span.spanContext(), async () => {
     try {
       const result = await fn(span);
       span.end().catch(() => {});
