@@ -589,11 +589,16 @@ function stochasticQuota(value: number): number {
 
 async function claimEmailsForSending(tenancyId: string, limit: number): Promise<EmailOutbox[]> {
   return await retryTransaction(globalPrismaClient, async (tx) => {
-    // Serialize claims per tenancy so concurrent workers cannot each observe the same pre-claim
-    // burst count. The transaction contains only this claim, so the lock is held briefly.
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(${EMAIL_QUEUE_CLAIM_LOCK_CLASS}::int, hashtext(${tenancyId}::text))
+    // Avoid waiting on a pooled connection when another worker is claiming this tenancy. The
+    // holder commits before releasing the transaction-scoped lock, so the next step's snapshot
+    // sees its claims and the burst remains exact.
+    const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+      SELECT pg_try_advisory_xact_lock(
+        ${EMAIL_QUEUE_CLAIM_LOCK_CLASS}::int,
+        hashtext(${tenancyId}::text)
+      ) AS locked
     `;
+    if (!locked) return [];
 
     // Claim queued emails for sending, at least `limit` of them (the tenancy's capacity rate for this
     // step) but always enough to stay at BURST_SEND_LIMIT claims within the burst window. Without the
