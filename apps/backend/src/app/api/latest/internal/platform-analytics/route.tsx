@@ -256,11 +256,20 @@ export const GET = createSmartRouteHandler({
       analyticsByProject: CountRow[],
     };
     try {
+      // FINAL normally merges every partition before evaluating the IN set;
+      // hashing the key is a deliberate accuracy-for-memory tradeoff: a
+      // 64-bit collision is negligible at these row counts for this internal
+      // KPI. Limiting FINAL read parallelism also avoids buffering one large
+      // block per reader on object-backed storage.
       const verifiedSubquery = `
-        (project_id, id) IN (
-          SELECT project_id, user_id FROM analytics_internal.contact_channels FINAL
-          WHERE branch_id = {branchId:String} AND sync_is_deleted = 0 AND type = 'EMAIL' AND is_verified = 1
+        cityHash64(project_id, id) IN (
+          SELECT cityHash64(project_id, user_id)
+          FROM analytics_internal.contact_channels FINAL
+          WHERE branch_id = {branchId:String} AND sync_is_deleted = 0
+            AND type = 'EMAIL' AND is_verified = 1
+          SETTINGS do_not_merge_across_partitions_select_final = 1
         )`;
+      const verifiedQuerySettings = "SETTINGS max_threads = 1, max_final_threads = 1, max_block_size = 1024";
       const [
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,
         totalsByProject, verifiedByProject, signupsByProject, activeByProject, sparkByProject,
@@ -316,6 +325,7 @@ export const GET = createSmartRouteHandler({
             countIf(is_anonymous = 1) AS anonymous
           FROM analytics_internal.users FINAL
           WHERE ${customerUserScope}
+          ${verifiedQuerySettings}
         `, { branchId, internalProjectId, mid: midParam }),
         // Users by country (for the globe) over the window.
         chQuery<{ country_code: string, c: string | number }>(`
@@ -379,6 +389,7 @@ export const GET = createSmartRouteHandler({
           SELECT project_id AS projectId, count() AS c
           FROM analytics_internal.users FINAL
           WHERE ${customerUserScope} AND is_anonymous = 0 AND ${verifiedSubquery} GROUP BY project_id
+          ${verifiedQuerySettings}
         `, baseParams),
         // Per-project signups, current vs prior window.
         chQuery<{ projectId: string, cur: string | number, prev: string | number }>(`
