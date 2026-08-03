@@ -93,6 +93,52 @@ export class HexclaveAssertionError extends Error {
 HexclaveAssertionError.prototype.name = "HexclaveAssertionError";
 
 
+const hexclaveSetupErrorBrand = "hexclave-setup-error-brand-sentinel";
+
+/**
+ * An error caused by an incomplete or incorrect Hexclave setup in the developer's own project — a domain that has not
+ * been added to the project's trusted domains, for example.
+ *
+ * These are neither the end user's fault nor a bug in Hexclave, and they are usually fatal for the flow they occur in (an
+ * auth handoff that can never complete, say). Only logging them would leave the developer with a broken flow and no
+ * visible explanation, so the SDK also renders them on the page; `title` and `howToFix` end up in that card, so write
+ * them as instructions to the developer rather than as internal diagnostics.
+ */
+export class HexclaveSetupError extends Error {
+  public readonly title: string;
+  public readonly howToFix: readonly string[];
+
+  constructor(options: {
+    title: string,
+    message: string,
+    howToFix: readonly string[],
+    // same shape as HexclaveAssertionError's extraData: freeform diagnostics that only ever reach the error sinks
+    extraData?: Record<string, any> & ErrorOptions,
+  }) {
+    super(options.message, pick(options.extraData ?? {}, ["cause"]));
+    this.title = options.title;
+    this.howToFix = options.howToFix;
+
+    Object.defineProperty(this, hexclaveSetupErrorBrand, { value: true, enumerable: false });
+    Object.defineProperty(this, "customCaptureExtraArgs", {
+      get() {
+        return [{ ...options.extraData, howToFix: options.howToFix }];
+      },
+      enumerable: false,
+    });
+  }
+
+  /**
+   * Like `instanceof`, but also true for setup errors thrown by another copy of this package — an app can easily end up
+   * with two of them, and a setup error from either must still show up as one.
+   */
+  public static isSetupError(error: unknown): error is HexclaveSetupError {
+    return typeof error === "object" && error !== null && hexclaveSetupErrorBrand in error;
+  }
+}
+HexclaveSetupError.prototype.name = "HexclaveSetupError";
+
+
 export function errorToNiceString(error: unknown): string {
   if (!(error instanceof Error)) return `${typeof error}<${nicify(error)}>`;
   return nicify(error, { maxDepth: 8 });

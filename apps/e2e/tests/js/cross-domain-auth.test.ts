@@ -1,4 +1,5 @@
 import { StackClientApp } from "@hexclave/js";
+import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { afterEach, vi } from "vitest";
 import { it, localRedirectUrl } from "../helpers";
 
@@ -736,7 +737,14 @@ it("rejects nested cross-domain auth when the callback URL is untrusted", async 
     } as any;
 
     try {
-      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError(/not trusted/);
+      const nestedAuthPromise = (clientApp as any)._maybeHandleNestedCrossDomainAuth();
+      await expect(nestedAuthPromise).rejects.toThrowError(/not trusted/);
+      // An untrusted domain can only be fixed in the project's configuration, so the SDK must throw a setup error with
+      // instructions; that is what makes it render an error card instead of only logging the failure.
+      await expect(nestedAuthPromise).rejects.toSatisfy((error: unknown) => (
+        HexclaveSetupError.isSetupError(error)
+        && error.howToFix.some((step) => step.includes("https://evil.example.test"))
+      ));
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

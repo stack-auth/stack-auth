@@ -21,7 +21,7 @@ import { InternalSession } from "@hexclave/shared/dist/sessions";
 import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@hexclave/shared/dist/utils/compile-time";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, HexclaveSetupError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { parseJson } from "@hexclave/shared/dist/utils/json";
 import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
@@ -77,6 +77,7 @@ import { useAsyncCache } from "./common";
 import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 import { mountPushedConfigErrorOverlay } from "../../../../pushed-config-error-overlay";
+import { showSetupErrorOverlay } from "../../../../setup-error-overlay";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -101,6 +102,45 @@ const nestedCrossDomainAuthQueryParams = {
   codeChallengeMethod: "code_challenge_method",
   afterCallbackRedirectUrl: oauthAfterCallbackRedirectUrlQueryParam,
 } as const;
+
+/**
+ * An auth flow can only ever send the user to a URL that the project trusts, so an untrusted one means the flow is dead
+ * until someone changes the project's configuration. Describe the problem in terms of that configuration rather than in
+ * terms of the flow's internals, which nobody outside this file knows about.
+ */
+function createUntrustedUrlError(options: {
+  /** Kept verbatim from the throw site, so the message stays greppable for whoever already has it in their logs. */
+  message: string,
+  url: string,
+  projectId: string,
+}): HexclaveSetupError {
+  const origin = createUrlIfValid(options.url)?.origin ?? options.url;
+  return new HexclaveSetupError({
+    title: "A domain in your authentication flow is not one of your project's trusted domains",
+    message: options.message,
+    howToFix: [
+      `If ${origin} is yours, add it to your project's trusted domains in the Hexclave dashboard, under Domains.`,
+      "Protocol, domain and port must all match a trusted domain exactly; a wildcard like https://*.example.com matches only one subdomain level.",
+      `If ${origin} is not yours, do not add it \u2014 somebody may be trying to redirect your users' credentials to it.`,
+    ],
+    extraData: {
+      url: options.url,
+      projectId: options.projectId,
+    },
+  });
+}
+
+function createUntrustedNestedCrossDomainUrlError(options: {
+  urlDescription: string,
+  url: string,
+  projectId: string,
+}): HexclaveSetupError {
+  return createUntrustedUrlError({
+    message: `Nested cross-domain auth ${options.urlDescription} ${options.url} is not trusted.`,
+    url: options.url,
+    projectId: options.projectId,
+  });
+}
 
 function getRedirectHelperInstruction(handlerName: string): string {
   if (handlerName === "handler") {
@@ -818,6 +858,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         // Startup auth transitions gate session finality, but malformed nested-auth URLs should
         // not make every app-level session consumer fail while the tracker is cleaning up.
         captureError("pending-auth-resolution-failed", error);
+        // Swallowing the error here means the flow just stops, with no sign of it on the page; setup errors
+        // (untrusted domains, most commonly) would otherwise be invisible to whoever has to fix them.
+        showSetupErrorOverlay(error); // THIS_LINE_PLATFORM js-like
       }
     })();
     this._pendingAuthResolutionPromises.push(promise);
@@ -1051,14 +1094,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       }
       const redirectUriUrl = new URL(redirectUri);
       if (!await this._isTrusted(redirectUriUrl.toString())) {
-        throw new Error(`Nested cross-domain auth redirect URI ${redirectUri} is not trusted.`);
+        throw createUntrustedNestedCrossDomainUrlError({
+          urlDescription: "redirect URI",
+          url: redirectUri,
+          projectId: this.projectId,
+        });
       }
       const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
       const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
         ? redirectUriUrl
         : new URL(afterCallbackRedirectUrlString, redirectUriUrl);
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
-        throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
+        throw createUntrustedNestedCrossDomainUrlError({
+          urlDescription: "after-callback redirect URL",
+          url: afterCallbackRedirectUrlString ?? afterCallbackRedirectUrl.toString(),
+          projectId: this.projectId,
+        });
       }
       const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
       if (currentRefreshTokenId !== refreshTokenId) {
@@ -1095,7 +1146,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const callbackUrl = new URL(callbackUrlString);
     const isTrusted = await this._isTrusted(callbackUrl.toString());
     if (!isTrusted) {
-      throw new Error(`Nested cross-domain auth callback URL ${callbackUrlString} is not trusted.`);
+      throw createUntrustedNestedCrossDomainUrlError({
+        urlDescription: "callback URL",
+        url: callbackUrlString,
+        projectId: this.projectId,
+      });
     }
 
     const afterCallbackRedirectUrl = new URL(currentUrl);
@@ -3138,7 +3193,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
   protected async _redirectIfTrusted(url: string, options?: RedirectToOptions) {
     if (!await this._isTrusted(url)) {
-      throw new Error(`Redirect URL ${url} is not trusted; should be relative.`);
+      throw createUntrustedUrlError({
+        message: `Redirect URL ${url} is not trusted; should be relative.`,
+        url,
+        projectId: this.projectId,
+      });
     }
     return await this._redirectTo({ url, ...options });
   }
@@ -3219,7 +3278,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       })
       : plan.url;
     if (!await this._isTrusted(redirectUrl)) {
-      throw new Error(`Redirect URL ${redirectUrl} is not trusted; should be relative.`);
+      throw createUntrustedUrlError({
+        message: `Redirect URL ${redirectUrl} is not trusted; should be relative.`,
+        url: redirectUrl,
+        projectId: this.projectId,
+      });
     }
     return redirectUrl;
   }
