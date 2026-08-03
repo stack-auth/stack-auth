@@ -1111,43 +1111,52 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
         throw new HexclaveAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
-      // Checked before anything derived from the query params can throw a developer-facing setup error: those errors are
-      // rendered as a card, so only a handoff that actually belongs to this session gets to put one on the page.
-      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
-      if (currentRefreshTokenId !== refreshTokenId) {
-        throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
-      }
+      const validateHandoffOwnership = async (): Promise<void> => {
+        const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+        if (currentRefreshTokenId !== refreshTokenId) {
+          throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
+        }
+      };
+      // Everything derived from these query params is attacker-controllable, and setup errors are rendered as a card on
+      // the page, so a failure may only become a displayable setup error once the handoff is known to belong to this
+      // session. The check runs on the failure paths rather than up front so the happy path keeps making exactly the
+      // requests it made before, and so an unowned handoff never costs the session lookup twice.
+      const setupErrorIfHandoffIsOwned = async (setupError: HexclaveSetupError): Promise<HexclaveSetupError> => {
+        await validateHandoffOwnership();
+        return setupError;
+      };
       const redirectUriUrl = isRelative(redirectUri) ? null : createUrlIfValid(redirectUri);
       if (redirectUriUrl == null) {
-        throw createMalformedNestedCrossDomainUrlError({
+        throw await setupErrorIfHandoffIsOwned(createMalformedNestedCrossDomainUrlError({
           urlDescription: "redirect URI",
           url: redirectUri,
-        });
+        }));
       }
       if (!await this._isTrusted(redirectUriUrl.toString())) {
-        throw createUntrustedNestedCrossDomainUrlError({
+        throw await setupErrorIfHandoffIsOwned(createUntrustedNestedCrossDomainUrlError({
           urlDescription: "redirect URI",
           url: redirectUri,
           projectId: this.projectId,
-        });
+        }));
       }
       const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
       const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
         ? redirectUriUrl
         : createUrlIfValid(afterCallbackRedirectUrlString, redirectUriUrl);
       if (afterCallbackRedirectUrl == null) {
-        throw createMalformedNestedCrossDomainUrlError({
+        throw await setupErrorIfHandoffIsOwned(createMalformedNestedCrossDomainUrlError({
           urlDescription: "after-callback redirect URL",
           url: afterCallbackRedirectUrlString ?? "",
-        });
+        }));
       }
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
-        throw createUntrustedNestedCrossDomainUrlError({
+        throw await setupErrorIfHandoffIsOwned(createUntrustedNestedCrossDomainUrlError({
           urlDescription: "after-callback redirect URL",
           url: afterCallbackRedirectUrlString ?? afterCallbackRedirectUrl.toString(),
           projectId: this.projectId,
-        });
+        }));
       }
+      await validateHandoffOwnership();
       await this._redirectTo({
         url: await this._createCrossDomainAuthRedirectUrl({
           redirectUri: redirectUriUrl.toString(),
