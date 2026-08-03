@@ -698,6 +698,9 @@ it("rejects nested cross-domain auth when the source redirect URI is untrusted",
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
+    // The handler only inspects the OAuth request params once the handoff belongs to the current session, so the source
+    // session has to be the requested one for the trust check to be reached at all.
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("source-session");
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
 
     globalThis.document = createMockDocument();
