@@ -178,6 +178,27 @@ const renewalChargedAmount = (invoice: SubscriptionInvoiceRow, sub: Subscription
   invoice.amountTotal !== null
     ? { USD: stripeUnitsToMoneyAmount(invoice.amountTotal, USD_CURRENCY) }
     : chargedAmount(sub.product, sub.priceId, sub.quantity);
+const hasNonZeroChargedAmount = (charged: Record<string, string>): boolean =>
+  Object.values(charged).some(amount => Number(amount) !== 0);
+// True when this subscription should defer its first real charge to a later
+// invoice (trial end), instead of booking catalog price on subscription-start.
+// Prefer Stripe `trialing`; also honor configured freeTrial so an early write
+// while status is still `incomplete` during SetupIntent confirmation does not
+// invent a full-price start charge that would double-count at trial end.
+// Precedence matches backend getEffectiveFreeTrial: price?.freeTrial ?? product.freeTrial.
+// Explicit null is not an opt-out (config null means reset-to-default / absent).
+const subscriptionHasFreeTrial = (row: SubscriptionRow): boolean => {
+  if (row.status === "trialing") return true;
+  const price = row.priceId === null ? undefined : row.product.prices[row.priceId];
+  return (price?.freeTrial ?? row.product.freeTrial) != null;
+};
+// Book catalog-price money on sub-start only for normal paid Stripe starts.
+// Skip: test mode, $0/free, free trials (first charge comes from the non-creation
+// invoice when the trial converts — same path as renewals).
+const shouldBookMoneyOnSubscriptionStart = (row: SubscriptionRow, charged: Record<string, string>): boolean =>
+  paymentProvider(row.creationSource) !== "test_mode"
+  && hasNonZeroChargedAmount(charged)
+  && !subscriptionHasFreeTrial(row);
 // The concrete millis at which a stamped (subscription/one-time-purchase) grant expires, so the
 // ledger can rank grants by real expiry (soonest-first) instead of treating them all as permanent.
 // `when-repeated` grants drop at the sooner of their next reset or the purchase end; `when-purchase-
@@ -299,7 +320,7 @@ const mergeRepeatSchedule = (oldSchedule: RepeatSchedule, freshSchedule: RepeatS
 function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
   const provider = paymentProvider(row.creationSource);
   const charged = chargedAmount(row.product, row.priceId, row.quantity);
-  const hasMoneyTransfer = provider !== "test_mode" && Object.keys(charged).length > 0;
+  const hasMoneyTransfer = shouldBookMoneyOnSubscriptionStart(row, charged);
   const startTxnId = `sub-start:${row.id}`;
   return {
     subscriptionId: row.id,
@@ -317,7 +338,7 @@ function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
     chargedAmount: charged,
     startTxnId,
     // These indices must match the entry order in payments-txn-subscription-start:
-    // [0] sub-start, [1] product-grant, [2] money-transfer (only if charged), then
+    // [0] sub-start, [1] product-grant, [2] money-transfer (only if booked), then
     // item changes. If you reorder entries there, update these too.
     startProductGrantEntryIndex: 1,
     startItemChangeBaseIndex: hasMoneyTransfer ? 3 : 2,
@@ -329,6 +350,7 @@ function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
 
 function subscriptionStartEvent(row: SubscriptionRow) {
   const provider = paymentProvider(row.creationSource);
+  const charged = chargedAmount(row.product, row.priceId, row.quantity);
   return {
     type: "subscription-start",
     subscriptionId: row.id,
@@ -340,7 +362,8 @@ function subscriptionStartEvent(row: SubscriptionRow) {
     productLineId: productLineId(row.product),
     priceId: row.priceId,
     quantity: row.quantity,
-    chargedAmount: chargedAmount(row.product, row.priceId, row.quantity),
+    chargedAmount: charged,
+    wasMoneyBookedOnStart: shouldBookMoneyOnSubscriptionStart(row, charged),
     itemGrants: itemGrants(row.product, row.quantity, row.createdAtMillis, row.endedAtMillis),
     paymentProvider: provider,
     effectiveAtMillis: row.createdAtMillis,
@@ -672,6 +695,10 @@ export function createPaymentsSchema() {
       joiner: async (left, right) => ({ leftRowData: left.rowData, rightRowData: right?.rowData ?? null }),
     }), { left: "payments-subscription-invoices", right: "payments-subscriptions" }),
     table("payments-renewal-invoice-rows", defineFilterTable(row => {
+      // Creation invoices are excluded: paid non-trial starts already book
+      // catalog money on subscription-start, so counting the creation invoice
+      // would double-charge. Free trials book $0 at create and their first real
+      // charge arrives later as a non-creation invoice (same path as renewals).
       const joined = rowObject<{ leftRowData: SubscriptionInvoiceRow, rightRowData: SubscriptionRow | null }>(row.rowData);
       return joined.rightRowData !== null && !joined.leftRowData.isSubscriptionCreationInvoice;
     }), { input: "payments-subscriptions-with-invoices" }),
@@ -853,14 +880,21 @@ export function createPaymentsSchema() {
       });
     }), { input: "payments-subscription-cancel-events" }),
     table("payments-txn-subscription-start", defineMapTable(row => {
-      const event = rowObject<{ subscriptionId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, productLineId: string | null, priceId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
+      const event = rowObject<{ subscriptionId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, productLineId: string | null, priceId: string | null, quantity: number, chargedAmount: Record<string, string>, wasMoneyBookedOnStart: boolean, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
       // subscriptionInitialState hardcodes these entry indices, so keep the order:
       // [0] sub-start, [1] product-grant, optional money-transfer before item changes.
+      // Free trials / $0 / test mode omit money-transfer; the first real Stripe
+      // charge after a trial lands as a non-creation invoice → subscription-renewal.
+      //
+      // wasMoneyBookedOnStart is only consumed here (derived start-event → txn).
+      // It is not a stored-row field and does not need a bulldozer migration batch:
+      // start events are recomputed from SubscriptionRow; the flag just avoids
+      // re-deriving status/test-mode/$0/trial checks in this mapper.
       const entries: TransactionEntryData[] = [
         { type: "active-subscription-start", customerType: event.customerType, customerId: event.customerId, subscriptionId: event.subscriptionId },
         { type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, priceId: event.priceId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, subscriptionId: event.subscriptionId },
       ];
-      if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
+      if (event.wasMoneyBookedOnStart) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
       entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen, stampedExpiresAtMillis: grant.expiresAtMillis })));
       return toPiledriverObject({ txnId: `sub-start:${event.subscriptionId}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "subscription-start", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-subscription-start-events" }),

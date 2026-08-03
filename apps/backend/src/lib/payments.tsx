@@ -9,7 +9,7 @@ import { KnownErrors } from "@hexclave/shared";
 import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
-import { addInterval } from "@hexclave/shared/dist/utils/dates";
+import { addInterval, getIntervalsElapsed, type DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
@@ -334,6 +334,8 @@ export function productToInlineProduct(product: ProductWithMetadata, context: Pr
   return {
     display_name: product.displayName ?? "Product",
     customer_type: product.customerType,
+    // Product-level free_trial is transitional; price-level free_trial is preferred.
+    free_trial: product.freeTrial,
     stackable: product.stackable === true,
     server_only: product.serverOnly === true,
     included_items: product.includedItems,
@@ -500,7 +502,102 @@ export async function validatePurchaseSession(options: {
   return { selectedPrice, conflictingSubscriptions };
 }
 
-export function getClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {
+export type StripeSubscriptionClientSecret = {
+  type: "payment" | "setup",
+  clientSecret: string,
+};
+
+/** Stripe rejects trial periods longer than 730 days (2 years). */
+export const STRIPE_MAX_TRIAL_PERIOD_DAYS = 730;
+
+/**
+ * Resolves the effective free-trial interval for a purchase.
+ * Price-level wins when set; product-level is a transitional fallback while
+ * product-level freeTrial is being deprecated in favor of price-only config.
+ *
+ * Uses `??`, so an explicit `null` on the price is treated like "absent" and
+ * falls through to the product — same as config path-updates where null means
+ * "reset to default", not "opt out of a product-level trial".
+ */
+export function getEffectiveFreeTrial(
+  product: { freeTrial?: DayInterval | null },
+  price: { freeTrial?: DayInterval | null } | null | undefined,
+): DayInterval | undefined {
+  return price?.freeTrial ?? product.freeTrial ?? undefined;
+}
+
+/**
+ * Rejects free-trial combos that cannot work with Stripe checkout:
+ * - one-time prices (no billing interval)
+ * - $0 recurring prices (nothing to charge after the trial)
+ *
+ * `freeTrial` is the already-resolved effective trial (see getEffectiveFreeTrial).
+ */
+export function assertFreeTrialAllowedForPurchase(
+  price: { USD?: string, interval?: DayInterval },
+  freeTrial: DayInterval | undefined,
+): void {
+  if (freeTrial == null) {
+    return;
+  }
+  if (price.interval == null) {
+    throw new StatusError(400, "Free trials are only supported on recurring prices");
+  }
+  const priceAmount = Number(price.USD);
+  if (Number.isFinite(priceAmount) && priceAmount === 0) {
+    throw new StatusError(400, "Free trials cannot be combined with a $0 price");
+  }
+}
+
+/**
+ * Stripe `trial_period_days` from a DayInterval. Day/week are exact; month/year
+ * use addInterval + getIntervalsElapsed from the shared date helpers so we
+ * don't hand-roll calendar math here. Caps at Stripe's 730-day maximum.
+ */
+export function getStripeTrialPeriodDays(freeTrial: DayInterval, from: Date = new Date()): number {
+  const [amount, unit] = freeTrial;
+  const days = unit === "day"
+    ? amount
+    : unit === "week"
+      ? amount * 7
+      : getIntervalsElapsed(from, addInterval(from, freeTrial), [1, "day"]);
+  if (!Number.isFinite(days) || days < 1) {
+    throw new StatusError(400, `Free trial duration must resolve to at least 1 day (got ${days})`);
+  }
+  if (days > STRIPE_MAX_TRIAL_PERIOD_DAYS) {
+    throw new StatusError(400, `Free trial duration cannot exceed ${STRIPE_MAX_TRIAL_PERIOD_DAYS} days`);
+  }
+  return days;
+}
+
+/**
+ * Extracts the Stripe Elements client secret for a just-created/updated
+ * subscription. When `shouldExpectSetupIntent` is true (free trial), we must
+ * get a SetupIntent secret — a missing one means Stripe did not start a trial
+ * as configured. Otherwise we require a PaymentIntent / invoice confirmation
+ * secret for an immediate charge.
+ *
+ * Callers must pass `expand: ['pending_setup_intent', 'latest_invoice.confirmation_secret']`
+ * (or equivalent) on create/update so these fields are objects, not id strings.
+ */
+export function getClientSecretFromStripeSubscription(
+  subscription: Stripe.Subscription,
+  shouldExpectSetupIntent: boolean,
+): StripeSubscriptionClientSecret {
+  if (shouldExpectSetupIntent) {
+    const pendingSetupIntent = subscription.pending_setup_intent;
+    // Without expand, Stripe returns an id string. treat that as missing.
+    if (pendingSetupIntent == null || typeof pendingSetupIntent === "string") {
+      // Internal Stripe invariant — don't leak details via StatusError(500) to public callers.
+      throw new HexclaveAssertionError("Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
+    }
+    const setupSecret = pendingSetupIntent.client_secret;
+    if (typeof setupSecret !== "string") {
+      throw new HexclaveAssertionError("Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
+    }
+    return { type: "setup", clientSecret: setupSecret };
+  }
+
   const latestInvoice = subscription.latest_invoice;
   if (latestInvoice && typeof latestInvoice !== "string") {
     type InvoiceWithExtras = Stripe.Invoice & {
@@ -510,10 +607,14 @@ export function getClientSecretFromStripeSubscription(subscription: Stripe.Subsc
     const invoice = latestInvoice as InvoiceWithExtras;
     const confirmationSecret = invoice.confirmation_secret?.client_secret;
     const piSecret = typeof invoice.payment_intent !== "string" ? invoice.payment_intent?.client_secret : undefined;
-    if (typeof confirmationSecret === "string") return confirmationSecret;
-    if (typeof piSecret === "string") return piSecret;
+    if (typeof confirmationSecret === "string") {
+      return { type: "payment", clientSecret: confirmationSecret };
+    }
+    if (typeof piSecret === "string") {
+      return { type: "payment", clientSecret: piSecret };
+    }
   }
-  throwErr(500, "No client secret returned from Stripe for subscription");
+  throw new HexclaveAssertionError("No PaymentIntent client secret returned from Stripe for subscription");
 }
 
 type GrantProductResult =
@@ -651,4 +752,81 @@ export async function grantProductToCustomer(options: {
 
   return { type: "subscription", subscriptionId: subscription.id };
 }
+
+import.meta.vitest?.describe("free trial helpers", (test) => {
+  test("getEffectiveFreeTrial prefers price-level over product-level", ({ expect }) => {
+    expect(getEffectiveFreeTrial(
+      { freeTrial: [30, "day"] },
+      { freeTrial: [7, "day"] },
+    )).toEqual([7, "day"]);
+    expect(getEffectiveFreeTrial(
+      { freeTrial: [30, "day"] },
+      {},
+    )).toEqual([30, "day"]);
+    expect(getEffectiveFreeTrial(
+      {},
+      { freeTrial: [14, "day"] },
+    )).toEqual([14, "day"]);
+    expect(getEffectiveFreeTrial({}, {})).toBeUndefined();
+    // null is absent (??), not an opt-out of product-level trial
+    expect(getEffectiveFreeTrial(
+      { freeTrial: [30, "day"] },
+      { freeTrial: null },
+    )).toEqual([30, "day"]);
+    // Stripe trial_period_days must follow the same price-over-product resolution.
+    expect(getStripeTrialPeriodDays(getEffectiveFreeTrial(
+      { freeTrial: [30, "day"] },
+      { freeTrial: [7, "day"] },
+    ) ?? throwErr("expected price-level free trial"))).toBe(7);
+  });
+
+  test("assertFreeTrialAllowedForPurchase rejects OTP and $0 prices", ({ expect }) => {
+    expect(() => assertFreeTrialAllowedForPurchase(
+      { USD: "19.00" },
+      [7, "day"],
+    )).toThrow(/recurring/);
+    expect(() => assertFreeTrialAllowedForPurchase(
+      { USD: "0", interval: [1, "month"] },
+      [7, "day"],
+    )).toThrow(/\$0/);
+    expect(() => assertFreeTrialAllowedForPurchase(
+      { USD: "19.00", interval: [1, "month"] },
+      [7, "day"],
+    )).not.toThrow();
+  });
+
+  test("getStripeTrialPeriodDays uses calendar helpers and enforces Stripe max", ({ expect }) => {
+    const from = new Date("2026-01-31T12:00:00.000Z");
+    const days = getStripeTrialPeriodDays([1, "month"], from);
+    expect(days).toBe(getIntervalsElapsed(from, addInterval(from, [1, "month"]), [1, "day"]));
+    expect(getStripeTrialPeriodDays([14, "day"], from)).toBe(14);
+    expect(getStripeTrialPeriodDays([2, "week"], from)).toBe(14);
+    expect(() => getStripeTrialPeriodDays([3, "year"], from)).toThrow(/730/);
+  });
+
+  test("getClientSecretFromStripeSubscription requires the expected intent type", ({ expect }) => {
+    const setup = getClientSecretFromStripeSubscription({
+      pending_setup_intent: { client_secret: "seti_test_secret" },
+      latest_invoice: {
+        confirmation_secret: { client_secret: "pi_should_not_win" },
+      },
+    } as Stripe.Subscription, true);
+    expect(setup).toEqual({ type: "setup", clientSecret: "seti_test_secret" });
+
+    expect(() => getClientSecretFromStripeSubscription({
+      pending_setup_intent: null,
+      latest_invoice: {
+        confirmation_secret: { client_secret: "pi_test_secret" },
+      },
+    } as Stripe.Subscription, true)).toThrow(/SetupIntent/);
+
+    const payment = getClientSecretFromStripeSubscription({
+      pending_setup_intent: { client_secret: "seti_ignored" },
+      latest_invoice: {
+        confirmation_secret: { client_secret: "pi_test_secret" },
+      },
+    } as Stripe.Subscription, false);
+    expect(payment).toEqual({ type: "payment", clientSecret: "pi_test_secret" });
+  });
+});
 

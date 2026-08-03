@@ -32,7 +32,7 @@ describe("payments schema", () => {
       stripeInvoiceId: "stripe-inv-creation",
       isSubscriptionCreationInvoice: true,
       status: "paid",
-      amountTotal: 1000,
+      amountTotal: 0,
       hostedInvoiceUrl: null,
       createdAtMillis: 3_000,
     });
@@ -46,6 +46,99 @@ describe("payments schema", () => {
       effectiveAtMillis: 2_000,
       chargedAmount: { USD: "10.00" },
     });
+  });
+
+  it("books catalog money on subscription-start for paid Stripe purchases", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-stripe-start", subscription("sub-stripe-start", {
+      stripeSubscriptionId: "stripe-sub-start",
+      creationSource: "PURCHASE_PAGE",
+      status: "active",
+      createdAtMillis: 1_000,
+    }) as unknown as PiledriverObject);
+
+    const group = customerGroup("customer-sub-stripe-start");
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    const startTxn = txns.find(txn => txn.txnId === "sub-start:sub-stripe-start");
+    expect(startTxn?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "product-grant" }),
+      expect.objectContaining({ type: "money-transfer", chargedAmount: { USD: "10.00" } }),
+    ]));
+  });
+
+  it("does not book money on subscription-start for free trials", async () => {
+    // Trial starts omit start money; the first real charge is the later
+    // non-creation invoice (subscription-renewal txn), not the $0 creation invoice.
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-trial-start", subscription("sub-trial-start", {
+      stripeSubscriptionId: "stripe-sub-trial",
+      creationSource: "PURCHASE_PAGE",
+      status: "trialing",
+      product: {
+        ...product(),
+        prices: { p1: { USD: "19.00", interval: [1, "month"], freeTrial: [14, "day"] } },
+      },
+      createdAtMillis: 1_000,
+    }) as unknown as PiledriverObject);
+    snapshot = await set(snapshot, schema.subscriptionInvoices, "inv-trial-create", {
+      id: "inv-trial-create",
+      tenancyId: "t1",
+      stripeSubscriptionId: "stripe-sub-trial",
+      stripeInvoiceId: "stripe-inv-trial-create",
+      isSubscriptionCreationInvoice: true,
+      status: "paid",
+      amountTotal: 0,
+      hostedInvoiceUrl: null,
+      createdAtMillis: 1_500,
+    });
+    snapshot = await set(snapshot, schema.subscriptionInvoices, "inv-trial-convert", {
+      id: "inv-trial-convert",
+      tenancyId: "t1",
+      stripeSubscriptionId: "stripe-sub-trial",
+      stripeInvoiceId: "stripe-inv-trial-convert",
+      isSubscriptionCreationInvoice: false,
+      status: "paid",
+      amountTotal: 1900,
+      hostedInvoiceUrl: null,
+      createdAtMillis: 2_000,
+    });
+
+    const group = customerGroup("customer-sub-trial-start");
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    const startTxn = txns.find(txn => txn.txnId === "sub-start:sub-trial-start");
+    expect(startTxn?.entries.some(entry => entry.type === "money-transfer")).toBe(false);
+
+    const renewalEvents = await rowDatas(snapshot, schema.subscriptionRenewalEvents);
+    expect(renewalEvents).toHaveLength(1);
+    expect(renewalEvents[0]).toMatchObject({
+      invoiceId: "inv-trial-convert",
+      chargedAmount: { USD: "19.00" },
+    });
+    expect(txns.find(txn => txn.txnId === "sub-renewal:inv-trial-convert")?.entries).toMatchObject([
+      { type: "money-transfer", chargedAmount: { USD: "19.00" } },
+    ]);
+  });
+
+  it("does not book money on subscription-start for $0 Stripe subscriptions", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-free-start", subscription("sub-free-start", {
+      stripeSubscriptionId: "stripe-sub-free",
+      creationSource: "PURCHASE_PAGE",
+      status: "active",
+      product: {
+        ...product(),
+        prices: { p1: { USD: "0.00", interval: [1, "month"] } },
+      },
+      createdAtMillis: 1_000,
+    }) as unknown as PiledriverObject);
+
+    const group = customerGroup("customer-sub-free-start");
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    const startTxn = txns.find(txn => txn.txnId === "sub-start:sub-free-start");
+    expect(startTxn?.entries.some(entry => entry.type === "money-transfer")).toBe(false);
   });
 
   it("uses the invoice's actual total for the renewal amount, not the current product price", async () => {

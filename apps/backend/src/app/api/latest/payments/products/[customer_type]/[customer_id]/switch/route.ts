@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, grantProductToCustomer, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
+import { assertFreeTrialAllowedForPurchase, ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getEffectiveFreeTrial, getStripeCustomerForCustomerOrNull, getStripeTrialPeriodDays, grantProductToCustomer, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
@@ -318,7 +318,13 @@ export const POST = createSmartRouteHandler({
     } else {
       // No existing Stripe subscription — create a new one. This happens when
       // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
+      // Apply free trial only on create (not on in-place updates above): re-trialing
+      // an existing paid customer on switch is usually wrong. Price-level freeTrial
+      // preferred; product-level is a transitional fallback.
       const applicationFeePercent = getApplicationFeePercentOrUndefined(auth.tenancy.project.id);
+      const effectiveFreeTrial = getEffectiveFreeTrial(toProduct, selectedPrice);
+      assertFreeTrialAllowedForPurchase(selectedPrice, effectiveFreeTrial);
+      const trialPeriodDays = effectiveFreeTrial != null ? getStripeTrialPeriodDays(effectiveFreeTrial) : undefined;
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
         payment_behavior: "error_if_incomplete",
@@ -341,6 +347,7 @@ export const POST = createSmartRouteHandler({
           productVersionId,
           priceId: selectedPriceId,
         },
+        ...(trialPeriodDays !== undefined ? { trial_period_days: trialPeriodDays } : {}),
         ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
       });
       const createdSubscription = created as Stripe.Subscription;
