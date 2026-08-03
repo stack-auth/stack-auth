@@ -1111,6 +1111,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
         throw new HexclaveAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
+      // Checked before anything derived from the query params can throw a developer-facing setup error: those errors are
+      // rendered as a card, so only a handoff that actually belongs to this session gets to put one on the page.
+      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+      if (currentRefreshTokenId !== refreshTokenId) {
+        throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
+      }
       const redirectUriUrl = isRelative(redirectUri) ? null : createUrlIfValid(redirectUri);
       if (redirectUriUrl == null) {
         throw createMalformedNestedCrossDomainUrlError({
@@ -1141,10 +1147,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           url: afterCallbackRedirectUrlString ?? afterCallbackRedirectUrl.toString(),
           projectId: this.projectId,
         });
-      }
-      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
-      if (currentRefreshTokenId !== refreshTokenId) {
-        throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
       }
       await this._redirectTo({
         url: await this._createCrossDomainAuthRedirectUrl({

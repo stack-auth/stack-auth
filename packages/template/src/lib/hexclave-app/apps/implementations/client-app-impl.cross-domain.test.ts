@@ -51,6 +51,28 @@ function createMockDocument(): Document {
   } as any;
 }
 
+/**
+ * Installs a stand-in for `window` with only the parts the code under test touches. `globalThis.window` is typed as a
+ * full `Window`, which a hand-written stub can never be, so the assignment goes through `Reflect.set` — the stub's own
+ * shape stays checked, unlike with a cast on the object literal.
+ */
+function setMockWindow(mockWindow: {
+  location: { href: string, replace?: (url: string) => void },
+}): void {
+  Reflect.set(globalThis, "window", mockWindow);
+}
+
+/**
+ * Calls one of the app's `protected` methods, which are part of the flows under test but not of the public SDK surface.
+ */
+function callProtectedMethod(app: StackClientApp<true>, methodName: string, ...args: unknown[]): Promise<unknown> {
+  const method = Reflect.get(app, methodName);
+  if (typeof method !== "function") {
+    throw new Error(`Expected StackClientApp to have a ${methodName} method in tests.`);
+  }
+  return method.apply(app, args);
+}
+
 describe("StackClientApp cross-domain auth", () => {
   it("keeps noRedirectBack same-domain redirects free of redirect-back state", async () => {
     const redirectPlan = await planRedirectToHandler({
@@ -504,10 +526,18 @@ describe("StackClientApp cross-domain auth", () => {
 
     // A URL the flow cannot even parse is as fatal as an untrusted one, so it has to reach the developer the same way
     // instead of escaping as a bare TypeError from `new URL()`, which the overlay only shows during development.
+    // The two branches of the handler want opposite session states: the provider side (a.com) only looks at the OAuth
+    // request params once the handoff belongs to the current session, while the requesting side (b.com) only bounces
+    // when the current session is *not* the one that was asked for.
     const malformedCases = [
-      { description: "redirect URI", params: { redirect_uri: "not-a-url", state: "nested-state", code_challenge: "nested-code-challenge" } },
+      {
+        description: "redirect URI",
+        currentRefreshTokenId: "source-refresh-token-id",
+        params: { redirect_uri: "not-a-url", state: "nested-state", code_challenge: "nested-code-challenge" },
+      },
       {
         description: "after-callback redirect URL",
+        currentRefreshTokenId: "source-refresh-token-id",
         params: {
           redirect_uri: "https://source.example.test/handler/account-settings",
           state: "nested-state",
@@ -515,7 +545,11 @@ describe("StackClientApp cross-domain auth", () => {
           after_callback_redirect_url: "http://[",
         },
       },
-      { description: "callback URL", params: { stack_nested_cross_domain_auth_callback_url: "http://[" } },
+      {
+        description: "callback URL",
+        currentRefreshTokenId: null,
+        params: { stack_nested_cross_domain_auth_callback_url: "http://[" },
+      },
     ];
 
     try {
@@ -525,7 +559,7 @@ describe("StackClientApp cross-domain auth", () => {
         for (const [key, value] of Object.entries(malformedCase.params)) {
           currentUrl.searchParams.set(key, value);
         }
-        globalThis.window = { location: { href: currentUrl.toString() } } as any;
+        setMockWindow({ location: { href: currentUrl.toString() } });
 
         const clientApp = new StackClientApp({
           baseUrl: "http://localhost:12345",
@@ -535,10 +569,10 @@ describe("StackClientApp cross-domain auth", () => {
           redirectMethod: "window",
           noAutomaticPrefetch: true,
         });
-        vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
-        vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
+        Reflect.set(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn", async () => malformedCase.currentRefreshTokenId);
+        Reflect.set(clientApp, "_isTrusted", async () => true);
 
-        const nestedAuthPromise = (clientApp as any)._maybeHandleNestedCrossDomainAuth();
+        const nestedAuthPromise = callProtectedMethod(clientApp, "_maybeHandleNestedCrossDomainAuth");
         await expect(nestedAuthPromise).rejects.toThrowError(new RegExp(`${malformedCase.description} .* is not a valid absolute URL`));
         await expect(nestedAuthPromise).rejects.toSatisfy((error: unknown) => HexclaveSetupError.isSetupError(error));
       }
