@@ -48,8 +48,9 @@ Optional:
     Default: true
     If false, construction must not start any automatic side effects. This includes
     prefetching, processing authentication or redirect query parameters, reading
-    or writing browser storage or cookies, recording analytics or session replays,
-    installing browser listeners, starting timers, or mounting development UI.
+    or writing browser storage or cookies, consuming `hexclave_action_id` browser
+    actions, recording analytics or session replays, installing browser listeners,
+    starting timers, or mounting development UI.
     Explicit method calls retain their normal behavior and side effects. This
     option makes construction inert.
 
