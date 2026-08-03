@@ -209,7 +209,7 @@ services:
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}21:9090"
     environment:
-      - initialBuckets=stack-storage,stack-storage-private
+      - initialBuckets=stack-storage,stack-storage-private,marshal
       - root=s3mockroot
       - debug=false
     volumes:
@@ -260,6 +260,16 @@ services:
     image: vercel-mock
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}26:8080"       # mock of the Vercel REST API for the Deployments app
+
+  # ================= Fly mock =================
+
+  fly-mock:
+    build:
+      context: ./fly-mock
+      dockerfile: Dockerfile
+    image: fly-mock
+    ports:
+      - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}48:8080"       # mock of the Fly.io Machines/GraphQL/logs APIs for Marshal
 
   # ================= Stripe =================
   
