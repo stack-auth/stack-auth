@@ -14,13 +14,23 @@ import { StripePaymentElementOptions } from "@stripe/stripe-js";
 import { FlaskIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
-const paymentElementOptions = {
+const paymentElementOptionsWithWallets = {
   layout: "auto",
   defaultValues: {
   },
   wallets: {
     applePay: "auto",
     googlePay: "auto",
+  },
+} satisfies StripePaymentElementOptions;
+
+const paymentElementOptionsCardsOnly = {
+  layout: "auto",
+  defaultValues: {
+  },
+  wallets: {
+    applePay: "never",
+    googlePay: "never",
   },
 } satisfies StripePaymentElementOptions;
 
@@ -42,6 +52,7 @@ function getStripeConfirmationError(result: unknown) {
   return {
     type: "type" in error && typeof error.type === "string" ? error.type : null,
     message: "message" in error && typeof error.message === "string" ? error.message : null,
+    code: "code" in error && typeof error.code === "string" ? error.code : null,
   };
 }
 
@@ -53,6 +64,11 @@ type Props = {
   disabled?: boolean,
   chargesEnabled: boolean,
   isFree: boolean,
+  /**
+   * When true, Payment Element is collecting a SetupIntent (free trial). Disable
+   * wallet buttons — they often 400 elements/sessions for setup mode on Connect.
+   */
+  setupMode?: boolean,
 };
 
 export function PaymentsNotEnabledCard() {
@@ -154,6 +170,7 @@ export function CheckoutForm({
   disabled,
   chargesEnabled,
   isFree,
+  setupMode = false,
 }: Props) {
   const stripe = useStripe();
   const elements = useElements();
@@ -246,11 +263,9 @@ export function CheckoutForm({
     if (error == null) {
       return;
     }
-    if (error.type === "card_error" || error.type === "validation_error") {
-      setMessage(error.message ?? "An unexpected error occurred.");
-    } else {
-      setMessage("An unexpected error occurred.");
-    }
+    // Always surface Stripe's message — invalid_request_error / mode mismatches
+    // used to collapse to a useless "unexpected error" and hide the real cause.
+    setMessage(error.message ?? "An unexpected error occurred.");
   };
 
   if (!chargesEnabled) {
@@ -259,7 +274,15 @@ export function CheckoutForm({
 
   return (
     <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
-      {!isFree && <PaymentElement options={paymentElementOptions} />}
+      {!isFree && (
+        <PaymentElement
+          options={setupMode ? paymentElementOptionsCardsOnly : paymentElementOptionsWithWallets}
+          onLoadError={(event) => {
+            const loadMessage = event.error.message;
+            setMessage(loadMessage != null && loadMessage !== "" ? loadMessage : "Stripe payment form failed to load.");
+          }}
+        />
+      )}
       <DesignButton
         disabled={(!isFree && (!stripe || !elements)) || disabled || !chargesEnabled}
         onClick={handleSubmit}

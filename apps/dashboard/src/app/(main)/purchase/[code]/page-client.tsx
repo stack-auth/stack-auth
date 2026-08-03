@@ -427,6 +427,7 @@ export default function PageClient({ code }: { code: string }) {
                       disabled={checkoutDisabled}
                       chargesEnabled={data.charges_enabled ?? false}
                       isFree={isFreeSelected}
+                      setupMode={appliesFreeTrialAtCheckout}
                     />
                   </StripeElementsProvider>
                 )}
