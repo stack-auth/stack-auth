@@ -52,8 +52,7 @@ function isBrowserActionData(value: unknown): value is BrowserActionData {
   }
   return typeof value.refresh_token === "string"
     && typeof value.expires_at_millis === "number"
-    && Number.isInteger(value.expires_at_millis)
-    && Object.keys(value).every(key => ["type", "origin", "refresh_token", "expires_at_millis"].includes(key));
+    && Number.isInteger(value.expires_at_millis);
 }
 
 const browserActionDataSchema = yupMixed<BrowserActionData>()
@@ -200,9 +199,7 @@ export async function consumeBrowserAction(options: {
   if (data.origin !== requestOrigin) {
     throw new StatusError(StatusError.Forbidden, "Browser action origin is not allowed");
   }
-  // Origin is caller-controlled, not an authentication boundary. TTL, one-time atomic claiming,
-  // project/branch scoping, and server-only creation provide the security boundary; matching the
-  // origin is defense in depth if the action URL leaks across origins.
+  // Origin matching is defense in depth; it is not an authentication boundary.
   if (data.type === "impersonation") {
     const javascript = generateImpersonateSnippet(
       options.tenancy.project.id,
