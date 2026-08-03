@@ -14,17 +14,18 @@ export type BrowserActionResponse = InferType<typeof browserActionResponseSchema
 export async function openBrowserActionInNewTab(
   adminApp: object,
   options: Parameters<typeof createBrowserAction>[1],
-): Promise<void> {
+): Promise<boolean> {
   const popup = window.open("about:blank", "_blank");
   if (popup == null) {
     window.alert("Allow pop-ups for this dashboard to open the browser action.");
-    return;
+    return false;
   }
   // Open without noopener so we retain the handle, then sever opener access before navigation.
   popup.opener = null;
   try {
     const action = await createBrowserAction(adminApp, options);
     popup.location.href = action.url;
+    return true;
   } catch (error) {
     popup.close();
     throw error;
@@ -55,7 +56,9 @@ export async function createBrowserAction(
     }),
   });
   if (!response.ok) {
-    throw new HexclaveAssertionError("Browser action creation failed");
+    throw new HexclaveAssertionError(
+      `Browser action creation failed (${response.status}): ${await response.text()}`,
+    );
   }
   return await browserActionResponseSchema.validate(await response.json(), { strict: true });
 }

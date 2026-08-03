@@ -11,10 +11,6 @@ export type TrustedWildcardDomain = {
 };
 
 export function normalizeTrustedOrigin(baseUrl: string): string | null {
-  if (baseUrl.includes("*")) {
-    return null;
-  }
-
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -23,6 +19,9 @@ export function normalizeTrustedOrigin(baseUrl: string): string | null {
   }
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return null;
+  }
+  if (url.hostname.includes("*")) {
     return null;
   }
 
@@ -44,7 +43,14 @@ export function getTrustedOriginOptions(
       continue;
     }
 
-    if (domain.baseUrl.includes("*")) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(domain.baseUrl);
+    } catch {
+      continue;
+    }
+
+    if (parsedUrl.hostname.includes("*")) {
       wildcardDomains.push({ id, baseUrl: domain.baseUrl });
       continue;
     }

@@ -226,7 +226,7 @@ export function createVerificationCodeHandler<
           // Atomic claim — conditional WHERE closes the TOCTOU against the checks above.
           await claimVerificationCode({
             projectId: auth.project.id,
-            branchId: auth.tenancy.branchId,
+            branchId: auth.branchId,
             type: options.type,
             code,
           });

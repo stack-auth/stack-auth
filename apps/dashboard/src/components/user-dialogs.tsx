@@ -87,13 +87,15 @@ export function ImpersonateUserDialog(props: {
       window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
       return "prevent-close";
     }
-    await openBrowserActionInNewTab(props.adminApp, {
+    const opened = await openBrowserActionInNewTab(props.adminApp, {
       type: "impersonation",
       origin,
       userId: props.user.id,
       sessionExpiresInMillis: 2 * 60 * 60 * 1000,
     });
-    props.onClose();
+    if (opened) {
+      props.onClose();
+    }
   }
 
   async function createFallbackSnippet() {

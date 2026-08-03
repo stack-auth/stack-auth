@@ -81,15 +81,24 @@ function validateBrowserActionTtl(expiresInMillis: number): number {
   return expiresInMillis;
 }
 
-export async function createBrowserAction(options: {
+type CreateBrowserActionOptions = {
   tenancy: Tenancy,
-  type: "impersonation" | "clickmap-overlay",
-  params: { userId: string } | Record<never, never>,
   origin: string,
   expiresInMillis: number,
   apiUrl: string,
   sessionExpiresInMillis?: number,
-}): Promise<{ id: string, url: string, expiresAtMillis: number }> {
+} & (
+  | {
+    type: "impersonation",
+    params: { userId: string },
+  }
+  | {
+    type: "clickmap-overlay",
+    params: Record<never, never>,
+  }
+);
+
+export async function createBrowserAction(options: CreateBrowserActionOptions): Promise<{ id: string, url: string, expiresAtMillis: number }> {
   const expiresInMillis = validateBrowserActionTtl(options.expiresInMillis);
   const origin = validateTrustedOrigin(options.tenancy, options.origin);
   const expiresAtMillis = Date.now() + expiresInMillis;
@@ -100,9 +109,7 @@ export async function createBrowserAction(options: {
     if (!Number.isInteger(sessionExpiresInMillis) || sessionExpiresInMillis < 1 || sessionExpiresInMillis > MAX_AUTH_SESSION_EXPIRATION_MS) {
       throw new StatusError(StatusError.BadRequest, "Invalid impersonation session expiration");
     }
-    const userId = "userId" in options.params
-      ? options.params.userId
-      : (() => { throw new StatusError(StatusError.BadRequest, "Invalid browser action"); })();
+    const userId = options.params.userId;
     const user = await usersCrudHandlers.adminRead({
       user_id: userId,
       tenancy: options.tenancy,
@@ -127,13 +134,26 @@ export async function createBrowserAction(options: {
     };
   }
 
-  const code = await browserActionHandler.createCode({
-    tenancy: options.tenancy,
-    method: {},
-    data,
-    callbackUrl: undefined,
-    expiresInMs: expiresInMillis,
-  });
+  let code: { code: string };
+  try {
+    code = await browserActionHandler.createCode({
+      tenancy: options.tenancy,
+      method: {},
+      data,
+      callbackUrl: undefined,
+      expiresInMs: expiresInMillis,
+    });
+  } catch (error) {
+    if (data.type === "impersonation") {
+      await globalPrismaClient.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: options.tenancy.id,
+          refreshToken: data.refresh_token,
+        },
+      });
+    }
+    throw error;
+  }
   const actionUrl = new URL(`${origin}/`);
   actionUrl.searchParams.set(BROWSER_ACTION_QUERY_PARAM, code.code);
   return {
@@ -180,7 +200,15 @@ export async function consumeBrowserAction(options: {
   if (data.origin !== requestOrigin) {
     throw new StatusError(StatusError.Forbidden, "Browser action origin is not allowed");
   }
+  // Origin is caller-controlled, not an authentication boundary. TTL, one-time atomic claiming,
+  // project/branch scoping, and server-only creation provide the security boundary; matching the
+  // origin is defense in depth if the action URL leaks across origins.
   if (data.type === "impersonation") {
+    const javascript = generateImpersonateSnippet(
+      options.tenancy.project.id,
+      data.refresh_token,
+      new Date(data.expires_at_millis),
+    );
     await claimVerificationCode({
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
@@ -188,11 +216,7 @@ export async function consumeBrowserAction(options: {
       code: options.code,
     });
     return {
-      javascript: generateImpersonateSnippet(
-        options.tenancy.project.id,
-        data.refresh_token,
-        new Date(data.expires_at_millis),
-      ),
+      javascript,
     };
   }
 

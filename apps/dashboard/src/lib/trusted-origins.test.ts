@@ -35,6 +35,22 @@ describe("trusted origin options", () => {
     expect(normalizeTrustedOrigin("https://*.stack-auth.com")).toMatchInlineSnapshot(`null`);
   });
 
+  it("does not treat asterisk characters outside the hostname as wildcards", () => {
+    expect(getTrustedOriginOptions({
+      path: { baseUrl: "https://app.stack-auth.com/path*?query=*" },
+    })).toMatchInlineSnapshot(`
+      {
+        "origins": [
+          {
+            "id": "path",
+            "origin": "https://app.stack-auth.com",
+          },
+        ],
+        "wildcardDomains": [],
+      }
+    `);
+  });
+
   it("does not synthesize a portless localhost origin", () => {
     expect(getTrustedOriginOptions({}).origins).toHaveLength(0);
   });

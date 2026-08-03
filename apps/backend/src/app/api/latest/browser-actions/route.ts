@@ -3,7 +3,7 @@ import { createBrowserAction, DEFAULT_BROWSER_ACTION_TTL_MS, DEFAULT_IMPERSONATI
 import { MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -35,14 +35,16 @@ export const POST = createSmartRouteHandler({
     if (type === "impersonation" && user_id == null) {
       throw new StatusError(StatusError.BadRequest, "Invalid browser action");
     }
+    const actionParams = type === "impersonation"
+      ? { type, params: { userId: user_id ?? throwErr(new StatusError(StatusError.BadRequest, "Invalid browser action")) } }
+      : { type, params: {} };
     const action = await createBrowserAction({
       tenancy,
-      type,
       origin,
       expiresInMillis: expires_in_millis,
       sessionExpiresInMillis: session_expires_in_millis,
-      params: type === "impersonation" ? { userId: user_id } : {},
       apiUrl: getApiUrlForRequest(fullReq),
+      ...actionParams,
     });
     return {
       statusCode: 200,

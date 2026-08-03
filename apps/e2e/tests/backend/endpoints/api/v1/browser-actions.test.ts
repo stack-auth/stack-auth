@@ -39,7 +39,7 @@ it("creates and consumes a clickmap browser action once", async ({ expect }) => 
   expect(created.body.url).toContain("hexclave_action_id=");
 
   const consumed = await consumeAction(created.body.id);
-  expect(consumed.status).toBe(200);
+  expect(consumed.status).toMatchInlineSnapshot(`200`);
   expect(consumed.body.javascript).toContain("sessionStorage.setItem");
   expect(consumed.body.javascript).toContain("hexclave:clickmap-token-updated");
 
@@ -55,11 +55,11 @@ it("creates and consumes an impersonation browser action without returning the r
     type: "impersonation",
     user_id: userId,
   });
-  expect(created.status).toBe(200);
+  expect(created.status).toMatchInlineSnapshot(`200`);
   expect(created.body).not.toHaveProperty("refresh_token");
 
   const consumed = await consumeAction(created.body.id);
-  expect(consumed.status).toBe(200);
+  expect(consumed.status).toMatchInlineSnapshot(`200`);
   expect(consumed.body.javascript).toContain("hexclave-refresh-");
   expect(consumed.body.javascript).toContain("window.location.reload");
 });
@@ -69,7 +69,7 @@ it("rejects missing and mismatched origins", async ({ expect }) => {
   await Auth.fastSignUp();
 
   const created = await createAction({});
-  expect(created.status).toBe(200);
+  expect(created.status).toMatchInlineSnapshot(`200`);
 
   const missingOrigin = await consumeAction(created.body.id, null);
   expect(missingOrigin.status).toMatchInlineSnapshot(`403`);
@@ -105,7 +105,7 @@ it("rejects expired actions", async ({ expect }) => {
   await Auth.fastSignUp();
 
   const created = await createAction({ expires_in_millis: 1 });
-  expect(created.status).toBe(200);
+  expect(created.status).toMatchInlineSnapshot(`200`);
   await new Promise(resolve => setTimeout(resolve, 10));
 
   const consumed = await consumeAction(created.body.id);
@@ -116,7 +116,7 @@ it("binds actions to their creating project", async ({ expect }) => {
   await Project.createAndSwitch();
   await Auth.fastSignUp();
   const created = await createAction({});
-  expect(created.status).toBe(200);
+  expect(created.status).toMatchInlineSnapshot(`200`);
 
   await Project.createAndSwitch();
   await Auth.fastSignUp();

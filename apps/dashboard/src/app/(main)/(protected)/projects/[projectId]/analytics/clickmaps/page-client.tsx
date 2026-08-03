@@ -99,8 +99,8 @@ export default function PageClient() {
     return getTrustedOriginOptions(config.domains.trustedDomains);
   }, [config.domains.trustedDomains]);
 
-  function launchBrowserAction(origin: TrustedOrigin) {
-    return openBrowserActionInNewTab(adminApp, {
+  async function launchBrowserAction(origin: TrustedOrigin) {
+    await openBrowserActionInNewTab(adminApp, {
       type: "clickmap-overlay",
       origin: origin.origin,
     });
