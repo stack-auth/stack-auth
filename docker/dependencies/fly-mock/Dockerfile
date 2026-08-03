@@ -34,7 +34,11 @@ let logNanos = 1_000_000_000_000n * 1_000_000n;
 const appsByName = new Map();
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { "content-type": "application/json" });
+  // Connection: close on every response: Marshal's HTTP client otherwise
+  // races this server's keep-alive idle close through the docker port proxy,
+  // which surfaces as multi-second request stalls in tests. The mock has no
+  // performance requirements, so per-request connections are the simple fix.
+  res.writeHead(status, { "content-type": "application/json", "connection": "close" });
   res.end(JSON.stringify(body));
 }
 
@@ -179,8 +183,22 @@ const server = http.createServer(async (req, res) => {
   const auth = req.headers.authorization ?? "";
 
   // Test-only introspection (no auth, like the vercel-mock's /__mock namespace).
+  // The listing includes machine metadata/env so e2e tests can find the app
+  // belonging to a (namespace, service key) pair without knowing Marshal's
+  // naming scheme (machines carry hexclave_ns/hexclave_key metadata).
   if (path === "/__mock/apps") {
-    return sendJson(res, 200, { apps: [...appsByName.keys()] });
+    return sendJson(res, 200, {
+      apps: [...appsByName.values()].map((app) => ({
+        name: app.name,
+        machines: [...app.machinesById.values()].map((machine) => ({
+          id: machine.id,
+          image: machine.config.image,
+          metadata: machine.config.metadata ?? {},
+          env: machine.config.env ?? {},
+        })),
+        certificates: [...app.certsByHostname.values()].map(certJson),
+      })),
+    });
   }
   const mockAppMatch = /^\/__mock\/apps\/([^/]+)$/.exec(path);
   if (mockAppMatch) {
@@ -200,12 +218,12 @@ const server = http.createServer(async (req, res) => {
   const logsMatch = /^\/api\/v1\/apps\/([^/]+)\/logs$/.exec(path);
   if (logsMatch) {
     if (auth !== EXPECTED_TOKEN) {
-      res.writeHead(401);
+      res.writeHead(401, { "connection": "close" });
       return res.end();
     }
     const app = appsByName.get(logsMatch[1]);
     if (!app) {
-      res.writeHead(401); // real Fly can't distinguish missing apps here either
+      res.writeHead(401, { "connection": "close" }); // real Fly can't distinguish missing apps here either
       return res.end();
     }
     const nextToken = url.searchParams.get("next_token");

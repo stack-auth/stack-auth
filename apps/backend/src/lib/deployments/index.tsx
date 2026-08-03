@@ -686,8 +686,9 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
   id: string,
   status: DeploymentRunStatus,
   marshalBuildId: string | null,
+  revision: string | null,
 }, serviceId: string): Promise<void> {
-  if (isTerminalRunStatus(run.status) || run.marshalBuildId == null) {
+  if (isTerminalRunStatus(run.status)) {
     return;
   }
   const client = getMarshalClientOrThrow();
@@ -695,14 +696,46 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
   let build;
   try {
     const builds = await client.listBuilds(ns, serviceId, { limit: 50 });
-    build = builds.find((candidate) => candidate.id === run.marshalBuildId) ?? null;
+    // A run without an attached build id means no build had started when the
+    // deploy was accepted (the service was blocked on an unresolved ref, or the
+    // post-deploy lookup failed): try to attach by revision — convergence
+    // re-applies may have started it since.
+    build = run.marshalBuildId != null
+      ? builds.find((candidate) => candidate.id === run.marshalBuildId) ?? null
+      : builds.find((candidate) => candidate.revision === run.revision) ?? null;
   } catch (e) {
     sanitizeMarshalError(e, "Fetching the deployment status failed");
+  }
+  if (build == null && run.marshalBuildId == null) {
+    // Still no build. If the service is blocked, surface the blocker as the
+    // run's failure instead of letting pollers hang on QUEUED forever.
+    try {
+      const state = await client.getService(ns, serviceId);
+      if (state.status === "blocked") {
+        await prisma.deploymentRun.update({
+          where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
+          data: {
+            status: "ERROR",
+            error: state.error ?? "The service is blocked on an unresolved connection (e.g. a `url` output that needs a verified domain). Fix the blocker and deploy again.",
+            finishedAt: new Date(),
+          },
+        });
+      }
+    } catch (e) {
+      captureError("deployments-run-refresh-blocked-check", e);
+    }
+    return;
   }
   if (build == null) {
     // The build record is gone (e.g. the service was deleted and recreated);
     // leave the run as-is rather than inventing a state.
     return;
+  }
+  if (run.marshalBuildId == null) {
+    await prisma.deploymentRun.update({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
+      data: { marshalBuildId: build.id },
+    });
   }
   const newStatus = mapMarshalBuildStatus(build.status);
   let serviceUrl: string | null | undefined = undefined;

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_TIMEOUT_SECONDS, getConfig, resolveNamespaceOrg } from "./config.js";
 import { flyClientForNamespaceOrg } from "./fly/client.js";
 import { builderAppName, builderNetworkName } from "./naming.js";
-import { presignUploadGet } from "./store.js";
+import { presignUploadGet, readSpec } from "./store.js";
 
 // Builders start a build for an uploaded source tarball; completion always flows through
 // the webhook path (POST /internal/builds/:id/complete → services.completeBuild), so the
@@ -147,6 +147,10 @@ export function createMockBuilder(completeBuild: CompleteBuildFn): Builder {
   return {
     name: "mock",
     async startBuild(options) {
+      // Test hook: a spec whose env declares MARSHAL_MOCK_FAIL_BUILD fails the build —
+      // the only way e2e can exercise the failure path with an instant fake builder.
+      const stored = await readSpec(options.ns, options.key);
+      const shouldFail = stored !== null && Object.hasOwn(stored.spec.env, "MARSHAL_MOCK_FAIL_BUILD");
       // Deterministic fake digest so e2e assertions and revision→image mapping are stable.
       const fakeDigest = `sha256:${"0".repeat(64 - options.revision.length)}${options.revision}`;
       // Complete on the next tick, mirroring the real flow's asynchrony without making the
@@ -159,9 +163,9 @@ export function createMockBuilder(completeBuild: CompleteBuildFn): Builder {
               ns: options.ns,
               key: options.key,
               buildId: options.buildId,
-              status: "succeeded",
-              metadataJson: JSON.stringify({ "containerimage.digest": fakeDigest }),
-              errorText: null,
+              status: shouldFail ? "failed" : "succeeded",
+              metadataJson: shouldFail ? null : JSON.stringify({ "containerimage.digest": fakeDigest }),
+              errorText: shouldFail ? "mock build failed (the spec declares MARSHAL_MOCK_FAIL_BUILD)" : null,
             });
           } catch (error) {
             console.error(`mock builder: completing build ${options.buildId} failed`, error);

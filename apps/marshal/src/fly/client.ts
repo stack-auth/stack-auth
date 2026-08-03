@@ -67,9 +67,22 @@ export class FlyClient {
     public readonly orgSlug: string,
   ) {}
 
+  // Reads are retried once on network-level failures (a keep-alive socket the
+  // server closed under us surfaces as a synthetic "fetch failed"); writes are
+  // not — a duplicated machine create is worse than a surfaced error.
+  private async fetchWithReadRetry(url: string, init: RequestInit & { method: string }): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (init.method !== "GET" && init.method !== "HEAD") throw error;
+      if (!(error instanceof TypeError)) throw error;
+      return await fetch(url, init);
+    }
+  }
+
   private async fetchMachinesApi<T>(path: string, init?: { method?: string, body?: unknown, allow404?: boolean }): Promise<T | null> {
     const { fly } = getConfig();
-    const response = await fetch(`${fly.machinesApiUrl}/v1${path}`, {
+    const response = await this.fetchWithReadRetry(`${fly.machinesApiUrl}/v1${path}`, {
       method: init?.method ?? "GET",
       headers: {
         "authorization": `Bearer ${this.token}`,

@@ -290,9 +290,17 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     return { revision, changed, state: await getServiceState(ns, key, stored) };
   }
 
-  if (changed && "upload_id" in spec.source) {
-    const upload = await statUpload(ns, spec.source.upload_id);
-    if (upload === null) throw badRequest(`upload ${JSON.stringify(spec.source.upload_id)} does not exist (expired, already consumed, or never uploaded)`);
+  // A build starts whenever the stored source is still an upload and no build exists for
+  // this revision yet — NOT merely when the revision changed: a spec that arrived blocked
+  // starts its build on the unblocking re-apply (changed === false there). A failed build
+  // of the same revision is deliberately not retried (retries come with a fresh upload and
+  // therefore a new revision).
+  const needsBuild = "upload_id" in stored.spec.source
+    && !(await listBuilds(ns, key, { limit: 10 })).some((build) => build.revision === revision);
+  if (needsBuild && "upload_id" in stored.spec.source) {
+    const uploadId = stored.spec.source.upload_id;
+    const upload = await statUpload(ns, uploadId);
+    if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
     if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
 
     await writeSpec(stored);
@@ -312,7 +320,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
       builder_app: null,
       builder_machine_id: null,
       image: null,
-      upload_id: spec.source.upload_id,
+      upload_id: uploadId,
     };
     await writeBuild(build);
     try {
@@ -322,7 +330,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
         buildId: build.id,
         revision,
         appName: appNameForService(config.envId, ns, key),
-        uploadId: spec.source.upload_id,
+        uploadId,
       });
       if (started.builderApp !== null || started.builderMachineId !== null) {
         // Attach the builder coordinates (live-log proxy + stale-build backstop need
