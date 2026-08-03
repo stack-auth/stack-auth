@@ -5,6 +5,7 @@
 ## 8/7/26
 
 - Apple sign-in now supports key-based credentials (Team ID, Key ID, and private key), with short-lived client secrets generated automatically.
+- Fixed a bug where hosted components would sometimes redirect already signed-in users to the "Welcome back" screen instead of the page they requested.
 
 ## 7/31/26
 
