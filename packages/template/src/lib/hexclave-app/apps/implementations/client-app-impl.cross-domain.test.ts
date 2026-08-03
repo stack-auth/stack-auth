@@ -3,6 +3,7 @@ import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
+import { planRedirectToHandler } from "./redirect-page-urls";
 
 function createAccessTokenString(refreshTokenId: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -50,6 +51,76 @@ function createMockDocument(): Document {
 }
 
 describe("StackClientApp cross-domain auth", () => {
+  it("keeps noRedirectBack same-domain redirects free of redirect-back state", async () => {
+    const redirectPlan = await planRedirectToHandler({
+      handlerName: "signIn",
+      rawHandlerUrl: "/handler/sign-in",
+      noRedirectBack: true,
+      currentUrl: new URL("https://app.example.test/settings?tab=profile"),
+      localOAuthCallbackUrl: "/handler/oauth-callback",
+      rawHomeUrl: "/home",
+      getCrossDomainHandoffParams: async () => {
+        throw new Error("Same-domain redirects must not create cross-domain handoff parameters.");
+      },
+    });
+
+    expect(redirectPlan).toEqual({
+      type: "redirect",
+      url: "/handler/sign-in",
+    });
+  });
+
+  it("returns noRedirectBack cross-domain auth to the source app home", async () => {
+    const handoffState = "no-redirect-back-state";
+    const handoffCodeChallenge = "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~";
+    const currentUrl = new URL("https://app.example.test/settings?tab=profile");
+    currentUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    currentUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    currentUrl.searchParams.set(
+      "hexclave_cross_domain_after_callback_redirect_url",
+      "https://app.example.test/settings?tab=profile",
+    );
+
+    const redirectPlan = await planRedirectToHandler({
+      handlerName: "signIn",
+      rawHandlerUrl: "https://auth.example.test/handler/sign-in",
+      noRedirectBack: true,
+      currentUrl,
+      localOAuthCallbackUrl: "/handler/oauth-callback",
+      rawHomeUrl: "/home",
+      getCrossDomainHandoffParams: async () => {
+        throw new Error("Existing cross-domain handoff parameters must be reused.");
+      },
+    });
+
+    expect(redirectPlan.type).toBe("redirect");
+    if (redirectPlan.type !== "redirect") {
+      throw new Error("Expected noRedirectBack sign-in to produce a redirect URL.");
+    }
+
+    const hostedUrl = new URL(redirectPlan.url);
+    expect(hostedUrl.origin).toBe("https://auth.example.test");
+    expect(hostedUrl.pathname).toBe("/handler/sign-in");
+    expect(hostedUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBe(
+      "https://app.example.test/home",
+    );
+
+    const rawSourceCallbackUrl = hostedUrl.searchParams.get("after_auth_return_to");
+    if (rawSourceCallbackUrl == null) {
+      throw new Error("Expected cross-domain noRedirectBack to include its internal source callback URL.");
+    }
+    const sourceCallbackUrl = new URL(rawSourceCallbackUrl);
+    expect(sourceCallbackUrl.origin).toBe("https://app.example.test");
+    expect(sourceCallbackUrl.pathname).toBe("/handler/oauth-callback");
+    expect(sourceCallbackUrl.searchParams.get("hexclave_cross_domain_auth")).toBe("1");
+    expect(sourceCallbackUrl.searchParams.get("hexclave_cross_domain_state")).toBe(handoffState);
+    expect(sourceCallbackUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toBe(handoffCodeChallenge);
+    expect(sourceCallbackUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBe(
+      "https://app.example.test/home",
+    );
+    expect(sourceCallbackUrl.toString()).not.toContain("/settings");
+  });
+
   it("exposes redirect-back-aware handler URLs for devtool previews", async () => {
     const previousWindow = Reflect.get(globalThis, "window");
     const hadPreviousWindow = Reflect.has(globalThis, "window");

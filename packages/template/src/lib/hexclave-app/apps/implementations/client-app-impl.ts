@@ -3194,6 +3194,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       noRedirectBack: options?.noRedirectBack === true,
       currentUrl,
       localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      rawHomeUrl: rawUrls.home,
       getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
     });
 
