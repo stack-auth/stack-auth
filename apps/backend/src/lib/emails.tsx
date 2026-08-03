@@ -1,6 +1,7 @@
 import { globalPrismaClient } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
+import { enqueueBrainEvent } from '@/lib/brain';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
@@ -66,6 +67,25 @@ export async function sendEmailToMany(options: {
       overrideSubject: options.overrideSubject,
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
+  });
+
+  // One queue-intent event per batch (not per recipient) — the Brain can list
+  // later email.sent / email.skipped / email.send_failed rows for detail.
+  await enqueueBrainEvent(globalPrismaClient, {
+    tenancy: options.tenancy,
+    type: "email.queued",
+    payload: {
+      recipient_count: options.recipients.length,
+      scheduled_at: options.scheduledAt.toISOString(),
+      is_high_priority: options.isHighPriority,
+      created_with: options.createdWith.type,
+      template_or_draft_id: options.createdWith.type === "draft"
+        ? options.createdWith.draftId
+        : options.createdWith.templateId,
+      override_subject: options.overrideSubject ?? null,
+    },
+    subjectType: "email_batch",
+    subjectId: `${options.tenancy.id}:${options.scheduledAt.toISOString()}`,
   });
 
   if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {

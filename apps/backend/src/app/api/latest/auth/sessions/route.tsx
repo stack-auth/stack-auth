@@ -54,6 +54,7 @@ export const POST = createSmartRouteHandler({
       expiresAt: new Date(Date.now() + expiresInMillis),
       isImpersonation: isImpersonation,
       apiUrl: getApiUrlForRequest(fullReq),
+      brainAuthReason: isImpersonation ? "impersonation" : "other",
     });
 
     return {

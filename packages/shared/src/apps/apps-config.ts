@@ -217,6 +217,12 @@ export const ALL_APPS = {
     tags: ["automation", "developers"],
     stage: "alpha",
   },
+  "brain": {
+    displayName: "Brain",
+    subtitle: "A persistent AI that watches your project and works down an event queue for you",
+    tags: ["automation", "operations"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {

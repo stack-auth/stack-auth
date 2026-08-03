@@ -1,4 +1,5 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
+import { enqueueBrainEvent } from "@/lib/brain";
 import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, isCustomEmailForSharedServer, wrapSharedDevEmail, } from "@/lib/emails";
@@ -19,6 +20,7 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "node:crypto";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
+import type { BrainEventType } from "@hexclave/shared/dist/interface/brain";
 
 const MAX_RENDER_BATCH = 50;
 
@@ -35,6 +37,33 @@ const STUCK_EMAIL_TIMEOUT_MS = 20 * 60 * 1000;
 const calculateRetryBackoffMs = (attemptCount: number): number => {
   return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
 };
+
+/**
+ * Best-effort Brain enqueue for email status transitions. Loads tenancy config
+ * to honor the Brain install gate; never throws into the email worker.
+ */
+async function emitBrainEmailEvent(
+  row: Pick<EmailOutbox, "tenancyId" | "id" | "overrideSubject" | "emailDraftId" | "emailProgrammaticCallTemplateId">,
+  type: BrainEventType,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  const tenancy = await getTenancy(row.tenancyId);
+  if (tenancy == null) return;
+  await enqueueBrainEvent(globalPrismaClient, {
+    tenancy,
+    type,
+    payload: {
+      email_outbox_id: row.id,
+      subject: row.overrideSubject,
+      draft_id: row.emailDraftId,
+      template_id: row.emailProgrammaticCallTemplateId,
+      ...extra,
+    },
+    subjectType: "email_outbox",
+    subjectId: row.id,
+    idempotencyKey: `${type}:${row.id}`,
+  });
+}
 
 /**
  * Structure for tracking errors from each send attempt.
@@ -397,6 +426,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         shouldUpdateSequenceId: true,
       },
     });
+    await emitBrainEmailEvent(row, "email.render_failed", { error });
   };
 
   const saveRenderedEmail = async (row: EmailOutbox, output: { html: string, text: string, subject?: string }, categoryId: string | undefined) => {
@@ -855,6 +885,11 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             shouldUpdateSequenceId: true,
           },
         });
+        await emitBrainEmailEvent(row, "email.send_failed", {
+          error_type: result.error.errorType,
+          failure_reason: failureReason,
+          attempt_count: newAttemptCount,
+        });
       }
     } else {
       // Success - mark as sent (don't increment sendRetries since this wasn't a failure)
@@ -875,6 +910,9 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorInternalDetails: Prisma.DbNull,
           shouldUpdateSequenceId: true,
         },
+      });
+      await emitBrainEmailEvent(row, "email.sent", {
+        recipient_count: resolution.emails.length,
       });
 
     }
@@ -984,6 +1022,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
       shouldUpdateSequenceId: true,
     },
   });
+  await emitBrainEmailEvent(row, "email.skipped", { reason, details });
 }
 
 

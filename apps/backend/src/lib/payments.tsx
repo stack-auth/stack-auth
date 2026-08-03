@@ -1,4 +1,5 @@
 import { CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
+import { enqueueBrainEvent } from "@/lib/brain";
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import type { OwnedProductsRow } from "@/lib/payments/schema/types";
@@ -593,6 +594,22 @@ export async function grantProductToCustomer(options: {
     });
     // dual write - prisma and bulldozer
     await bulldozerWriteOneTimePurchase(purchase);
+    await enqueueBrainEvent(prisma, {
+      tenancy,
+      type: "payment.one_time_purchase",
+      payload: {
+        purchase_id: purchase.id,
+        customer_id: customerId,
+        customer_type: customerType,
+        product_id: productId,
+        price_id: priceId,
+        quantity,
+        creation_source: creationSource,
+      },
+      subjectType: "one_time_purchase",
+      subjectId: purchase.id,
+      idempotencyKey: `payment.one_time_purchase:${purchase.id}`,
+    });
     return { type: "one_time", purchaseId: purchase.id };
   }
 
@@ -614,6 +631,23 @@ export async function grantProductToCustomer(options: {
   });
   // dual write - prisma and bulldozer
   await bulldozerWriteSubscription(subscription);
+  await enqueueBrainEvent(prisma, {
+    tenancy,
+    type: "payment.subscription_changed",
+    payload: {
+      subscription_id: subscription.id,
+      customer_id: customerId,
+      customer_type: customerType,
+      product_id: productId,
+      price_id: priceId,
+      quantity,
+      status: "active",
+      creation_source: creationSource,
+    },
+    subjectType: "subscription",
+    subjectId: subscription.id,
+    idempotencyKey: `payment.subscription_changed:create:${subscription.id}`,
+  });
 
   return { type: "subscription", subscriptionId: subscription.id };
 }

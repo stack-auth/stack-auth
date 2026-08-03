@@ -10,6 +10,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
 import { enqueueWorkflowEvent } from "@/lib/workflows/events";
+import { enqueueBrainEvent } from "@/lib/brain";
 import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -876,6 +877,23 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       // outbox, at-least-once) — unlike the Svix webhook below, which is
       // fire-and-forget after commit.
       await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.created", payload: crud });
+      // Explicit signup signal: user.created alone can mean anonymous creation.
+      if (!crud.is_anonymous) {
+        await enqueueBrainEvent(tx, {
+          tenancy: auth.tenancy,
+          type: "user.signed_up",
+          payload: {
+            user_id: crud.id,
+            primary_email: crud.primary_email,
+            display_name: crud.display_name,
+            signed_up_at: crud.signed_up_at_millis,
+            via: "user.created",
+          },
+          subjectType: "user",
+          subjectId: crud.id,
+          idempotencyKey: `user.signed_up:${crud.id}`,
+        });
+      }
       return crud;
     });
 
@@ -1289,6 +1307,22 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       const user = userPrismaToCrud(db, auth.tenancy.config);
       await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.updated", payload: user });
+      if (wasAnonymousUpgrade) {
+        await enqueueBrainEvent(tx, {
+          tenancy: auth.tenancy,
+          type: "user.signed_up",
+          payload: {
+            user_id: user.id,
+            primary_email: user.primary_email,
+            display_name: user.display_name,
+            signed_up_at: user.signed_up_at_millis,
+            via: "anonymous_upgrade",
+          },
+          subjectType: "user",
+          subjectId: user.id,
+          idempotencyKey: `user.signed_up:${user.id}`,
+        });
+      }
       return {
         user,
         wasAnonymousUpgrade,

@@ -183,6 +183,7 @@ model Tenancy {
   workflowRuns WorkflowRun[]
   workflowEvents WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
+  brain               Brain?
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -2094,4 +2095,121 @@ model WorkflowScheduleCursor {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, workflowId, scheduleKey])
+}
+
+// ---------------------------------------------------------------------------
+// Brain: one persistent AI conversation + durable event queue per tenancy
+// (environment). Enabling the `brain` app starts enqueuing and processing;
+// disabling pauses both without deleting history.
+// ---------------------------------------------------------------------------
+
+enum BrainRunState {
+  IDLE
+  RUNNING
+}
+
+enum BrainQueueItemStatus {
+  QUEUED
+  CLAIMED
+  COMPLETED
+  FAILED
+}
+
+model Brain {
+  // One Brain per tenancy/environment. The tenancy id is the primary key so
+  // the singleton is enforced by the schema rather than application logic.
+  tenancyId String  @id @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  // Atomically incremented when appending messages; avoids MAX(position)+1 races.
+  nextMessagePosition Int @default(0)
+
+  // Rolling summary of older transcript for model context compaction. The
+  // summary covers messages with position <= summaryThroughPosition.
+  summaryText             String?
+  summaryThroughPosition  Int?
+
+  // Serializes human and autonomous turns. A RUNNING brain whose lease
+  // expired is reclaimable by any worker (fencing via runLeaseToken).
+  runState      BrainRunState @default(IDLE)
+  runLeaseUntil DateTime?
+  runLeaseToken String?       @db.Uuid
+  // When non-null and in the past (or now), the worker should wake this Brain
+  // to process queue items / continue a turn. Cleared when idle with empty queue.
+  runWakeAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages   BrainMessage[]
+  queueItems BrainQueueItem[]
+
+  @@index([runState, runWakeAt], map: "Brain_wake_idx")
+}
+
+model BrainMessage {
+  tenancyId String @db.Uuid
+  id        String  @default(uuid()) @db.Uuid
+
+  // Cascade through Brain so deleting a tenancy (→ Brain) clears transcript.
+  // Dual FKs onto the same tenancyId column are avoided on purpose.
+  brain Brain @relation(fields: [tenancyId], references: [tenancyId], onDelete: Cascade)
+
+  position Int
+  // user | assistant | tool | system
+  role     String
+  content  Json
+  // "visible" shown in the dashboard UI; "hidden" stored for the model
+  // (autonomous wake prompts) but filtered from UI responses.
+  visibility String @default("visible")
+
+  // Optional correlation with a queue item that triggered this turn.
+  queueItemId String? @db.Uuid
+
+  // Deterministic key so crash-replayed appends are idempotent.
+  idempotencyKey String?
+
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, position])
+  @@index([tenancyId, createdAt], map: "BrainMessage_tenancy_created_idx")
+}
+
+model BrainQueueItem {
+  tenancyId String @db.Uuid
+  id        String  @default(uuid()) @db.Uuid
+
+  brain Brain @relation(fields: [tenancyId], references: [tenancyId], onDelete: Cascade)
+
+  // Wire type, e.g. "user.signed_up", "email.sent", "payment.succeeded".
+  type          String
+  schemaVersion Int    @default(1)
+  payload       Json
+  occurredAt    DateTime @default(now())
+
+  subjectType String?
+  subjectId   String?
+
+  // Deterministic key for provider redelivery / retry dedup. Partial unique
+  // index is created in the migration (NULLs allowed to collide).
+  idempotencyKey String?
+
+  status      BrainQueueItemStatus @default(QUEUED)
+  availableAt DateTime             @default(now())
+  attempts    Int                  @default(0)
+  lastError   String?
+
+  claimedAt       DateTime?
+  claimLeaseUntil DateTime?
+  claimLeaseToken String?   @db.Uuid
+  completedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+  // Pending-item scan for the AI tools and the wake loop.
+  @@index([tenancyId, status, availableAt, createdAt], map: "BrainQueueItem_pending_idx")
+  @@index([tenancyId, createdAt], map: "BrainQueueItem_tenancy_created_idx")
 }

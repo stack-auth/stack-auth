@@ -32,7 +32,14 @@ export async function register() {
   });
 
   if (getNextRuntime() === "nodejs") {
-    (globalThis as any).process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
+    const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+    (globalThis as any).process.title = `stack-backend:${portPrefix} (node/nextjs)`;
+    // Stash the local backend origin for in-process self-calls (AI proxy, etc.).
+    // Turbopack workers sometimes see a stale/default NEXT_PUBLIC_HEXCLAVE_API_URL
+    // of :8102 even when this process is listening on ${prefix}02.
+    if (getNodeEnvironment() === "development") {
+      (globalThis as any).__HEXCLAVE_DEV_BACKEND_ORIGIN__ = `http://localhost:${portPrefix}02`;
+    }
 
     // Initialize performance stats collection in development
     initPerfStats();

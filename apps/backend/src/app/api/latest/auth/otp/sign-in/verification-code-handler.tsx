@@ -149,6 +149,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       tenancy,
       projectUserId: user.id,
       apiUrl,
+      brainAuthReason: isNewUser ? "signup" : "otp_signin",
     });
 
     return {

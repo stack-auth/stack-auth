@@ -1,7 +1,9 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { enqueueBrainEvent } from '@/lib/brain';
 import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@hexclave/shared';
+import type { BrainAuthReason } from '@hexclave/shared/dist/interface/brain';
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { AccessTokenPayload } from '@hexclave/shared/dist/sessions';
@@ -411,6 +413,12 @@ type CreateRefreshTokenOptions = {
   projectUserId: string,
   expiresAt?: Date,
   isImpersonation?: boolean,
+  /**
+   * Why this session was created. Used by Brain to distinguish signup vs
+   * signin vs MFA vs impersonation vs anonymous — without this, every refresh
+   * token creation looks the same.
+   */
+  brainAuthReason?: BrainAuthReason,
 }
 
 type CreateAuthTokensOptions = CreateRefreshTokenOptions & {
@@ -438,6 +446,15 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
   return refreshTokenObj;
 }
 
+const BRAIN_SIGN_IN_REASONS = new Set<BrainAuthReason>([
+  "password_signin",
+  "otp_signin",
+  "oauth_signin",
+  "passkey_signin",
+  "mfa_completion",
+  "impersonation",
+]);
+
 export async function createAuthTokens(options: CreateAuthTokensOptions) {
   const refreshTokenObj = await createRefreshTokenObj(options);
 
@@ -446,6 +463,25 @@ export async function createAuthTokens(options: CreateAuthTokensOptions) {
     refreshTokenObj: refreshTokenObj,
     apiUrl: options.apiUrl,
   }) ?? throwErr("Newly generated refresh token is not valid; this should never happen!", { refreshTokenObj });
+
+  const reason = options.isImpersonation
+    ? "impersonation" as const
+    : (options.brainAuthReason ?? "other");
+  if (BRAIN_SIGN_IN_REASONS.has(reason)) {
+    await enqueueBrainEvent(globalPrismaClient, {
+      tenancy: options.tenancy,
+      type: "auth.signed_in",
+      payload: {
+        user_id: options.projectUserId,
+        reason,
+        refresh_token_id: refreshTokenObj.id,
+        is_impersonation: options.isImpersonation === true,
+      },
+      subjectType: "user",
+      subjectId: options.projectUserId,
+      idempotencyKey: `auth.signed_in:${refreshTokenObj.id}`,
+    });
+  }
 
   return { refreshToken: refreshTokenObj.refreshToken, accessToken };
 }

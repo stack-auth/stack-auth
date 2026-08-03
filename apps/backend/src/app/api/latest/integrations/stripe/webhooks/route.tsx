@@ -1,4 +1,5 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
+import { enqueueBrainEvent } from "@/lib/brain";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
 import { claimStripeEvent, markStripeEventFailed, markStripeEventProcessed } from "@/lib/stripe-webhook-events";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -7,7 +8,7 @@ import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadat
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_TEMPLATE_IDS } from "@hexclave/shared/dist/helpers/emails";
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
@@ -181,6 +182,26 @@ async function sendDefaultTemplateEmail(options: {
 
 async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
   const mockData = (event.data.object as { stack_stripe_mock_data?: StripeOverridesMap }).stack_stripe_mock_data;
+
+  // Notify the Brain early with a sanitized receipt summary. Deduped by Stripe
+  // event id so redeliveries do not spam the queue.
+  if (event.account) {
+    const brainTenancy = await getTenancyForStripeAccountId(event.account, mockData);
+    await enqueueBrainEvent(globalPrismaClient, {
+      tenancy: brainTenancy,
+      type: "stripe.webhook_received",
+      payload: {
+        stripe_event_id: event.id,
+        event_type: event.type,
+        livemode: event.livemode,
+        created: event.created,
+      },
+      subjectType: "stripe_event",
+      subjectId: event.id,
+      idempotencyKey: `stripe.webhook_received:${event.id}`,
+    });
+  }
+
   if (event.type === "payment_intent.succeeded" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
     const paymentIntent = event.data.object as Stripe.PaymentIntent & {
       charges?: { data?: Array<{ receipt_url?: string | null }> },

@@ -60,6 +60,7 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
       tenancy,
       projectUserId: data.user_id,
       apiUrl,
+      brainAuthReason: "mfa_completion",
     });
 
     return {

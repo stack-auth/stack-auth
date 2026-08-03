@@ -109,6 +109,7 @@ export const POST = createSmartRouteHandler({
       tenancy,
       projectUserId: createdUser.id,
       apiUrl: getApiUrlForRequest(fullReq),
+      brainAuthReason: "signup",
     });
 
     return {

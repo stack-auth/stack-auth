@@ -123,6 +123,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
       tenancy,
       projectUserId: user.projectUserId,
       apiUrl,
+      brainAuthReason: "passkey_signin",
     });
 
     return {

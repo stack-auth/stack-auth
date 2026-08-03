@@ -19,10 +19,19 @@ export const TOOL_NAMES = [
 ] as const;
 export type ToolName = typeof TOOL_NAMES[number];
 
+export type ToolExecutionRunner = <T>(options: {
+  toolCallId: string,
+  toolName: string,
+  input: unknown,
+  execute: () => Promise<T>,
+}) => Promise<T>;
+
 export type ToolContext = {
   auth: SmartRequestAuth | null,
   targetProjectId?: string | null,
   mcpToolName?: string | null,
+  executionRunner?: ToolExecutionRunner,
+  resultSanitizer?: (value: unknown) => unknown,
 };
 
 export async function getTools(
@@ -43,7 +52,11 @@ export async function getTools(
       }
 
       case "sql-query": {
-        const sqlTool = createSqlQueryTool(context.targetProjectId);
+        const sqlTool = createSqlQueryTool(
+          context.targetProjectId,
+          context.executionRunner,
+          context.resultSanitizer,
+        );
         if (sqlTool != null) {
           tools["queryAnalytics"] = sqlTool;
         }
@@ -51,7 +64,12 @@ export async function getTools(
       }
 
       case "read-config": {
-        const configTool = readConfigTool(context.auth, context.targetProjectId);
+        const configTool = readConfigTool(
+          context.auth,
+          context.targetProjectId,
+          context.executionRunner,
+          context.resultSanitizer,
+        );
         if (configTool != null) {
           tools["readBranchConfig"] = configTool;
         }

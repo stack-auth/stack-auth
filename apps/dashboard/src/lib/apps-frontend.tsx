@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, BrainIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -514,6 +514,21 @@ export const ALL_APPS_FRONTEND = {
         <p>Workflows lets you write durable background automations in TypeScript and run them on Hexclave&apos;s infrastructure.</p>
         <p>Trigger them from platform events like <code>user.created</code>, from your own custom events, or on a cron schedule, and let the engine handle retries, sleeps, and versioning for you.</p>
         <p>Every run is inspectable in the dashboard down to the individual step, so you can see exactly where an automation is and replay it when something goes wrong.</p>
+      </>
+    ),
+  },
+  brain: {
+    icon: BrainIcon,
+    href: "brain",
+    navigationItems: [
+      { displayName: "Brain", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Brain is a persistent AI that watches your Hexclave project and works through an incoming event queue for you.</p>
+        <p>Interesting events — signups, sign-ins, emails, payments, and more — land on the Brain Queue. While anything is queued, Brain stays awake and processes items autonomously.</p>
+        <p>Open the Brain page anytime to chat with the same conversation and inspect what is waiting on the queue.</p>
       </>
     ),
   },

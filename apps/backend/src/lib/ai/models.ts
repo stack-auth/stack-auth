@@ -1,4 +1,4 @@
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "./proxy-url";
@@ -59,9 +59,35 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
   ),
 ]);
 
+function getDevelopmentAiProxyBaseUrl(): string {
+  // Self-call the local AI proxy. Resolution order matters on non-default port
+  // prefixes: NEXT_PUBLIC_HEXCLAVE_API_URL is often expanded to :8102 before
+  // direnv's prefix is visible, so prefer the origin stashed by instrumentation
+  // (and the live port prefix) over that stale URL.
+  const stashedOrigin = (globalThis as { __HEXCLAVE_DEV_BACKEND_ORIGIN__?: unknown }).__HEXCLAVE_DEV_BACKEND_ORIGIN__;
+  if (typeof stashedOrigin === "string" && stashedOrigin.length > 0) {
+    return `${stashedOrigin.replace(/\/$/, "")}/api/latest/integrations/ai-proxy/v1`;
+  }
+  const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  const fromPrefix = `http://localhost:${prefix}02`;
+  const apiUrl = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL", "");
+  if (apiUrl.length > 0) {
+    // Ignore the default-port expansion when our live prefix is not 81.
+    const apiLooksLikeDefaultPort = apiUrl.includes(":8102");
+    if (!(apiLooksLikeDefaultPort && prefix !== "81")) {
+      return `${apiUrl.replace(/\/$/, "")}/api/latest/integrations/ai-proxy/v1`;
+    }
+  }
+  const listenPort = getEnvVariable("PORT", "");
+  if (listenPort.length > 0) {
+    return `http://localhost:${listenPort}/api/latest/integrations/ai-proxy/v1`;
+  }
+  return `${fromPrefix}/api/latest/integrations/ai-proxy/v1`;
+}
+
 export function createOpenRouterProvider() {
   const baseURL = getNodeEnvironment() === "development"
-    ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
+    ? getDevelopmentAiProxyBaseUrl()
     : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
   return createOpenRouter({
     apiKey: "forwarded",

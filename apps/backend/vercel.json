@@ -16,6 +16,10 @@
     {
       "path": "/api/latest/internal/workflow-engine-step",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/brain-engine-step",
+      "schedule": "* * * * *"
     }
   ],
   "github": {
