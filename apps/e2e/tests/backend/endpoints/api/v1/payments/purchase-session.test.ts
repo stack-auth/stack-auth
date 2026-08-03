@@ -182,12 +182,10 @@ it("should return a setup client secret for a free-trial subscription", async ({
     },
   });
   expect(response.status).toBe(200);
-  // Prefer setup intent when Stripe returns pending_setup_intent for a trial;
-  // stripe-mock may still return a payment confirmation secret — either way
-  // the session must succeed and include an intent type for the checkout UI.
+  // Free trials must return a SetupIntent secret (confirmSetup), not a PaymentIntent.
   expect(response.body).toEqual({
     client_secret: expect.any(String),
-    stripe_intent_type: expect.stringMatching(/^(payment|setup)$/),
+    stripe_intent_type: "setup",
   });
 });
 
@@ -239,9 +237,11 @@ it("should prefer price-level freeTrial over product-level freeTrial", async ({ 
     },
   });
   expect(response.status).toBe(200);
+  // Price-level [7, day] wins over product-level [30, day]; both still produce a SetupIntent.
+  // Day-count precedence itself is covered by getEffectiveFreeTrial / getStripeTrialPeriodDays unit tests.
   expect(response.body).toEqual({
     client_secret: expect.any(String),
-    stripe_intent_type: expect.stringMatching(/^(payment|setup)$/),
+    stripe_intent_type: "setup",
   });
 });
 

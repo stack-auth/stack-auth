@@ -121,7 +121,7 @@ describe("checkout forms", () => {
     );
 
     expect(screen.getByText("Free trial skipped in test mode")).toBeTruthy();
-    expect(screen.getByText(/does not create a Stripe trial/)).toBeTruthy();
+    expect(screen.getByText(/does not create a free trial/)).toBeTruthy();
   });
 
   it("clears a stale test-mode bypass error before retrying", async () => {
