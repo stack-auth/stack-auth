@@ -411,10 +411,12 @@ export async function resolveEnvVars(options: {
         if (!existingServiceIds.has(normalized.serviceId) && normalized.serviceId !== serviceId) {
           throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.config.ts and deploy it first.`);
         }
-        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey];
-        if (marshalOutputKey == null || !(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
+        if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
         }
+        // The map's keys are exactly SERVICE_OUTPUT_KEYS, so the lookup can't miss
+        // after the check above.
+        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey];
         // The runtime resolves service-to-service refs itself: internal
         // addresses are deterministic there, and a missing `url` makes the
         // service converge later instead of failing the deploy.

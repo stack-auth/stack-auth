@@ -13,8 +13,8 @@ import { buildConfigPushSource, parseConfigOverride, pushConfigToProject } from 
 const CONFIG_FILE_CANDIDATES = ["hexclave.config.ts", "hexclave.config.js", "stack.config.ts", "stack.config.js"];
 
 const RUN_POLL_INTERVAL_MS = 3_000;
-// Generous cap so a wedged remote build doesn't hang CI forever; Vercel's own
-// build timeout is 45 minutes on most plans.
+// Generous cap so a wedged remote build doesn't hang CI forever; the remote
+// builder's own hard timeout is 15 minutes.
 const RUN_POLL_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
 

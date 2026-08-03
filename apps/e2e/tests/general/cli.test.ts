@@ -21,8 +21,8 @@ function runCli(
   args: string[],
   envOverrides?: Record<string, string>,
   cwd?: string,
-  // `deploy` waits for remote builds (the vercel-mock advances one state per
-  // poll at a 3s interval), so it needs more than the default.
+  // `deploy` waits for remote builds (Marshal's mock builder completes on the
+  // next poll at a 3s interval), so it needs more than the default.
   timeout = 30_000,
 ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
   return new Promise((resolve) => {
@@ -430,22 +430,25 @@ describe("Stack CLI", () => {
     try {
       fs.mkdirSync(path.join(deployDir, "web"));
       fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
+      fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
       fs.mkdirSync(path.join(deployDir, "db"));
       fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
+      fs.writeFileSync(path.join(deployDir, "db", "Dockerfile"), "FROM nginx:alpine\n");
       const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"), [
         `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };`,
         "export const services = ({ isDev, secret, service, hexclave }: any) => ({",
         "  web: {",
-        '    type: "vercel",',
+        '    type: "container",',
+        "    port: 3000,",
         '    rootDirectory: "./web",',
         '    devCommand: "npm run dev",',
         "    env: {",
-        '      DB_URL: service("db").url,',
+        '      DB_URL: service("db").internalUrl,',
         "      PROJECT_ID: hexclave.projectId,",
         '      OPENAI: isDev ? null : secret("OPENAI_KEY", "sk-default"),',
         "    },",
         "  },",
-        '  db: { type: "vercel", rootDirectory: "./db" },',
+        '  db: { type: "container", port: 5432, rootDirectory: "./db" },',
         "});",
         "",
       ].join("\n"));
@@ -460,13 +463,14 @@ describe("Stack CLI", () => {
         throw new Error(`deploy exited ${exitCode}. stderr: ${stderr}\nstdout: ${stdout}`);
       }
       // stdout is the machine-readable summary; both services must have built
-      // to ready with a deployment URL.
+      // to ready. Container services are private by default, so neither has a
+      // public URL until a custom domain is attached.
       const summary = JSON.parse(stdout);
       expect(summary.services.db.status).toBe("ready");
       expect(summary.services.web.status).toBe("ready");
-      expect(summary.services.db.url).toContain("https://");
-      expect(summary.services.web.url).toContain("https://");
-      // web's env connects to db.url, so db must have finished deploying
+      expect(summary.services.db.url).toBeNull();
+      expect(summary.services.web.url).toBeNull();
+      // web's env connects to db.internalUrl, so db must have finished deploying
       // before web even started (topological order, not just start order).
       expect(stderr.indexOf("[db] Deployment succeeded")).toBeGreaterThanOrEqual(0);
       expect(stderr.indexOf("[db] Deployment succeeded")).toBeLessThan(stderr.indexOf("[web] Starting deployment"));
@@ -496,7 +500,7 @@ describe("Stack CLI", () => {
       // packaged, naming every key that needs a dashboard value.
       fs.writeFileSync(path.join(deployDir, "missing-secret.config.ts"), [
         "export const services = ({ secret }: any) => ({",
-        '  web: { type: "vercel", rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
+        '  web: { type: "container", port: 3000, rootDirectory: "./web", env: { A: secret("NEEDS_A_VALUE"), B: secret("ALSO_NEEDED") } },',
         "});",
         "",
       ].join("\n"));

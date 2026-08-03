@@ -7,7 +7,7 @@ import { deindent } from "../../../utils/strings";
 export const deploymentsSkillSection = deindent`
   # Hexclave Deployments
 
-  The Deployments app deploys your services. You provide your code, build instructions, environment variables, and framework per service; you can define multiple services per Hexclave project (e.g. a backend and a frontend). Once deployed, a service is publicly accessible. Only the \`vercel\` service type (serverless deployments) exists for now.
+  The Deployments app runs your services as containers. You provide your code with a Dockerfile per service; you can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default — they reach each other over an internal network, and only become publicly accessible when you attach a custom domain. Only the \`container\` service type exists for now.
 
   Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`services\` export in \`hexclave.config.ts\`.
 
@@ -25,27 +25,27 @@ export const deploymentsSkillSection = deindent`
 
   export const services = ({ isDev, secret, service, hexclave }) => ({
     web: {
-      type: "vercel",
-      rootDirectory: "./",
-      framework: "nextjs",
-      installCommand: "pnpm install",
-      buildCommand: "pnpm build",
-      outputDirectory: ".next",
+      type: "container",
+      port: 3000,
       devCommand: "pnpm dev",
       env: {
         MY_ENV_VAR: "true",
         OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
-        API_URL: isDev ? "http://localhost:3001" : service("api").url,
+        API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl,
         NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
       },
     },
-    api: { type: "vercel", rootDirectory: "./api" },
+    api: { type: "container", port: 8080, rootDirectory: "./api" },
   });
   \`\`\`
 
-  It is a FUNCTION returning a record of services keyed by service id. \`rootDirectory\` (relative to the config file) is where the code lives and commands run; \`framework\` + \`outputDirectory\` infer the run command; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs. Optional \`includeFiles\`/\`excludeFiles\` predicates (\`(relativePath) => boolean\`) narrow what gets packaged on top of \`.gitignore\`/\`.vercelignore\`.
+  It is a FUNCTION returning a record of services keyed by service id. \`port\` (required) is the single HTTP port the container listens on; \`rootDirectory\` (relative to the config file, default \`./\`) is where the code and its Dockerfile live; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next request; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs. Optional \`includeFiles\`/\`excludeFiles\` predicates (\`(relativePath) => boolean\`) narrow what gets packaged on top of \`.gitignore\`/\`.dockerignore\`.
 
-  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").url\` — resolved to another service's deployed URL at deploy time (the id must be a defined service); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
+  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` / \`.internalHost\` — the target's private-network address (the normal way services talk to each other; always available); \`service("<id>").url\` — the target's PUBLIC URL, which only exists once a custom domain verifies on it (deploys stay blocked on it until then, so prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
+
+  ## The Dockerfile
+
+  Each service is built remotely from the Dockerfile at the root of its \`rootDirectory\` — Docker is never required locally, and there is no framework detection: the Dockerfile is the whole build contract. It must produce an image whose default command starts a server listening on \`port\` on \`0.0.0.0\`. Keep it standard, e.g. for a Node app: a build stage (\`npm ci && npm run build\`) and a runtime stage that copies the output and sets \`CMD\`; frameworks with a standalone/server output (Next.js \`output: "standalone"\`, SvelteKit/Nuxt node adapters) work as-is, and pure-static builds should be served by something like nginx on the declared port. Before deploying, confirm \`docker build\` semantics locally only by reading the Dockerfile — the remote build's logs are available if it fails.
 
   ## Secrets
 
@@ -74,13 +74,13 @@ export const deploymentsSkillSection = deindent`
 
   ## Deploying
 
-  Before deploying, run each service's \`installCommand\` and \`buildCommand\` locally and confirm they succeed. From the directory containing your config file:
+  Each service's root directory must contain a Dockerfile (the deploy fails up front if one is missing). From the directory containing your config file:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest deploy
   \`\`\`
 
-  This pushes the config file's \`config\` export to the project (skip with \`--no-config-push\`), syncs the service definitions, then deploys EVERY defined service in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). It packages each service's root directory (respecting \`.gitignore\`/\`.vercelignore\`, always excluding \`node_modules\` and \`.git\`), always targets production, never prompts, and WAITS for the remote builds — per service it prints the run id, build status, and final URL, and exits non-zero if any build fails (dependents of a failed service are skipped). A JSON summary of all services is printed to stdout.
+  This pushes the config file's \`config\` export to the project (skip with \`--no-config-push\`), syncs the service definitions, then deploys EVERY defined service in dependency order (services connected via \`service(...)\` deploy after their dependencies; circular dependencies fail up front). It packages each service's root directory (respecting \`.gitignore\`/\`.dockerignore\`, always excluding \`node_modules\` and \`.git\`) and uploads it — the container image is built remotely, so Docker is not needed locally. It always targets production, never prompts, and WAITS for the remote builds — per service it prints the run id, build status, and final URL (if the service has one), and exits non-zero if any build fails (dependents of a failed service are skipped). A JSON summary of all services is printed to stdout.
 
   Options: \`--service-id <id>\` (deploy just one service; its connections resolve against already-deployed services), \`--config-file <path>\` (default: auto-discover \`hexclave.config.ts\` in the current directory; a config file is required), \`--cloud-project-id <id>\` (default: the \`HEXCLAVE_PROJECT_ID\` env var), \`--no-config-push\`.
 
@@ -96,7 +96,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Local development
 
-  \`hexclave dev --config-file hexclave.config.ts --service-id web\` runs the service's \`devCommand\` with its env vars injected (plus the development-environment credentials). Passing \`-- <command>\` instead (or additionally) overrides the devCommand.
+  \`hexclave dev --config-file hexclave.config.ts --service-id web\` runs the service's \`devCommand\` with its env vars injected (plus the development-environment credentials) — services run directly on your machine during development, never in containers. Passing \`-- <command>\` instead (or additionally) overrides the devCommand.
 
   ## Checking status and debugging failures
 
@@ -121,7 +121,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Domains
 
-  Every Vercel service gets a Vercel domain autoprovisioned. Prefer the CLI to attach a custom domain:
+  Services have no public URL until a custom domain is attached and its DNS verifies — internal traffic uses \`service("<id>").internalUrl\` and needs no domain. Prefer the CLI to attach one:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
@@ -130,7 +130,7 @@ export const deploymentsSkillSection = deindent`
      return p.getDeploymentServiceDomain('api', 'app.example.com');"
   \`\`\`
 
-  Humans can also add domains in the dashboard (service → Domains). Agents should not do that in a browser.
+  The returned \`dns_records\` are what the user must create at their DNS provider; poll \`getDeploymentServiceDomain\` to see verification flip. A hostname can only be attached to one service across all of Hexclave. Humans can also add domains in the dashboard (service → Domains). Agents should not do that in a browser.
 
   ## Removing a service
 
