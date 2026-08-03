@@ -180,14 +180,13 @@ export async function consumeBrowserAction(options: {
   if (data.origin !== requestOrigin) {
     throw new StatusError(StatusError.Forbidden, "Browser action origin is not allowed");
   }
-  await claimVerificationCode({
-    projectId: options.tenancy.project.id,
-    branchId: options.tenancy.branchId,
-    type: VerificationCodeType.BROWSER_ACTION,
-    code: options.code,
-  });
-
   if (data.type === "impersonation") {
+    await claimVerificationCode({
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      type: VerificationCodeType.BROWSER_ACTION,
+      code: options.code,
+    });
     return {
       javascript: generateImpersonateSnippet(
         options.tenancy.project.id,
@@ -197,9 +196,16 @@ export async function consumeBrowserAction(options: {
     };
   }
 
+  // Mint before claiming so a signing failure does not irreversibly consume the action.
   const clickmapToken = await createAnalyticsClickmapToken({
     tenancy: options.tenancy,
     origin: data.origin,
+  });
+  await claimVerificationCode({
+    projectId: options.tenancy.project.id,
+    branchId: options.tenancy.branchId,
+    type: VerificationCodeType.BROWSER_ACTION,
+    code: options.code,
   });
   return {
     javascript: createClickmapOverlaySnippet(clickmapToken.token),

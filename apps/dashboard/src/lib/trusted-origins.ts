@@ -31,7 +31,6 @@ export function normalizeTrustedOrigin(baseUrl: string): string | null {
 
 export function getTrustedOriginOptions(
   trustedDomains: Record<string, { baseUrl?: string | null }>,
-  allowLocalhost = false,
 ): {
   origins: TrustedOrigin[],
   wildcardDomains: TrustedWildcardDomain[],
@@ -57,12 +56,8 @@ export function getTrustedOriginOptions(
     byOrigin.set(origin, { id, origin });
   }
 
-  const origins = Array.from(byOrigin.values());
-  if (allowLocalhost) {
-    origins.push({ id: "localhost", origin: "http://localhost" });
-  }
   return {
-    origins: origins.sort((a, b) => stringCompare(a.origin, b.origin)),
+    origins: Array.from(byOrigin.values()).sort((a, b) => stringCompare(a.origin, b.origin)),
     wildcardDomains: wildcardDomains.sort((a, b) => stringCompare(a.baseUrl, b.baseUrl)),
   };
 }

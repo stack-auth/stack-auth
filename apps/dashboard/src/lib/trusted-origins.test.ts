@@ -35,15 +35,7 @@ describe("trusted origin options", () => {
     expect(normalizeTrustedOrigin("https://*.stack-auth.com")).toMatchInlineSnapshot(`null`);
   });
 
-  it("includes localhost only when it is allowed", () => {
-    expect(getTrustedOriginOptions({}, true).origins).toMatchInlineSnapshot(`
-      [
-        {
-          "id": "localhost",
-          "origin": "http://localhost",
-        },
-      ]
-    `);
-    expect(getTrustedOriginOptions({}, false).origins).toHaveLength(0);
+  it("does not synthesize a portless localhost origin", () => {
+    expect(getTrustedOriginOptions({}).origins).toHaveLength(0);
   });
 });

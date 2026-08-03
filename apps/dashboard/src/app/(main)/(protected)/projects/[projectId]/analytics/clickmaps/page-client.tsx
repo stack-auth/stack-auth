@@ -96,8 +96,8 @@ export default function PageClient() {
   }, []);
 
   const { origins, wildcardDomains } = useMemo(() => {
-    return getTrustedOriginOptions(config.domains.trustedDomains, config.domains.allowLocalhost);
-  }, [config.domains.allowLocalhost, config.domains.trustedDomains]);
+    return getTrustedOriginOptions(config.domains.trustedDomains);
+  }, [config.domains.trustedDomains]);
 
   function launchBrowserAction(origin: TrustedOrigin) {
     return openBrowserActionInNewTab(adminApp, {

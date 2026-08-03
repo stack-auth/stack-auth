@@ -1,12 +1,12 @@
 import type { StackAdminApp } from "@hexclave/next";
 import { ServerUser } from '@hexclave/next';
-import { ActionDialog, Alert, Button, CopyField, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
+import { ActionDialog, Alert, Button, CopyField, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import { generateImpersonateSnippet } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useState } from "react";
 import { openBrowserActionInNewTab } from "@/lib/browser-actions";
-import { getTrustedOriginOptions } from "@/lib/trusted-origins";
+import { getTrustedOriginOptions, normalizeTrustedOrigin } from "@/lib/trusted-origins";
 import { Link } from './link';
 import { useRouter } from './router';
 
@@ -62,12 +62,14 @@ export function ImpersonateUserDialog(props: {
   onClose: () => void,
 }) {
   const config = props.adminApp.useProject().useConfig();
-  const origins = useMemo(
-    () => getTrustedOriginOptions(config.domains.trustedDomains, config.domains.allowLocalhost).origins,
-    [config.domains.allowLocalhost, config.domains.trustedDomains],
+  const { origins, wildcardDomains } = useMemo(
+    () => getTrustedOriginOptions(config.domains.trustedDomains),
+    [config.domains.trustedDomains],
   );
   const [selectedOrigin, setSelectedOrigin] = useState("");
+  const [customOrigin, setCustomOrigin] = useState("");
   const [fallbackSnippet, setFallbackSnippet] = useState<string | null>(null);
+  const canUseCustomOrigin = config.domains.allowLocalhost || wildcardDomains.length > 0;
 
   useEffect(() => {
     setSelectedOrigin(origins[0]?.origin ?? "");
@@ -80,9 +82,14 @@ export function ImpersonateUserDialog(props: {
   }, [props.open]);
 
   async function openBrowserAction() {
+    const origin = normalizeTrustedOrigin(customOrigin.trim() || selectedOrigin);
+    if (origin == null) {
+      window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
+      return "prevent-close";
+    }
     await openBrowserActionInNewTab(props.adminApp, {
       type: "impersonation",
-      origin: selectedOrigin,
+      origin,
       userId: props.user.id,
       sessionExpiresInMillis: 2 * 60 * 60 * 1000,
     });
@@ -107,28 +114,39 @@ export function ImpersonateUserDialog(props: {
       title="Impersonate User"
       description="Open your trusted website with a short-lived impersonation action."
       cancelButton
-      okButton={origins.length > 0 ? {
+      okButton={origins.length > 0 || canUseCustomOrigin ? {
         label: "Impersonate",
         onClick: openBrowserAction,
-        props: { disabled: selectedOrigin === "" },
+        props: { disabled: selectedOrigin === "" && customOrigin.trim() === "" },
       } : undefined}
     >
       <div className="space-y-4">
-        {origins.length === 0 ? (
+        {origins.length === 0 && !canUseCustomOrigin ? (
           <Alert>
             Add a trusted domain before using the browser action. You can still use the console fallback below.
           </Alert>
         ) : (
           <>
-            <Typography>Select the website where the impersonated session should open.</Typography>
-            <Select value={selectedOrigin} onValueChange={setSelectedOrigin}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a trusted origin" />
-              </SelectTrigger>
-              <SelectContent>
-                {origins.map((origin) => <SelectItem key={origin.id} value={origin.origin}>{origin.origin}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {origins.length > 0 && (
+              <>
+                <Typography>Select the website where the impersonated session should open.</Typography>
+                <Select value={selectedOrigin} onValueChange={setSelectedOrigin}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a trusted origin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {origins.map((origin) => <SelectItem key={origin.id} value={origin.origin}>{origin.origin}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            {canUseCustomOrigin && (
+              <Input
+                value={customOrigin}
+                onChange={(event) => setCustomOrigin(event.target.value)}
+                placeholder="Exact origin, e.g. http://localhost:5173"
+              />
+            )}
           </>
         )}
         {fallbackSnippet == null ? (
