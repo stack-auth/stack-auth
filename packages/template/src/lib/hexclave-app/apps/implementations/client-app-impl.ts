@@ -57,7 +57,7 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
-import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
 import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
@@ -4288,6 +4288,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
         await this._redirectToHandler(handlerName, options);
+      },
+      getRawAfterAuthReturnTo: () => {
+        if (isReactServer || typeof window === "undefined") {
+          return null;
+        }
+        return getRawAfterAuthReturnTo({
+          currentUrl: new URL(window.location.href),
+          projectId: this.projectId,
+        });
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
