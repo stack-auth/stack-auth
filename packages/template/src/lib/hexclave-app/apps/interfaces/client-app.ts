@@ -144,6 +144,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
       getRedirectToHandlerUrl(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<string>,
       redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
+      /** Raw flow metadata only. Never navigate to this value without normal redirect validation. */
+      getRawAfterAuthReturnTo(): string | null,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
       awaitPendingAuthResolutions(): Promise<void>,
       isTrustedRedirectUrl(url: string): Promise<boolean>,
