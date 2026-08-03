@@ -587,11 +587,12 @@ export function getClientSecretFromStripeSubscription(
     const pendingSetupIntent = subscription.pending_setup_intent;
     // Without expand, Stripe returns an id string. treat that as missing.
     if (pendingSetupIntent == null || typeof pendingSetupIntent === "string") {
-      throwErr(500, "Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
+      // Internal Stripe invariant — don't leak details via StatusError(500) to public callers.
+      throw new HexclaveAssertionError("Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
     }
     const setupSecret = pendingSetupIntent.client_secret;
     if (typeof setupSecret !== "string") {
-      throwErr(500, "Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
+      throw new HexclaveAssertionError("Expected a Stripe SetupIntent client secret for free-trial subscription, but none was returned");
     }
     return { type: "setup", clientSecret: setupSecret };
   }
@@ -612,7 +613,7 @@ export function getClientSecretFromStripeSubscription(
       return { type: "payment", clientSecret: piSecret };
     }
   }
-  throwErr(500, "No PaymentIntent client secret returned from Stripe for subscription");
+  throw new HexclaveAssertionError("No PaymentIntent client secret returned from Stripe for subscription");
 }
 
 type GrantProductResult =
@@ -738,6 +739,11 @@ import.meta.vitest?.describe("free trial helpers", (test) => {
       { freeTrial: [30, "day"] },
       { freeTrial: null },
     )).toEqual([30, "day"]);
+    // Stripe trial_period_days must follow the same price-over-product resolution.
+    expect(getStripeTrialPeriodDays(getEffectiveFreeTrial(
+      { freeTrial: [30, "day"] },
+      { freeTrial: [7, "day"] },
+    ) ?? throwErr("expected price-level free trial"))).toBe(7);
   });
 
   test("assertFreeTrialAllowedForPurchase rejects OTP and $0 prices", ({ expect }) => {
