@@ -150,9 +150,9 @@ function buildRedirectBackAwareHandlerUrl(options: {
 
       nextUrl.searchParams.set("after_auth_return_to", callbackUrl.toString());
       setCrossDomainParam(nextUrl.searchParams, "afterCallbackRedirectUrl", afterCallbackRedirectUrl);
-      if (options.crossDomainHandoffParams != null) {
-        setCrossDomainParam(nextUrl.searchParams, "state", options.crossDomainHandoffParams.state);
-        setCrossDomainParam(nextUrl.searchParams, "codeChallenge", options.crossDomainHandoffParams.codeChallenge);
+      if (handoffParams != null) {
+        setCrossDomainParam(nextUrl.searchParams, "state", handoffParams.state);
+        setCrossDomainParam(nextUrl.searchParams, "codeChallenge", handoffParams.codeChallenge);
       }
     }
   } else if (!options.noRedirectBack && options.currentUrl.protocol === nextUrl.protocol && options.currentUrl.host === nextUrl.host && !nextUrl.searchParams.has("after_auth_return_to")) {
@@ -265,17 +265,28 @@ export async function planRedirectToHandler(options: {
   const policy = getHandlerRedirectPolicy(options.handlerName);
   if (options.noRedirectBack) {
     // Sign-in uses noRedirectBack from password-reset pages to avoid capturing the reset page.
-    // It must still carry an already-inherited continuation. Other handlers retain the historical
-    // noRedirectBack behavior, including afterSignIn/afterSignUp ignoring all return state.
-    return {
-      type: "redirect",
-      url: options.handlerName === "signIn"
-        ? buildContinuationAwareHandlerUrl({
-          rawHandlerUrl: options.rawHandlerUrl,
-          currentUrl: options.currentUrl,
-        })
-        : options.rawHandlerUrl,
-    };
+    // Same-domain sign-in must still carry an already-inherited continuation. Cross-domain
+    // sign-in falls through to the redirect-back-aware planner below because it needs to return
+    // through the source app's callback before continuing to home.
+    if (options.handlerName === "signIn") {
+      const signInTarget = new URL(options.rawHandlerUrl, options.currentUrl);
+      if (signInTarget.origin === options.currentUrl.origin) {
+        return {
+          type: "redirect",
+          url: buildContinuationAwareHandlerUrl({
+            rawHandlerUrl: options.rawHandlerUrl,
+            currentUrl: options.currentUrl,
+          }),
+        };
+      }
+    } else {
+      // Other handlers retain the historical noRedirectBack behavior, including
+      // afterSignIn/afterSignUp ignoring all return state.
+      return {
+        type: "redirect",
+        url: options.rawHandlerUrl,
+      };
+    }
   }
   if (policy === "none") {
     return { type: "redirect", url: options.rawHandlerUrl };
