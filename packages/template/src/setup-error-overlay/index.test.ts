@@ -2,7 +2,7 @@
 
 import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { showSetupErrorOverlay } from ".";
+import { SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY, showSetupErrorOverlay } from ".";
 
 function createSetupError() {
   return new HexclaveSetupError({
@@ -22,7 +22,7 @@ describe("setup error overlay", () => {
     for (const root of overlayRoots()) {
       root.remove();
     }
-    Reflect.deleteProperty(window, "__hexclave-setup-error-overlay");
+    Reflect.deleteProperty(window, SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY);
   });
 
   it("renders setup errors with their fix instructions, even outside development", () => {
@@ -60,6 +60,36 @@ describe("setup error overlay", () => {
     } finally {
       cleanup();
     }
+  });
+
+  it("keeps keyboard focus inside the card and gives it back afterwards", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const pageButton = document.body.appendChild(document.createElement("button"));
+    pageButton.focus();
+
+    const cleanup = showSetupErrorOverlay(createSetupError());
+    try {
+      const card = document.querySelector<HTMLElement>("[role='alertdialog']");
+      expect(document.activeElement).toBe(card);
+
+      const cardButtons = [...(card?.querySelectorAll("button") ?? [])];
+      expect(cardButtons.length).toBeGreaterThan(1);
+      cardButtons[cardButtons.length - 1].focus();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(cardButtons[0]);
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true, shiftKey: true }));
+      expect(document.activeElement).toBe(cardButtons[cardButtons.length - 1]);
+
+      // Tabbing away from the card is what the trap exists to prevent, even when the page itself moves focus.
+      pageButton.focus();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(cardButtons[0]);
+    } finally {
+      cleanup();
+    }
+
+    expect(document.activeElement).toBe(pageButton);
+    pageButton.remove();
   });
 
   it("keeps the first card instead of stacking later errors on top of it", () => {

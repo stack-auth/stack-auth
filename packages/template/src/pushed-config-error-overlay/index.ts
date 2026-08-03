@@ -4,7 +4,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLikelyDevelopmentEnvironment } from "../in-page-ui/dev-environment";
 import { canMountIntoDom, getGlobalUiInstance, h, setGlobalUiInstance } from "../in-page-ui/dom";
-import { getIssueCardCSS, renderIssueCard, renderIssuePill } from "../in-page-ui/issue-card";
+import { getIssueCardCSS, renderIssueCard, renderIssuePill, trapFocusInIssueCard } from "../in-page-ui/issue-card";
 import type { StackClientApp } from "../lib/hexclave-app";
 
 const GLOBAL_INSTANCE_KEY = "__hexclave-pushed-config-error-overlay";
@@ -77,12 +77,22 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
   let lastErrorKey: string | null = null;
   let lastConsoleErrorKey: string | null = null;
   let minimized = false;
+  // The card is re-rendered on every poll, so focus is only claimed when a card first appears for an issue; doing it on
+  // every render would yank focus out of whatever the developer is doing every few seconds.
+  let focusedIssueKey: string | null = null;
+  let releaseFocus: (() => void) | null = null;
+  const releaseFocusIfHeld = () => {
+    releaseFocus?.();
+    releaseFocus = null;
+    focusedIssueKey = null;
+  };
 
   const render = (issue: ConfigIssue | null) => {
     root.replaceChildren(style);
     if (issue == null) {
       lastErrorKey = null;
       minimized = false;
+      releaseFocusIfHeld();
       return;
     }
 
@@ -114,6 +124,7 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
     }
 
     if (minimized) {
+      releaseFocusIfHeld();
       root.appendChild(renderIssuePill({
         kind: issue.kind,
         label: issue.kind === "error" ? "Config error" : "Config warning",
@@ -145,6 +156,11 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
         render(issue);
       },
     }));
+    if (focusedIssueKey !== issueKey) {
+      releaseFocusIfHeld();
+      focusedIssueKey = issueKey;
+      releaseFocus = trapFocusInIssueCard(root);
+    }
   };
 
   const refresh = () => {
@@ -178,6 +194,7 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
   const cleanup = () => {
     disposed = true;
     clearInterval(interval);
+    releaseFocusIfHeld();
     root.remove();
     if (getGlobalUiInstance(GLOBAL_INSTANCE_KEY)?.cleanup === cleanup) {
       setGlobalUiInstance(GLOBAL_INSTANCE_KEY, null);

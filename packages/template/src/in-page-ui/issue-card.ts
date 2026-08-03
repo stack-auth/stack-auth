@@ -279,7 +279,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
       opacity: "0",
     },
     readonly: "true",
-  }) as HTMLTextAreaElement;
+  });
   textarea.value = text;
   document.body.appendChild(textarea);
   textarea.select();
@@ -352,7 +352,7 @@ export function renderIssueCard(options: IssueCardOptions): HTMLElement {
   setHtml(logoSpan, HEXCLAVE_LOGO_SVG);
 
   return h("div", { className: "hic-backdrop" },
-    h("div", { className: options.kind === "error" ? "hic-card" : "hic-card hic-card-warning", role: "alertdialog", "aria-modal": "true", "aria-label": options.ariaLabel },
+    h("div", { className: options.kind === "error" ? "hic-card" : "hic-card hic-card-warning", role: "alertdialog", "aria-modal": "true", "aria-label": options.ariaLabel, tabindex: "-1" },
       h("div", { className: "hic-card-inner" },
         h("div", { className: "hic-header" },
           h("div", { className: "hic-title-row" },
@@ -406,6 +406,53 @@ export function renderIssueCard(options: IssueCardOptions): HTMLElement {
       ),
     ),
   );
+}
+
+const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+/**
+ * Keeps keyboard focus inside a mounted card, which claims to be an `aria-modal` alertdialog and therefore has to behave
+ * like one: the flow behind the card is dead until the problem is fixed, so tabbing into it would only let a keyboard
+ * user wander through a page that cannot work while the card stays invisible to them.
+ *
+ * Call right after mounting the card, and call the returned function when the card is minimized or removed — it hands
+ * focus back to wherever it was, so minimizing the card leaves the page as the user found it.
+ */
+export function trapFocusInIssueCard(cardRoot: HTMLElement): () => void {
+  const card = cardRoot.querySelector(".hic-card");
+  if (!(card instanceof HTMLElement)) return () => {};
+  const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Tab") return;
+    const focusable = [...card.querySelectorAll(FOCUSABLE_SELECTOR)].filter((element): element is HTMLElement => element instanceof HTMLElement);
+    const first = focusable[0] ?? card;
+    const last = focusable[focusable.length - 1] ?? card;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    let target: HTMLElement | null = null;
+    if (active == null || !card.contains(active)) {
+      // Focus is outside the card (the page moved it, or it never got in): pull it back to the card's near end.
+      target = event.shiftKey ? last : first;
+    } else if (active === last && !event.shiftKey) {
+      target = first;
+    } else if (active === first && event.shiftKey) {
+      target = last;
+    }
+    if (target == null) return;
+    event.preventDefault();
+    target.focus();
+  };
+
+  document.addEventListener("keydown", onKeyDown, true);
+  card.focus();
+
+  return () => {
+    document.removeEventListener("keydown", onKeyDown, true);
+    if (previouslyFocused != null && previouslyFocused.isConnected) {
+      previouslyFocused.focus();
+    }
+  };
 }
 
 export function renderIssuePill(options: {

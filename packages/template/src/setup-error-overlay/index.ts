@@ -9,9 +9,10 @@
 import { HexclaveSetupError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
 import { isLikelyDevelopmentEnvironment } from "../in-page-ui/dev-environment";
 import { canMountIntoDom, getGlobalUiInstance, h, setGlobalUiInstance } from "../in-page-ui/dom";
-import { getIssueCardCSS, renderIssueCard, renderIssuePill } from "../in-page-ui/issue-card";
+import { getIssueCardCSS, renderIssueCard, renderIssuePill, trapFocusInIssueCard } from "../in-page-ui/issue-card";
 
-const GLOBAL_INSTANCE_KEY = "__hexclave-setup-error-overlay";
+/** Exported so tests can drop the singleton; every other consumer should go through `showSetupErrorOverlay`. */
+export const SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY = "__hexclave-setup-error-overlay";
 
 const css = getIssueCardCSS(".hexclave-setup-error-overlay");
 
@@ -77,7 +78,7 @@ export function showSetupErrorOverlay(error: unknown): () => void {
   }
 
   const issue = toSetupIssue(error);
-  const existingInstance = getGlobalUiInstance(GLOBAL_INSTANCE_KEY);
+  const existingInstance = getGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY);
   if (existingInstance != null) {
     // A single broken setup usually throws the same error on every page load and sometimes from several flows at once.
     // Stacking cards on top of each other would only hide the first (and most relevant) one, so later errors keep to
@@ -90,7 +91,10 @@ export function showSetupErrorOverlay(error: unknown): () => void {
   root.appendChild(style);
   document.body.appendChild(root);
 
+  let releaseFocus: (() => void) | null = null;
   const render = (minimized: boolean) => {
+    releaseFocus?.();
+    releaseFocus = null;
     root.replaceChildren(style);
     if (minimized) {
       root.appendChild(renderIssuePill({
@@ -116,16 +120,19 @@ export function showSetupErrorOverlay(error: unknown): () => void {
       onCopyAiPromptError: (copyError) => captureError("setup-error-overlay-copy-ai-prompt", copyError),
       onMinimize: () => render(true),
     }));
+    releaseFocus = trapFocusInIssueCard(root);
   };
   render(false);
 
   const cleanup = () => {
+    releaseFocus?.();
+    releaseFocus = null;
     root.remove();
-    if (getGlobalUiInstance(GLOBAL_INSTANCE_KEY)?.cleanup === cleanup) {
-      setGlobalUiInstance(GLOBAL_INSTANCE_KEY, null);
+    if (getGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY)?.cleanup === cleanup) {
+      setGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY, null);
     }
   };
-  setGlobalUiInstance(GLOBAL_INSTANCE_KEY, { cleanup });
+  setGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY, { cleanup });
   return cleanup;
 }
 

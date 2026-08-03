@@ -112,8 +112,8 @@ export class HexclaveSetupError extends Error {
     title: string,
     message: string,
     howToFix: readonly string[],
-    // same shape as HexclaveAssertionError's extraData: freeform diagnostics that only ever reach the error sinks
-    extraData?: Record<string, any> & ErrorOptions,
+    // like HexclaveAssertionError's extraData: freeform diagnostics that only ever reach the error sinks
+    extraData?: Record<string, unknown> & ErrorOptions,
   }) {
     super(options.message, pick(options.extraData ?? {}, ["cause"]));
     this.title = options.title;

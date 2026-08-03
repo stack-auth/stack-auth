@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
+import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
@@ -489,6 +490,58 @@ describe("StackClientApp cross-domain auth", () => {
       // The live-URL guard must also stand down on its own when code+state are still present.
       (globalThis.window as any).location.href = urlAtConstructionTime.toString();
       await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).resolves.toBe(false);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+
+  it("reports malformed nested cross-domain auth URLs as setup errors", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000012";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    globalThis.document = createMockDocument();
+
+    // A URL the flow cannot even parse is as fatal as an untrusted one, so it has to reach the developer the same way
+    // instead of escaping as a bare TypeError from `new URL()`, which the overlay only shows during development.
+    const malformedCases = [
+      { description: "redirect URI", params: { redirect_uri: "not-a-url", state: "nested-state", code_challenge: "nested-code-challenge" } },
+      {
+        description: "after-callback redirect URL",
+        params: {
+          redirect_uri: "https://source.example.test/handler/account-settings",
+          state: "nested-state",
+          code_challenge: "nested-code-challenge",
+          after_callback_redirect_url: "http://[",
+        },
+      },
+      { description: "callback URL", params: { stack_nested_cross_domain_auth_callback_url: "http://[" } },
+    ];
+
+    try {
+      for (const malformedCase of malformedCases) {
+        const currentUrl = new URL("https://target.example.test/nested-provider");
+        currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "source-refresh-token-id");
+        for (const [key, value] of Object.entries(malformedCase.params)) {
+          currentUrl.searchParams.set(key, value);
+        }
+        globalThis.window = { location: { href: currentUrl.toString() } } as any;
+
+        const clientApp = new StackClientApp({
+          baseUrl: "http://localhost:12345",
+          projectId,
+          publishableClientKey: "stack-pk-test",
+          tokenStore: "memory",
+          redirectMethod: "window",
+          noAutomaticPrefetch: true,
+        });
+        vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+        vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
+
+        const nestedAuthPromise = (clientApp as any)._maybeHandleNestedCrossDomainAuth();
+        await expect(nestedAuthPromise).rejects.toThrowError(new RegExp(`${malformedCase.description} .* is not a valid absolute URL`));
+        await expect(nestedAuthPromise).rejects.toSatisfy((error: unknown) => HexclaveSetupError.isSetupError(error));
+      }
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

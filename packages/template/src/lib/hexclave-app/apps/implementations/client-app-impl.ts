@@ -142,6 +142,28 @@ function createUntrustedNestedCrossDomainUrlError(options: {
   });
 }
 
+/**
+ * A URL that the auth flow cannot even parse is just as fatal as an untrusted one, and just as much a configuration
+ * problem: something in the developer's setup put a relative or malformed value where an absolute URL belongs.
+ */
+function createMalformedNestedCrossDomainUrlError(options: {
+  urlDescription: string,
+  url: string,
+}): HexclaveSetupError {
+  return new HexclaveSetupError({
+    title: "A URL in your authentication flow is not a valid absolute URL",
+    message: `Nested cross-domain auth ${options.urlDescription} ${options.url} is not a valid absolute URL.`,
+    howToFix: [
+      "Handler URLs and after-auth redirect URLs must be absolute, including their protocol, like https://example.com/handler/oauth-callback.",
+      "Check the handler URLs configured for your project and the redirect URLs you pass to Hexclave's sign-in and sign-up methods.",
+      "If none of those look wrong, check whether a proxy or rewrite in front of your app is rewriting the authentication flow's query parameters.",
+    ],
+    extraData: {
+      url: options.url,
+    },
+  });
+}
+
 function getRedirectHelperInstruction(handlerName: string): string {
   if (handlerName === "handler") {
     return "Use a page-specific redirect helper such as app.redirectToSignIn() instead.";
@@ -1089,10 +1111,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
         throw new HexclaveAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
-      if (isRelative(redirectUri)) {
-        throw new Error("Nested cross-domain auth redirect URI must be absolute.");
+      const redirectUriUrl = isRelative(redirectUri) ? null : createUrlIfValid(redirectUri);
+      if (redirectUriUrl == null) {
+        throw createMalformedNestedCrossDomainUrlError({
+          urlDescription: "redirect URI",
+          url: redirectUri,
+        });
       }
-      const redirectUriUrl = new URL(redirectUri);
       if (!await this._isTrusted(redirectUriUrl.toString())) {
         throw createUntrustedNestedCrossDomainUrlError({
           urlDescription: "redirect URI",
@@ -1103,7 +1128,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
       const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
         ? redirectUriUrl
-        : new URL(afterCallbackRedirectUrlString, redirectUriUrl);
+        : createUrlIfValid(afterCallbackRedirectUrlString, redirectUriUrl);
+      if (afterCallbackRedirectUrl == null) {
+        throw createMalformedNestedCrossDomainUrlError({
+          urlDescription: "after-callback redirect URL",
+          url: afterCallbackRedirectUrlString ?? "",
+        });
+      }
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
         throw createUntrustedNestedCrossDomainUrlError({
           urlDescription: "after-callback redirect URL",
@@ -1140,10 +1171,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (callbackUrlString == null) {
       throw new HexclaveAssertionError("Nested cross-domain auth URL is missing callback URL");
     }
-    if (isRelative(callbackUrlString)) {
-      throw new Error("Nested cross-domain auth callback URL must be absolute.");
+    const callbackUrl = isRelative(callbackUrlString) ? null : createUrlIfValid(callbackUrlString);
+    if (callbackUrl == null) {
+      throw createMalformedNestedCrossDomainUrlError({
+        urlDescription: "callback URL",
+        url: callbackUrlString,
+      });
     }
-    const callbackUrl = new URL(callbackUrlString);
     const isTrusted = await this._isTrusted(callbackUrl.toString());
     if (!isTrusted) {
       throw createUntrustedNestedCrossDomainUrlError({
