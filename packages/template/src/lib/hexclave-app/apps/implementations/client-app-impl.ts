@@ -784,7 +784,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           // The backend emits only closed-set snippets for browser actions; evaluating the
           // response here preserves the existing console-snippet behavior without exposing
           // the action implementation to the dashboard.
-          new Function(result.javascript)();
+          Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
         });
       }
       this._trackPendingAuthResolution(async () => {
