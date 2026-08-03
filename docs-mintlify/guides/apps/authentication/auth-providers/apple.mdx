@@ -51,7 +51,7 @@ This guide explains how to set up Apple as an authentication provider with Hexcl
   <Step>
     ### Configure Key-Based Credentials (Recommended)
 
-    Hexclave mints a short-lived client secret at token-exchange time from your Apple credentials. In the dashboard, enter:
+    In the Apple provider dialog, choose the **Automatic (Recommended)** tab. Hexclave mints a short-lived client secret at token-exchange time from your Apple credentials. Enter:
 
     * **Team ID**: Your Apple Developer account ID found at the top-right of the portal
     * **Key ID**: The ID of the private key you just created
@@ -65,15 +65,15 @@ This guide explains how to set up Apple as an authentication provider with Hexcl
 
     1. On the Hexclave dashboard, select **Auth Methods** in the left sidebar.
     2. Click **Add SSO Providers** and select **Apple** as the provider.
-    3. Set the **Client ID** to your Services ID identifier, then enter the Team ID, Key ID, and `.p8` private key contents.
+    3. Set the **Service ID (Client ID)** to your Services ID identifier, then choose the **Automatic (Recommended)** tab and enter the Team ID, Key ID, and `.p8` private key contents.
   </Step>
 
   <Step>
     ### Legacy: Static Client Secret
 
-    Apple also supports a manually generated client-secret JWT. This is retained for existing integrations, but is less convenient because it expires (Apple allows a maximum lifetime of six months). Enter it in **Client Secret** instead of the key-based credentials.
+    Apple also supports a manually generated client-secret JWT. In the Apple provider dialog, choose the **Client secret (Legacy)** tab. This is retained for existing integrations, but is less convenient because it expires (Apple allows a maximum lifetime of six months) and must be rotated manually. Enter it in **Client Secret** instead of the key-based credentials.
 
-    If you use a static secret, leave the Team ID, Key ID, and private key fields empty.
+    Saving on this tab clears any stored Team ID, Key ID, and private key.
   </Step>
 </Steps>
 
