@@ -70,9 +70,13 @@ until buildctl debug workers >/dev/null 2>&1; do
   i=$((i+1)); [ $i -gt 60 ] && fail "buildkitd did not start"
   sleep 1
 done
-mkdir -p /ctx && cd /ctx
-wget -q -O ctx.tar.gz "$TARBALL_URL" || fail "failed to fetch the source tarball"
-tar xzf ctx.tar.gz || fail "the source tarball is not a valid gzipped tarball"
+mkdir -p /ctx
+# Fetch and extract OUTSIDE the context dir, then extract INTO it — otherwise the tarball
+# itself sits in the build context and a plain \`COPY . .\` bakes a compressed copy of the
+# whole source tree into the user's image.
+wget -q -O /tmp/ctx.tar.gz "$TARBALL_URL" || fail "failed to fetch the source tarball"
+tar xzf /tmp/ctx.tar.gz -C /ctx || fail "the source tarball is not a valid gzipped tarball"
+cd /ctx
 [ -f Dockerfile ] || fail "no Dockerfile found at the root of the source tarball"
 mkdir -p /root/.docker
 printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY_HOST" "$REGISTRY_AUTH_B64" > /root/.docker/config.json

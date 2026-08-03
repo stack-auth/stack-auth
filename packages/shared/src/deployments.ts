@@ -129,12 +129,17 @@ export const deploymentSecretDefaultsSchema = yupRecord(
 export const deploymentServiceDefinitionSchema = yupObject({
   type: yupString().oneOf(["container"]).defined(),
   port: yupNumber().integer().min(1).max(65535).defined(),
-  min_instances: yupNumber().integer().min(0).optional(),
+  // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
+  // ever fail downstream.
+  min_instances: yupNumber().integer().min(0).max(5).optional(),
   max_instances: yupNumber().integer().min(1).max(5).optional()
-    .test("max-gte-min", "max_instances must be greater than or equal to min_instances", function (value) {
-      const minInstances = (this.parent as { min_instances?: number }).min_instances;
-      if (value === undefined || minInstances === undefined) return true;
-      return value >= minInstances;
+    // Compare EFFECTIVE bounds, not just when both are present: `min_instances` alone (no
+    // max) defaults max to 1 downstream, so `min: 2` with no max is an invalid spec that
+    // must be caught here — otherwise Marshal 400s it after the upload is consumed.
+    .test("max-gte-min", "max_instances must be greater than or equal to min_instances (max_instances defaults to 1)", function (value) {
+      const minInstances = (this.parent as { min_instances?: number }).min_instances ?? 0;
+      const effectiveMax = value ?? Math.max(minInstances, 1);
+      return effectiveMax >= minInstances;
     }),
   root_directory: yupString().optional(),
   // The legacy Vercel-era build fields are rejected explicitly (not merely
@@ -205,10 +210,22 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "container", env: {},
   }, { abortEarly: false })).rejects.toThrow(/port/);
-  // Scaling bounds must be consistent.
+  // Scaling bounds must be consistent when both are given.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "container", port: 3000, min_instances: 3, max_instances: 1, env: {},
   }, { abortEarly: false })).rejects.toThrow(/greater than or equal to min_instances/);
+  // min_instances alone is accepted — max defaults up to min so the spec stays consistent
+  // (this is the case that previously slipped through validation and 400'd from the runtime).
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, min_instances: 2, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  // Both bounds are capped at 5.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, min_instances: 6, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/min_instances/);
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, max_instances: 6, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/max_instances/);
   // The Vercel-era build fields are gone and must say so.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "container", port: 3000, framework: "nextjs", env: {},

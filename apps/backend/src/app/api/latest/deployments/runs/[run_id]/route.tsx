@@ -2,7 +2,7 @@ import { refreshRunFromMarshal, runToApiShape } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -39,7 +39,12 @@ export const GET = createSmartRouteHandler({
     if (run == null) {
       throw new StatusError(404, "No deployment run found with the given id.");
     }
-    await refreshRunFromMarshal(prisma, auth.tenancy, run, run.service.serviceId);
+    // A transient Marshal error must not 500 the run read — fall back to last-known status.
+    try {
+      await refreshRunFromMarshal(prisma, auth.tenancy, run, run.service.serviceId);
+    } catch (e) {
+      captureError("deployments-run-get-refresh", e);
+    }
     const refreshed = await prisma.deploymentRun.findUnique({
       where: {
         tenancyId_id: {

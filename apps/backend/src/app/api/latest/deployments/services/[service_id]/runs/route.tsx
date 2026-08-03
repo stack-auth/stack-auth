@@ -2,7 +2,7 @@ import { getServiceRowOrThrow, isTerminalRunStatus, refreshRunFromMarshal, runTo
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -46,10 +46,16 @@ export const GET = createSmartRouteHandler({
       take: limitRaw,
     });
     // Only the newest non-terminal runs need a refresh; there can be at most a
-    // handful in flight at once, so refreshing serially is fine.
+    // handful in flight at once, so refreshing serially is fine. A transient Marshal error
+    // must not 500 the whole listing — show last-known status instead (matches the board's
+    // serviceToApiShape behavior).
     for (const run of runs) {
       if (!isTerminalRunStatus(run.status)) {
-        await refreshRunFromMarshal(prisma, auth.tenancy, run, params.service_id);
+        try {
+          await refreshRunFromMarshal(prisma, auth.tenancy, run, params.service_id);
+        } catch (e) {
+          captureError("deployments-runs-list-refresh", e);
+        }
       }
     }
     const refreshedRuns = await prisma.deploymentRun.findMany({

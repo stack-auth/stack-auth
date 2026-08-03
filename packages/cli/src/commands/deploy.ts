@@ -187,17 +187,20 @@ export async function deployService(options: {
   const serviceId = service.serviceId;
   const log = (message: string) => console.error(`[${serviceId}] ${message}`);
 
-  // Container services build from a Dockerfile at the source root — checked
-  // here so a missing one fails before anything is uploaded, not minutes later
-  // inside the remote builder. (Docker itself never runs locally.)
-  if (!fs.existsSync(path.join(service.absoluteRootDirectory, "Dockerfile"))) {
-    throw new CliError(`services.${serviceId} has no Dockerfile at ${service.absoluteRootDirectory}. Container services are built from the Dockerfile at the root of their source directory — add one (it will be built remotely; Docker is not required locally).`);
-  }
-
   const packaged = packageSourceDirectory(service.absoluteRootDirectory, ignoreRootDirectory, {
     includeFiles: service.includeFiles,
     excludeFiles: service.excludeFiles,
   });
+  // Container services build from a Dockerfile at the PACKAGED root — verify it against the
+  // actual tar contents (case-exact, and after .gitignore/.dockerignore + include/exclude
+  // filters), not just the filesystem, so a missing/ignored/case-mismatched Dockerfile fails
+  // before upload rather than minutes later in the remote builder. (Docker never runs locally.)
+  if (!packaged.paths.includes("Dockerfile")) {
+    const onDisk = fs.existsSync(path.join(service.absoluteRootDirectory, "Dockerfile"));
+    throw new CliError(onDisk
+      ? `services.${serviceId} has a Dockerfile at ${service.absoluteRootDirectory} but it isn't in the packaged source — check your .dockerignore/.gitignore and includeFiles/excludeFiles (and that the filename is exactly "Dockerfile").`
+      : `services.${serviceId} has no Dockerfile at ${service.absoluteRootDirectory}. Container services are built from the Dockerfile at the root of their source directory — add one (it will be built remotely; Docker is not required locally).`);
+  }
   log(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed) from ${service.absoluteRootDirectory}.`);
 
   const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", { method: "POST" });

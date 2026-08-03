@@ -1,4 +1,4 @@
-import { decryptDeploymentRedactionSecrets, marshalNamespaceForTenancy, redactSecrets } from "@/lib/deployments";
+import { decryptDeploymentRedactionSecrets, isTerminalRunStatus, marshalNamespaceForTenancy, redactSecrets, refreshRunFromMarshal } from "@/lib/deployments";
 import { getMarshalClientOrThrow } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { SmartResponse } from "@/route-handlers/smart-response";
@@ -45,9 +45,25 @@ export const GET = createSmartRouteHandler({
     if (run == null) {
       throw new StatusError(404, "No deployment run found with the given id.");
     }
-    const marshalBuildId = run.marshalBuildId;
+    // Refresh first: a run created before its build started (blocked, or a post-PUT lookup
+    // failure) has marshalBuildId=null even though a build may be running now —
+    // refreshRunFromMarshal attaches it by revision. Without this, an actively-building run
+    // would get a bare 400 "no build logs" until the caller happened to hit GET /runs first.
+    try {
+      await refreshRunFromMarshal(prisma, auth.tenancy, run, run.service.serviceId);
+    } catch (e) {
+      captureError("deployments-run-logs-refresh", e);
+    }
+    const refreshedRun = await prisma.deploymentRun.findUnique({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: params.run_id } },
+    });
+    const marshalBuildId = refreshedRun?.marshalBuildId ?? null;
     if (marshalBuildId == null) {
-      throw new StatusError(400, "This run has no build logs.");
+      // A blocked/errored run that never produced a build gets a clearer message than a
+      // still-building one.
+      throw new StatusError(400, isTerminalRunStatus(refreshedRun?.status ?? run.status)
+        ? "This run produced no build (it failed before a build started, e.g. blocked on an unresolved connection)."
+        : "This run has no build logs yet.");
     }
     const serviceId = run.service.serviceId;
     const client = getMarshalClientOrThrow();
@@ -77,6 +93,9 @@ export const GET = createSmartRouteHandler({
               const text = redactSecrets(line.text, secretValues);
               controller.enqueue(encoder.encode(text.endsWith("\n") ? text : `${text}\n`));
             }
+            // Guard a non-advancing cursor (a bug or a bogus next_since_millis) from becoming
+            // a hot loop that re-enqueues the same window until MAX_STREAM_MS.
+            const cursorAdvanced = sinceMillis === undefined || page.next_since_millis > sinceMillis;
             sinceMillis = page.next_since_millis;
 
             if (page.complete) {
@@ -86,8 +105,13 @@ export const GET = createSmartRouteHandler({
               controller.enqueue(encoder.encode("[hexclave] Log stream timed out while the build is still running; re-request to continue following.\n"));
               break;
             }
-            if (page.lines.length === 0) {
+            // Sleep whenever the build isn't complete — not only on an empty page. A chatty
+            // build returns lines every page, and hammering Marshal (→ Fly's logs API) with
+            // zero delay for the whole window is needless load.
+            if (page.lines.length === 0 || !cursorAdvanced) {
               await wait(POLL_INTERVAL_MS);
+            } else {
+              await wait(Math.min(POLL_INTERVAL_MS, 500));
             }
           }
           if (!clientCancelled) {

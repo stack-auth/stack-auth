@@ -4,6 +4,17 @@
 // symlinks. The output is deterministic for identical input trees (sorted
 // entries, fixed mtime in the tar writer), which makes retried deploys upload
 // byte-identical tarballs.
+//
+// KNOWN DIVERGENCE — .dockerignore is parsed with GIT semantics here, which differs from
+// `docker build` in two ways: (1) an unanchored pattern (`dist`) matches at ANY depth, but
+// docker matches `.dockerignore` patterns against the whole path relative to the context
+// root (`dist` = top-level only; `**/dist` for any depth); (2) docker reads exactly one
+// `.dockerignore` at the context root, whereas this reads one at every directory level. In a
+// monorepo, a nested `.dockerignore` written for building that subdir as its own context can
+// therefore over-exclude here. Common flat ignore files behave identically; the full
+// docker-semantics parser is a tracked follow-up. Note also: unlike `docker build`, a
+// `.dockerignore` that lists `Dockerfile` DOES drop it (docker special-cases and sends it
+// anyway) — the deploy pre-flight verifies the Dockerfile survived packaging and errors early.
 
 import { createTar, type TarEntry } from "@hexclave/shared/dist/utils/tar";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -53,6 +64,9 @@ export type PackagedSource = {
   tarballGzipped: Buffer,
   fileCount: number,
   totalBytes: number,
+  // The packaged file paths (posix, relative to the root), so callers can assert on the
+  // ACTUAL contents (e.g. Dockerfile presence) after ignore rules + include/exclude filters.
+  paths: string[],
 };
 
 export type SourceFileFilters = {
@@ -162,5 +176,6 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
     tarballGzipped: gzipSync(tarball),
     fileCount: entries.length,
     totalBytes,
+    paths: entries.map((entry) => entry.path),
   };
 }

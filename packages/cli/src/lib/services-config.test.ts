@@ -343,6 +343,15 @@ describe("computeDeploymentLevels", () => {
     expect(computeDeploymentLevels(services)).toEqual([["web"]]);
   });
 
+  it("does not treat a self internalUrl reference as a cycle", () => {
+    // A self `internalUrl` is deterministic (see evaluateServicesFunction), so it must not
+    // create a self-edge that computeDeploymentLevels would report as a false cycle.
+    const services = build(({ service }) => ({
+      web: { type: "container", port: 3000, env: { SELF: (service("web") as any).internalUrl } },
+    }));
+    expect(computeDeploymentLevels(services)).toEqual([["web"]]);
+  });
+
   it("names the cycle on circular dependencies", () => {
     const services = build(({ service }) => ({
       a: { type: "container", port: 3000, env: { X: (service("b") as any).url } },

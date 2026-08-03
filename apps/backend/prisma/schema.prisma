@@ -1751,7 +1751,7 @@ model DeploymentServiceDomain {
 
   hostname  String
   isPrimary Boolean @default(false)
-  // Vercel-reported verification state, refreshed whenever the domain is read.
+  // Runtime-reported (Marshal) verification state, refreshed whenever the domain is read.
   verified Boolean @default(false)
 
   service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
@@ -1799,10 +1799,10 @@ model DeploymentRun {
   finishedAt DateTime?
 
   // `{ edkBase64, ciphertextBase64 }`, encrypting a JSON string array of the
-  // exact sensitive values injected into this run. Logs are fetched from
-  // Vercel on demand, potentially after the project secret was rotated or
-  // deleted; keeping the encrypted snapshot on the run lets those historical
-  // logs remain redacted without retaining the old value in ProjectSecret.
+  // exact sensitive values injected into this run. Build logs are fetched from
+  // the runtime (Marshal) on demand, potentially after the project secret was
+  // rotated or deleted; keeping the encrypted snapshot on the run lets those
+  // historical logs remain redacted without retaining the old value in ProjectSecret.
   // Null only for runs created before this column existed; their logs fail
   // closed because there is no complete redaction set.
   redactionSecretsEncrypted Json?

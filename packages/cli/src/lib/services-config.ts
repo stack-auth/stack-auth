@@ -4,11 +4,11 @@
 //
 //   export const services = ({ isDev, secret, service, hexclave }) => ({
 //     frontend: {
-//       type: "vercel",
-//       framework: "next",
+//       type: "container",
+//       port: 3000,
 //       devCommand: "pnpm dev",
 //       env: {
-//         DB_URL: service("database").url,
+//         DB_URL: service("database").internalUrl,
 //         OPENAI: isDev ? null : secret("OPENAI_API_KEY", "some-default"),
 //         PROJECT_ID: hexclave.projectId,
 //       },
@@ -390,12 +390,14 @@ export function evaluateServicesFunction(options: {
     }
     const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
     const maxInstances = readOptionalIntegerField(record, serviceId, "maxInstances");
-    if (minInstances !== undefined && minInstances < 0) {
-      throw new CliError(`services.${serviceId}.minInstances must be at least 0.`);
+    if (minInstances !== undefined && (minInstances < 0 || minInstances > 5)) {
+      throw new CliError(`services.${serviceId}.minInstances must be between 0 and 5.`);
     }
     if (maxInstances !== undefined && (maxInstances < 1 || maxInstances > 5)) {
       throw new CliError(`services.${serviceId}.maxInstances must be between 1 and 5.`);
     }
+    // Only reject when max is explicitly below min. min-only is fine: max defaults up to min
+    // downstream, so the spec stays consistent (this used to slip through and 400 from the runtime).
     if (minInstances !== undefined && maxInstances !== undefined && maxInstances < minInstances) {
       throw new CliError(`services.${serviceId}.maxInstances (${maxInstances}) must be at least minInstances (${minInstances}).`);
     }
@@ -468,7 +470,11 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // hexclave.* outputs come from the managed service, which always exists;
       // connections to services OUTSIDE this config (possible when deploying a
       // subset in the future) are resolved against already-deployed state.
-      if (targetServiceId !== HEXCLAVE_SERVICE_ID && services.has(targetServiceId)) {
+      // Self-references never create a deploy edge: a self `url` is rejected outright above,
+      // and self `internalUrl`/`internalHost` are deterministic (they don't depend on the
+      // service having deployed). Adding a self-edge here would make computeDeploymentLevels
+      // report a false circular-dependency error for a config that deploys fine.
+      if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId && services.has(targetServiceId)) {
         serviceDependencies.add(targetServiceId);
       }
     }

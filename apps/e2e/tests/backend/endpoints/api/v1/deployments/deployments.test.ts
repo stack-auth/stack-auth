@@ -81,18 +81,22 @@ async function startDeploy(serviceId: string, uploadId: string, definitionSyncId
 }
 
 // The mock builder completes asynchronously (next tick + machine rollout
-// against the fly-mock), so poll the run until it settles.
+// against the fly-mock), so poll the run until it settles. The wall-clock budget matches the
+// declared test timeout so a slow CI runner doesn't fail early with 100s of the timeout unused;
+// the give-up error includes the last observed body for debuggability.
 async function pollRunToStatus(runId: string, wantedStatus: "ready" | "error"): Promise<Record<string, any>> {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  let last: any = null;
+  for (let attempt = 0; attempt < 240; attempt++) {
     const poll = await niceBackendFetch(`/api/v1/deployments/runs/${runId}`, { accessType: "admin" });
+    last = poll;
     const body = poll.body as any;
-    if (body.status === wantedStatus) return body;
-    if (body.status === "ready" || body.status === "error" || body.status === "canceled") {
+    if (body?.status === wantedStatus) return body;
+    if (body?.status === "ready" || body?.status === "error" || body?.status === "canceled") {
       throw new Error(`Run reached ${body.status} instead of ${wantedStatus}: ${JSON.stringify(body)}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Run did not become ${wantedStatus} in time`);
+  throw new Error(`Run ${runId} did not become ${wantedStatus} in time; last poll: ${last?.status} ${JSON.stringify(last?.body)}`);
 }
 
 type MockApp = {
@@ -101,15 +105,27 @@ type MockApp = {
   certificates: { hostname: string, clientStatus: string }[],
 };
 
-// Finds the fly-mock app backing a service by the hexclave_key metadata its
-// machines carry — the test doesn't need to know Marshal's app-naming scheme.
-async function findMockApp(serviceId: string): Promise<MockApp> {
-  const response = await fetch(`${FLY_MOCK_URL}/__mock/apps`);
-  if (!response.ok) throw new Error(`fly-mock /__mock/apps returned ${response.status}`);
-  const { apps } = await response.json() as { apps: MockApp[] };
-  const app = apps.find((candidate) => candidate.machines.some((machine) => machine.metadata.hexclave_key === serviceId));
-  if (app === undefined) throw new Error(`No fly-mock app found for service ${serviceId}`);
-  return app;
+// Finds the fly-mock app backing a service by the hexclave_key metadata its machines carry
+// (the test doesn't need Marshal's app-naming scheme), and WAITS for the rollout to converge
+// to the expected machine count — a run flips READY when the build succeeds, before Marshal
+// has finished creating machines, so reading /__mock/apps immediately would race a partial
+// fleet. Matches on ns too so a fixed-id service in a parallel worker can't shadow it.
+async function findMockApp(serviceId: string, expectedMachines = 1, ns?: string): Promise<MockApp> {
+  let seen: MockApp | undefined;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const response = await fetch(`${FLY_MOCK_URL}/__mock/apps`);
+    if (response.ok) {
+      const { apps } = await response.json() as { apps: MockApp[] };
+      const matches = apps.filter((candidate) => candidate.machines.some((machine) =>
+        machine.metadata.hexclave_key === serviceId && (ns === undefined || machine.metadata.hexclave_ns === ns)));
+      if (matches.length > 0) {
+        seen = matches[0];
+        if (seen.machines.length >= expectedMachines) return seen;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`fly-mock app for ${serviceId} never converged to ${expectedMachines} machine(s) (last saw ${seen?.machines.length ?? 0})`);
 }
 
 describe("access control", () => {
@@ -240,6 +256,24 @@ describe("definition sync", () => {
     });
     expect(wrongType.status).toBe(400);
   });
+
+  it("rejects the reserved `hexclave` service id and an empty services map", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const reserved = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { hexclave: { type: "container", port: 3000, env: {} } } },
+    });
+    expect(reserved.status).toBe(400);
+    const empty = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: {} },
+    });
+    // An empty services map is rejected — the CLI only syncs when the config declares at
+    // least one service (evaluateServicesFunction errors on an empty export).
+    expect(empty.status).toBe(400);
+  });
 });
 
 describe("secrets", () => {
@@ -368,7 +402,7 @@ describe("deploys against the Marshal runtime", () => {
     // The fly-mock shows the machines Marshal created: max_instances of them,
     // with the resolved env (secrets and hexclave connections resolved
     // server-side; nothing unresolved leaks through).
-    const app = await findMockApp(serviceId);
+    const app = await findMockApp(serviceId, 2);
     expect(app.machines).toHaveLength(2);
     const projectKeys = backendContext.value.projectKeys;
     if (projectKeys === "no-project") throw new Error("No project in context");
@@ -382,12 +416,51 @@ describe("deploys against the Marshal runtime", () => {
       expect(machine.metadata.hexclave_key).toBe(serviceId);
     }
 
-    // Build logs stream with the secret value redacted (stage-2 redaction).
+    // Build logs stream with the secret value redacted (stage-2 redaction). The mock builder
+    // echoes the resolved env into the log (MARSHAL_MOCK_ENV), so this is a REAL redaction
+    // check: the plain var survives verbatim, the secret's resolved value is scrubbed to
+    // <redacted>, and the raw secret never appears.
     const logsResponse = await niceBackendFetch(`/api/v1/deployments/runs/${runId}/logs`, { accessType: "admin" });
     expect(logsResponse.status).toBe(200);
     const logsText = typeof logsResponse.body === "string" ? logsResponse.body : JSON.stringify(logsResponse.body);
-    expect(logsText).toContain("MARSHAL_BUILD_START");
+    expect(logsText).toContain("MARSHAL_MOCK_ENV");
+    expect(logsText).toContain("PLAIN_VAR=plain-value"); // non-secret value passes through
+    expect(logsText).toContain("<redacted>"); // the secret was actually redacted, not just absent
     expect(logsText).not.toContain("sk-secret-value-123");
+  });
+
+  it("marks the run failed and reports blocked when a `url` connection has no verified domain", { timeout: 120_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const apiServiceId = uniqueServiceId("api");
+    const webServiceId = uniqueServiceId("web");
+    // web references the API's PUBLIC url, which needs a verified domain the API doesn't have.
+    const sync = await syncServices({
+      [apiServiceId]: { type: "container", port: 8080, env: {} },
+      [webServiceId]: { type: "container", port: 3000, env: { API_URL: { type: "connection", value: `${apiServiceId}.url` } } },
+    });
+    const upload = await createUpload();
+    const runId = await startDeploy(webServiceId, upload.uploadId, sync);
+    const run = await pollRunToStatus(runId, "error");
+    expect(JSON.stringify(run.error)).toContain("blocked");
+    // The service reports blocked and has no public URL.
+    const service = await niceBackendFetch(`/api/v1/deployments/services/${webServiceId}`, { accessType: "admin" });
+    expect((service.body as any).url).toBeNull();
+  });
+
+  it("rejects a connection to a service that doesn't exist", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("web");
+    const syncId = await syncServices({
+      [serviceId]: { type: "container", port: 3000, env: { X: { type: "connection", value: "nonexistent.internalUrl" } } },
+    });
+    const { uploadId } = await createUpload();
+    const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/deploy`, {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId, definition_sync_id: syncId },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("doesn't exist");
   });
 
   it("resolves internalUrl connections between services deterministically", { timeout: 120_000 }, async ({ expect }) => {
@@ -425,14 +498,17 @@ describe("deploys against the Marshal runtime", () => {
     expect(run.error).toContain("mock build failed");
   });
 
-  it("does not consume the upload when secrets are missing", { timeout: 120_000 }, async ({ expect }) => {
+  it("does not consume the upload when secrets are missing, and lists every missing key", { timeout: 120_000 }, async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("needs-secret");
     const definitionSyncId = await syncServices({
       [serviceId]: {
         type: "container",
         port: 3000,
-        env: { REQUIRED: { type: "secret", key: "never_set_secret" } },
+        env: {
+          REQUIRED: { type: "secret", key: "never_set_secret" },
+          ALSO_REQUIRED: { type: "secret", key: "also_never_set" },
+        },
       },
     });
     const { uploadId } = await createUpload();
@@ -442,16 +518,28 @@ describe("deploys against the Marshal runtime", () => {
       body: { upload_id: uploadId, definition_sync_id: definitionSyncId },
     });
     expect(failedDeploy.status).toBe(400);
+    // Both missing keys are named in one error (not just the first).
     expect(JSON.stringify(failedDeploy.body)).toContain("never_set_secret");
+    expect(JSON.stringify(failedDeploy.body)).toContain("also_never_set");
 
-    // The upload survives the rejected deploy: set the secret and reuse it.
-    await niceBackendFetch("/api/v1/project-secrets", {
-      method: "POST",
-      accessType: "admin",
-      body: { key: "never_set_secret", value: "now-set" },
-    });
+    // The upload survives the rejected deploy: set both secrets and reuse it.
+    for (const key of ["never_set_secret", "also_never_set"]) {
+      await niceBackendFetch("/api/v1/project-secrets", { method: "POST", accessType: "admin", body: { key, value: "now-set" } });
+    }
     const runId = await startDeploy(serviceId, uploadId, definitionSyncId);
     await pollRunToStatus(runId, "ready");
+  });
+
+  it("404s a deploy referencing an upload id that doesn't exist", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("web");
+    const definitionSyncId = await syncServices({ [serviceId]: { type: "container", port: 3000, env: {} } });
+    const response = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}/deploy`, {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: randomUUID(), definition_sync_id: definitionSyncId },
+    });
+    expect(response.status).toBe(404);
   });
 
   it("consumes an upload exactly once", { timeout: 120_000 }, async ({ expect }) => {
@@ -513,6 +601,11 @@ describe("deploys against the Marshal runtime", () => {
     // var is actually gone, not merely unlisted.
     expect((await findMockApp(serviceId)).machines[0].env).toEqual({ KEEP: "yes" });
   });
+
+  // NOTE: there is deliberately no backend DELETE-service route (removal is config-driven;
+  // auto-cleanup of services dropped from the config is a tracked gap), so Marshal's
+  // deleteService — which releases the hostname claim and tears down the Fly app — has no
+  // backend-e2e path to exercise. Worth a direct Marshal-level test when one is added.
 });
 
 describe("domains", () => {

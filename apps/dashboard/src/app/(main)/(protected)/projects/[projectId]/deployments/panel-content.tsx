@@ -721,7 +721,7 @@ export function SettingsContent({ service, isHexclave }: {
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          Build settings are managed by Hexclave for this service.
+          Container settings are managed by Hexclave for this service.
         </div>
       </div>
     );

@@ -32,7 +32,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -110,9 +110,11 @@ export function definitionFromServiceRow(row: {
 }): DeploymentServiceDefinition {
   return {
     type: "container",
-    // Rows that predate a synced definition have no port; deploys of them are
-    // rejected earlier (see the deploy route's definitionSyncedAt check), and
-    // display-only readers tolerate the placeholder.
+    // Rows that predate a synced definition have no port. The `0` placeholder is only ever
+    // reached by display-only callers (serviceToApiShape reads row.port directly, and the
+    // deploy route guards `row.port == null` before building a spec), so it never reaches
+    // Marshal — but note `0` is NOT a valid ServiceSpec port, so any future path that sends
+    // definitionFromServiceRow's output to Marshal must guard the null-port case first.
     port: row.port ?? 0,
     min_instances: row.minInstances ?? undefined,
     max_instances: row.maxInstances ?? undefined,
@@ -294,13 +296,16 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
   }
 }
 
-// The config-file output keys (camelCase, what `service("api").internalUrl`
-// produces) mapped to the Marshal runtime's snake_case output keys.
-const SERVICE_OUTPUT_KEY_TO_MARSHAL: Record<string, string> = {
+// The config-file output keys (camelCase, what `service("api").internalUrl` produces) mapped
+// to the Marshal runtime's snake_case output keys. `satisfies Record<ServiceOutputKey, …>`
+// makes adding a key to SERVICE_OUTPUT_KEYS without a mapping here a compile error — otherwise
+// the lookup would yield `undefined` and emit `{ ref: "api.undefined" }`, a run that blocks
+// forever with an unactionable message.
+const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
   url: "url",
   internalUrl: "internal_url",
   internalHost: "internal_host",
-};
+} satisfies Record<ServiceOutputKey, string>;
 
 /**
  * Resolves a service's definition env vars into the EnvValue map sent to
@@ -319,9 +324,13 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL: Record<string, string> = {
  *   server-side (they are backend state, not runtime state),
  * - `<serviceId>.<output>` connections to other deployment services become
  *   Marshal `{ ref }`s, resolved by the runtime itself: `internalUrl`/
- *   `internalHost` are deterministic and never block; `url` needs a verified
- *   domain and makes the service `blocked` until one exists (the deploy still
- *   succeeds — Marshal converges once the backend re-applies).
+ *   `internalHost` are deterministic and never block. `url` needs a verified
+ *   domain on the target; if none exists yet, Marshal reports the service
+ *   `blocked` and the RUN FAILS (refreshRunFromMarshal finalizes it ERROR).
+ *   There is no automatic re-apply when the target's domain later verifies —
+ *   the user must re-deploy. (Marshal's `needsBuild` is keyed to make such a
+ *   re-apply a no-op-safe convergence point; wiring a domain-verify → re-PUT
+ *   trigger is a tracked follow-up.) Prefer `internalUrl` for service wiring.
  * Error messages only ever contain reference tokens (pointers), never any
  * resolved value.
  */
@@ -414,12 +423,13 @@ export async function resolveEnvVars(options: {
         if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
         }
-        // The map's keys are exactly SERVICE_OUTPUT_KEYS, so the lookup can't miss
-        // after the check above.
-        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey];
-        // The runtime resolves service-to-service refs itself: internal
-        // addresses are deterministic there, and a missing `url` makes the
-        // service converge later instead of failing the deploy.
+        // Narrowed by the includes() check above; the map is `satisfies Record<ServiceOutputKey,…>`.
+        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as ServiceOutputKey];
+        // The runtime resolves service-to-service refs itself: internal addresses are
+        // deterministic there. A `url` whose target has no verified domain yet makes the
+        // service `blocked` — the run then fails (there is no backend re-apply on domain
+        // verification yet; see startDeployment / refreshRunFromMarshal). Prefer internalUrl
+        // for service-to-service wiring.
         resolvedEnv[envVarKey] = { ref: `${normalized.serviceId}.${marshalOutputKey}` };
         break;
       }
@@ -536,10 +546,15 @@ export function redactSecrets(text: string, secretValues: string[]): string {
 
 /** Assembles the Marshal service spec for a service's stored definition. */
 export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, source: { upload_id: string } | { image: string }, resolvedEnv: Record<string, MarshalEnvValue>) {
+  const minInstances = definition.min_instances ?? DEFAULT_MIN_INSTANCES;
   return {
     config: {
-      min_instances: definition.min_instances ?? DEFAULT_MIN_INSTANCES,
-      max_instances: definition.max_instances ?? DEFAULT_MAX_INSTANCES,
+      min_instances: minInstances,
+      // Default max to at least min: a definition with `minInstances` and no `maxInstances`
+      // must not synthesize an invalid spec (max < min) that Marshal 400s after the upload is
+      // already consumed. Validation (CLI + schema) also rejects it up front now, but this
+      // keeps the spec self-consistent regardless.
+      max_instances: definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
       port: definition.port,
     },
     source,
@@ -579,7 +594,12 @@ export async function startDeployment(options: {
     sanitizeMarshalError(e, "Starting the deployment failed");
   }
 
-  if (service.provisionedAt == null) {
+  // Only mark provisioned once Marshal has actually created the Fly app. A blocked apply
+  // (an unresolved `<svc>.url` ref) only persists the spec — no app, no IPs — so setting
+  // provisionedAt then would make the domain routes attempt IP allocation on a nonexistent
+  // app and 500. `internal_host` is present exactly when the app exists.
+  const provisioned = result.state.status !== "blocked" && result.state.outputs.internal_host != null;
+  if (service.provisionedAt == null && provisioned) {
     await prisma.deploymentService.update({
       where: { tenancyId_id: { tenancyId: tenancy.id, id: service.id } },
       data: { provisionedAt: new Date() },
@@ -617,9 +637,14 @@ export async function startDeployment(options: {
   });
 
   // Write-through for the service's domains. Failures here must not fail the
-  // deploy itself (the build is already running), so domain sync problems are
-  // surfaced when the user opens the Domains tab instead.
-  await syncServiceDomainsToMarshal({ tenancy, prisma, serviceDbId: service.id, serviceId, client });
+  // deploy itself (the run row already exists and the build is running), so a DB/Marshal
+  // blip in domain sync must not throw out of startDeployment and lose the run id — the
+  // Domains tab surfaces per-domain problems on its own reads.
+  try {
+    await syncServiceDomainsToMarshal({ tenancy, prisma, serviceDbId: service.id, serviceId, client });
+  } catch (e) {
+    captureError("deployments-domain-sync-after-deploy", e);
+  }
 
   return { runId: run.id };
 }
@@ -659,11 +684,12 @@ export async function syncServiceDomainsToMarshal(options: {
       const result = await client.putDomain(ns, domain.hostname, serviceId);
       verified = result.verified;
     } catch (e) {
-      // NOTHING here may fail the caller — the build is already running, so a
-      // domain hiccup must not turn a started deploy into an error. A 4xx is
-      // a real answer from Marshal about THIS domain (e.g. hostname claimed
-      // elsewhere) — record it as unverified; anything else is transient.
-      if (e instanceof MarshalApiError && e.status >= 400 && e.status < 500) {
+      // NOTHING here may fail the caller — the build is already running, so a domain hiccup
+      // must not turn a started deploy into an error. Only 400/409 are real per-domain
+      // answers (bad hostname / claimed elsewhere) → record unverified. 404/408/429/5xx are
+      // transient or not about this domain → leave the row untouched (verified stays null),
+      // so a rate limit can't clobber a genuinely-verified domain back to unverified.
+      if (e instanceof MarshalApiError && (e.status === 400 || e.status === 409)) {
         verified = false;
       } else {
         captureError("deployments-domain-sync", e);
@@ -689,12 +715,25 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
   status: DeploymentRunStatus,
   marshalBuildId: string | null,
   revision: string | null,
+  createdAt: Date,
 }, serviceId: string): Promise<void> {
   if (isTerminalRunStatus(run.status)) {
     return;
   }
   const client = getMarshalClientOrThrow();
   const ns = marshalNamespaceForTenancy(tenancy);
+  // Backstop so a run whose build never materialized (blocked-then-abandoned, or its build
+  // record vanished with a delete+recreate) can't stay non-terminal forever — which would
+  // also make every runs-list read re-poll it indefinitely.
+  const runAgeMs = Date.now() - run.createdAt.getTime();
+  const STUCK_RUN_GRACE_MS = 30 * 60 * 1000;
+  const finalizeStuck = async (error: string): Promise<void> => {
+    if (runAgeMs < STUCK_RUN_GRACE_MS) return;
+    await prisma.deploymentRun.update({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
+      data: { status: "ERROR", error, finishedAt: new Date() },
+    });
+  };
   let build;
   try {
     const builds = await client.listBuilds(ns, serviceId, { limit: 50 });
@@ -722,15 +761,20 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
             finishedAt: new Date(),
           },
         });
+        return;
       }
     } catch (e) {
       captureError("deployments-run-refresh-blocked-check", e);
     }
+    // Not blocked, yet no build ever appeared for this revision — give up once it's clearly
+    // stale rather than re-polling it on every future read.
+    await finalizeStuck("The runtime never started a build for this deploy.");
     return;
   }
   if (build == null) {
-    // The build record is gone (e.g. the service was deleted and recreated);
-    // leave the run as-is rather than inventing a state.
+    // The build record is gone (e.g. the service was deleted and recreated) — leave a fresh
+    // run alone, but stop re-polling one that's been stuck this way past the grace window.
+    await finalizeStuck("The build for this deploy is no longer available on the runtime.");
     return;
   }
   if (run.marshalBuildId == null) {
@@ -885,10 +929,22 @@ export async function serviceToApiShape(options: {
     }
   })();
 
+  // The public URL is a verified custom domain, full stop — container services have no
+  // platform-assigned URL. Deliberately NOT falling back to the latest run's serviceUrl: that
+  // value is frozen when the run goes terminal and never cleared, so a removed domain would be
+  // reported as the service URL forever.
   const verifiedPrimary = row.domains.find((d) => d.isPrimary && d.verified) ?? row.domains.find((d) => d.verified);
-  const url = verifiedPrimary != null
-    ? `https://${verifiedPrimary.hostname}`
-    : (latestRun?.status === "READY" ? latestRun.serviceUrl : null);
+  const url = verifiedPrimary != null ? `https://${verifiedPrimary.hostname}` : null;
+
+  // KNOWN GAP — `status`/`has_successful_deploy` are derived purely from the build record, so a
+  // service whose image builds fine but crash-loops on boot still reports "deployed". Marshal
+  // knows the real runtime state (getService returns failed/degraded/idle), but surfacing it
+  // here would add a getService round-trip to every board poll (the list endpoint reconciles N
+  // services on each read). Similarly, domain `verified` is only refreshed at deploy time and
+  // via the per-domain GET, so a cert that issues minutes after deploy leaves `url` null until
+  // the user opens the domain panel. Both want a bounded backend↔Marshal reconcile cadence
+  // (mirror runtime status + domain verified into the row on a timer / observed_at staleness)
+  // rather than an inline call per read. Tracked for a follow-up.
 
   const domains = row.domains
     .map((domainRow) => ({

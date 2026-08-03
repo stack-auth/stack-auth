@@ -47,10 +47,18 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     await fly.deleteCertificate(previousApp, hostname);
     await releasePublicIpsIfUnused(ns, existingClaim.service_key);
     await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
+  } else {
+    // Idempotent re-attach on the same service: re-assert the index entry, which repairs the
+    // case where a prior claim landed but its index write was lost (an orphaned claim that
+    // deleteService could otherwise never release).
+    await claimDomain(existingClaim);
   }
 
   // Public exposure exists only while domains are attached: allocate the shared IPv4 +
-  // dedicated IPv6 on first attach (no public IP = private service).
+  // dedicated IPv6 on first attach (no public IP = private service). Concurrent attaches of
+  // different hostnames on the same app can both observe no IP and both allocate a second
+  // dedicated v6 — a minor over-allocation the last-detach release reclaims; a true fix needs
+  // per-app allocation serialization, tracked for later.
   const ips = await fly.getAppIps(appName);
   if (ips.sharedIpv4 === null) await fly.allocateIp(appName, "shared_v4");
   if (!ips.dedicated.some((ip) => ip.type === "v6")) await fly.allocateIp(appName, "v6");
@@ -91,10 +99,12 @@ export async function detachDomain(ns: string, hostname: string): Promise<void> 
   }
   const appName = appNameForService(config.envId, ns, claim.service_key);
   await fly.deleteCertificate(appName, hostname);
-  await releaseDomainClaim(claim);
-  // The service stays running and internally reachable; only its public exposure goes away
-  // when the last domain detaches.
+  // Release public IPs BEFORE the claim: a crash between the two must not leave a billable
+  // dedicated IP allocated with no claim (and no code path that would ever revisit it). The
+  // service stays running and internally reachable; only its public exposure goes away when
+  // the last domain detaches.
   await releasePublicIpsIfUnused(ns, claim.service_key);
+  await releaseDomainClaim(claim);
 }
 
 async function releasePublicIpsIfUnused(ns: string, serviceKey: string): Promise<void> {

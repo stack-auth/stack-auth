@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import type { Builder } from "./builds.js";
+import { computeWebhookToken, type Builder } from "./builds.js";
 import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_UPLOAD_BYTES, SOFT_CONCURRENCY_LIMIT, getConfig, resolveNamespaceOrg } from "./config.js";
-import { badRequest, notFound } from "./errors.js";
+import { MarshalError, badRequest, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
@@ -16,6 +16,11 @@ const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REF_REGEX = /^([a-zA-Z0-9_][a-zA-Z0-9_-]*)\.([A-Za-z0-9_]+)$/;
 const SERVICE_KEY_REGEX = /^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}$/;
 const NAMESPACE_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+// upload_id flows into an S3 object key (uploads/<ns>/<id>.tar.gz); validate it so a
+// path-traversal id can't escape the prefix. The backend mints these as randomUUIDs.
+const UPLOAD_ID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+// Build ids are ULIDs (Crockford base32, 26 chars); they flow into builds/<ns>/<key>/... keys.
+export const BUILD_ID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 // Grace on top of the harness's own watchdog before the lazy backstop declares a build dead.
 const BUILD_STALE_GRACE_MS = 5 * 60 * 1000;
 
@@ -52,6 +57,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   const hasUploadId = typeof source.upload_id === "string" && source.upload_id !== "";
   const hasImage = typeof source.image === "string" && source.image !== "";
   if (hasUploadId === hasImage) throw badRequest("source must be exactly one of { upload_id } or { image }");
+  if (hasUploadId && !UPLOAD_ID_REGEX.test(source.upload_id as string)) throw badRequest("source.upload_id must be a UUID");
 
   const env = asRecord(record.env);
   if (env === null) throw badRequest("env is required (use {} for no env vars)");
@@ -229,7 +235,23 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     const desiredHash = (desired.metadata as Record<string, string>).hexclave_config_hash;
     const existing = bySlot.get(slot);
     bySlot.delete(slot);
-    if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash) continue;
+    const existingStarted = existing !== undefined && (existing.state === "started" || existing.state === "starting");
+    // Config-hash match short-circuits — but only when the machine is actually up. A pinned
+    // (autostop:"off") slot that crash-looped to `stopped` will never be restarted by Fly
+    // Proxy, so a same-spec reconcile must still boot it; otherwise an always-on service
+    // stays down forever. Autostoppable slots are meant to be stopped, so leave those.
+    const pinned = slot < pinnedMachineCount(stored.spec);
+    if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash && (existingStarted || !pinned)) continue;
+    if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash) {
+      // Hash matches but a pinned machine is stopped: just start it, no config churn.
+      try {
+        await fly.startMachine(appName, existing.id);
+      } catch {
+        // Already booting / raced — the wait below arbitrates.
+      }
+      await fly.waitForMachineState(appName, existing.id, "started", { instanceId: existing.instance_id, totalTimeoutSeconds: 120 });
+      continue;
+    }
     if (existing !== undefined) {
       const wasStopped = existing.state !== "started" && existing.state !== "starting";
       const updated = await fly.updateMachine(appName, existing.id, desired);
@@ -294,9 +316,14 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
   // this revision yet — NOT merely when the revision changed: a spec that arrived blocked
   // starts its build on the unblocking re-apply (changed === false there). A failed build
   // of the same revision is deliberately not retried (retries come with a fresh upload and
-  // therefore a new revision).
-  const needsBuild = "upload_id" in stored.spec.source
-    && !(await listBuilds(ns, key, { limit: 10 })).some((build) => build.revision === revision);
+  // therefore a new revision). Builds started BEFORE this spec's creation don't count: a
+  // delete+recreate resets created_at, so a stale record from a previous incarnation (or a
+  // failed pre-delete build) must not suppress the fresh service's build.
+  const recentBuilds = await listBuilds(ns, key, { limit: 10 });
+  const buildForRevision = recentBuilds.find(
+    (build) => build.revision === revision && build.started_at_millis >= stored.created_at_millis,
+  ) ?? null;
+  const needsBuild = "upload_id" in stored.spec.source && buildForRevision === null;
   if (needsBuild && "upload_id" in stored.spec.source) {
     const uploadId = stored.spec.source.upload_id;
     const upload = await statUpload(ns, uploadId);
@@ -358,6 +385,15 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     return { revision, changed, state: await getServiceState(ns, key, stored) };
   }
 
+  // The stored source may still be { upload_id } even though its build already succeeded —
+  // if completeBuild crashed before rewriting the spec, or a concurrent apply clobbered it
+  // (see the CAS note on writeSpec). Adopt the built image so the service still converges
+  // instead of no-oping forever. needsBuild was false here, so buildForRevision is set when
+  // the source is an upload.
+  if ("upload_id" in stored.spec.source && buildForRevision?.status === "succeeded" && buildForRevision.image !== null) {
+    stored.spec = { ...stored.spec, source: { image: buildForRevision.image } };
+  }
+
   if (changed && "image" in spec.source) {
     // No-artifact revision (rescale / env edit / direct { image } deploy): record an
     // immediate succeeded build with has_logs: false so the build history stays complete.
@@ -414,8 +450,12 @@ export async function completeBuild(options: {
   const appName = appNameForService(config.envId, options.ns, options.key);
 
   if (options.status === "failed") {
-    await writeBuild({ ...build, status: "failed", error: truncateError(options.errorText) ?? "build failed", finished_at_millis: Date.now() });
-    await persistBuildLog(fly, { ...build, status: "failed" });
+    // Persist the durable log BEFORE the terminal record: the logs route serves the bucket
+    // object once the record is terminal, so writing the record first opens a window where
+    // it reports complete:true with no lines yet.
+    const failed: StoredBuild = { ...build, status: "failed", error: truncateError(options.errorText) ?? "build failed", finished_at_millis: Date.now() };
+    await persistBuildLog(fly, failed);
+    await writeBuild(failed);
     // The upload is deliberately kept on failure (a retry of the identical spec can reuse
     // it); the bucket lifecycle rule on uploads/ reclaims it.
     return;
@@ -435,14 +475,16 @@ export async function completeBuild(options: {
     digest = await fly.resolveImageDigest(appName, build.revision);
   }
   if (digest === null) {
-    await writeBuild({ ...build, status: "failed", error: "build reported success but the built image digest could not be resolved", finished_at_millis: Date.now() });
-    await persistBuildLog(fly, { ...build, status: "failed" });
+    const failed: StoredBuild = { ...build, status: "failed", error: "build reported success but the built image digest could not be resolved", finished_at_millis: Date.now() };
+    await persistBuildLog(fly, failed);
+    await writeBuild(failed);
     return;
   }
 
   const imageRef = `${config.fly.registryHost}/${appName}@${digest}`;
-  await writeBuild({ ...build, status: "succeeded", image: imageRef, finished_at_millis: Date.now() });
-  await persistBuildLog(fly, build);
+  const succeeded: StoredBuild = { ...build, status: "succeeded", image: imageRef, finished_at_millis: Date.now() };
+  await persistBuildLog(fly, succeeded);
+  await writeBuild(succeeded);
 
   const stored = await readSpec(options.ns, options.key);
   // Only roll machines if this build is still the target — a newer PUT supersedes it.
@@ -481,10 +523,18 @@ function truncateError(text: string | null): string | null {
 // persists JSONL to the bucket — outliving Fly's ~7d retention. The harness stays dumb.
 async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void> {
   if (build.builder_app === null || build.builder_machine_id === null) {
-    // Mock builds: a canned log so the has_logs contract holds in dev/e2e.
+    // Mock builds: a canned log so the has_logs contract holds in dev/e2e. The MARSHAL_MOCK_ENV
+    // line echoes the resolved plain env values so e2e can verify the backend's stage-2 secret
+    // redaction end to end — a real builder never receives tenant env, so this only exists for
+    // the mock (which is non-prod-guarded).
+    const spec = await readSpec(build.ns, build.key);
+    const envEcho = spec === null ? "" : Object.entries(spec.spec.env)
+      .flatMap(([envKey, value]) => "value" in value ? [`${envKey}=${value.value}`] : [])
+      .join(" ");
     const canned = [
-      { at_millis: build.started_at_millis, stream: "stdout", instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
-      { at_millis: Date.now(), stream: "stdout", instance: null, text: "MARSHAL_BUILD_DONE (mock builder)" },
+      { at_millis: build.started_at_millis, stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_START (mock builder)" },
+      { at_millis: build.started_at_millis + 1, stream: "stdout" as const, instance: null, text: `MARSHAL_MOCK_ENV ${envEcho}` },
+      { at_millis: Date.now(), stream: "stdout" as const, instance: null, text: "MARSHAL_BUILD_DONE (mock builder)" },
     ];
     await writeBuildLog(build.ns, build.key, build.id, canned.map((line) => JSON.stringify(line)).join("\n"));
     return;
@@ -494,7 +544,11 @@ async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void
       sinceMillis: build.started_at_millis - 60 * 1000,
       instance: build.builder_machine_id,
     });
-    const redactionValues = buildLogRedactionValues(fly);
+    // Skip persisting an empty log object: a transient logs-API failure (rate limit,
+    // ingestion lag) must not freeze `has_logs:true, lines:[], complete:true`. Leaving no
+    // object makes the logs route fall back to the live proxy instead.
+    if (lines.length === 0) return;
+    const redactionValues = buildLogRedactionValues(fly, build);
     const jsonl = lines
       .map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) }))
       .map((line) => JSON.stringify(line))
@@ -507,9 +561,13 @@ async function persistBuildLog(fly: FlyClient, build: StoredBuild): Promise<void
   }
 }
 
-export function buildLogRedactionValues(fly: FlyClient): string[] {
+// Stage-1 redaction values: every credential Marshal handed the build. The org token (with
+// and without its "FlyV1 " scheme), the registry basic-auth blob, and the per-build webhook
+// token (recomputed, since it's derived, not stored). The presigned tarball URL isn't
+// recomputable, so its signature is scrubbed by shape in redactBuildLogText.
+export function buildLogRedactionValues(fly: FlyClient, build: StoredBuild): string[] {
   const { fly: flyConfig } = getConfig();
-  const values = [flyConfig.token, fly.registryAuthBase64()];
+  const values = [flyConfig.token, fly.registryAuthBase64(), computeWebhookToken(build.id, build.ns, build.key)];
   if (flyConfig.token.startsWith("FlyV1 ")) values.push(flyConfig.token.slice("FlyV1 ".length));
   return values;
 }
@@ -530,7 +588,15 @@ export async function maybeFinalizeStaleBuild(build: StoredBuild): Promise<Store
   if (Date.now() < staleAfterMillis) return build;
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(build.ns));
   if (build.builder_app !== null && build.builder_machine_id !== null) {
-    const machine = await fly.getMachine(build.builder_app, build.builder_machine_id);
+    let machine;
+    try {
+      machine = await fly.getMachine(build.builder_app, build.builder_machine_id);
+    } catch (error) {
+      // A transient Fly error here must not turn a read (getServiceState/listServiceBuilds/
+      // the logs route all call this) into a 502 — leave the build as-is until the next read.
+      console.error(`stale-build liveness check for ${build.ns}/${build.key}/${build.id} failed`, error);
+      return build;
+    }
     if (machine !== null && (machine.state === "started" || machine.state === "starting" || machine.state === "created")) {
       // Builder still alive (clock skew or an unusually slow pull) — leave it alone.
       return build;
@@ -577,6 +643,10 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
       return "pending";
     }
     if (stored.last_apply_error !== null) return startedCount > 0 ? "degraded" : "failed";
+    // A failed build for the target revision, with machines still on a stale revision, is a
+    // terminal failure — not perpetual "deploying". Nothing is in flight and the failed build
+    // is deliberately not retried, so the old machines keep serving in a degraded state.
+    if (checkedBuild !== null && checkedBuild.status === "failed" && !allAtTarget) return startedCount > 0 ? "degraded" : "failed";
     if (!allAtTarget || machines.length !== desiredMachineCount(stored.spec)) return "deploying";
     if (startedCount === 0) {
       if (isServerful(stored.spec) || pinnedMachineCount(stored.spec) > 0) return "stopped";
@@ -643,7 +713,17 @@ export function dnsRecordsForCertificate(appName: string, certificate: FlyCertif
 
 export async function listServices(ns: string): Promise<ServiceState[]> {
   const keys = await listSpecKeys(ns);
-  return await Promise.all(keys.sort().map(async (key) => await getServiceState(ns, key)));
+  const states = await Promise.all(keys.sort().map(async (key) => {
+    try {
+      return await getServiceState(ns, key);
+    } catch (error) {
+      // A service deleted concurrently with this listing (its spec vanished between the key
+      // list and the per-key read) must not 404 the whole namespace listing — drop it.
+      if (error instanceof MarshalError && error.status === 404) return null;
+      throw error;
+    }
+  }));
+  return states.filter((state): state is ServiceState => state !== null);
 }
 
 // ---------------------------------------------------------------------------

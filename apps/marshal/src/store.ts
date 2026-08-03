@@ -2,6 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, UPLOAD_EXPIRY_SECONDS } from "./config.js";
 import type { DomainClaim, StoredBuild, StoredSpec } from "./types.js";
+import { ulidTimeMillis } from "./ulid.js";
 
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision (written on every PUT)
@@ -67,6 +68,19 @@ async function getJson<T>(key: string): Promise<T | null> {
   }
 }
 
+// KNOWN LIMITATION — spec/build writes are last-writer-wins (no compare-and-swap).
+// `writeSpec`/`writeBuild` go through this plain PutObject, so a read-modify-write whose
+// window spans a machine rollout (minutes) can be clobbered by a concurrent apply/webhook:
+//   - a completeBuild finishing its rollout can overwrite a newer PUT's spec, stranding the
+//     newer revision (its later build then sees revision-mismatch and refuses to roll);
+//   - two concurrent same-revision PUTs can each spawn a builder;
+//   - a delete racing an in-flight apply can be resurrected by the apply's ensureApp/writeSpec.
+// The `buildForRevision` adoption in applyServiceSpec and the idempotency guards in
+// completeBuild soften the blast radius, and in practice the backend serializes deploys per
+// service (the CLI applies one revision at a time and waits), so concurrent same-service
+// applies are unlikely. The real fix is optimistic concurrency: carry the GetObject ETag
+// through readSpec and do an If-Match conditional PutObject in writeSpec/writeBuild, retrying
+// (or dropping the write when a newer revision owns the spec) on 412. Tracked for a follow-up.
 async function putJson(key: string, value: unknown): Promise<void> {
   await withTransientRetry(async () => await s3().send(new PutObjectCommand({
     Bucket: bucket(),
@@ -184,13 +198,18 @@ export async function writeBuild(build: StoredBuild): Promise<void> {
 }
 
 // Newest-first. ULIDs sort ascending by time, so reverse the (paginated, complete) key
-// list and filter by the id-embedded timestamp before fetching record bodies.
+// list and filter by the id-embedded timestamp BEFORE fetching record bodies — otherwise a
+// service with thousands of builds would GET every record just to return `limit` of them.
 export async function listBuilds(ns: string, key: string, options: { limit: number, beforeMillis?: number }): Promise<StoredBuild[]> {
   const prefix = `builds/${ns}/${key}/rec/`;
   const ids = (await listKeys(prefix))
     .map((objectKey) => objectKey.slice(prefix.length, -".json".length))
     .sort()
-    .reverse();
+    .reverse()
+    // The ULID's own timestamp bounds the before_millis window without a body read; the
+    // record's started_at_millis is re-checked below as the authority (they can differ
+    // slightly, but the id time is always <= started_at, so this never over-excludes).
+    .filter((id) => options.beforeMillis === undefined || ulidTimeMillis(id) < options.beforeMillis);
   const builds: StoredBuild[] = [];
   for (const id of ids) {
     if (builds.length >= options.limit) break;
@@ -241,6 +260,12 @@ export async function readDomainClaim(hostname: string): Promise<DomainClaim | n
 // Atomic claim via conditional write (If-None-Match: "*" → 412 when the hostname is already
 // claimed; verified against R2 in the smoke test). Returns false when someone else holds it.
 export async function claimDomain(claim: DomainClaim): Promise<boolean> {
+  // Write the per-service index entry FIRST: an orphaned index entry (claim never landed) is
+  // harmless — deleteService re-validates ownership against the claim before releasing. The
+  // reverse order risks the opposite: a crash between the claim PUT and the index PUT would
+  // leave a claim that deleteService (which enumerates via the index) can never release,
+  // pinning the hostname globally forever.
+  await putJson(domainIndexKey(claim.ns, claim.service_key, claim.hostname), {});
   try {
     await s3().send(new PutObjectCommand({
       Bucket: bucket(),
@@ -254,7 +279,6 @@ export async function claimDomain(claim: DomainClaim): Promise<boolean> {
     if (status === 412 || (error as { name?: string }).name === "PreconditionFailed") return false;
     throw error;
   }
-  await putJson(domainIndexKey(claim.ns, claim.service_key, claim.hostname), {});
   return true;
 }
 

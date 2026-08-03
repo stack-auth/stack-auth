@@ -4,7 +4,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { deploymentSecretDefaultsSchema } from "@hexclave/shared/dist/deployments";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 // The deploy request only hands the upload reference to Marshal (the source
 // tarball already sits in Marshal's bucket); the container build itself runs
@@ -115,18 +115,36 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(409, "This upload was already consumed by another deploy request.");
     }
 
-    const { runId } = await startDeployment({
-      tenancy: auth.tenancy,
-      prisma,
-      serviceId: params.service_id,
-      definition,
-      resolvedEnv,
-      redactionSecretsEncrypted,
-      marshalUploadId: upload.marshalUploadId,
-      // Informational only: which access type triggered the run ("server" =
-      // secret-server-key i.e. CLI/CI, "admin" = a logged-in session).
-      triggeredBy: auth.type,
-    });
+    let runId: string;
+    try {
+      ({ runId } = await startDeployment({
+        tenancy: auth.tenancy,
+        prisma,
+        serviceId: params.service_id,
+        definition,
+        resolvedEnv,
+        redactionSecretsEncrypted,
+        marshalUploadId: upload.marshalUploadId,
+        // Informational only: which access type triggered the run ("server" =
+        // secret-server-key i.e. CLI/CI, "admin" = a logged-in session).
+        triggeredBy: auth.type,
+      }));
+    } catch (error) {
+      // The upload is consumed BEFORE the runtime PUT to fence concurrent duplicates, but if
+      // the PUT then fails (bad spec, runtime outage) the user's tarball is still in Marshal's
+      // bucket and the deploy is retryable — so restore the upload row rather than stranding
+      // it behind a misleading 404. Best-effort: a concurrent retry may have re-created it.
+      if (upload.expiresAt > new Date()) {
+        try {
+          await prisma.deploymentSourceUpload.create({
+            data: { id: upload.id, tenancyId: auth.tenancy.id, marshalUploadId: upload.marshalUploadId, expiresAt: upload.expiresAt },
+          });
+        } catch (restoreError) {
+          captureError("deployments-restore-upload-after-deploy-failure", restoreError);
+        }
+      }
+      throw error;
+    }
 
     return {
       statusCode: 200,

@@ -6,14 +6,19 @@ import type { LogLine } from "./types.js";
 // (smoke-verified). That's what makes the contract's since_millis cursor stateless.
 
 export function sinceMillisToNextToken(sinceMillis: number): string {
-  return String(Math.max(0, Math.floor(sinceMillis)) * 1e6);
+  // BigInt, not `millis * 1e6`: the product exceeds Number.MAX_SAFE_INTEGER, and for a large
+  // millis it would render in exponential notation ("1e+21") that isn't a valid ns token.
+  return (BigInt(Math.max(0, Math.floor(sinceMillis))) * 1_000_000n).toString();
 }
 
 export function flyEntryToLogLine(entry: FlyLogEntry, options?: { forceNullInstance?: boolean }): LogLine {
   const provider = entry.attributes.meta?.event?.provider;
   const isPlatformEvent = provider !== undefined && provider !== "app";
+  // Guard NaN: an unparseable timestamp would otherwise poison the cursor (NaN+1 → JSON null
+  // → the caller loses its place and replays from the start).
+  const parsedMillis = Date.parse(entry.attributes.timestamp);
   return {
-    at_millis: Date.parse(entry.attributes.timestamp),
+    at_millis: Number.isNaN(parsedMillis) ? 0 : parsedMillis,
     stream: isPlatformEvent ? "system" : entry.attributes.level === "error" ? "stderr" : "stdout",
     instance: options?.forceNullInstance || isPlatformEvent ? null : entry.attributes.instance,
     text: entry.attributes.message,

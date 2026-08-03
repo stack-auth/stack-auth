@@ -216,6 +216,10 @@ export class MarshalClient {
     return await this.fetchMarshal(`${urlString`/v1/namespaces/${ns}/services/${serviceKey}/builds/${buildId}/logs`}${queryString === "" ? "" : `?${queryString}`}`);
   }
 
+  // NOTE: runtime (service) logs are NOT yet exposed by any backend route. Marshal does not
+  // redact them (they can contain tenant secret values printed by the app), so a future route
+  // that serves these MUST apply the same run-scoped redactSecrets pass the build-log route
+  // uses — do not return this verbatim to clients.
   async getServiceLogs(ns: string, serviceKey: string, options?: { sinceMillis?: number, instance?: string }): Promise<{ lines: MarshalLogLine[], next_since_millis: number }> {
     const params = new URLSearchParams();
     if (options?.sinceMillis !== undefined) params.set("since_millis", String(options.sinceMillis));

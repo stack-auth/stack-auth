@@ -43,6 +43,13 @@ function portPrefix(): string {
   return process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81";
 }
 
+// NOTE: the mock-token / mock-builder guards key off NODE_ENV === "production", matching the
+// backend's vercel-client/js-execution convention. This is fail-OPEN if a real prod deploy
+// forgets to set NODE_ENV=production (the guard then permits the mock token). It takes two
+// mistakes (mock token set AND NODE_ENV unset) to trip, but a harder guard — deriving
+// prod-ness from a Marshal-owned signal like MARSHAL_ENV_ID, or requiring an explicit
+// MARSHAL_ALLOW_MOCKS=1 to permit the sentinel at all — would be strictly safer. Left aligned
+// with the existing codebase convention for now; worth tightening repo-wide.
 function isProductionLike(): boolean {
   return (process.env.NODE_ENV ?? "development") === "production" && process.env.MARSHAL_ALLOW_MOCKS_IN_PRODUCTION !== "1";
 }
@@ -68,12 +75,24 @@ export function getConfig(): MarshalConfig {
     throw new Error("marshal refuses to start: the mock builder is enabled in a production environment.");
   }
 
+  const port = Number(env("MARSHAL_PORT", `${portPrefix()}47`));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`marshal refuses to start: MARSHAL_PORT must be a valid port number (got ${JSON.stringify(process.env.MARSHAL_PORT)})`);
+  }
+
+  const publicUrl = (process.env.MARSHAL_PUBLIC_URL || "").replace(/\/$/, "") || null;
+  // The real builder machine calls the completion webhook on MARSHAL_PUBLIC_URL — refuse to
+  // start without it rather than failing every upload-sourced build at runtime.
+  if (builderKind === "fly" && publicUrl === null) {
+    throw new Error("marshal refuses to start: MARSHAL_PUBLIC_URL is required when MARSHAL_BUILDER=fly (the builder machine calls the completion webhook on it).");
+  }
+
   const apiKey = env("MARSHAL_API_KEY");
   cached = {
-    port: Number(env("MARSHAL_PORT", `${portPrefix()}47`)),
+    port,
     apiKey,
     webhookSecret: env("MARSHAL_WEBHOOK_SECRET", apiKey),
-    publicUrl: (process.env.MARSHAL_PUBLIC_URL || null)?.replace(/\/$/, "") ?? null,
+    publicUrl,
     envId: env("MARSHAL_ENV_ID"),
     fly: {
       token: flyToken,

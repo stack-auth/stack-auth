@@ -9,6 +9,7 @@ import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { fetchLogPage } from "./logs.js";
 import { appNameForService } from "./naming.js";
 import {
+  BUILD_ID_REGEX,
   applyServiceSpec,
   buildLogRedactionValues,
   completeBuild,
@@ -35,9 +36,10 @@ function errorResponse(error: unknown): Response {
   }
   if (error instanceof FlyApiError) {
     // Relay a sanitized upstream failure; Fly's own 4xxes on our requests are still OUR
-    // bug or an infra failure from the caller's perspective, never theirs.
+    // bug or an infra failure from the caller's perspective, never theirs. The endpoint
+    // (which embeds the Fly app name) stays in the server log only — never the response.
     console.error("fly API error", error);
-    return jsonResponse(502, { error: "fly_api_error", message: `the Fly API rejected a request (${error.status} at ${error.endpoint})` });
+    return jsonResponse(502, { error: "fly_api_error", message: `the Fly API rejected a request (${error.status})` });
   }
   console.error("unhandled marshal error", error);
   return jsonResponse(500, { error: "internal_error", message: "internal error" });
@@ -70,10 +72,14 @@ function buildToApi(build: StoredBuild): Build {
   };
 }
 
+// Bounded at a safe integer AND at ~year 2255 in millis: the value is multiplied by 1e6 to
+// form a nanosecond log cursor, so an unbounded number would produce exponential-notation
+// (`1e+36`) tokens that break BigInt parsing downstream (and in the fly-mock).
+const MAX_CURSOR_MILLIS = 9_000_000_000_000; // ~2255-01-01
 function parseOptionalMillis(value: unknown): number | undefined {
   if (typeof value !== "string" || value === "") return undefined;
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= MAX_CURSOR_MILLIS ? parsed : undefined;
 }
 
 // Return type is inferred — Elysia's route-typed instances aren't assignable to the bare
@@ -144,6 +150,9 @@ export function createMarshalApp() {
     .get("/v1/namespaces/:ns/services/:key/builds/:id/logs", ({ params, query }) => handle(async () => {
       const ns = validateNamespace(params.ns);
       const key = validateServiceKey(params.key);
+      // Validate the build id: it flows into an S3 object key, so a traversal id must not
+      // escape the builds/ prefix (defense in depth — the only caller passes a DB ULID).
+      if (!BUILD_ID_REGEX.test(params.id)) throw new MarshalError(400, "bad_request", "build id must be a ULID");
       const build = await readBuild(ns, key, params.id);
       if (build === null) throw new MarshalError(404, "not_found", `build ${JSON.stringify(params.id)} not found`);
       const checked = await maybeFinalizeStaleBuild(build);
@@ -156,13 +165,26 @@ export function createMarshalApp() {
       if (terminal) {
         // Durable path: the bucket log object written at finalization.
         const raw = await readBuildLog(ns, key, params.id);
-        const lines: LogLine[] = (raw ?? "")
-          .split("\n")
-          .filter((line) => line !== "")
-          .map((line) => JSON.parse(line) as LogLine)
-          .filter((line) => sinceMillis === undefined || line.at_millis >= sinceMillis);
-        const lastAtMillis = lines.length > 0 ? lines[lines.length - 1].at_millis : undefined;
-        return { lines, next_since_millis: lastAtMillis !== undefined ? lastAtMillis + 1 : sinceMillis ?? Date.now(), complete: true };
+        // No durable object yet (persist skipped an empty drain, or it's still being written
+        // in the window right after the terminal record): report complete:false and fall
+        // through to the live proxy rather than claiming a complete-but-empty log.
+        if (raw !== null) {
+          // One corrupt/truncated line must not 500 the whole request — skip it.
+          const parseLine = (line: string): LogLine[] => {
+            try {
+              return [JSON.parse(line) as LogLine];
+            } catch {
+              return [];
+            }
+          };
+          const lines: LogLine[] = raw
+            .split("\n")
+            .filter((line) => line !== "")
+            .flatMap(parseLine)
+            .filter((line) => sinceMillis === undefined || line.at_millis >= sinceMillis);
+          const lastAtMillis = lines.length > 0 ? lines[lines.length - 1].at_millis : undefined;
+          return { lines, next_since_millis: lastAtMillis !== undefined ? lastAtMillis + 1 : sinceMillis ?? Date.now(), complete: true };
+        }
       }
       // Live path: proxy the builder machine's logs, scrubbing the credentials Marshal
       // handed to the build (stage 1 of the two-stage redaction).
@@ -175,7 +197,7 @@ export function createMarshalApp() {
         instance: checked.builder_machine_id,
         forceNullInstance: true,
       });
-      const redactionValues = buildLogRedactionValues(fly);
+      const redactionValues = buildLogRedactionValues(fly, checked);
       return {
         lines: page.lines.map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) })),
         next_since_millis: page.nextSinceMillis,
@@ -211,15 +233,24 @@ export function createMarshalApp() {
 
     // Builder completion webhook. Auth: per-build HMAC token over (buildId, ns, key).
     // Body is buildctl's metadata JSON on success, or an error text on failure.
+    // `parse: "text"` so a malformed/empty JSON body still reaches the handler (Elysia's
+    // default JSON parser would 400 before it, making the registry-HEAD digest fallback
+    // unreachable) — the handler parses defensively.
     .post("/internal/builds/:buildId/complete", ({ params, query, body, request }) => handle(async () => {
       const ns = typeof query.ns === "string" ? query.ns : "";
       const key = typeof query.key === "string" ? query.key : "";
       const status = query.status === "succeeded" ? "succeeded" : query.status === "failed" ? "failed" : null;
       const token = (request.headers.get("authorization") ?? "").replace(/^Bearer /, "");
       if (ns === "" || key === "" || status === null) throw new MarshalError(400, "bad_request", "ns, key, and status query params are required");
+      // Validate ns/key BEFORE trusting them: they flow into S3 keys inside completeBuild, and
+      // possession of the webhook secret (which defaults to the API key) must not become an
+      // arbitrary-key write primitive.
+      validateNamespace(ns);
+      validateServiceKey(key);
       if (!verifyWebhookToken(token, params.buildId, ns, key)) {
         return jsonResponse(401, { error: "unauthenticated", message: "invalid webhook token" });
       }
+      if (!BUILD_ID_REGEX.test(params.buildId)) throw new MarshalError(400, "bad_request", "build id must be a ULID");
       const bodyText = typeof body === "string" ? body : body === null || body === undefined ? null : JSON.stringify(body);
       await completeBuild({
         ns,
@@ -230,7 +261,7 @@ export function createMarshalApp() {
         errorText: status === "failed" ? bodyText : null,
       });
       return { ok: true };
-    }));
+    }), { parse: "text" });
 
   return { app, builder };
 }

@@ -125,6 +125,14 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:8136/ping
 
+      # The deployments e2e tests hit s3mock and fly-mock directly; marshal's /health does
+      # not touch either, so wait on them explicitly (fly-mock is a build:-from-context image).
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:8121/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:8148/health
+
       - name: Initialize database
         run: pnpm run db:init
   

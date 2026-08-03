@@ -119,6 +119,12 @@ jobs:
       - name: Wait on ClickHouse
         run: pnpm exec wait-on http://localhost:6736/ping
 
+      - name: Wait on s3mock
+        run: pnpm exec wait-on http://localhost:6721/
+
+      - name: Wait on fly-mock
+        run: pnpm exec wait-on http://localhost:6748/health
+
       - name: Initialize database
         run: pnpm run db:init
 

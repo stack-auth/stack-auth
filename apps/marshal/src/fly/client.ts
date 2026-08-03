@@ -1,4 +1,4 @@
-import { getConfig } from "../config.js";
+import { getConfig, MOCK_FLY_TOKEN } from "../config.js";
 
 // Thin client for the three Fly API surfaces Marshal talks to, plus the Docker registry.
 // One instance per (org, token) — resolved per namespace via resolveNamespaceOrg.
@@ -67,17 +67,23 @@ export class FlyClient {
     public readonly orgSlug: string,
   ) {}
 
-  // Reads are retried once on network-level failures (a keep-alive socket the
-  // server closed under us surfaces as a synthetic "fetch failed"); writes are
-  // not — a duplicated machine create is worse than a surfaced error.
-  private async fetchWithReadRetry(url: string, init: RequestInit & { method: string }): Promise<Response> {
+  // A read has no body to re-send, so retry it once on a network-level failure (undici
+  // surfaces a keep-alive socket reset as a TypeError). Writes are never retried here — a
+  // duplicated machine create is worse than a surfaced error.
+  private async retryReadOnSocketReset(doFetch: () => Promise<Response>): Promise<Response> {
     try {
-      return await fetch(url, init);
+      return await doFetch();
     } catch (error) {
-      if (init.method !== "GET" && init.method !== "HEAD") throw error;
       if (!(error instanceof TypeError)) throw error;
-      return await fetch(url, init);
+      return await doFetch();
     }
+  }
+
+  private async fetchWithReadRetry(url: string, init: RequestInit & { method: string }): Promise<Response> {
+    if (init.method === "GET" || init.method === "HEAD") {
+      return await this.retryReadOnSocketReset(() => fetch(url, init));
+    }
+    return await fetch(url, init);
   }
 
   private async fetchMachinesApi<T>(path: string, init?: { method?: string, body?: unknown, allow404?: boolean }): Promise<T | null> {
@@ -110,14 +116,24 @@ export class FlyClient {
   // allowNotFound: real Fly answers reads on nonexistent apps with a
   // "Could not find App" GraphQL error (not a null app); the read paths treat
   // that as "no data" so a service without an app reads as empty.
-  private async fetchGraphql<T>(query: string, variables: Record<string, unknown>, options?: { allowNotFound?: boolean }): Promise<T | null> {
+  private async fetchGraphql<T>(query: string, variables: Record<string, unknown>, options?: { allowNotFound?: boolean, read?: boolean }): Promise<T | null> {
     const { fly } = getConfig();
-    const response = await fetch(fly.graphqlApiUrl, {
+    const doFetch = () => fetch(fly.graphqlApiUrl, {
       method: "POST",
       headers: { "authorization": `Bearer ${this.token}`, "content-type": "application/json" },
       body: JSON.stringify({ query, variables }),
     });
-    const json = await response.json() as { data?: T, errors?: { message: string }[] };
+    // Read queries get the same one-shot socket-reset retry the REST reads get.
+    const response = options?.read ? await this.retryReadOnSocketReset(doFetch) : await doFetch();
+    // Read as text and parse defensively: a non-JSON upstream body (a proxy's 502 HTML page)
+    // must surface as a FlyApiError(502-ish), not a bare SyntaxError → generic 500.
+    const text = await response.text();
+    let json: { data?: T, errors?: { message: string }[] };
+    try {
+      json = JSON.parse(text) as { data?: T, errors?: { message: string }[] };
+    } catch {
+      throw new FlyApiError(response.status, "graphql", text.slice(0, 500) || `HTTP ${response.status} (non-JSON body)`);
+    }
     const errors = json.errors ?? [];
     if (options?.allowNotFound && errors.length > 0 && errors.every((error) => /could not find/i.test(error.message))) {
       return null;
@@ -194,8 +210,11 @@ export class FlyClient {
   async waitForMachineState(app: string, machineId: string, state: "started" | "stopped" | "destroyed", options?: { instanceId?: string, totalTimeoutSeconds?: number }): Promise<void> {
     const deadline = Date.now() + (options?.totalTimeoutSeconds ?? 60) * 1000;
     for (;;) {
-      const remainingSeconds = Math.min(60, Math.max(1, Math.ceil((deadline - Date.now()) / 1000)));
-      const params = new URLSearchParams({ state, timeout: String(remainingSeconds) });
+      const remainingSeconds = Math.ceil((deadline - Date.now()) / 1000);
+      // Don't start another wait once the deadline has passed (a fast-returning 408 could
+      // otherwise loop tightly against the API for the whole budget).
+      if (remainingSeconds <= 0) throw new FlyApiError(408, `machines wait /apps/${app}/machines/${machineId}`, `timed out waiting for state ${state}`);
+      const params = new URLSearchParams({ state, timeout: String(Math.min(60, remainingSeconds)) });
       if (options?.instanceId !== undefined) params.set("instance_id", options.instanceId);
       try {
         await this.fetchMachinesApi(`/apps/${app}/machines/${machineId}/wait?${params.toString()}`);
@@ -204,6 +223,8 @@ export class FlyClient {
         if (Date.now() >= deadline) throw error;
         // Timeout errors surface as 408; anything else is real.
         if (!(error instanceof FlyApiError) || error.status !== 408) throw error;
+        // Small backoff so a proxy timing out ahead of Fly's own long-poll can't spin.
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   }
@@ -215,7 +236,7 @@ export class FlyClient {
     const data = await this.fetchGraphql<{ app: { sharedIpAddress: string | null, ipAddresses: { nodes: { id: string, address: string, type: string }[] } } | null }>(`
       query($app: String!) {
         app(name: $app) { sharedIpAddress ipAddresses { nodes { id address type } } }
-      }`, { app }, { allowNotFound: true });
+      }`, { app }, { allowNotFound: true, read: true });
     return {
       sharedIpv4: data?.app?.sharedIpAddress ?? null,
       dedicated: data?.app?.ipAddresses.nodes ?? [],
@@ -283,7 +304,7 @@ export class FlyClient {
     const data = await this.fetchGraphql<{ app: { certificate: FlyCertificate | null } | null }>(`
       query($app: String!, $hostname: String!) {
         app(name: $app) { certificate(hostname: $hostname) { ${FlyClient.CERTIFICATE_FIELDS} } }
-      }`, { app, hostname }, { allowNotFound: true });
+      }`, { app, hostname }, { allowNotFound: true, read: true });
     return data?.app?.certificate ?? null;
   }
 
@@ -291,7 +312,7 @@ export class FlyClient {
     const data = await this.fetchGraphql<{ app: { certificates: { nodes: FlyCertificate[] } } | null }>(`
       query($app: String!) {
         app(name: $app) { certificates { nodes { ${FlyClient.CERTIFICATE_FIELDS} } } }
-      }`, { app }, { allowNotFound: true });
+      }`, { app }, { allowNotFound: true, read: true });
     return data?.app?.certificates.nodes ?? [];
   }
 
@@ -309,10 +330,12 @@ export class FlyClient {
       headers: { "authorization": this.token },
     });
     if (!response.ok) {
-      // The logs API 401s for apps that don't exist (it can't distinguish); treat any
-      // client error as "no logs" so a service without an app reads as empty.
       await response.arrayBuffer();
-      if (response.status >= 400 && response.status < 500) return { entries: [], nextToken: null };
+      // The logs API 401s (and 404s) for apps that don't exist and can't distinguish that
+      // from an auth failure — treat only those as "no logs" so a service without an app
+      // reads as empty. 429 (rate limit) and 5xx MUST throw: swallowing them would silently
+      // truncate a durable build-log drain or hide a broken token as "no logs".
+      if (response.status === 401 || response.status === 404) return { entries: [], nextToken: null };
       throw new FlyApiError(response.status, `logs GET /apps/${app}/logs`, "logs API error");
     }
     const json = await response.json() as { data?: FlyLogEntry[], meta?: { next_token?: string } };
@@ -337,6 +360,11 @@ export class FlyClient {
 
   async resolveImageDigest(app: string, tag: string): Promise<string | null> {
     const { fly } = getConfig();
+    // The registry has no mock; when the mock Fly token is in use, don't send a real HTTPS
+    // request to registry.fly.io with a sentinel credential (surprising egress + a 401 that
+    // surfaces as "digest could not be resolved"). Mock builds always supply the digest in
+    // their metadata, so this fallback is never legitimately reached under the mock.
+    if (this.token === MOCK_FLY_TOKEN) return null;
     const response = await fetch(`https://${fly.registryHost}/v2/${app}/manifests/${tag}`, {
       method: "HEAD",
       headers: {
@@ -351,6 +379,7 @@ export class FlyClient {
 
   async deleteImageManifest(app: string, digest: string): Promise<void> {
     const { fly } = getConfig();
+    if (this.token === MOCK_FLY_TOKEN) return; // no mock registry — see resolveImageDigest
     const response = await fetch(`https://${fly.registryHost}/v2/${app}/manifests/${digest}`, {
       method: "DELETE",
       headers: { "authorization": this.registryAuthHeader() },

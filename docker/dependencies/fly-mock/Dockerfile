@@ -30,7 +30,10 @@ const EXPECTED_TOKEN = "mock_hexclave_fly_key";
 let machineCounter = 0;
 let ipCounter = 0;
 let certCounter = 0;
-let logNanos = 1_000_000_000_000n * 1_000_000n;
+// Seed from the real clock: Marshal's log cursor is `sinceMillis * 1e6` from wall-clock time,
+// so a hard-coded epoch would put every synthetic log line before every cursor and make all
+// cursor-based reads (runtime logs, live/durable build logs) return nothing.
+let logNanos = BigInt(Date.now()) * 1_000_000n;
 const appsByName = new Map();
 
 function sendJson(res, status, body) {
@@ -57,7 +60,11 @@ function makeApp(name, orgSlug, network) {
 }
 
 function appendLog(app, message, { instance = null, provider = "runner", level = "info" } = {}) {
-  logNanos += 1_000_000n; // 1ms apart, strictly monotonic
+  // Stamp at REAL wall-clock time (nanoseconds), kept strictly monotonic. Marshal's cursor is
+  // `sinceMillis * 1e6` from real time, so a pure counter would drift behind real `now` and
+  // make cursor-based reads (runtime logs, live/durable build logs) miss recent lines.
+  const nowNanos = BigInt(Date.now()) * 1_000_000n;
+  logNanos = nowNanos > logNanos ? nowNanos : logNanos + 1_000_000n;
   app.logs.push({
     id: `mocklog-${logNanos}`,
     nanos: logNanos,
@@ -151,8 +158,11 @@ function handleGraphql(res, body) {
     return sendJson(res, 200, { data: { deleteCertificate: { certificate: { id: cert.id, hostname } } } });
   }
   // Everything else is the app read query (ips, certificate, certificates).
+  // Real Fly answers reads on a nonexistent app with a "Could not find App" ERROR, not a
+  // null app — Marshal's client relies on that (its allowNotFound path). Match it so the
+  // path has coverage and the mock doesn't diverge from production.
   const app = appsByName.get(vars.app);
-  if (!app) return sendJson(res, 200, { data: { app: null } });
+  if (!app) return graphqlError(res, `Could not find App "${vars.app}"`, "NOT_FOUND");
   const certificate = vars.hostname !== undefined && app.certsByHostname.has(vars.hostname)
     ? certJson(app.certsByHostname.get(vars.hostname))
     : null;
@@ -170,6 +180,18 @@ function handleGraphql(res, body) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // Guaranteed-response wrapper: a single unhandled throw in this async handler (a malformed
+  // BigInt cursor, a bad JSON body, a client disconnect mid-body) would otherwise become an
+  // unhandled rejection and kill the process, taking down every remaining test in the job.
+  try {
+    await handleRequest(req, res);
+  } catch (error) {
+    if (!res.headersSent) sendJson(res, 500, { error: String(error) });
+    else res.end();
+  }
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   const path = url.pathname;
 
@@ -181,6 +203,13 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const rawBody = Buffer.concat(chunks).toString("utf8");
   const auth = req.headers.authorization ?? "";
+
+  // Test-only reset: wipe all in-memory state so a fresh test run (or beforeAll) starts clean
+  // and the mock's app/log maps don't grow unbounded across a container's lifetime.
+  if (path === "/__mock/reset") {
+    appsByName.clear();
+    return sendJson(res, 200, { reset: true });
+  }
 
   // Test-only introspection (no auth, like the vercel-mock's /__mock namespace).
   // The listing includes machine metadata/env so e2e tests can find the app
@@ -330,12 +359,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {});
     }
     if (machineSub.startsWith("/wait") && req.method === "GET") {
+      // Mirror the real /wait contract enough to catch regressions: timeout caps at 60s
+      // (SMOKE-RESULTS deviation #5 — larger values 400), and a stale instance_id is a 400.
+      const timeout = Number(url.searchParams.get("timeout") ?? "60");
+      if (Number.isFinite(timeout) && timeout > 60) return sendJson(res, 400, { error: "timeout exceeds 60s" });
+      const wantInstance = url.searchParams.get("instance_id");
+      if (wantInstance !== null && wantInstance !== machine.instanceId) return sendJson(res, 400, { error: "instance_id mismatch" });
       return sendJson(res, 200, { ok: true });
     }
   }
 
   return sendJson(res, 404, { error: `mock: unhandled path ${req.method} ${path}` });
-});
+}
 
 server.listen(8080, () => console.log("fly-mock listening on 8080"));
 EOF

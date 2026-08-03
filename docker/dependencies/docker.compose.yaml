@@ -268,6 +268,7 @@ services:
       context: ./fly-mock
       dockerfile: Dockerfile
     image: fly-mock
+    restart: unless-stopped                                    # a guarded handler shouldn't crash, but recover the container if it ever does
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}48:8080"       # mock of the Fly.io Machines/GraphQL/logs APIs for Marshal
 
