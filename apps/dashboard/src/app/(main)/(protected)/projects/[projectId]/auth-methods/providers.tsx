@@ -255,7 +255,7 @@ function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFo
         <>
           <DesignCategoryTabs
             categories={[
-              { id: "private-key", label: "Private key (Recommended)" },
+              { id: "private-key", label: "Automatic (Recommended)" },
               { id: "client-secret", label: "Client secret (Legacy)" },
             ]}
             selectedCategory={appleCredentialMode}
