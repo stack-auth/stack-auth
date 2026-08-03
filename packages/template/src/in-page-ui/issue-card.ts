@@ -6,10 +6,10 @@
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { getInPageUiBaseCSS } from "./base-styles";
 import { h, setHtml } from "./dom";
+import { HEXCLAVE_LOGO_SVG } from "./logo";
 
 export type IssueCardKind = "error" | "warning";
 
-export const HEXCLAVE_LOGO_SVG = '<svg width="16" height="16" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter"><path d="M 24 4 L 41.32 14 L 41.32 34 L 24 44 L 6.68 34 L 6.68 14 Z"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(120 24 24)"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(240 24 24)"/></svg>';
 const COPY_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
 export function getIssueCardCSS(scopeSelector: string): string {
@@ -410,18 +410,33 @@ export function renderIssueCard(options: IssueCardOptions): HTMLElement {
 
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
+export type IssueCardFocusTrap = {
+  /**
+   * Whatever had focus before the card first appeared. Callers that rebind the trap to a re-rendered card pass it back
+   * in, so focus still returns to where the developer left it once the card is gone for good.
+   */
+  previouslyFocused: HTMLElement | null,
+  release: (releaseOptions?: { restoreFocus?: boolean }) => void,
+};
+
 /**
  * Keeps keyboard focus inside a mounted card, which claims to be an `aria-modal` alertdialog and therefore has to behave
  * like one: the flow behind the card is dead until the problem is fixed, so tabbing into it would only let a keyboard
  * user wander through a page that cannot work while the card stays invisible to them.
  *
- * Call right after mounting the card, and call the returned function when the card is minimized or removed — it hands
- * focus back to wherever it was, so minimizing the card leaves the page as the user found it.
+ * Call right after mounting the card, and release the trap when the card is minimized, replaced or removed. Releasing
+ * hands focus back to `previouslyFocused` unless `restoreFocus: false` is passed, which is what a caller that is about
+ * to rebind the trap to a freshly rendered card wants.
  */
-export function trapFocusInIssueCard(cardRoot: HTMLElement): () => void {
+export function trapFocusInIssueCard(cardRoot: HTMLElement, options: {
+  moveFocusIntoCard?: boolean,
+  previouslyFocused?: HTMLElement | null,
+} = {}): IssueCardFocusTrap {
+  const previouslyFocused = options.previouslyFocused !== undefined
+    ? options.previouslyFocused
+    : document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const card = cardRoot.querySelector(".hic-card");
-  if (!(card instanceof HTMLElement)) return () => {};
-  const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (!(card instanceof HTMLElement)) return { previouslyFocused, release: () => {} };
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Tab") return;
@@ -445,13 +460,19 @@ export function trapFocusInIssueCard(cardRoot: HTMLElement): () => void {
   };
 
   document.addEventListener("keydown", onKeyDown, true);
-  card.focus();
+  if (options.moveFocusIntoCard !== false) {
+    card.focus();
+  }
 
-  return () => {
-    document.removeEventListener("keydown", onKeyDown, true);
-    if (previouslyFocused != null && previouslyFocused.isConnected) {
-      previouslyFocused.focus();
-    }
+  return {
+    previouslyFocused,
+    release: (releaseOptions) => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (releaseOptions?.restoreFocus === false) return;
+      if (previouslyFocused != null && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+    },
   };
 }
 

@@ -133,7 +133,12 @@ export class HexclaveSetupError extends Error {
    * with two of them, and a setup error from either must still show up as one.
    */
   public static isSetupError(error: unknown): error is HexclaveSetupError {
-    return typeof error === "object" && error !== null && hexclaveSetupErrorBrand in error;
+    if (typeof error !== "object" || error === null) return false;
+    // an own property with the sentinel value, not just the name somewhere on the prototype chain; the brand decides
+    // whether an error is shown to the developer verbatim, so a coincidental key must not be enough
+    if (!Object.prototype.hasOwnProperty.call(error, hexclaveSetupErrorBrand)) return false;
+    if (Reflect.get(error, hexclaveSetupErrorBrand) !== true) return false;
+    return typeof Reflect.get(error, "title") === "string" && Array.isArray(Reflect.get(error, "howToFix"));
   }
 }
 HexclaveSetupError.prototype.name = "HexclaveSetupError";

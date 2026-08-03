@@ -4,7 +4,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLikelyDevelopmentEnvironment } from "../in-page-ui/dev-environment";
 import { canMountIntoDom, getGlobalUiInstance, h, setGlobalUiInstance } from "../in-page-ui/dom";
-import { getIssueCardCSS, renderIssueCard, renderIssuePill, trapFocusInIssueCard } from "../in-page-ui/issue-card";
+import { getIssueCardCSS, renderIssueCard, renderIssuePill, trapFocusInIssueCard, type IssueCardFocusTrap } from "../in-page-ui/issue-card";
 import type { StackClientApp } from "../lib/hexclave-app";
 
 const GLOBAL_INSTANCE_KEY = "__hexclave-pushed-config-error-overlay";
@@ -77,13 +77,14 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
   let lastErrorKey: string | null = null;
   let lastConsoleErrorKey: string | null = null;
   let minimized = false;
-  // The card is re-rendered on every poll, so focus is only claimed when a card first appears for an issue; doing it on
-  // every render would yank focus out of whatever the developer is doing every few seconds.
+  // The card element is replaced on every poll, so the trap has to be rebound to the new one each time or it would keep
+  // trapping Tab inside the detached card. Focus is only *moved* into the card when a card first appears for an issue;
+  // doing it on every render would yank focus out of whatever the developer is doing every few seconds.
   let focusedIssueKey: string | null = null;
-  let releaseFocus: (() => void) | null = null;
+  let focusTrap: IssueCardFocusTrap | null = null;
   const releaseFocusIfHeld = () => {
-    releaseFocus?.();
-    releaseFocus = null;
+    focusTrap?.release();
+    focusTrap = null;
     focusedIssueKey = null;
   };
 
@@ -156,11 +157,11 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
         render(issue);
       },
     }));
-    if (focusedIssueKey !== issueKey) {
-      releaseFocusIfHeld();
-      focusedIssueKey = issueKey;
-      releaseFocus = trapFocusInIssueCard(root);
-    }
+    const isNewIssue = focusedIssueKey !== issueKey;
+    const previouslyFocused = isNewIssue ? undefined : focusTrap?.previouslyFocused ?? null;
+    focusTrap?.release({ restoreFocus: isNewIssue });
+    focusedIssueKey = issueKey;
+    focusTrap = trapFocusInIssueCard(root, { moveFocusIntoCard: isNewIssue, previouslyFocused });
   };
 
   const refresh = () => {
