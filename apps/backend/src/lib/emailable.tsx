@@ -163,6 +163,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     "user@stack-generated.example.com",
   ])("treats reserved example address %s as deliverable without an API key", async (email) => {
     vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+    vi.stubEnv("NODE_ENV", "test");
     const result = await checkEmailWithEmailable(email);
     expect(result).toEqual({ status: "deliverable", emailableScore: null });
   });
