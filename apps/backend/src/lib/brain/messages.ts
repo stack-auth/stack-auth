@@ -1,7 +1,7 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { PrismaClientTransaction, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import type { BrainMessageVisibility } from "@hexclave/shared/dist/interface/brain";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import type { Prisma } from "@/generated/prisma/client";
 import { ensureBrainRow } from "./ensure";
 
 export type BrainMessageContent = Prisma.InputJsonValue;

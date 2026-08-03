@@ -22,13 +22,13 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  displayName      String
-  description      String  @default("")
-  isProductionMode Boolean
+  displayName              String
+  description              String  @default("")
+  isProductionMode         Boolean
   isDevelopmentEnvironment Boolean @default(false)
-  ownerTeamId      String? @db.Uuid
-  onboardingStatus String  @default("completed")
-  onboardingState  Json?
+  ownerTeamId              String? @db.Uuid
+  onboardingStatus         String  @default("completed")
+  onboardingState          Json?
 
   isAvailableAsPreviewProject Boolean @default(false)
 
@@ -69,10 +69,10 @@ model GtmInsight {
 
   domain      String
   title       String
-  body        String @db.Text
-  impactScore Int    @default(0)
-  timesSeen   Int    @default(1)
-  lastSeenAt DateTime @default(now())
+  body        String   @db.Text
+  impactScore Int      @default(0)
+  timesSeen   Int      @default(1)
+  lastSeenAt  DateTime @default(now())
 
   // A curated, ordered list of free-text timeline entries that replaces the timeline the dashboard otherwise
   // generates from the fields above. NULL means "nobody has curated this one", which keeps every pre-existing
@@ -96,11 +96,11 @@ model GtmAction {
 
   domain            String
   type              String
-  status            String @default("proposed")
+  status            String    @default("proposed")
   title             String
-  summary           String @db.Text
+  summary           String    @db.Text
   verdict           String?
-  retrospectiveText String? @db.Text
+  retrospectiveText String?   @db.Text
   expiresAt         DateTime
   executedAt        DateTime?
 
@@ -123,9 +123,9 @@ model GtmNote {
 
   domain          String
   category        String
-  title           String? @db.VarChar(120)
-  body            String @db.VarChar(500)
-  source          String @default("user")
+  title           String?  @db.VarChar(120)
+  body            String   @db.VarChar(500)
+  source          String   @default("user")
   lastConfirmedAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -143,8 +143,8 @@ model GtmOnboarding {
   branchId  String
 
   domain String? @db.VarChar(253)
-  phone  String @db.VarChar(50)
-  notes  String @default("")
+  phone  String  @db.VarChar(50)
+  notes  String  @default("")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -167,23 +167,23 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId      String?              @db.Uuid
-  hasNoOrganization   BooleanTrue?
-  emailOutboxes       EmailOutbox[]
-  sessionReplays      SessionReplay[]
-  sessionReplayChunks SessionReplayChunk[]
-  managedEmailDomains ManagedEmailDomain[]
-  conversations       Conversation[]
+  organizationId          String?                  @db.Uuid
+  hasNoOrganization       BooleanTrue?
+  emailOutboxes           EmailOutbox[]
+  sessionReplays          SessionReplay[]
+  sessionReplayChunks     SessionReplayChunk[]
+  managedEmailDomains     ManagedEmailDomain[]
+  conversations           Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
-  conversationMessages ConversationMessage[]
-  deploymentServices  DeploymentService[]
+  conversationMessages    ConversationMessage[]
+  deploymentServices      DeploymentService[]
   deploymentSourceUploads DeploymentSourceUpload[]
-  workflowDefinitions WorkflowDefinition[]
-  workflowVersions WorkflowVersion[]
-  workflowRuns WorkflowRun[]
-  workflowEvents WorkflowEvent[]
+  workflowDefinitions     WorkflowDefinition[]
+  workflowVersions        WorkflowVersion[]
+  workflowRuns            WorkflowRun[]
+  workflowEvents          WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
-  brain               Brain?
+  brain                   Brain?
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -236,8 +236,8 @@ model BranchConfigOverride {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  config Json
-  source Json?
+  config            Json
+  source            Json?
   pushedConfigError Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -254,15 +254,15 @@ model ConfigAgentRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  status     String
-  startedAt  DateTime
-  finishedAt DateTime?
-  commitUrl  String?
-  error      String?
-  sandboxId  String?
-  progress   String?
-  stage      String?
-  diff       String?   @db.Text
+  status        String
+  startedAt     DateTime
+  finishedAt    DateTime?
+  commitUrl     String?
+  error         String?
+  sandboxId     String?
+  progress      String?
+  stage         String?
+  diff          String?   @db.Text
   baseCommitSha String?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -371,8 +371,8 @@ model ProjectUserDirectPermission {
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@unique([tenancyId, projectUserId, permissionId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserDirectPermission_shouldUpdateSequenceId_idx")
@@ -391,8 +391,8 @@ model TeamMemberDirectPermission {
 
   teamMember TeamMember @relation(fields: [tenancyId, projectUserId, teamId], references: [tenancyId, projectUserId, teamId], onDelete: Cascade)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@unique([tenancyId, projectUserId, teamId, permissionId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "TeamMemberDirectPermission_shouldUpdateSequenceId_idx")
@@ -500,8 +500,8 @@ model ProjectUserOAuthAccount {
   allowConnectedAccounts Boolean          @default(true)
   allowSignIn            Boolean          @default(true)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
@@ -752,7 +752,7 @@ model OAuthAccessToken {
   accessToken String
   scopes      String[]
   expiresAt   DateTime?
-  isValid     Boolean  @default(true)
+  isValid     Boolean   @default(true)
 }
 
 model OAuthOuterInfo {
@@ -780,8 +780,8 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@id([tenancyId, id])
   @@index([tenancyId, sequenceId], name: "ProjectUserRefreshToken_tenancyId_sequenceId_idx")
@@ -828,8 +828,8 @@ model VerificationCode {
   data         Json
   attemptCount Int                  @default(0)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@id([projectId, branchId, id])
   @@unique([projectId, branchId, code])
@@ -1239,7 +1239,7 @@ enum DraftThemeMode {
 model CliAuthAttempt {
   tenancyId String @db.Uuid
 
-  id           String    @default(uuid()) @db.Uuid
+  id               String    @default(uuid()) @db.Uuid
   pollingCode      String    @unique
   loginCode        String    @unique
   refreshToken     String?
@@ -1263,8 +1263,8 @@ model UserNotificationPreference {
   enabled     Boolean
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
-  sequenceId             BigInt?  @unique
-  shouldUpdateSequenceId Boolean  @default(true)
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
 
   @@id([tenancyId, id])
   @@unique([tenancyId, projectUserId, notificationCategoryId])
@@ -1273,15 +1273,15 @@ model UserNotificationPreference {
 }
 
 model Conversation {
-  id            String @default(uuid()) @db.Uuid
-  tenancyId     String @db.Uuid
+  id            String  @default(uuid()) @db.Uuid
+  tenancyId     String  @db.Uuid
   projectUserId String? @db.Uuid
   teamId        String? @db.Uuid
 
-  subject       String
-  status        String
-  priority      String
-  source        String
+  subject               String
+  status                String
+  priority              String
+  source                String
   assignedToUserId      String?
   assignedToDisplayName String?
   tags                  Json?
@@ -1291,14 +1291,14 @@ model Conversation {
   lastCustomerReplyAt   DateTime?
   lastAgentReplyAt      DateTime?
   metadata              Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  lastMessageAt DateTime @default(now())
-  lastInboundAt DateTime?
-  lastOutboundAt DateTime?
-  closedAt      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastMessageAt         DateTime  @default(now())
+  lastInboundAt         DateTime?
+  lastOutboundAt        DateTime?
+  closedAt              DateTime?
 
-  tenancy     Tenancy                @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancy     Tenancy                  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   messages    ConversationMessage[]
   entryPoints ConversationEntryPoint[]
 
@@ -1316,13 +1316,13 @@ model ConversationEntryPoint {
   channelType       String
   adapterKey        String
   externalChannelId String?
-  isEntryPoint      Boolean @default(false)
+  isEntryPoint      Boolean  @default(false)
   metadata          Json?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy      Tenancy               @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  conversation Conversation          @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
   messages     ConversationMessage[]
 
   @@id([tenancyId, id])
@@ -1331,9 +1331,9 @@ model ConversationEntryPoint {
 }
 
 model ConversationMessage {
-  id        String @default(uuid()) @db.Uuid
-  tenancyId String @db.Uuid
-  conversationId String @db.Uuid
+  id             String  @default(uuid()) @db.Uuid
+  tenancyId      String  @db.Uuid
+  conversationId String  @db.Uuid
   channelId      String? @db.Uuid
 
   messageType        String
@@ -1346,8 +1346,8 @@ model ConversationMessage {
   metadata           Json?
   createdAt          DateTime @default(now())
 
-  tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy      Tenancy                 @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  conversation Conversation            @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
   channel      ConversationEntryPoint? @relation(fields: [tenancyId, channelId], references: [tenancyId, id], onDelete: NoAction)
 
   @@id([tenancyId, id])
@@ -1367,13 +1367,13 @@ model ThreadMessage {
 }
 
 model AiConversation {
-  id            String   @id @default(uuid()) @db.Uuid
-  projectUserId String   @db.Uuid
+  id            String      @id @default(uuid()) @db.Uuid
+  projectUserId String      @db.Uuid
   projectId     String
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   title         String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
   messages      AiMessage[]
 
   @@index([projectUserId, projectId, updatedAt(sort: Desc)])
@@ -1424,13 +1424,13 @@ model Subscription {
   product      Json
   quantity     Int          @default(1)
 
-  stripeSubscriptionId   String?
-  status                 SubscriptionStatus
-  currentPeriodEnd       DateTime
-  currentPeriodStart     DateTime
-  cancelAtPeriodEnd      Boolean
-  canceledAt             DateTime?
-  endedAt                DateTime?
+  stripeSubscriptionId String?
+  status               SubscriptionStatus
+  currentPeriodEnd     DateTime
+  currentPeriodStart   DateTime
+  cancelAtPeriodEnd    Boolean
+  canceledAt           DateTime?
+  endedAt              DateTime?
 
   refundedAt DateTime?
 
@@ -1694,7 +1694,7 @@ model DeploymentServiceDomain {
   hostname  String
   isPrimary Boolean @default(false)
   // Vercel-reported verification state, refreshed whenever the domain is read.
-  verified Boolean @default(false)
+  verified  Boolean @default(false)
 
   service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
 
@@ -1723,9 +1723,9 @@ model DeploymentRun {
   vercelDeploymentId  String?
   vercelDeploymentUrl String?
 
-  status DeploymentRunStatus @default(QUEUED)
+  status      DeploymentRunStatus @default(QUEUED)
   // "production" | "preview" (kept a string to match Vercel's target values)
-  target String
+  target      String
   // Free-form descriptor of what triggered the run (e.g. "cli").
   triggeredBy String
 
@@ -1772,7 +1772,7 @@ model DeploymentSourceUpload {
 // records step results. See apps/backend/src/lib/workflows/.
 
 model WorkflowDefinition {
-  tenancyId String @db.Uuid
+  tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   // User-chosen slug (e.g. "welcome-drip"). Deliberately not a uuid: it is
@@ -1794,12 +1794,12 @@ model WorkflowDefinition {
 }
 
 model WorkflowVersion {
-  tenancyId  String @db.Uuid
+  tenancyId  String  @db.Uuid
   tenancy    Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   workflowId String
   // Platform-assigned, monotonically increasing per workflow per tenancy
   // (v1, v2, ...). Never author-declared.
-  version Int
+  version    Int
 
   // The raw source string as authored in the dashboard editor. The version
   // hash is over (source, runtimeEnvVersion): a version is minted whenever
@@ -1850,15 +1850,15 @@ enum WorkflowRunFailureKind {
 }
 
 model WorkflowRun {
-  tenancyId String @db.Uuid
+  tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   // Platform UUID for history: runKeys recur over time, UUIDs never.
-  id String @default(uuid()) @db.Uuid
+  id        String  @default(uuid()) @db.Uuid
 
   workflowId String
   // The version this run is pinned to. Set at creation to the then-latest
   // version; changed only by an explicit upgradeRuns action.
-  version Int
+  version    Int
 
   // Business key derived from the trigger event at run creation (before any
   // execution). Unique per workflow among ACTIVE runs — see the isActive
@@ -1908,7 +1908,7 @@ model WorkflowRun {
 
   // When the run next needs engine attention: QUEUED = ready (or waiting out
   // a retry backoff), SLEEPING = durable timer. Null while RUNNING (leased).
-  wakeAt DateTime?
+  wakeAt     DateTime?
   // Lease for crash recovery: a RUNNING run whose lease expired is re-claimed
   // by a later tick. Re-claiming re-executes from the last committed step, so
   // step execution is at-least-once (a crashed worker may re-run a step).
@@ -1918,7 +1918,7 @@ model WorkflowRun {
   // (paused mid-await past expiry) can no longer clobber the new claimant's
   // state. Cancel/upgrade/retry deliberately do NOT check it — they act on
   // state, and the engine's guarded transitions observe the result.
-  leaseToken String? @db.Uuid
+  leaseToken String?   @db.Uuid
 
   // Attempt counter for the step currently being executed; reset to 0
   // whenever a step result is recorded. 4 attempts max (1 + 3 retries).
@@ -1992,7 +1992,7 @@ model WorkflowStepResult {
   resultSizeBytes Int
 
   // How many attempts it took to record this fact (1 = first try).
-  attempts Int
+  attempts          Int
   // Which workflow version's code executed this step (observability; differs
   // from the run's current version after an upgrade).
   executedAtVersion Int
@@ -2014,23 +2014,23 @@ enum WorkflowStepAttemptOutcome {
 // (sandbox logs + error history per attempt). Kept separate from
 // WorkflowStepResult because failed attempts are history, not facts.
 model WorkflowStepAttempt {
-  tenancyId String @db.Uuid
-  runId     String @db.Uuid
-  stepKey   String
+  tenancyId  String @db.Uuid
+  runId      String @db.Uuid
+  stepKey    String
   // WorkflowRun.retryEpoch at the time of this attempt. Part of the key
   // because a manual retry restarts attempt numbering at 1 for the same step.
-  retryEpoch Int @default(0)
+  retryEpoch Int    @default(0)
   attempt    Int
 
-  stepId  String
-  outcome WorkflowStepAttemptOutcome
+  stepId      String
+  outcome     WorkflowStepAttemptOutcome
   // { name, message, stack } of the user-code error if FAILED with
   // failureKind USER; a generic marker for PLATFORM failures.
   error       Json?
   failureKind WorkflowRunFailureKind?
   // console output captured inside the sandbox by the runtime shim, capped
   // at 64 KiB per attempt.
-  logs String?
+  logs        String?
 
   startedAt  DateTime
   finishedAt DateTime
@@ -2047,9 +2047,9 @@ model WorkflowStepAttempt {
 // materialized by the engine; lifecycle events (workflow.run.*) are inserted
 // on run state transitions.
 model WorkflowEvent {
-  tenancyId String @db.Uuid
+  tenancyId String  @db.Uuid
   tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  id        String @default(uuid()) @db.Uuid
+  id        String  @default(uuid()) @db.Uuid
 
   // Wire type: platform events are unprefixed ("user.created"), custom
   // events are always "custom.*", lifecycle events are "workflow.run.*",
@@ -2061,12 +2061,12 @@ model WorkflowEvent {
   // past when catching up after downtime). Everything else: creation time.
   // The outbox processes events in ascending scheduledAt order, which is
   // what guarantees delayed-never-skipped schedule catch-up.
-  scheduledAt DateTime  @default(now())
-  processedAt DateTime?
+  scheduledAt        DateTime  @default(now())
+  processedAt        DateTime?
   // Failed dispatches back off so one poison event cannot monopolize the
   // oldest outbox batch and starve unrelated tenants forever.
-  processingAttempts Int      @default(0)
-  retryAt            DateTime @default(now())
+  processingAttempts Int       @default(0)
+  retryAt            DateTime  @default(now())
 
   createdAt DateTime @default(now())
 
@@ -2084,7 +2084,7 @@ model WorkflowEvent {
 // schedule starts a fresh cursor (no retroactive catch-up of the new
 // expression).
 model WorkflowScheduleCursor {
-  tenancyId   String @db.Uuid
+  tenancyId   String  @db.Uuid
   tenancy     Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   workflowId  String
   scheduleKey String
@@ -2126,8 +2126,8 @@ model Brain {
 
   // Rolling summary of older transcript for model context compaction. The
   // summary covers messages with position <= summaryThroughPosition.
-  summaryText             String?
-  summaryThroughPosition  Int?
+  summaryText            String?
+  summaryThroughPosition Int?
 
   // Serializes human and autonomous turns. A RUNNING brain whose lease
   // expired is reclaimable by any worker (fencing via runLeaseToken).
@@ -2149,16 +2149,16 @@ model Brain {
 
 model BrainMessage {
   tenancyId String @db.Uuid
-  id        String  @default(uuid()) @db.Uuid
+  id        String @default(uuid()) @db.Uuid
 
   // Cascade through Brain so deleting a tenancy (→ Brain) clears transcript.
   // Dual FKs onto the same tenancyId column are avoided on purpose.
   brain Brain @relation(fields: [tenancyId], references: [tenancyId], onDelete: Cascade)
 
-  position Int
+  position   Int
   // user | assistant | tool | system
-  role     String
-  content  Json
+  role       String
+  content    Json
   // "visible" shown in the dashboard UI; "hidden" stored for the model
   // (autonomous wake prompts) but filtered from UI responses.
   visibility String @default("visible")
@@ -2178,13 +2178,13 @@ model BrainMessage {
 
 model BrainQueueItem {
   tenancyId String @db.Uuid
-  id        String  @default(uuid()) @db.Uuid
+  id        String @default(uuid()) @db.Uuid
 
   brain Brain @relation(fields: [tenancyId], references: [tenancyId], onDelete: Cascade)
 
   // Wire type, e.g. "user.signed_up", "email.sent", "payment.succeeded".
   type          String
-  schemaVersion Int    @default(1)
+  schemaVersion Int      @default(1)
   payload       Json
   occurredAt    DateTime @default(now())
 
