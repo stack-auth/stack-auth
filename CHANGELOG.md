@@ -8,6 +8,7 @@
 - Fixed a bug where hosted components would sometimes redirect already signed-in users to the "Welcome back" screen instead of the page they requested.
 - New `automaticSideEffects` constructor option in the JS SDK that makes app construction fully inert — no prefetching, query-parameter processing, storage access, or other automatic side effects until you explicitly call a method.
 - Emails for low-volume tenancies are now sent immediately via a bounded burst allowance, instead of waiting in the send queue.
+- Fixed a bug where free trials configured in Payments were not correctly synchronized to the payments layer.
 
 ## 7/31/26
 
