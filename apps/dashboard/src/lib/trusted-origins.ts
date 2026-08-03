@@ -1,16 +1,16 @@
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
-export type ClickmapOrigin = {
+export type TrustedOrigin = {
   id: string,
   origin: string,
 };
 
-export type ClickmapWildcardDomain = {
+export type TrustedWildcardDomain = {
   id: string,
   baseUrl: string,
 };
 
-export function normalizeClickmapOrigin(baseUrl: string): string | null {
+export function normalizeTrustedOrigin(baseUrl: string): string | null {
   if (baseUrl.includes("*")) {
     return null;
   }
@@ -29,16 +29,15 @@ export function normalizeClickmapOrigin(baseUrl: string): string | null {
   return url.origin;
 }
 
-function isWildcardDomain(baseUrl: string): boolean {
-  return baseUrl.includes("*");
-}
-
-export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUrl?: string | null }>): {
-  origins: ClickmapOrigin[],
-  wildcardDomains: ClickmapWildcardDomain[],
+export function getTrustedOriginOptions(
+  trustedDomains: Record<string, { baseUrl?: string | null }>,
+  allowLocalhost = false,
+): {
+  origins: TrustedOrigin[],
+  wildcardDomains: TrustedWildcardDomain[],
 } {
-  const byOrigin = new Map<string, ClickmapOrigin>();
-  const wildcardDomains: ClickmapWildcardDomain[] = [];
+  const byOrigin = new Map<string, TrustedOrigin>();
+  const wildcardDomains: TrustedWildcardDomain[] = [];
 
   for (const id in trustedDomains) {
     const domain = trustedDomains[id];
@@ -46,20 +45,24 @@ export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUr
       continue;
     }
 
-    if (isWildcardDomain(domain.baseUrl)) {
+    if (domain.baseUrl.includes("*")) {
       wildcardDomains.push({ id, baseUrl: domain.baseUrl });
       continue;
     }
 
-    const origin = normalizeClickmapOrigin(domain.baseUrl);
+    const origin = normalizeTrustedOrigin(domain.baseUrl);
     if (origin == null) {
       continue;
     }
     byOrigin.set(origin, { id, origin });
   }
 
+  const origins = Array.from(byOrigin.values());
+  if (allowLocalhost) {
+    origins.push({ id: "localhost", origin: "http://localhost" });
+  }
   return {
-    origins: Array.from(byOrigin.values()).sort((a, b) => stringCompare(a.origin, b.origin)),
+    origins: origins.sort((a, b) => stringCompare(a.origin, b.origin)),
     wildcardDomains: wildcardDomains.sort((a, b) => stringCompare(a.baseUrl, b.baseUrl)),
   };
 }

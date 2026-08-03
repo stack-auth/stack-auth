@@ -20,32 +20,23 @@ import {
 import { DesignAnalyticsCard } from "@/components/design-components/analytics-card";
 import { useRouter } from "@/components/router";
 import type { AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
-import {
-  CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
-  CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
+import { createClickmapOverlaySnippet } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { ArrowRight, GlobeHemisphereWest, InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { getClickmapOriginOptions, normalizeClickmapOrigin, type ClickmapOrigin } from "./clickmap-origins";
+import { openBrowserActionInNewTab } from "@/lib/browser-actions";
+import { getTrustedOriginOptions, normalizeTrustedOrigin, type TrustedOrigin } from "@/lib/trusted-origins";
 
 // The clickmap token is a self-describing JWT (its payload carries the project
 // and origin it was minted for), so the snippet only has to hand over the token
 // itself — the in-page overlay derives everything else from it.
-function createConsoleSnippet(token: string): string {
-  return [
-    `sessionStorage.setItem(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
-    `window.dispatchEvent(new Event(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
-  ].join("\n");
-}
-
 function ClickmapTokenDialog(props: {
-  origin: ClickmapOrigin | null,
+  origin: TrustedOrigin | null,
   token: AnalyticsClickmapTokenResponse | null,
   autoCopied?: boolean,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const snippet = props.token == null ? "" : createConsoleSnippet(props.token.token);
+  const snippet = props.token == null ? "" : createClickmapOverlaySnippet(props.token.token);
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -95,7 +86,7 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const config = project.useConfig();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOrigin, setSelectedOrigin] = useState<ClickmapOrigin | null>(null);
+  const [selectedOrigin, setSelectedOrigin] = useState<TrustedOrigin | null>(null);
   const [token, setToken] = useState<AnalyticsClickmapTokenResponse | null>(null);
   const [autoCopied, setAutoCopied] = useState(false);
   const [customOrigin, setCustomOrigin] = useState("");
@@ -105,10 +96,26 @@ export default function PageClient() {
   }, []);
 
   const { origins, wildcardDomains } = useMemo(() => {
-    return getClickmapOriginOptions(config.domains.trustedDomains);
-  }, [config.domains.trustedDomains]);
+    return getTrustedOriginOptions(config.domains.trustedDomains, config.domains.allowLocalhost);
+  }, [config.domains.allowLocalhost, config.domains.trustedDomains]);
 
-  async function showClickmap(origin: ClickmapOrigin) {
+  function launchBrowserAction(origin: TrustedOrigin) {
+    return openBrowserActionInNewTab(adminApp, {
+      type: "clickmap-overlay",
+      origin: origin.origin,
+    });
+  }
+
+  function parseCustomOrigin(): TrustedOrigin | null {
+    const origin = normalizeTrustedOrigin(customOrigin);
+    if (origin == null) {
+      window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
+      return null;
+    }
+    return { id: "exact-origin", origin };
+  }
+
+  async function showClickmapFallback(origin: TrustedOrigin) {
     setSelectedOrigin(origin);
     setToken(null);
     setDialogOpen(true);
@@ -126,7 +133,7 @@ export default function PageClient() {
     setToken(created);
     setAutoCopied(false);
     try {
-      await navigator.clipboard.writeText(createConsoleSnippet(created.token));
+      await navigator.clipboard.writeText(createClickmapOverlaySnippet(created.token));
       setAutoCopied(true);
     } catch {
       // Clipboard access can be denied (e.g. lost user-gesture after the
@@ -153,18 +160,24 @@ export default function PageClient() {
                 className="shrink-0 gap-1.5"
                 disabled={customOrigin.trim() === ""}
                 onClick={async () => {
-                  const origin = normalizeClickmapOrigin(customOrigin);
-                  if (origin == null) {
-                    window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
-                    return;
-                  }
-                  await showClickmap({ id: "exact-origin", origin });
+                  const origin = parseCustomOrigin();
+                  if (origin != null) await launchBrowserAction(origin);
                 }}
               >
-                Show clickmap
+                Open clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
+            <Button
+              variant="secondary"
+              disabled={customOrigin.trim() === ""}
+              onClick={async () => {
+                const origin = parseCustomOrigin();
+                if (origin != null) await showClickmapFallback(origin);
+              }}
+            >
+              Copy console snippet instead
+            </Button>
             {wildcardDomains.length > 0 && (
               <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
                 <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -208,10 +221,15 @@ export default function PageClient() {
                     </Typography>
                   </div>
                 </div>
-                <Button className="gap-1.5" onClick={async () => await showClickmap(origin)}>
-                  Show clickmap
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button onClick={() => launchBrowserAction(origin)}>
+                    Open clickmap
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="secondary" onClick={async () => await showClickmapFallback(origin)}>
+                    Copy console snippet
+                  </Button>
+                </div>
               </div>
             ))}
           </DesignAnalyticsCard>

@@ -35,6 +35,7 @@ import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -760,6 +761,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // from the URL before its token exchange, so the nested handler must decide based on the
       // URL the page was loaded with, not whatever is in the address bar when it runs.
       const urlAtConstructionTime = new URL(window.location.href);
+      const actionId = urlAtConstructionTime.searchParams.get(BROWSER_ACTION_QUERY_PARAM);
+      if (actionId != null) {
+        urlAtConstructionTime.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
+        window.history.replaceState(window.history.state, "", urlAtConstructionTime);
+        runAsynchronously(async () => {
+          const result = await this._interface.consumeBrowserAction(actionId, null);
+          // The backend emits only closed-set snippets for browser actions; evaluating the
+          // response here preserves the existing console-snippet behavior without exposing
+          // the action implementation to the dashboard.
+          new Function(result.javascript)();
+        });
+      }
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
