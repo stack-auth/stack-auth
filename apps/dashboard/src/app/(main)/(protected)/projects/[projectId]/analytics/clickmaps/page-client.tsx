@@ -54,7 +54,7 @@ function ClickmapTokenDialog(props: {
             <>
               <CopyField type="textarea" value={snippet} monospace fixedSize height={124} initialCopied={props.autoCopied} />
               <Typography type="p" variant="secondary" className="text-sm">
-                The site will use normal client authentication plus this origin-bound clickmap token to fetch aggregate clickmap data.
+                The site will use normal client authentication plus this website-specific clickmap token to fetch aggregate clickmap data.
               </Typography>
             </>
           )}
@@ -109,7 +109,7 @@ export default function PageClient() {
   function parseCustomOrigin(): TrustedOrigin | null {
     const origin = normalizeTrustedOrigin(customOrigin);
     if (origin == null) {
-      window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
+      window.alert("Enter a valid website address, for example https://app.example.com.");
       return null;
     }
     return { id: "exact-origin", origin };
@@ -145,14 +145,14 @@ export default function PageClient() {
     <AppEnabledGuard appId="clickmaps">
       <PageLayout
         title="Clickmaps"
-        description="Launch the clickmap toolbar on a trusted domain."
+        description="Launch the clickmap toolbar on a trusted website."
         fillWidth
       >
         <DesignAnalyticsCard gradient="slate" className="p-4">
           <div className="space-y-1">
-            <Typography className="font-medium">Exact page origin</Typography>
+            <Typography className="font-medium">Exact page address</Typography>
             <Typography type="p" variant="secondary" className="text-xs">
-              Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
+              Use the exact website address shown in the browser address bar, including for wildcard domains.
             </Typography>
             <div className="flex items-center gap-2">
               <Input className="flex-1" value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
@@ -195,7 +195,7 @@ export default function PageClient() {
               <span>
                 {wildcardDomains.length === 0
                   ? "Add a trusted domain before launching a production clickmap."
-                  : "Enter an exact origin that matches a wildcard domain, or add a concrete trusted domain."}
+                  : "Enter an exact website address that matches a wildcard domain, or add a concrete trusted domain."}
               </span>
               <Button
                 className="shrink-0 gap-1.5"
@@ -217,7 +217,7 @@ export default function PageClient() {
                   <div className="min-w-0">
                     <Typography className="truncate font-medium">{origin.origin}</Typography>
                     <Typography type="p" variant="secondary" className="text-xs">
-                      24-hour overlay token, scoped to this origin
+                      24-hour overlay token, scoped to this website
                     </Typography>
                   </div>
                 </div>

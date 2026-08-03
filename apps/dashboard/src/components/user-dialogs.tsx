@@ -69,7 +69,7 @@ export function ImpersonateUserDialog(props: {
   const [selectedOrigin, setSelectedOrigin] = useState("");
   const [customOrigin, setCustomOrigin] = useState("");
   const [fallbackSnippet, setFallbackSnippet] = useState<string | null>(null);
-  const canUseCustomOrigin = config.domains.allowLocalhost || wildcardDomains.length > 0;
+  const canUseCustomOrigin = config.domains.allowLocalhost;
 
   useEffect(() => {
     setSelectedOrigin(origins[0]?.origin ?? "");
@@ -84,7 +84,7 @@ export function ImpersonateUserDialog(props: {
   async function openBrowserAction() {
     const origin = normalizeTrustedOrigin(customOrigin.trim() || selectedOrigin);
     if (origin == null) {
-      window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
+      window.alert("Enter a valid website address, for example https://app.example.com.");
       return "prevent-close";
     }
     const opened = await openBrowserActionInNewTab(props.adminApp, {
@@ -114,7 +114,7 @@ export function ImpersonateUserDialog(props: {
       open={props.open}
       onOpenChange={(open) => !open && props.onClose()}
       title="Impersonate User"
-      description="Open your trusted website with a short-lived impersonation action."
+      description="Open a trusted website with a short-lived impersonation action."
       cancelButton
       okButton={origins.length > 0 || canUseCustomOrigin ? {
         label: "Impersonate",
@@ -134,7 +134,7 @@ export function ImpersonateUserDialog(props: {
                 <Typography>Select the website where the impersonated session should open.</Typography>
                 <Select value={selectedOrigin} onValueChange={setSelectedOrigin}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a trusted origin" />
+                    <SelectValue placeholder="Select a trusted website" />
                   </SelectTrigger>
                   <SelectContent>
                     {origins.map((origin) => <SelectItem key={origin.id} value={origin.origin}>{origin.origin}</SelectItem>)}
@@ -146,7 +146,7 @@ export function ImpersonateUserDialog(props: {
               <Input
                 value={customOrigin}
                 onChange={(event) => setCustomOrigin(event.target.value)}
-                placeholder="Exact origin, e.g. http://localhost:5173"
+                placeholder="Exact website address, e.g. http://localhost:5173"
               />
             )}
           </>
