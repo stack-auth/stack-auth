@@ -728,11 +728,10 @@ export function SettingsContent({ service, isHexclave }: {
   }
 
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
-    { label: "Framework preset", value: service.api?.framework, fallback: "Auto-detect" },
     { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
-    { label: "Install command", value: service.api?.install_command, fallback: "Auto-detect" },
-    { label: "Build command", value: service.api?.build_command, fallback: "Auto-detect" },
-    { label: "Output directory", value: service.api?.output_directory, fallback: "Auto-detect" },
+    { label: "Container port", value: service.api?.port?.toString(), fallback: "Not synced yet" },
+    { label: "Min instances", value: service.api?.min_instances?.toString(), fallback: "0 (scale to zero)" },
+    { label: "Max instances", value: service.api?.max_instances?.toString(), fallback: "1" },
     // No "Dev command" row: `devCommand` is consumed locally by `hexclave dev`
     // and never sent to the server, so there is nothing here to show.
   ];
@@ -740,9 +739,9 @@ export function SettingsContent({ service, isHexclave }: {
   return (
     <div className="h-full space-y-5 overflow-y-auto p-4">
       <div className="space-y-3">
-        <SectionLabel>Build &amp; output</SectionLabel>
+        <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Build settings are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>.
+          Container settings are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the Dockerfile at the root of the service&apos;s source directory.
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

@@ -53,10 +53,11 @@ describe("deploy command helpers", () => {
   it("keeps a ready deployment successful without a follow-up service lookup", async () => {
     const dir = makeTempDir();
     fs.writeFileSync(path.join(dir, "index.html"), "<h1>ready</h1>");
+    fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
     const service = evaluateServicesFunction({
       configPath: path.join(dir, "hexclave.config.ts"),
       servicesExport: () => ({
-        web: { type: "vercel" },
+        web: { type: "container", port: 3000 },
       }),
       mode: "deploy",
     }).services.get("web");
@@ -134,7 +135,7 @@ describe("collectRequiredSecretKeys", () => {
   it("collects only secrets without defaults, deduplicated and sorted", () => {
     const services = servicesOf(({ secret }) => ({
       web: {
-        type: "vercel",
+        type: "container", port: 3000,
         env: {
           A: secret("zebra"),
           B: secret("alpha"),
@@ -144,7 +145,7 @@ describe("collectRequiredSecretKeys", () => {
         },
       },
       api: {
-        type: "vercel",
+        type: "container", port: 3000,
         env: { F: secret("alpha") },
       },
     }));
@@ -153,7 +154,7 @@ describe("collectRequiredSecretKeys", () => {
 
   it("returns an empty list when every secret has a default", () => {
     const services = servicesOf(({ secret }) => ({
-      web: { type: "vercel", env: { A: secret("k", "v") } },
+      web: { type: "container", port: 3000, env: { A: secret("k", "v") } },
     }));
     expect(collectRequiredSecretKeys(services)).toEqual([]);
   });

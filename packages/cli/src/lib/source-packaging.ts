@@ -1,5 +1,5 @@
 // Packages a source directory into a gzipped ustar tarball for
-// `hexclave deploy`. Respects .gitignore and .vercelignore files (at every
+// `hexclave deploy`. Respects .gitignore and .dockerignore files (at every
 // directory level, like git), and always drops node_modules, .git, and
 // symlinks. The output is deterministic for identical input trees (sorted
 // entries, fixed mtime in the tar writer), which makes retried deploys upload
@@ -13,7 +13,7 @@ import { gzipSync } from "node:zlib";
 import { CliError } from "./errors.js";
 import { type IgnoreRule, parseIgnoreFile } from "./ignore-rules.js";
 
-const IGNORE_FILE_NAMES = [".gitignore", ".vercelignore"];
+const IGNORE_FILE_NAMES = [".gitignore", ".dockerignore"];
 const ALWAYS_EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git"]);
 
 type IgnoreScope = {
@@ -81,7 +81,7 @@ function readIgnoreScopes(directory: string): IgnoreScope[] {
  * Packages `rootDirectory`. `ignoreRootDirectory` is the outermost directory
  * whose ignore files apply; deploy passes the config directory so a service in
  * a monorepo subdirectory inherits the repository-level .gitignore and
- * .vercelignore rules.
+ * .dockerignore rules.
  */
 export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory, filters: SourceFileFilters = {}): PackagedSource {
   const absoluteRootDirectory = path.resolve(rootDirectory);
@@ -135,7 +135,7 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
     const childDirectory = path.join(currentDirectory, segment);
     // Git cannot re-include a directory once a parent ignore file prunes it.
     if (isIgnored(ancestorScopes, childDirectory, true)) {
-      throw new CliError(`No files to deploy in ${absoluteRootDirectory} (the source directory is ignored by a parent .gitignore or .vercelignore).`);
+      throw new CliError(`No files to deploy in ${absoluteRootDirectory} (the source directory is ignored by a parent .gitignore or .dockerignore).`);
     }
     currentDirectory = childDirectory;
   }

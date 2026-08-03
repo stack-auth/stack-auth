@@ -3,10 +3,10 @@
 // Hexclave service (synthetic — it always exists and can't be edited) plus one
 // node per deployment service from the project config.
 
-import { HexagonIcon, TriangleIcon } from "@phosphor-icons/react";
+import { CubeIcon, HexagonIcon } from "@phosphor-icons/react";
 import type { AdminDeploymentServiceJson } from "@hexclave/next";
 
-export type ServiceType = "hexclave" | "vercel";
+export type ServiceType = "hexclave" | "container";
 
 // Node states shown on the board; a superset of the API's service status so
 // the managed Hexclave node and never-deployed services render meaningfully.
@@ -38,7 +38,7 @@ export type BoardService = {
   source: string,
   domain?: string,
   envVars: EnvVar[],
-  // The raw API object for vercel services; null for the managed Hexclave one.
+  // The raw API object for container services; null for the managed Hexclave one.
   api: AdminDeploymentServiceJson | null,
 };
 
@@ -65,8 +65,10 @@ const OUTPUTS_BY_TYPE = new Map<ServiceType, ServiceOutput[]>([
     { key: "publishableClientKey", label: "Publishable client key" },
     { key: "secretServerKey", label: "Secret server key", secret: true },
   ]],
-  ["vercel", [
-    { key: "url", label: "Production URL" },
+  ["container", [
+    { key: "url", label: "Public URL" },
+    { key: "internalUrl", label: "Internal URL" },
+    { key: "internalHost", label: "Internal host" },
   ]],
 ]);
 
@@ -89,11 +91,11 @@ export const SERVICE_TYPE_META = new Map<ServiceType, ServiceTypeMeta>([
     accent: "purple",
     hint: "Your Hexclave backend. Exactly one per project.",
   }],
-  ["vercel", {
-    label: "Vercel",
-    icon: TriangleIcon,
+  ["container", {
+    label: "Container",
+    icon: CubeIcon,
     accent: "cyan",
-    hint: "A service built and hosted on Vercel, deployed with `hexclave deploy`.",
+    hint: "A container built from your Dockerfile, deployed with `hexclave deploy`.",
   }],
 ]);
 
@@ -158,11 +160,11 @@ export function buildBoardServices(apiServices: AdminDeploymentServiceJson[], he
     services.push({
       id: apiService.id,
       name: apiService.id,
-      type: "vercel",
+      type: "container",
       x: 520 + Math.floor(index / 4) * 320,
       y: 96 + (index % 4) * 150,
       status: apiStatusToBoardStatus(apiService.status),
-      source: apiService.framework != null && apiService.framework !== "" ? apiService.framework : "Deployed with `hexclave deploy`",
+      source: apiService.port != null ? `Container on port ${apiService.port}` : "Deployed with `hexclave deploy`",
       domain: apiService.domains.find((d) => d.is_primary)?.hostname ?? hostnameOfUrl(apiService.url),
       envVars: apiService.env.map((envVar) => ({
         key: envVar.key,

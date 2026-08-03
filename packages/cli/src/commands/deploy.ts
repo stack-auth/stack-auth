@@ -187,6 +187,13 @@ export async function deployService(options: {
   const serviceId = service.serviceId;
   const log = (message: string) => console.error(`[${serviceId}] ${message}`);
 
+  // Container services build from a Dockerfile at the source root — checked
+  // here so a missing one fails before anything is uploaded, not minutes later
+  // inside the remote builder. (Docker itself never runs locally.)
+  if (!fs.existsSync(path.join(service.absoluteRootDirectory, "Dockerfile"))) {
+    throw new CliError(`services.${serviceId} has no Dockerfile at ${service.absoluteRootDirectory}. Container services are built from the Dockerfile at the root of their source directory — add one (it will be built remotely; Docker is not required locally).`);
+  }
+
   const packaged = packageSourceDirectory(service.absoluteRootDirectory, ignoreRootDirectory, {
     includeFiles: service.includeFiles,
     excludeFiles: service.excludeFiles,
@@ -198,7 +205,7 @@ export async function deployService(options: {
     throw new CliError("Unexpected response from the Hexclave API when creating the upload.");
   }
   if (typeof upload.max_bytes === "number" && packaged.tarballGzipped.length > upload.max_bytes) {
-    throw new CliError(`The packaged source of ${JSON.stringify(serviceId)} is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.vercelignore — build outputs and large assets shouldn't be uploaded.`);
+    throw new CliError(`The packaged source of ${JSON.stringify(serviceId)} is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.dockerignore — build outputs and large assets shouldn't be uploaded.`);
   }
   log("Uploading source...");
   await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);

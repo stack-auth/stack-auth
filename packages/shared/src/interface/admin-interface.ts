@@ -75,11 +75,13 @@ export type AdminDeploymentEnvVarJson = {
 
 export type AdminDeploymentServiceJson = {
   id: string,
-  type: "vercel",
-  framework: string | null,
-  install_command: string | null,
-  build_command: string | null,
-  output_directory: string | null,
+  type: "container",
+  // Container definition (null on rows synced before the definition existed):
+  // the single HTTP port the container listens on, and the serverless scaling
+  // bounds (1/1 = serverful, min 0 scales to zero).
+  port: number | null,
+  min_instances: number | null,
+  max_instances: number | null,
   root_directory: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",

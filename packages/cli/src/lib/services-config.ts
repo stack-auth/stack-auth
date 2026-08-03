@@ -216,9 +216,18 @@ export type EvaluatedServices = {
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
-  "type", "framework", "installCommand", "buildCommand", "outputDirectory",
+  "type", "port", "minInstances", "maxInstances",
   "rootDirectory", "devCommand", "env", "includeFiles", "excludeFiles",
 ]);
+
+function readOptionalIntegerField(record: Record<string, unknown>, serviceId: string, field: string): number | undefined {
+  const value = record[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new CliError(`services.${serviceId}.${field} must be an integer.`);
+  }
+  return value;
+}
 
 function readOptionalStringField(record: Record<string, unknown>, serviceId: string, field: string): string | undefined {
   const value = record[field];
@@ -313,7 +322,7 @@ export function evaluateServicesFunction(options: {
   const configDirectory = path.dirname(configPath);
 
   if (servicesExport === undefined) {
-    throw new CliError(`The config file ${configPath} has no \`services\` export. Add one, e.g.:\n  export const services = ({ isDev, secret, service, hexclave }) => ({\n    web: {\n      type: "vercel",\n      framework: "next",\n      devCommand: "npm run dev",\n      env: { HEXCLAVE_PROJECT_ID: hexclave.projectId },\n    },\n  });`);
+    throw new CliError(`The config file ${configPath} has no \`services\` export. Add one, e.g.:\n  export const services = ({ isDev, secret, service, hexclave }) => ({\n    web: {\n      type: "container",\n      port: 3000,\n      devCommand: "npm run dev",\n      env: { HEXCLAVE_PROJECT_ID: hexclave.projectId },\n    },\n  });`);
   }
   if (typeof servicesExport !== "function") {
     throw new CliError(`The \`services\` export of ${configPath} must be a function of ({ isDev, secret, service, hexclave }) returning the service record — not a plain object. Wrap it in a function: \`export const services = () => ({ ... })\`.`);
@@ -359,10 +368,10 @@ export function evaluateServicesFunction(options: {
         throw new CliError(`services.${serviceId} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_SERVICE_FIELDS].join(", ")}.`);
       }
     }
-    if (record.type !== "vercel") {
+    if (record.type !== "container") {
       throw new CliError(record.type === undefined
-        ? `services.${serviceId} has no \`type\`. Add \`type: "vercel"\`.`
-        : `services.${serviceId}.type must be "vercel" (got ${JSON.stringify(record.type)}).`);
+        ? `services.${serviceId} has no \`type\`. Add \`type: "container"\`.`
+        : `services.${serviceId}.type must be "container" (got ${JSON.stringify(record.type)}).`);
     }
 
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
@@ -370,6 +379,25 @@ export function evaluateServicesFunction(options: {
     const relativeRootDirectory = path.relative(configDirectory, absoluteRootDirectory);
     if (relativeRootDirectory === ".." || relativeRootDirectory.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRootDirectory)) {
       throw new CliError(`services.${serviceId}.rootDirectory resolves to ${absoluteRootDirectory}, which is outside the directory containing the config file (${configDirectory}). Root directories must be inside it.`);
+    }
+
+    const port = readOptionalIntegerField(record, serviceId, "port");
+    if (port === undefined) {
+      throw new CliError(`services.${serviceId} has no \`port\`. Container services must declare the HTTP port the container listens on, e.g. \`port: 3000\`.`);
+    }
+    if (port < 1 || port > 65535) {
+      throw new CliError(`services.${serviceId}.port must be between 1 and 65535 (got ${port}).`);
+    }
+    const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
+    const maxInstances = readOptionalIntegerField(record, serviceId, "maxInstances");
+    if (minInstances !== undefined && minInstances < 0) {
+      throw new CliError(`services.${serviceId}.minInstances must be at least 0.`);
+    }
+    if (maxInstances !== undefined && (maxInstances < 1 || maxInstances > 5)) {
+      throw new CliError(`services.${serviceId}.maxInstances must be between 1 and 5.`);
+    }
+    if (minInstances !== undefined && maxInstances !== undefined && maxInstances < minInstances) {
+      throw new CliError(`services.${serviceId}.maxInstances (${maxInstances}) must be at least minInstances (${minInstances}).`);
     }
 
     const env = evaluateEnvRecord(serviceId, record.env);
@@ -380,11 +408,10 @@ export function evaluateServicesFunction(options: {
     services.set(serviceId, {
       serviceId,
       definition: {
-        type: "vercel",
-        framework: readOptionalStringField(record, serviceId, "framework"),
-        install_command: readOptionalStringField(record, serviceId, "installCommand"),
-        build_command: readOptionalStringField(record, serviceId, "buildCommand"),
-        output_directory: readOptionalStringField(record, serviceId, "outputDirectory"),
+        type: "container",
+        port,
+        min_instances: minInstances,
+        max_instances: maxInstances,
         // Stored/displayed as a config-directory-relative posix path ("." for
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
@@ -410,13 +437,14 @@ export function evaluateServicesFunction(options: {
       throw new CliError(`service(${JSON.stringify(referencedServiceId)}) does not match any defined service. Available services: ${[...services.keys()].join(", ")}.`);
     }
   }
-  // Self-references can never be satisfied (a service's first deploy cannot
-  // read its own deployment output). Mirrors the backend check, but fails
-  // before anything is uploaded.
+  // A self-referential `url` can never be satisfied (the public URL only
+  // exists once a domain verifies, which the service's own first deploy can't
+  // provide). The internal outputs are deterministic and fine to self-reference.
+  // Mirrors the backend check, but fails before anything is uploaded.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
-      if (value.kind === "connection" && value.reference.split(".")[0] === serviceId) {
-        throw new CliError(`services.${serviceId}.env.${envVarKey} connects to the service's own output "${value.reference}". A service cannot reference itself.`);
+      if (value.kind === "connection" && value.reference === `${serviceId}.url`) {
+        throw new CliError(`services.${serviceId}.env.${envVarKey} connects to the service's own public URL "${value.reference}", which cannot exist before the service does. Use service("${serviceId}").internalUrl for its own address.`);
       }
     }
   }

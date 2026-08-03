@@ -56,16 +56,16 @@ describe("packageSourceDirectory", () => {
     expect(packagedPaths(root)).toEqual(["index.js"]);
   });
 
-  it("respects .gitignore and .vercelignore including negation", () => {
+  it("respects .gitignore and .dockerignore including negation", () => {
     const root = makeTempDir();
     write(root, ".gitignore", "*.log\ndist/\n!keep.log\n");
-    write(root, ".vercelignore", "*.md\n");
+    write(root, ".dockerignore", "*.md\n");
     write(root, "app.js", "");
     write(root, "error.log", "");
     write(root, "keep.log", "");
     write(root, "README.md", "");
     write(root, "dist/out.js", "");
-    expect(packagedPaths(root)).toEqual([".gitignore", ".vercelignore", "app.js", "keep.log"]);
+    expect(packagedPaths(root)).toEqual([".dockerignore", ".gitignore", "app.js", "keep.log"]);
   });
 
   it("applies nested .gitignore files relative to their directory", () => {
@@ -80,7 +80,7 @@ describe("packageSourceDirectory", () => {
   it("inherits ignore files above a monorepo service root", () => {
     const root = makeTempDir();
     write(root, ".gitignore", "*.log\npackages/api/generated/\n");
-    write(root, ".vercelignore", "packages/api/private.txt\n");
+    write(root, ".dockerignore", "packages/api/private.txt\n");
     write(root, "packages/api/index.ts", "");
     write(root, "packages/api/error.log", "");
     write(root, "packages/api/generated/client.ts", "");
