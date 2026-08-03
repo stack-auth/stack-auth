@@ -7,7 +7,7 @@ import * as jose from "jose";
 import { JOSEError } from "jose/errors";
 
 // The bearer credential a workflow run uses to call back into the public API
-// as project admin (`hexclaveApp.getUser(...)` and friends).
+// with project SERVER access (`hexclaveApp.getUser(...)` and friends).
 //
 // This is a signed, self-describing token rather than a row in `ApiKeySet`.
 // Earlier revisions minted a real API key set per claim, which had three
@@ -18,8 +18,14 @@ import { JOSEError } from "jose/errors";
 // is persisted, so nothing can leak into a CRUD or need cleaning up, and
 // revocation falls out of the run's own state (see below).
 //
-// SECURITY MODEL — the token grants FULL PROJECT ADMIN, so every one of these
-// properties is load-bearing:
+// SECURITY MODEL — the token grants PROJECT SERVER access and is refused on
+// admin-type requests (see smart-request.tsx), so it cannot reach project
+// configuration, API keys, or the other admin-only surfaces. It also satisfies
+// client-type requests, which are strictly weaker; note that makes it slightly
+// BROADER than a real secret server key, which is ignored on the client path
+// (that path only ever consults the publishable client key). What it cannot do
+// is exceed server scope. That is still every user, team and piece of project
+// data, so every one of these properties is load-bearing:
 //   * Signed with the per-audience key derived from HEXCLAVE_SERVER_SECRET, on
 //     a `workflow-run:<projectId>` audience. Because `getPrivateJwks` derives
 //     the key from the audience, a token minted for one project is not merely
@@ -28,7 +34,7 @@ import { JOSEError } from "jose/errors";
 //     The audience puts the constant FIRST on purpose: `decodeAccessToken`
 //     parses an access-token audience positionally as `aud.split(":")[0]`, so
 //     a `<projectId>:workflow-run` audience would yield a real project id
-//     there and leave `iss` as the only thing separating a project-admin
+//     there and leave `iss` as the only thing separating a project-server
 //     credential from an end-user one. With the constant first, that parse
 //     produces a non-existent project and the replay fails for two
 //     independent reasons instead of one.
@@ -57,8 +63,8 @@ import { JOSEError } from "jose/errors";
 // request, not just workflow machinery.
 
 /**
- * Distinguishes a run token from a real API key in the credential header.
- * Real keys are `pck_`/`ssk_`/`sak_` followed by base32 (see
+ * Distinguishes a run token from a real API key in the secret-server-key
+ * header. Real keys are `pck_`/`ssk_`/`sak_` followed by base32 (see
  * `createApiKeySet`), so `wrt_` is unreachable by construction rather than
  * merely improbable.
  */
@@ -134,6 +140,31 @@ export async function createWorkflowRunToken(options: WorkflowRunTokenClaims & {
 /** Cheap syntactic check so the auth path can route a credential header without doing crypto. */
 export function isWorkflowRunToken(value: string | null | undefined): value is string {
   return typeof value === "string" && value.startsWith(WORKFLOW_RUN_TOKEN_PREFIX);
+}
+
+/**
+ * The single authority on whether a request is a candidate for run-token
+ * authentication: it is, exactly when the secret-server-key header carries a
+ * `wrt_` value AND the request is not admin-type. Returns the token to
+ * authenticate (crypto + live state still have to run), or null.
+ *
+ * Admin-type requests are excluded because the token is server-scoped; they
+ * are left to the ordinary admin-key path, where a `wrt_` value in the admin
+ * header is simply a key that matches no row.
+ *
+ * This lives here, rather than inline in the auth path, because TWO decisions
+ * must agree: whether to authenticate with the token, and whether to skip the
+ * ApiKeySet lookup for that header. If they ever disagreed — a skipped lookup
+ * whose branch is not taken — the auth path would dereference a query it never
+ * built, turning an unauthenticated request into a 500. One predicate, used
+ * for both, makes that class of bug unreachable rather than merely absent.
+ */
+export function getWorkflowRunTokenForRequest(options: {
+  requestType: "client" | "server" | "admin",
+  secretServerKey: string | null,
+}): string | null {
+  if (options.requestType === "admin") return null;
+  return isWorkflowRunToken(options.secretServerKey) ? options.secretServerKey : null;
 }
 
 /**
@@ -242,30 +273,6 @@ export async function authenticateWorkflowRunToken(options: {
   return Result.ok(claims);
 }
 
-export type WorkflowRunTokenRequestCredential = {
-  token: string,
-  /** Which credential header carried the token — determines which KnownError a rejection maps to. */
-  fromAdminHeader: boolean,
-};
-
-/**
- * Routes the two project-credential headers: returns the run token if either
- * carries one, else null. The run token deliberately rides in the ordinary
- * key headers (see the module comment) instead of a dedicated header, so the
- * auth path needs this to tell a `wrt_` credential apart from a real key.
- *
- * Resolved per header rather than short-circuiting on the first: if both hold
- * run tokens the admin header wins (it is the slot the runtime shim actually
- * uses), and callers should still use {@link isWorkflowRunToken} per header to
- * suppress the ApiKeySet lookup ONLY for the header that holds a token — a
- * run token in one header must not reject a genuine key in the other.
- */
-export function getWorkflowRunTokenFromHeaders(headers: { secretServerKey: string | null, superSecretAdminKey: string | null }): WorkflowRunTokenRequestCredential | null {
-  if (isWorkflowRunToken(headers.superSecretAdminKey)) return { token: headers.superSecretAdminKey, fromAdminHeader: true };
-  if (isWorkflowRunToken(headers.secretServerKey)) return { token: headers.secretServerKey, fromAdminHeader: false };
-  return null;
-}
-
 /**
  * Rejections reachable by any unauthenticated caller who knows a project id
  * (which is semi-public): purely syntactic failures, forged/expired
@@ -282,12 +289,13 @@ const UNAUTHENTICATED_REACHABLE_REJECTIONS: readonly WorkflowRunTokenRejection[]
 /**
  * The auth-path entry point: fully authenticates a run-token credential
  * (crypto + live run state) and, on rejection, throws the SAME KnownError an
- * invalid real key in that header would produce — the specific rejection
- * reason must never reach the caller, since it would disclose run ids, run
- * state, and lease details to unauthenticated probing.
+ * invalid secret server key would produce — the specific rejection reason must
+ * never reach the caller, since it would disclose run ids, run state, and
+ * lease details to unauthenticated probing.
  */
 export async function authenticateWorkflowRunTokenRequestOrThrow(options: {
-  credential: WorkflowRunTokenRequestCredential,
+  /** Taken from the secret-server-key header; the token is not an admin credential. */
+  token: string,
   projectId: string,
   branchId: string,
   /**
@@ -301,7 +309,7 @@ export async function authenticateWorkflowRunTokenRequestOrThrow(options: {
   const authResult = options.tenancyId == null
     ? Result.error("tenancy-not-found" as const)
     : await authenticateWorkflowRunToken({
-      token: options.credential.token,
+      token: options.token,
       projectId: options.projectId,
       branchId: options.branchId,
       tenancyId: options.tenancyId,
@@ -310,9 +318,7 @@ export async function authenticateWorkflowRunTokenRequestOrThrow(options: {
     if (!UNAUTHENTICATED_REACHABLE_REJECTIONS.includes(authResult.error)) {
       console.log(`[Workflow run token] Rejected an authentic run token for project ${options.projectId}: ${authResult.error}`);
     }
-    throw options.credential.fromAdminHeader
-      ? new KnownErrors.InvalidSuperSecretAdminKey(options.projectId)
-      : new KnownErrors.InvalidSecretServerKey(options.projectId);
+    throw new KnownErrors.InvalidSecretServerKey(options.projectId);
   }
   return authResult.data;
 }

@@ -59,6 +59,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
+import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -697,17 +698,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._analyticsOptions = resolvedOptions.analytics;
+
+    if (extraOptions?.uniqueIdentifier !== undefined) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    }
+
+    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, analytics, and
+    // development overlays cannot affect the containing page. Explicit SDK calls remain functional and retain their
+    // documented side effects.
+    if (resolvedOptions.automaticSideEffects === false) {
+      return;
+    }
+
+    this._initializeAutomaticSideEffects(resolvedOptions);
+  }
+
+  private _initializeAutomaticSideEffects(resolvedOptions: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>) {
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();
     }
 
-    if (extraOptions && extraOptions.uniqueIdentifier) {
-      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    if (this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
-
-    this._analyticsOptions = resolvedOptions.analytics;
 
     const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
@@ -2538,12 +2553,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
+        // Passkeys intentionally stay scoped to the hostname where they were
+        // registered. In particular, passkeys created on the legacy hosted
+        // components domain continue to work there but are not carried over to
+        // a replacement hosted domain.
+        scopePasskeyRegistrationToHostname(options_json, hostname);
 
         let attResp;
         try {
@@ -2781,6 +2795,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
+        automaticSideEffects: false,
       }));
     }
     return this._ownedAdminApps.get([session, forProjectId])!;
@@ -3907,11 +3922,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
-        }
-        options_json.rpId = window.location.hostname;
+        // Keep authentication scoped to the current hostname. This deliberately
+        // does not add cross-domain compatibility for passkeys created on a
+        // previous hosted components domain.
+        scopePasskeyAuthenticationToHostname(options_json, window.location.hostname);
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
         return await this._interface.signInWithPasskey({ authentication_response, code }, session);
@@ -4199,13 +4213,19 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
 
         const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
-        return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
+        const app = new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
+        // Inert construction does not register itself, so register only after it has completed to preserve stable
+        // identity across repeated client-side deserialization.
+        if (json.automaticSideEffects === false) {
+          app._initUniqueIdentifier();
+        }
+        return app;
       }
     };
   }
@@ -4232,6 +4252,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           devTool: this._options.devTool,
+          automaticSideEffects: this._options.automaticSideEffects,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
