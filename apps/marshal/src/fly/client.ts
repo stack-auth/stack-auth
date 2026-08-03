@@ -107,7 +107,10 @@ export class FlyClient {
     return text === "" ? null : JSON.parse(text) as T;
   }
 
-  private async fetchGraphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  // allowNotFound: real Fly answers reads on nonexistent apps with a
+  // "Could not find App" GraphQL error (not a null app); the read paths treat
+  // that as "no data" so a service without an app reads as empty.
+  private async fetchGraphql<T>(query: string, variables: Record<string, unknown>, options?: { allowNotFound?: boolean }): Promise<T | null> {
     const { fly } = getConfig();
     const response = await fetch(fly.graphqlApiUrl, {
       method: "POST",
@@ -115,8 +118,12 @@ export class FlyClient {
       body: JSON.stringify({ query, variables }),
     });
     const json = await response.json() as { data?: T, errors?: { message: string }[] };
-    if (!response.ok || (json.errors?.length ?? 0) > 0) {
-      throw new FlyApiError(response.status, "graphql", json.errors?.map((e) => e.message).join("; ") ?? `HTTP ${response.status}`);
+    const errors = json.errors ?? [];
+    if (options?.allowNotFound && errors.length > 0 && errors.every((error) => /could not find/i.test(error.message))) {
+      return null;
+    }
+    if (!response.ok || errors.length > 0) {
+      throw new FlyApiError(response.status, "graphql", errors.map((e) => e.message).join("; ") || `HTTP ${response.status}`);
     }
     return json.data as T;
   }
@@ -208,10 +215,10 @@ export class FlyClient {
     const data = await this.fetchGraphql<{ app: { sharedIpAddress: string | null, ipAddresses: { nodes: { id: string, address: string, type: string }[] } } | null }>(`
       query($app: String!) {
         app(name: $app) { sharedIpAddress ipAddresses { nodes { id address type } } }
-      }`, { app });
+      }`, { app }, { allowNotFound: true });
     return {
-      sharedIpv4: data.app?.sharedIpAddress ?? null,
-      dedicated: data.app?.ipAddresses.nodes ?? [],
+      sharedIpv4: data?.app?.sharedIpAddress ?? null,
+      dedicated: data?.app?.ipAddresses.nodes ?? [],
     };
   }
 
@@ -255,6 +262,7 @@ export class FlyClient {
           certificate { ${FlyClient.CERTIFICATE_FIELDS} }
         }
       }`, { appId: app, hostname });
+    if (data === null) throw new FlyApiError(500, "graphql addCertificate", "empty response");
     return data.addCertificate.certificate;
   }
 
@@ -275,16 +283,16 @@ export class FlyClient {
     const data = await this.fetchGraphql<{ app: { certificate: FlyCertificate | null } | null }>(`
       query($app: String!, $hostname: String!) {
         app(name: $app) { certificate(hostname: $hostname) { ${FlyClient.CERTIFICATE_FIELDS} } }
-      }`, { app, hostname });
-    return data.app?.certificate ?? null;
+      }`, { app, hostname }, { allowNotFound: true });
+    return data?.app?.certificate ?? null;
   }
 
   async listCertificates(app: string): Promise<FlyCertificate[]> {
     const data = await this.fetchGraphql<{ app: { certificates: { nodes: FlyCertificate[] } } | null }>(`
       query($app: String!) {
         app(name: $app) { certificates { nodes { ${FlyClient.CERTIFICATE_FIELDS} } } }
-      }`, { app });
-    return data.app?.certificates.nodes ?? [];
+      }`, { app }, { allowNotFound: true });
+    return data?.app?.certificates.nodes ?? [];
   }
 
   // -------------------------------------------------------------------------

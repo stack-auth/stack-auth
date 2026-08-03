@@ -303,6 +303,14 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
     if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
 
+    // The service app must exist BEFORE the build: registry.fly.io only
+    // accepts pushes to repositories of existing apps (real-Fly-verified —
+    // pushing first fails with "app repository not found").
+    const appName = appNameForService(config.envId, ns, key);
+    const network = networkForNamespace(config.envId, ns);
+    await fly.ensureApp(appName, network);
+    await fly.ensureFlycastIp(appName, network);
+
     await writeSpec(stored);
     // The record is written as "running" BEFORE the builder starts: completion (webhook or
     // mock) may land at any moment after startBuild, and a blind write here afterwards

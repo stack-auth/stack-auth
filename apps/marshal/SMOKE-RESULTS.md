@@ -77,6 +77,28 @@ bucket objects; always run it last). All resources were deleted at the end of th
   `clientStatus` starts as `"Awaiting configuration"`; `dnsValidationTarget` is the
   `_acme-challenge` CNAME target (`<hostname>.<id>.flydns.net.`).
 
+## Real-Fly QA of Marshal itself (post-implementation)
+
+After implementation, Marshal proper was run once against real Fly + real R2 (env id
+"smoke", mock-free except the completion webhook, which can't reach a laptop from Fly's
+network — it was delivered manually with an empty body, which also exercised the
+registry-HEAD digest fallback). Result: PUT → real builder machine → BuildKit build →
+registry push → digest resolve → machine rollout → **state running, instances 1**, runtime
+logs proxied, durable build log persisted (100 lines) with no credential leaked. Two real-API
+divergences were found and fixed:
+
+1. **The registry push target app must exist before the push** — `registry.fly.io` rejects
+   pushes for unknown apps with "app repository not found". Marshal now ensures the service
+   app (+ its network and flycast IP) exists BEFORE spawning the builder, not after the build.
+2. **GraphQL reads on nonexistent apps return a "Could not find App" error**, not a null
+   `app` (which is what the fly-mock naively did). The client treats all-not-found error
+   responses as empty on read paths.
+
+Still untested against real Fly: webhook delivery from the builder machine (needs a publicly
+reachable Marshal — validated implicitly on the first staging deploy) and the harness's
+failure-path webhook. All QA resources (apps `hxc-smoke-builder`, `hxc-s-smokens2-*`; bucket
+objects under `specs/uploads/builds/smokens2`) were deleted afterwards; the org lists no apps.
+
 ## Not validated (accepted risks)
 
 - Full cert issuance with a real DNS-configured domain (needs a domain we control; staging QA).
