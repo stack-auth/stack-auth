@@ -44,7 +44,18 @@ Optional:
     Default: false
     If true, skip prefetching project info on construction.
 
-On construct: prefetch project info (GET /projects/current) unless noAutomaticPrefetch=true.
+  automaticSideEffects: bool [JS-ONLY]
+    Default: true
+    If false, construction must not start any automatic side effects. This includes
+    prefetching, processing authentication or redirect query parameters, reading
+    or writing browser storage or cookies, recording analytics or session replays,
+    installing browser listeners, starting timers, or mounting development UI.
+    Explicit method calls retain their normal behavior and side effects. This
+    option makes construction inert.
+
+On construct: when automaticSideEffects=true, prefetch project info
+(GET /projects/current) unless noAutomaticPrefetch=true. When
+automaticSideEffects=false, perform no automatic side effects.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]

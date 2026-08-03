@@ -699,17 +699,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._analyticsOptions = resolvedOptions.analytics;
+
+    if (extraOptions?.uniqueIdentifier !== undefined) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    }
+
+    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, analytics, and
+    // development overlays cannot affect the containing page. Explicit SDK calls remain functional and retain their
+    // documented side effects.
+    if (resolvedOptions.automaticSideEffects === false) {
+      return;
+    }
+
+    this._initializeAutomaticSideEffects(resolvedOptions);
+  }
+
+  private _initializeAutomaticSideEffects(resolvedOptions: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>) {
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();
     }
 
-    if (extraOptions && extraOptions.uniqueIdentifier) {
-      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    if (this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
-
-    this._analyticsOptions = resolvedOptions.analytics;
 
     const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
@@ -2794,6 +2808,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
+        automaticSideEffects: false,
       }));
     }
     return this._ownedAdminApps.get([session, forProjectId])!;
@@ -4211,13 +4226,19 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
 
         const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
-        return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
+        const app = new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
+        // Inert construction does not register itself, so register only after it has completed to preserve stable
+        // identity across repeated client-side deserialization.
+        if (json.automaticSideEffects === false) {
+          app._initUniqueIdentifier();
+        }
+        return app;
       }
     };
   }
@@ -4244,6 +4265,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           devTool: this._options.devTool,
+          automaticSideEffects: this._options.automaticSideEffects,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
