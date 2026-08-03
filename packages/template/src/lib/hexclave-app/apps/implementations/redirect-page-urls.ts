@@ -38,7 +38,8 @@ export function getCrossDomainHandoffParamsFromCurrentUrl(currentUrl: URL): Cros
 }
 
 type RedirectBackAwareHandlerName = "signIn" | "signUp" | "onboarding" | "signOut";
-type HandlerRedirectPolicy = "none" | "redirect-back-aware" | "after-auth-return";
+type ContinuationAwareHandlerName = "forgotPassword" | "passwordReset";
+type HandlerRedirectPolicy = "none" | "redirect-back-aware" | "continuation-aware" | "after-auth-return";
 
 type CrossDomainHandoffParamsMaybeMissing = {
   state: string | null,
@@ -51,6 +52,10 @@ function isRedirectBackAwareHandlerName(handlerName: keyof HandlerUrls): handler
     || handlerName === "signUp"
     || handlerName === "onboarding"
     || handlerName === "signOut";
+}
+
+function isContinuationAwareHandlerName(handlerName: keyof HandlerUrls): handlerName is ContinuationAwareHandlerName {
+  return handlerName === "forgotPassword" || handlerName === "passwordReset";
 }
 
 function hasCrossDomainHandoffParams(url: URL): boolean {
@@ -148,12 +153,38 @@ function buildRedirectBackAwareHandlerUrl(options: {
   return nextUrl.origin === options.currentUrl.origin ? getRelativePart(nextUrl) : nextUrl.toString();
 }
 
+/**
+ * Carries an auth flow's existing return state without ever making the current page the return
+ * target. This distinction is important for password flows: forgot-password and password-reset
+ * are continuation pages, not destinations customers should return to after signing in.
+ */
+function buildContinuationAwareHandlerUrl(options: {
+  rawHandlerUrl: string,
+  currentUrl: URL,
+}): string {
+  const nextUrl = new URL(options.rawHandlerUrl, options.currentUrl);
+  const inheritedAfterAuthReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
+  if (inheritedAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
+    nextUrl.searchParams.set("after_auth_return_to", inheritedAfterAuthReturnTo);
+  }
+  for (const preservedParam of ["state", "codeChallenge", "afterCallbackRedirectUrl"] as const) {
+    const currentValue = getCrossDomainParam(options.currentUrl.searchParams, preservedParam);
+    if (currentValue != null && !hasCrossDomainParam(nextUrl.searchParams, preservedParam)) {
+      setCrossDomainParam(nextUrl.searchParams, preservedParam, currentValue);
+    }
+  }
+  return nextUrl.origin === options.currentUrl.origin ? getRelativePart(nextUrl) : nextUrl.toString();
+}
+
 function getHandlerRedirectPolicy(handlerName: keyof HandlerUrls): HandlerRedirectPolicy {
   if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
     return "after-auth-return";
   }
   if (isRedirectBackAwareHandlerName(handlerName)) {
     return "redirect-back-aware";
+  }
+  if (isContinuationAwareHandlerName(handlerName)) {
+    return "continuation-aware";
   }
   return "none";
 }
@@ -211,13 +242,36 @@ export async function planRedirectToHandler(options: {
   localOAuthCallbackUrl: string,
   getCrossDomainHandoffParams: (currentUrl: URL) => Promise<CrossDomainHandoffParams>,
 }): Promise<RedirectToHandlerPlan> {
-  if (options.noRedirectBack || options.currentUrl == null) {
+  if (options.currentUrl == null) {
     return { type: "redirect", url: options.rawHandlerUrl };
   }
 
   const policy = getHandlerRedirectPolicy(options.handlerName);
+  if (options.noRedirectBack) {
+    // Sign-in uses noRedirectBack from password-reset pages to avoid capturing the reset page.
+    // It must still carry an already-inherited continuation. Other handlers retain the historical
+    // noRedirectBack behavior, including afterSignIn/afterSignUp ignoring all return state.
+    return {
+      type: "redirect",
+      url: options.handlerName === "signIn"
+        ? buildContinuationAwareHandlerUrl({
+          rawHandlerUrl: options.rawHandlerUrl,
+          currentUrl: options.currentUrl,
+        })
+        : options.rawHandlerUrl,
+    };
+  }
   if (policy === "none") {
     return { type: "redirect", url: options.rawHandlerUrl };
+  }
+  if (policy === "continuation-aware") {
+    return {
+      type: "redirect",
+      url: buildContinuationAwareHandlerUrl({
+        rawHandlerUrl: options.rawHandlerUrl,
+        currentUrl: options.currentUrl,
+      }),
+    };
   }
 
   if (policy === "after-auth-return") {
