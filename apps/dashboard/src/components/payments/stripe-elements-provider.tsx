@@ -13,7 +13,7 @@ type StripeElementsProviderProps = {
   children: React.ReactNode,
   stripeAccountId: string,
   amount: number,
-  mode?: "subscription" | "payment",
+  mode?: "subscription" | "payment" | "setup",
 };
 
 export function StripeElementsProvider({
@@ -35,15 +35,24 @@ export function StripeElementsProvider({
   return (
     <Elements
       stripe={stripePromise}
-      options={{
-        mode,
-        currency: "usd",
-        amount,
-        appearance: {
-          variables: appearanceVariablesForTheme(resolvedTheme),
-          labels: "floating"
+      options={mode === "setup"
+        ? {
+          mode: "setup",
+          currency: "usd",
+          appearance: {
+            variables: appearanceVariablesForTheme(resolvedTheme),
+            labels: "floating"
+          }
         }
-      }}
+        : {
+          mode,
+          currency: "usd",
+          amount,
+          appearance: {
+            variables: appearanceVariablesForTheme(resolvedTheme),
+            labels: "floating"
+          }
+        }}
     >
       {children}
     </Elements>

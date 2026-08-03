@@ -46,7 +46,7 @@ function getStripeConfirmationError(result: unknown) {
 }
 
 type Props = {
-  setupSubscription: () => Promise<string | null>,
+  setupSubscription: () => Promise<{ clientSecret: string, stripeIntentType: "payment" | "setup" } | null>,
   stripeAccountId: string,
   fullCode: string,
   returnUrl?: string,
@@ -78,9 +78,16 @@ export function PaymentsNotEnabledCard() {
 export function TestModeBypassForm({
   onBypass,
   disabled,
+  ignoresFreeTrial,
 }: {
   onBypass: () => Promise<void>,
   disabled?: boolean,
+  /**
+   * When the selected product/price has a free trial configured, test mode
+   * still grants access immediately (no Stripe trial). Surface that so buyers
+   * don't think the trial path was exercised.
+   */
+  ignoresFreeTrial?: boolean,
 }) {
   const [bypassError, setBypassError] = useState<string | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -109,6 +116,15 @@ export function TestModeBypassForm({
           This project is in test mode. Use the bypass button to simulate a purchase.
         </Typography>
       </div>
+
+      {ignoresFreeTrial === true && (
+        <DesignAlert
+          variant="warning"
+          title="Free trial skipped in test mode"
+          description="Test mode grants the product immediately. It does not create a free trial or defer the first charge. Turn off test mode to exercise the real free-trial checkout."
+          className="w-full max-w-xs text-left"
+        />
+      )}
 
       <DesignButton
         disabled={disabled || isCompleting}
@@ -195,19 +211,32 @@ export function CheckoutForm({
       setMessage(getErrorMessage(setupResult.error, "We couldn't complete the purchase. Please try again."));
       return;
     }
-    const clientSecret = setupResult.data;
+    const setupData = setupResult.data;
 
-    if (clientSecret == null) {
+    if (setupData == null) {
       setMessage("We couldn't complete the purchase. Please try again.");
       return;
     }
-    const confirmResult = await Result.fromPromise(activeStripe.confirmPayment({
-      elements: activeElements,
-      clientSecret,
-      confirmParams: {
-        return_url: stripeReturnUrl.toString(),
-      },
-    }));
+    // Free trials return a SetupIntent (seti_…) so we collect a card without
+    // charging; paid starts return a PaymentIntent (pi_…). confirmPayment on a
+    // setup secret fails with "No such payment_intent".
+    const confirmResult = await Result.fromPromise(
+      setupData.stripeIntentType === "setup"
+        ? activeStripe.confirmSetup({
+          elements: activeElements,
+          clientSecret: setupData.clientSecret,
+          confirmParams: {
+            return_url: stripeReturnUrl.toString(),
+          },
+        })
+        : activeStripe.confirmPayment({
+          elements: activeElements,
+          clientSecret: setupData.clientSecret,
+          confirmParams: {
+            return_url: stripeReturnUrl.toString(),
+          },
+        })
+    );
     if (confirmResult.status === "error") {
       setMessage(getErrorMessage(confirmResult.error, "An unexpected error occurred."));
       return;

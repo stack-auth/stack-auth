@@ -7,6 +7,7 @@ import { CheckoutForm, TestModeBypassForm } from "./checkout";
 
 const mockStripe = vi.hoisted(() => ({
   confirmPayment: vi.fn(),
+  confirmSetup: vi.fn(),
 }));
 
 const mockElements = vi.hoisted(() => ({
@@ -50,12 +51,15 @@ vi.mock("@/components/ui", () => ({
 }));
 
 function renderCheckoutForm(props?: {
-  setupSubscription?: () => Promise<string | null>,
+  setupSubscription?: () => Promise<{ clientSecret: string, stripeIntentType: "payment" | "setup" } | null>,
   isFree?: boolean,
 }) {
   return render(
     <CheckoutForm
-      setupSubscription={props?.setupSubscription ?? vi.fn(async () => "client-secret")}
+      setupSubscription={props?.setupSubscription ?? vi.fn(async () => ({
+        clientSecret: "client-secret",
+        stripeIntentType: "payment" as const,
+      }))}
       stripeAccountId="acct_123"
       fullCode="purchase-code"
       disabled={false}
@@ -80,6 +84,7 @@ describe("checkout forms", () => {
     });
     mockElements.submit.mockResolvedValue({});
     mockStripe.confirmPayment.mockResolvedValue({});
+    mockStripe.confirmSetup.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -87,6 +92,7 @@ describe("checkout forms", () => {
     vi.unstubAllGlobals();
     mockElements.submit.mockReset();
     mockStripe.confirmPayment.mockReset();
+    mockStripe.confirmSetup.mockReset();
   });
 
   it("shows a blocking inline error when the test-mode bypass fails", async () => {
@@ -104,6 +110,18 @@ describe("checkout forms", () => {
     expect(screen.getByText("Could not complete test purchase")).toBeTruthy();
     expect(screen.getByText("You already have this product and cannot purchase it again.")).toBeTruthy();
     expect(alertMock).not.toHaveBeenCalled();
+  });
+
+  it("warns when test mode will ignore a configured free trial", () => {
+    render(
+      <TestModeBypassForm
+        onBypass={async () => undefined}
+        ignoresFreeTrial
+      />,
+    );
+
+    expect(screen.getByText("Free trial skipped in test mode")).toBeTruthy();
+    expect(screen.getByText(/does not create a Stripe trial/)).toBeTruthy();
   });
 
   it("clears a stale test-mode bypass error before retrying", async () => {
@@ -125,7 +143,10 @@ describe("checkout forms", () => {
   });
 
   it("shows Stripe Elements validation errors inline", async () => {
-    const setupSubscription = vi.fn(async () => "client-secret");
+    const setupSubscription = vi.fn(async () => ({
+      clientSecret: "client-secret",
+      stripeIntentType: "payment" as const,
+    }));
     mockElements.submit.mockResolvedValueOnce({
       error: {
         message: "Enter a complete payment method.",
@@ -186,6 +207,24 @@ describe("checkout forms", () => {
     });
     expect(setupSubscription).toHaveBeenCalledTimes(1);
     expect(mockElements.submit).not.toHaveBeenCalled();
+    expect(mockStripe.confirmPayment).not.toHaveBeenCalled();
+    expect(alertMock).not.toHaveBeenCalled();
+  });
+
+  it("uses confirmSetup for free-trial setup intents", async () => {
+    const setupSubscription = vi.fn(async () => ({
+      clientSecret: "seti_test_secret",
+      stripeIntentType: "setup" as const,
+    }));
+    mockStripe.confirmSetup.mockResolvedValueOnce({});
+
+    renderCheckoutForm({ setupSubscription });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(mockStripe.confirmSetup).toHaveBeenCalledTimes(1);
+    });
     expect(mockStripe.confirmPayment).not.toHaveBeenCalled();
     expect(alertMock).not.toHaveBeenCalled();
   });

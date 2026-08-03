@@ -24,6 +24,7 @@ type ProductData = {
   project_logo_url: string | null,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
+  replaces_stripe_subscription?: boolean,
   test_mode: boolean,
   charges_enabled: boolean | null,
 };
@@ -65,6 +66,19 @@ function getClientSecret(responseBody: unknown) {
   return null;
 }
 
+function getStripeIntentType(responseBody: unknown): "payment" | "setup" {
+  if (
+    typeof responseBody === "object"
+    && responseBody !== null
+    && "stripe_intent_type" in responseBody
+    && (responseBody.stripe_intent_type === "payment" || responseBody.stripe_intent_type === "setup")
+  ) {
+    return responseBody.stripe_intent_type;
+  }
+  // Older responses / one-time paths without the field are payment intents.
+  return "payment";
+}
+
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,18 +114,39 @@ export default function PageClient({ code }: { code: string }) {
 
   const isTooLarge = rawAmountCents > MAX_STRIPE_AMOUNT_CENTS;
 
+  // Price-level free_trial preferred; product-level is transitional fallback.
+  const hasSelectedFreeTrial = useMemo(() => {
+    if (!selectedPriceId || !data?.product?.prices) return false;
+    const price = data.product.prices[selectedPriceId];
+    return !!(price.free_trial ?? data.product.free_trial);
+  }, [data, selectedPriceId]);
+
+  // purchase-session intentionally omits trial_period_days on in-place Stripe
+  // subscription updates (plan switch / conflict replace). If we still mounted
+  // Elements in setup mode from product config alone, confirmPayment would fail
+  // with a Stripe mode mismatch against the PaymentIntent that path returns.
+  const appliesFreeTrialAtCheckout = useMemo(() => {
+    if (!hasSelectedFreeTrial) return false;
+    if (data?.replaces_stripe_subscription === true) return false;
+    return true;
+  }, [hasSelectedFreeTrial, data?.replaces_stripe_subscription]);
+
   const elementsAmountCents = useMemo(() => {
+    // Immediate charge is $0 during a free trial — Stripe Elements amount should
+    // reflect what the customer pays now (SetupIntent / deferred charge).
+    if (appliesFreeTrialAtCheckout) return 0;
     if (!unitCents) return 0;
     if (rawAmountCents < 1) return unitCents;
     if (isTooLarge) return MAX_STRIPE_AMOUNT_CENTS;
     return rawAmountCents;
-  }, [unitCents, rawAmountCents, isTooLarge]);
+  }, [appliesFreeTrialAtCheckout, unitCents, rawAmountCents, isTooLarge]);
 
-  const elementsMode = useMemo<"subscription" | "payment">(() => {
+  const elementsMode = useMemo<"subscription" | "payment" | "setup">(() => {
     if (!selectedPriceId || !data?.product?.prices) return "subscription";
+    if (appliesFreeTrialAtCheckout) return "setup";
     const price = data.product.prices[selectedPriceId];
     return price.interval ? "subscription" : "payment";
-  }, [data, selectedPriceId]);
+  }, [data, selectedPriceId, appliesFreeTrialAtCheckout]);
 
   const validateCode = useCallback(async (baseUrl: string) => {
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
@@ -181,7 +216,13 @@ export default function PageClient({ code }: { code: string }) {
     if (!clientSecret && !isFreeSelected) {
       throw new Error(GENERIC_PURCHASE_FAILURE_MESSAGE);
     }
-    return clientSecret;
+    if (!clientSecret) {
+      return null;
+    }
+    return {
+      clientSecret,
+      stripeIntentType: getStripeIntentType(result),
+    };
   };
 
   const handleBypass = useCallback(async () => {
@@ -368,6 +409,7 @@ export default function PageClient({ code }: { code: string }) {
                   <TestModeBypassForm
                     onBypass={handleBypass}
                     disabled={checkoutDisabled}
+                    ignoresFreeTrial={hasSelectedFreeTrial}
                   />
                 ) : data.stripe_account_id == null ? (
                   <PaymentsNotEnabledCard />
