@@ -1,4 +1,4 @@
-import { getServiceRowOrThrow, isTerminalRunStatus, refreshRunFromVercel, runToApiShape } from "@/lib/deployments";
+import { getServiceRowOrThrow, isTerminalRunStatus, refreshRunFromMarshal, runToApiShape } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -49,7 +49,7 @@ export const GET = createSmartRouteHandler({
     // handful in flight at once, so refreshing serially is fine.
     for (const run of runs) {
       if (!isTerminalRunStatus(run.status)) {
-        await refreshRunFromVercel(prisma, auth.tenancy, run);
+        await refreshRunFromMarshal(prisma, auth.tenancy, run, params.service_id);
       }
     }
     const refreshedRuns = await prisma.deploymentRun.findMany({

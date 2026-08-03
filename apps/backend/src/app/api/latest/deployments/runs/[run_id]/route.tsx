@@ -1,4 +1,4 @@
-import { refreshRunFromVercel, runToApiShape } from "@/lib/deployments";
+import { refreshRunFromMarshal, runToApiShape } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -34,11 +34,12 @@ export const GET = createSmartRouteHandler({
           id: params.run_id,
         },
       },
+      include: { service: true },
     });
     if (run == null) {
       throw new StatusError(404, "No deployment run found with the given id.");
     }
-    await refreshRunFromVercel(prisma, auth.tenancy, run);
+    await refreshRunFromMarshal(prisma, auth.tenancy, run, run.service.serviceId);
     const refreshed = await prisma.deploymentRun.findUnique({
       where: {
         tenancyId_id: {

@@ -1,5 +1,5 @@
-import { computeDnsRecords, getServiceRowOrThrow } from "@/lib/deployments";
-import { VercelApiError, getVercelDeploymentsClientOrThrow, sanitizeVercelError } from "@/lib/deployments/vercel-client";
+import { getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
+import { MarshalApiError, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "@/lib/deployments/marshal-client";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -45,7 +45,7 @@ async function findDomainRowOrThrow(prisma: PrismaClientTransaction, tenancy: Te
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get deployment service domain",
-    description: "Returns the verification state of a domain and the DNS records the user must create. Re-checks verification with the deployment target on every read, so polling this endpoint picks up DNS changes.",
+    description: "Returns the verification state of a domain and the DNS records the user must create. Re-checks verification with the runtime on every read, so polling this endpoint picks up DNS changes.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -60,8 +60,9 @@ export const GET = createSmartRouteHandler({
       hostname: yupString().defined(),
       is_primary: yupBoolean().defined(),
       verified: yupBoolean().defined(),
-      // True while the service has never been deployed: Vercel hasn't been
-      // told about the domain yet, so only the generic records are shown.
+      // True while the service has never been deployed: the runtime hasn't
+      // been told about the domain yet, and the DNS targets (the app's IPs)
+      // only exist once it has, so no records can be shown.
       pending_first_deploy: yupBoolean().defined(),
       dns_records: yupArray(yupObject({
         type: yupString().defined(),
@@ -75,9 +76,9 @@ export const GET = createSmartRouteHandler({
     await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
-    if (service.vercelProjectId == null) {
-      // Not provisioned yet: Vercel doesn't know the domain, but the A/CNAME
-      // guidance is static, so the user can already set up their DNS.
+    if (service.provisionedAt == null || getMarshalDeploymentsConfigOrNull() == null) {
+      // Not provisioned yet: the runtime doesn't know the domain and its DNS
+      // targets don't exist yet — deploy first.
       return {
         statusCode: 200,
         bodyType: "json",
@@ -86,42 +87,40 @@ export const GET = createSmartRouteHandler({
           is_primary: domain.isPrimary,
           verified: false,
           pending_first_deploy: true,
-          dns_records: computeDnsRecords(params.hostname, guessApexName(params.hostname), undefined),
+          dns_records: [],
         },
       } as const;
     }
 
-    const client = getVercelDeploymentsClientOrThrow();
-    let vercelDomain;
-    let misconfigured;
+    const client = getMarshalClientOrThrow();
+    let result;
     try {
-      // verify re-checks the ownership challenge on Vercel's side; the domain
-      // config check covers the actual DNS records (A/CNAME). Both are
-      // re-checked on every read, so polling this endpoint is what eventually
-      // flips the domain to live. They are independent: an unclaimed domain is
-      // "verified" (no ownership challenge needed) while its DNS still points
-      // nowhere.
-      try {
-        vercelDomain = await client.verifyProjectDomain(service.vercelProjectId, params.hostname);
-      } catch (e) {
-        // Vercel's verify endpoint answers 4xx (e.g. missing_txt_record) when
-        // the ownership challenge simply isn't satisfied yet. That's not an
-        // error for us — it's the normal "pending" state, so fall back to a
-        // plain read, which includes the outstanding challenges.
-        if (!(e instanceof VercelApiError && e.status >= 400 && e.status < 500)) {
-          throw e;
-        }
-        vercelDomain = await client.getProjectDomain(service.vercelProjectId, params.hostname);
-      }
-      misconfigured = await client.isDomainMisconfigured(params.hostname);
+      // A re-PUT of an already-attached domain is idempotent on Marshal and
+      // returns the current certificate state + DNS records — it's the
+      // "re-check now" primitive, the same role Vercel's verify call played.
+      result = await client.putDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname, params.service_id);
     } catch (e) {
-      sanitizeVercelError(e, "Checking the domain failed");
+      if (e instanceof MarshalApiError && e.status === 404) {
+        // Runtime spec is gone despite our provisionedAt (state reset); treat
+        // like pre-first-deploy so the UI shows "deploy first".
+        return {
+          statusCode: 200,
+          bodyType: "json",
+          body: {
+            hostname: params.hostname,
+            is_primary: domain.isPrimary,
+            verified: false,
+            pending_first_deploy: true,
+            dns_records: [],
+          },
+        } as const;
+      }
+      sanitizeMarshalError(e, "Checking the domain failed");
     }
-    const isLive = vercelDomain.verified && !misconfigured;
 
     await prisma.deploymentServiceDomain.update({
       where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
-      data: { verified: isLive },
+      data: { verified: result.verified },
     });
 
     return {
@@ -130,11 +129,11 @@ export const GET = createSmartRouteHandler({
       body: {
         hostname: params.hostname,
         is_primary: domain.isPrimary,
-        verified: isLive,
+        verified: result.verified,
         pending_first_deploy: false,
-        // TXT ownership challenges only apply while the ownership check is
-        // pending; the A/CNAME guidance applies while DNS is misconfigured.
-        dns_records: isLive ? [] : computeDnsRecords(params.hostname, vercelDomain.apexName, vercelDomain.verified ? undefined : vercelDomain.verification),
+        // Once verified there is nothing left for the user to create; while
+        // pending, the records include the ACME pre-issuance challenge.
+        dns_records: result.verified ? [] : result.dns_records,
       },
     };
   },
@@ -143,7 +142,7 @@ export const GET = createSmartRouteHandler({
 export const DELETE = createSmartRouteHandler({
   metadata: {
     summary: "Remove domain from deployment service",
-    description: "Removes a domain from a deployment service (deployment target and operational state).",
+    description: "Removes a domain from a deployment service (runtime and operational state). The service stays running and internally reachable; its public IPs are released when the last domain is removed.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -164,11 +163,15 @@ export const DELETE = createSmartRouteHandler({
     await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
-    if (service.vercelProjectId != null) {
+    if (service.provisionedAt != null && getMarshalDeploymentsConfigOrNull() != null) {
       try {
-        await getVercelDeploymentsClientOrThrow().removeProjectDomain(service.vercelProjectId, params.hostname);
+        await getMarshalClientOrThrow().deleteDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname);
       } catch (e) {
-        sanitizeVercelError(e, "Removing the domain failed");
+        // Already detached on the runtime (or never attached) — deleting the
+        // row is still correct.
+        if (!(e instanceof MarshalApiError && e.status === 404)) {
+          sanitizeMarshalError(e, "Removing the domain failed");
+        }
       }
     }
     await prisma.deploymentServiceDomain.deleteMany({
@@ -184,13 +187,3 @@ export const DELETE = createSmartRouteHandler({
     };
   },
 });
-
-// Best-effort apex guess for the not-yet-provisioned case (Vercel would tell
-// us the real apexName). "app.example.com" -> "example.com"; two-label
-// hostnames are treated as already-apex. Multi-part TLDs (e.g. .co.uk) are
-// mis-guessed here, which only affects the provisional A-vs-CNAME hint shown
-// before the first deploy — the post-deploy records come from Vercel.
-function guessApexName(hostname: string): string {
-  const parts = hostname.split(".");
-  return parts.length <= 2 ? hostname : parts.slice(-2).join(".");
-}

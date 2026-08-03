@@ -1,5 +1,5 @@
-import { decryptDeploymentRedactionSecrets, isTerminalRunStatus, mapVercelReadyState, redactSecrets } from "@/lib/deployments";
-import { getVercelDeploymentsClientOrThrow, sanitizeVercelError } from "@/lib/deployments/vercel-client";
+import { decryptDeploymentRedactionSecrets, marshalNamespaceForTenancy, redactSecrets } from "@/lib/deployments";
+import { getMarshalClientOrThrow } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -7,9 +7,10 @@ import { adaptSchema, serverOrHigherAuthTypeSchema, yupMixed, yupObject, yupStri
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
-// The stream polls Vercel until the build finishes, capped so a stuck build
-// can't hold the connection forever. Clients can simply re-request to resume
-// (the whole log is replayed each time — build logs are small).
+// The stream pages build logs from Marshal until the build finishes, capped so
+// a stuck build can't hold the connection forever. Clients can simply
+// re-request to resume (the whole log is replayed each time — build logs are
+// small).
 const POLL_INTERVAL_MS = 2000;
 const MAX_STREAM_MS = 4 * 60 * 1000;
 
@@ -39,64 +40,53 @@ export const GET = createSmartRouteHandler({
           id: params.run_id,
         },
       },
+      include: { service: true },
     });
     if (run == null) {
       throw new StatusError(404, "No deployment run found with the given id.");
     }
-    const vercelDeploymentId = run.vercelDeploymentId;
-    if (vercelDeploymentId == null) {
+    const marshalBuildId = run.marshalBuildId;
+    if (marshalBuildId == null) {
       throw new StatusError(400, "This run has no build logs.");
     }
-    const client = getVercelDeploymentsClientOrThrow();
+    const serviceId = run.service.serviceId;
+    const client = getMarshalClientOrThrow();
+    const ns = marshalNamespaceForTenancy(auth.tenancy);
 
     // Builds run user code that may print env values. Use the exact encrypted
     // snapshot captured for THIS run: current project secrets cannot cover
     // request-only defaults or values that were rotated/deleted afterwards.
     // Decryption and validation happen before the response starts, so any
     // failure closes the endpoint rather than serving partially-redacted logs.
+    // (Marshal applies its own stage-1 redaction of runtime credentials; this
+    // is stage 2, covering the backend's secrets.)
     const secretValues = await decryptDeploymentRedactionSecrets(run.redactionSecretsEncrypted);
 
     const encoder = new TextEncoder();
-    let isRunTerminal = isTerminalRunStatus(run.status);
     // Flipped by cancel() when the client disconnects: the poll loop must stop
-    // hitting Vercel, and a disconnect is NOT an error worth capturing.
+    // hitting Marshal, and a disconnect is NOT an error worth capturing.
     let clientCancelled = false;
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
         try {
           const startedAt = performance.now();
-          let emittedCount = 0;
+          let sinceMillis: number | undefined = undefined;
           while (!clientCancelled) {
-            let events;
-            try {
-              events = await client.getDeploymentEvents(vercelDeploymentId);
-            } catch (e) {
-              sanitizeVercelError(e, "Fetching build logs failed");
-            }
-            for (const event of events.slice(emittedCount)) {
-              const text = redactSecrets(event.text, secretValues);
+            const page = await client.getBuildLogs(ns, serviceId, marshalBuildId, { sinceMillis });
+            for (const line of page.lines) {
+              const text = redactSecrets(line.text, secretValues);
               controller.enqueue(encoder.encode(text.endsWith("\n") ? text : `${text}\n`));
             }
-            // Monotonic: a transient empty/miss-shaped events response must
-            // not reset the counter, or the next full response would replay
-            // every line again.
-            emittedCount = Math.max(emittedCount, events.length);
+            sinceMillis = page.next_since_millis;
 
-            if (isRunTerminal) {
+            if (page.complete) {
               break;
             }
             if (performance.now() - startedAt > MAX_STREAM_MS) {
               controller.enqueue(encoder.encode("[hexclave] Log stream timed out while the build is still running; re-request to continue following.\n"));
               break;
             }
-            let deployment;
-            try {
-              deployment = await client.getDeployment(vercelDeploymentId);
-            } catch (e) {
-              sanitizeVercelError(e, "Fetching the deployment status failed");
-            }
-            isRunTerminal = isTerminalRunStatus(mapVercelReadyState(deployment.readyState));
-            if (!isRunTerminal) {
+            if (page.lines.length === 0) {
               await wait(POLL_INTERVAL_MS);
             }
           }

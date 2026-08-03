@@ -12,7 +12,7 @@
 
 import * as yup from "yup";
 import { PROJECT_SECRET_KEY_REGEX } from "./project-secrets";
-import { yupObject, yupRecord, yupString } from "./schema-fields";
+import { yupNumber, yupObject, yupRecord, yupString } from "./schema-fields";
 
 export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
@@ -38,7 +38,12 @@ export const HEXCLAVE_SERVICE_ID = "hexclave";
 // production), so exposing it would be a documented dead end — every deploy
 // referencing it would fail with "no successful preview deployment yet".
 export const HEXCLAVE_OUTPUT_KEYS = ["projectId", "apiUrl", "jwksUrl", "publishableClientKey", "secretServerKey"] as const;
-export const SERVICE_OUTPUT_KEYS = ["url"] as const;
+// `url` is the public URL and exists only once a custom domain verifies —
+// container services are private by default. `internalUrl`/`internalHost` are
+// the private-network address (deterministic from the service's identity, so
+// they never block a deploy) and are the normal way services talk to each
+// other.
+export const SERVICE_OUTPUT_KEYS = ["url", "internalUrl", "internalHost"] as const;
 
 export type HexclaveOutputKey = typeof HEXCLAVE_OUTPUT_KEYS[number];
 export type ServiceOutputKey = typeof SERVICE_OUTPUT_KEYS[number];
@@ -60,14 +65,20 @@ export type DeploymentEnvVarDefinition = {
 };
 
 export type DeploymentServiceDefinition = {
-  // Which platform runs the service. Only Vercel-backed services exist today,
-  // but the field is required so definitions stay unambiguous once more types
-  // are added (every write path must state what it's creating).
-  type: "vercel",
-  framework?: string | undefined,
-  install_command?: string | undefined,
-  build_command?: string | undefined,
-  output_directory?: string | undefined,
+  // Which platform runs the service. Only container services (built from a
+  // Dockerfile at the source root, run on the Fly-backed Marshal runtime)
+  // exist today, but the field is required so definitions stay unambiguous
+  // once more types are added (every write path must state what it's
+  // creating).
+  type: "container",
+  // The single HTTP port the container listens on. Readiness = the port
+  // accepts connections.
+  port: number,
+  // Scaling bounds. 1/1 = serverful (one always-on instance, no cold starts);
+  // anything else is serverless between the bounds, and min 0 scales to zero.
+  // Defaults: min 0, max 1.
+  min_instances?: number | undefined,
+  max_instances?: number | undefined,
   // Relative to the directory containing hexclave.config.ts. Only used
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
@@ -116,12 +127,23 @@ export const deploymentSecretDefaultsSchema = yupRecord(
 );
 
 export const deploymentServiceDefinitionSchema = yupObject({
-  type: yupString().oneOf(["vercel"]).defined(),
-  framework: yupString().optional(),
-  install_command: yupString().optional(),
-  build_command: yupString().optional(),
-  output_directory: yupString().optional(),
+  type: yupString().oneOf(["container"]).defined(),
+  port: yupNumber().integer().min(1).max(65535).defined(),
+  min_instances: yupNumber().integer().min(0).optional(),
+  max_instances: yupNumber().integer().min(1).max(5).optional()
+    .test("max-gte-min", "max_instances must be greater than or equal to min_instances", function (value) {
+      const minInstances = (this.parent as { min_instances?: number }).min_instances;
+      if (value === undefined || minInstances === undefined) return true;
+      return value >= minInstances;
+    }),
   root_directory: yupString().optional(),
+  // The legacy Vercel-era build fields are rejected explicitly (not merely
+  // absent) for the same yupRecord reason dev_command is below: an out-of-date
+  // CLI or hand-written request should get a clear error, not silent dropping.
+  framework: yupString().oneOf([undefined], "deployment service definitions no longer support `framework` — container services build from the Dockerfile at the source root (upgrade your Hexclave CLI if this came from `hexclave deploy`)"),
+  install_command: yupString().oneOf([undefined], "deployment service definitions no longer support `install_command` — container services build from the Dockerfile at the source root"),
+  build_command: yupString().oneOf([undefined], "deployment service definitions no longer support `build_command` — container services build from the Dockerfile at the source root"),
+  output_directory: yupString().oneOf([undefined], "deployment service definitions no longer support `output_directory` — container services build from the Dockerfile at the source root"),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
   // reads it straight out of the local config file, and the backend never acts
   // on it, so it is never sent and never stored. Rejected rather than simply
@@ -139,14 +161,17 @@ export const deploymentServiceDefinitionSchema = yupObject({
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var shapes", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel",
+    type: "container",
+    port: 3000,
+    min_instances: 0,
+    max_instances: 2,
     root_directory: "./",
-    framework: "nextjs",
     env: {
       MY_ENV_VAR: { value: "true" },
       DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
       OPENAI_API_KEY: { type: "secret", key: "OPENAI" },
       NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+      API_INTERNAL_URL: { type: "connection", value: "api.internalUrl" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
 });
@@ -154,28 +179,40 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shapes", async ({ expect }) => {
   // A secret with an inline value would defeat the whole point of secrets.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } },
+    type: "container", port: 3000, env: { A: { type: "secret", key: "a", value: "leaked" } },
   }, { abortEarly: false })).rejects.toThrow(/must not have a value/);
   // A secret without a key can never be filled at deploy time.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { A: { type: "secret" } },
+    type: "container", port: 3000, env: { A: { type: "secret" } },
   }, { abortEarly: false })).rejects.toThrow(/key/);
   // Plain values may not carry a secret key.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { A: { value: "x", key: "a" } },
+    type: "container", port: 3000, env: { A: { value: "x", key: "a" } },
   }, { abortEarly: false })).rejects.toThrow(/only have a key/);
   // Connections must point at `<serviceId>.<outputKey>`.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } },
+    type: "container", port: 3000, env: { A: { type: "connection", value: "{hexclave.projectId}" } },
   }, { abortEarly: false })).rejects.toThrow(/service output/);
   // Env var keys must be valid POSIX-ish env var names.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", env: { "1BAD": { value: "x" } },
+    type: "container", port: 3000, env: { "1BAD": { value: "x" } },
   }, { abortEarly: false })).rejects.toThrow(/env var keys/);
   // The service type is required.
   await expect(deploymentServiceDefinitionSchema.validate({
-    framework: "nextjs", env: {},
+    port: 3000, env: {},
   }, { abortEarly: false })).rejects.toThrow(/type/);
+  // The port is required — there is no sensible default to guess.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/port/);
+  // Scaling bounds must be consistent.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, min_instances: 3, max_instances: 1, env: {},
+  }, { abortEarly: false })).rejects.toThrow(/greater than or equal to min_instances/);
+  // The Vercel-era build fields are gone and must say so.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, framework: "nextjs", env: {},
+  }, { abortEarly: false })).rejects.toThrow(/no longer support `framework`/);
 });
 
 import.meta.vitest?.test("a service's dev command is not part of its definition", async ({ expect }) => {
@@ -183,7 +220,7 @@ import.meta.vitest?.test("a service's dev command is not part of its definition"
   // a client sending one is out of date rather than merely verbose — say so
   // instead of dropping the field on the floor.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel", dev_command: "pnpm dev", env: {},
+    type: "container", port: 3000, dev_command: "pnpm dev", env: {},
   }, { abortEarly: false })).rejects.toThrow(/must not carry a dev_command/);
 });
 
@@ -193,11 +230,13 @@ import.meta.vitest?.test("a secret's default value is not part of its definition
   // default could be stored, "is this secret set?" would stop having a single
   // answer, which is exactly the three-way badge state this replaced.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel",
+    type: "container",
+    port: 3000,
     env: { OPENAI_API_KEY: { type: "secret", key: "OPENAI", default_value: "sk-dev" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "vercel",
+    type: "container",
+    port: 3000,
     env: { PLAIN: { value: "x", default_value: "y" } },
   }, { abortEarly: false })).rejects.toThrow(/must not carry a default_value/);
 });

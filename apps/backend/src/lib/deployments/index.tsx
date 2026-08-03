@@ -1,17 +1,21 @@
 // Core logic for the Deployments app: service definitions (synced from the
 // config file's `services` export into DeploymentService rows) + operational
-// state (Prisma) + the Vercel write-through.
+// state (Prisma) + the write-through to Marshal, the Fly.io-backed container
+// runtime (apps/marshal).
 //
 // Terminology, because it's easy to mix up:
 // - "service id" is the user-facing key of the record returned by the config
 //   file's `services` export (e.g. "api"). It's what the CLI and all API
-//   routes use.
+//   routes use, and it doubles as the Marshal service key.
+// - The Marshal "namespace" is the tenancy id: every runtime resource of a
+//   tenancy lives behind one namespace, and Marshal keeps namespaces
+//   network-isolated from each other.
 // - The DeploymentService Prisma row holds BOTH the definition (as last synced
-//   by `hexclave deploy` — build config and env var definitions; NOT the
+//   by `hexclave deploy` — container config and env var definitions; NOT the
 //   config file's `devCommand`, which never leaves the developer's machine) and
-//   the operational state (Vercel project id, custom domains, runs). Secret
-//   VALUES are never part of a definition; they live in the project secret
-//   store (see @/lib/project-secrets), envelope-encrypted via KMS. Neither are secret
+//   the operational state (custom domains, runs). Secret VALUES are never part
+//   of a definition; they live in the project secret store (see
+//   @/lib/project-secrets), envelope-encrypted via KMS. Neither are secret
 //   DEFAULTS (`secret(key, default)`): they travel with the deploy request and
 //   are never persisted, so the dashboard's secrets page can present a single
 //   unambiguous state — a key either has a stored value or it isn't there.
@@ -19,7 +23,7 @@
 // KNOWN GAP — services removed from the config file. The definitions are
 // synced additively: a service that disappears from the `services` export
 // keeps its DeploymentService row (still visible in the dashboard) and its
-// live Vercel project. Deleting infrastructure automatically on a sync would
+// live Marshal service. Deleting infrastructure automatically on a sync would
 // turn a config typo into a torn-down production deployment, so removal is
 // deliberately out of scope for now; an auto-cleanup layer (or an explicit
 // prune command) is planned to cover it.
@@ -34,23 +38,16 @@ import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets"
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { parseTar } from "@hexclave/shared/dist/utils/tar";
-import { createHash } from "node:crypto";
-import { gunzipSync } from "node:zlib";
-import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
+import { MarshalApiError, MarshalClient, MarshalDnsRecord, MarshalEnvValue, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "./marshal-client";
 
 export { HEXCLAVE_SERVICE_ID };
 
-// Sizes are generous for "source of a web app without node_modules" while
-// still bounding what a hostile upload can make the backend allocate.
-const MAX_TARBALL_GZIPPED_BYTES = 50 * 1024 * 1024;
-const MAX_TARBALL_UNPACKED_BYTES = 256 * 1024 * 1024;
-const MAX_TARBALL_ENTRIES = 20_000;
-export const UPLOAD_EXPIRY_MS = 15 * 60 * 1000;
-
-export const MAX_UPLOAD_BYTES = MAX_TARBALL_GZIPPED_BYTES;
-
 export const ENV_VAR_KEY_REGEX = DEPLOYMENT_ENV_VAR_KEY_REGEX;
+
+// Default scaling bounds when the definition leaves them out: scale-to-zero
+// serverless with a single instance.
+export const DEFAULT_MIN_INSTANCES = 0;
+export const DEFAULT_MAX_INSTANCES = 1;
 
 export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include: { domains: true } }>;
 
@@ -60,6 +57,11 @@ export type DeploymentServiceRow = Prisma.DeploymentServiceGetPayload<{ include:
 // domains, an unordered include would let the URL we bake into a consumer's
 // build — and the one the API reports — flip between reads.
 const DOMAINS_INCLUDE_ORDER = { orderBy: { hostname: "asc" } } as const satisfies Prisma.DeploymentService$domainsArgs;
+
+/** The Marshal namespace of a tenancy. One place so it cannot drift. */
+export function marshalNamespaceForTenancy(tenancy: Tenancy): string {
+  return tenancy.id;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -100,19 +102,20 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
 
 export function definitionFromServiceRow(row: {
   serviceId: string,
-  framework: string | null,
-  installCommand: string | null,
-  buildCommand: string | null,
-  outputDirectory: string | null,
+  port: number | null,
+  minInstances: number | null,
+  maxInstances: number | null,
   rootDirectory: string | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
   return {
-    type: "vercel",
-    framework: row.framework ?? undefined,
-    install_command: row.installCommand ?? undefined,
-    build_command: row.buildCommand ?? undefined,
-    output_directory: row.outputDirectory ?? undefined,
+    type: "container",
+    // Rows that predate a synced definition have no port; deploys of them are
+    // rejected earlier (see the deploy route's definitionSyncedAt check), and
+    // display-only readers tolerate the placeholder.
+    port: row.port ?? 0,
+    min_instances: row.minInstances ?? undefined,
+    max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
@@ -153,10 +156,9 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
     const definitionColumns = {
       definitionSyncedAt: new Date(),
       definitionSyncId,
-      framework: definition.framework ?? null,
-      installCommand: definition.install_command ?? null,
-      buildCommand: definition.build_command ?? null,
-      outputDirectory: definition.output_directory ?? null,
+      port: definition.port,
+      minInstances: definition.min_instances ?? null,
+      maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
@@ -216,69 +218,25 @@ export function normalizeHostnameOrThrow(hostname: string): string {
   return normalized;
 }
 
-/**
- * The Vercel project name for a service: `hxc-<hexclaveProjectId>-<serviceId>`,
- * sanitized to Vercel's project name rules (lowercase alphanumeric + hyphens,
- * max 100 chars). The hash is computed from the unsanitized identifiers and
- * retained when the readable prefix is truncated, so two long or
- * punctuation-heavy identifiers cannot collapse to the same Vercel name.
- * Only used at provisioning time — afterwards the persisted Vercel project id
- * is authoritative.
- */
-export function vercelProjectNameForService(hexclaveProjectId: string, serviceId: string): string {
-  const sanitized = `hxc-${hexclaveProjectId}-${serviceId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
-  const identityHash = createHash("sha256")
-    .update(JSON.stringify([hexclaveProjectId, serviceId]))
-    .digest("hex")
-    .slice(0, 12);
-  const readablePrefix = sanitized.slice(0, 100 - identityHash.length - 1).replace(/-+$/, "");
-  return `${readablePrefix}-${identityHash}`;
-}
-
-// Vercel only accepts known framework slugs; everything else must be omitted
-// (Vercel then auto-detects). The config's framework field is free-form, so
-// map the common spellings and drop the rest.
-const FRAMEWORK_SLUGS = new Map<string, string>([
-  ["nextjs", "nextjs"],
-  ["next.js", "nextjs"],
-  ["next", "nextjs"],
-  ["vite", "vite"],
-  ["astro", "astro"],
-  ["remix", "remix"],
-  ["sveltekit", "sveltekit"],
-  ["svelte", "sveltekit"],
-  ["nuxt", "nuxtjs"],
-  ["nuxtjs", "nuxtjs"],
-  ["gatsby", "gatsby"],
-  ["create-react-app", "create-react-app"],
-]);
-
-export function frameworkSlugOrUndefined(framework: string | undefined): string | undefined {
-  if (framework == null || framework.trim() === "") return undefined;
-  return FRAMEWORK_SLUGS.get(framework.trim().toLowerCase());
-}
-
-export function mapVercelReadyState(readyState: string): DeploymentRunStatus {
-  switch (readyState) {
-    case "QUEUED": {
+export function mapMarshalBuildStatus(status: string): DeploymentRunStatus {
+  switch (status) {
+    case "queued": {
       return "QUEUED";
     }
-    case "BUILDING":
-    case "INITIALIZING":
-    case "UPLOADING": {
+    case "running": {
       return "BUILDING";
     }
-    case "READY": {
+    case "succeeded": {
       return "READY";
     }
-    case "ERROR": {
+    case "failed": {
       return "ERROR";
     }
-    case "CANCELED": {
+    case "canceled": {
       return "CANCELED";
     }
     default: {
-      // Vercel added a state we don't know; treat it as still-building so
+      // Marshal added a state we don't know; treat it as still-building so
       // polling continues instead of wrongly finalizing the run.
       return "BUILDING";
     }
@@ -336,10 +294,18 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
   }
 }
 
+// The config-file output keys (camelCase, what `service("api").internalUrl`
+// produces) mapped to the Marshal runtime's snake_case output keys.
+const SERVICE_OUTPUT_KEY_TO_MARSHAL: Record<string, string> = {
+  url: "url",
+  internalUrl: "internal_url",
+  internalHost: "internal_host",
+};
+
 /**
- * Resolves a service's definition env vars into the literal key/value pairs to
- * push to the deployment target:
- * - plain vars pass through,
+ * Resolves a service's definition env vars into the EnvValue map sent to
+ * Marshal:
+ * - plain vars pass through as literal `{ value }`s,
  * - secret vars are filled from the project's stored secrets (dashboard →
  *   Project Settings → Secrets), falling back to `secretDefaults` — the
  *   deploy request's transient copy of the `secret(key, default)` defaults
@@ -349,10 +315,13 @@ export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVa
  *   ambiguous on the secrets page). A secret with neither is a 400 that lists
  *   every missing key at once — failing loud beats silently deploying without
  *   them,
- * - connection vars resolve another service's output server-side. Supported
- *   outputs: `hexclave.{projectId|apiUrl|jwksUrl|publishableClientKey|secretServerKey}`
- *   from the managed Hexclave service, and `<serviceId>.url` from
- *   other deployment services.
+ * - `hexclave.*` connections resolve the managed Hexclave service's outputs
+ *   server-side (they are backend state, not runtime state),
+ * - `<serviceId>.<output>` connections to other deployment services become
+ *   Marshal `{ ref }`s, resolved by the runtime itself: `internalUrl`/
+ *   `internalHost` are deterministic and never block; `url` needs a verified
+ *   domain and makes the service `blocked` until one exists (the deploy still
+ *   succeeds — Marshal converges once the backend re-applies).
  * Error messages only ever contain reference tokens (pointers), never any
  * resolved value.
  */
@@ -360,15 +329,15 @@ export async function resolveEnvVars(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   // The service these env vars belong to; used to reject self-referential
-  // connections (a service whose env needs its own deployment output can
-  // never be deployed for the first time).
+  // `url` connections (a service whose public URL feeds its own env could
+  // never bootstrap; the internal outputs are deterministic and fine).
   serviceId: string,
   env: Record<string, DeploymentEnvVarDefinition>,
   // Deploy-request-only fallbacks for `secret()` env vars, keyed by ENV VAR
   // key (see deploymentSecretDefaultsSchema). Never read from the database.
   secretDefaults: Record<string, string>,
 }): Promise<{
-  resolvedEnvVars: { key: string, value: string }[],
+  resolvedEnv: Record<string, MarshalEnvValue>,
   redactionSecrets: string[],
 }> {
   const { tenancy, prisma, serviceId, env, secretDefaults } = options;
@@ -377,21 +346,14 @@ export async function resolveEnvVars(options: {
     select: { serviceId: true },
   })).map((row) => row.serviceId));
 
-  // Cache per-service/per-output resolution so N connections to the same
-  // output don't repeat DB queries, and per-secret reads so N env vars filled
-  // from the same secret don't repeat KMS decryptions.
+  // Cache per-secret reads so N env vars filled from the same secret don't
+  // repeat KMS decryptions, and per-output resolution for hexclave.* outputs.
   const outputCache = new Map<string, Promise<{ value: string, secret: boolean }>>();
-  const resolveOutput = (targetServiceId: string, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> => {
-    const cacheKey = `${targetServiceId}\0${outputKey}`;
-    const cached = outputCache.get(cacheKey);
+  const resolveHexclaveOutputCached = (outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> => {
+    const cached = outputCache.get(outputKey);
     if (cached != null) return cached;
-    const promise = (async () => {
-      if (targetServiceId === HEXCLAVE_SERVICE_ID) {
-        return await resolveHexclaveOutput(tenancy, outputKey, raw);
-      }
-      return await resolveServiceOutput(prisma, tenancy, targetServiceId, outputKey, raw);
-    })();
-    outputCache.set(cacheKey, promise);
+    const promise = resolveHexclaveOutput(tenancy, outputKey, raw);
+    outputCache.set(outputKey, promise);
     return promise;
   };
   const secretCache = new Map<string, Promise<string | null>>();
@@ -404,7 +366,7 @@ export async function resolveEnvVars(options: {
   };
 
   const missingSecretKeys: string[] = [];
-  const resolved: { key: string, value: string }[] = [];
+  const resolvedEnv: Record<string, MarshalEnvValue> = {};
   const redactionSecrets = new Set<string>();
   for (const [envVarKey, config] of Object.entries(env)) {
     if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
@@ -413,7 +375,7 @@ export async function resolveEnvVars(options: {
     const normalized = normalizeEnvVarConfig(envVarKey, config);
     switch (normalized.type) {
       case "plain": {
-        resolved.push({ key: envVarKey, value: normalized.value });
+        resolvedEnv[envVarKey] = { value: normalized.value };
         break;
       }
       case "secret": {
@@ -427,31 +389,36 @@ export async function resolveEnvVars(options: {
           missingSecretKeys.push(normalized.secretKey);
           break;
         }
-        resolved.push({ key: envVarKey, value: secretValue });
+        resolvedEnv[envVarKey] = { value: secretValue };
         if (secretValue.length > 0) redactionSecrets.add(secretValue);
         break;
       }
       case "connection": {
         const raw = `${normalized.serviceId}.${normalized.outputKey}`;
-        // Static validation first — these can never become resolvable later.
-        if (normalized.serviceId === serviceId) {
-          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own output "${raw}". A service cannot reference itself — its first deploy could never satisfy it.`);
-        }
         if (normalized.serviceId === HEXCLAVE_SERVICE_ID) {
           if (!(HEXCLAVE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
             throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
           }
-        } else {
-          if (!existingServiceIds.has(normalized.serviceId)) {
-            throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.config.ts and deploy it first.`);
-          }
-          if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
-            throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
-          }
+          const output = await resolveHexclaveOutputCached(normalized.outputKey, raw);
+          resolvedEnv[envVarKey] = { value: output.value };
+          if (output.secret && output.value.length > 0) redactionSecrets.add(output.value);
+          break;
         }
-        const output = await resolveOutput(normalized.serviceId, normalized.outputKey, raw);
-        resolved.push({ key: envVarKey, value: output.value });
-        if (output.secret && output.value.length > 0) redactionSecrets.add(output.value);
+        // Static validation first — these can never become resolvable later.
+        if (normalized.serviceId === serviceId && normalized.outputKey === "url") {
+          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.internalUrl`)} for the service's own address.`);
+        }
+        if (!existingServiceIds.has(normalized.serviceId) && normalized.serviceId !== serviceId) {
+          throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.config.ts and deploy it first.`);
+        }
+        const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey];
+        if (marshalOutputKey == null || !(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
+          throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
+        }
+        // The runtime resolves service-to-service refs itself: internal
+        // addresses are deterministic there, and a missing `url` makes the
+        // service converge later instead of failing the deploy.
+        resolvedEnv[envVarKey] = { ref: `${normalized.serviceId}.${marshalOutputKey}` };
         break;
       }
     }
@@ -463,7 +430,7 @@ export async function resolveEnvVars(options: {
   }
 
   return {
-    resolvedEnvVars: resolved,
+    resolvedEnv,
     redactionSecrets: [...redactionSecrets],
   };
 }
@@ -503,48 +470,6 @@ async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: s
       throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
     }
   }
-}
-
-async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> {
-  if (outputKey !== "url") {
-    throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
-  }
-  const service = await prisma.deploymentService.findUnique({
-    where: {
-      tenancyId_serviceId: {
-        tenancyId: tenancy.id,
-        serviceId,
-      },
-    },
-    include: {
-      domains: DOMAINS_INCLUDE_ORDER,
-    },
-  });
-  const primaryDomain = service?.domains.find((d) => d.isPrimary && d.verified) ?? service?.domains.find((d) => d.verified);
-  if (primaryDomain != null) {
-    return { value: `https://${primaryDomain.hostname}`, secret: false };
-  }
-  // Without a verified domain this deliberately resolves to the latest READY
-  // run's IMMUTABLE per-deployment URL, not a stable project alias: the
-  // platform-owned Vercel project's default alias is an internal name we don't
-  // want baked into customer builds, and a connection consumer is re-resolved
-  // on ITS next deploy anyway. The tradeoff (consumer pins the producer's
-  // deployment until the consumer redeploys) is accepted for now; a stable
-  // per-service domain would remove it.
-  const latestReadyRun = service == null ? null : await prisma.deploymentRun.findFirst({
-    where: {
-      tenancyId: tenancy.id,
-      deploymentServiceId: service.id,
-      status: "READY",
-      target: "production",
-      vercelDeploymentUrl: { not: null },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  if (latestReadyRun?.vercelDeploymentUrl == null) {
-    throw new StatusError(400, `The env var connection "${raw}" can't be resolved because the service ${JSON.stringify(serviceId)} has no successful production deployment yet. Deploy it first.`);
-  }
-  return { value: `https://${latestReadyRun.vercelDeploymentUrl}`, secret: false };
 }
 
 export type EncryptedDeploymentRedactionSecrets = {
@@ -607,32 +532,17 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
-/**
- * Unpacks an uploaded gzipped tarball into deployable files. Defensive on
- * purpose — the tarball is untrusted user input (see limits above; path
- * traversal is rejected by parseTar itself). node_modules and .git are dropped
- * as defense-in-depth even though the CLI already excludes them.
- */
-export function unpackSourceTarball(tarballGzipped: Uint8Array): { path: string, data: Uint8Array }[] {
-  let tarBytes: Buffer;
-  try {
-    tarBytes = gunzipSync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES });
-  } catch (e) {
-    if (e instanceof RangeError || (e as any)?.code === "ERR_BUFFER_TOO_LARGE") {
-      throw new StatusError(400, `Uploaded source tarball is too large when unpacked (max ${MAX_TARBALL_UNPACKED_BYTES} bytes).`);
-    }
-    throw new StatusError(400, "Uploaded source is not a valid gzip stream.");
-  }
-  const entries = parseTar(tarBytes, {
-    maxEntries: MAX_TARBALL_ENTRIES,
-    maxTotalBytes: MAX_TARBALL_UNPACKED_BYTES,
-  });
-  return entries
-    .filter((entry) => !entry.path.endsWith("/"))
-    .filter((entry) => {
-      const segments = entry.path.split("/");
-      return !segments.includes("node_modules") && !segments.includes(".git");
-    });
+/** Assembles the Marshal service spec for a service's stored definition. */
+export function marshalSpecForDefinition(definition: DeploymentServiceDefinition, source: { upload_id: string } | { image: string }, resolvedEnv: Record<string, MarshalEnvValue>) {
+  return {
+    config: {
+      min_instances: definition.min_instances ?? DEFAULT_MIN_INSTANCES,
+      max_instances: definition.max_instances ?? DEFAULT_MAX_INSTANCES,
+      port: definition.port,
+    },
+    source,
+    env: resolvedEnv,
+  };
 }
 
 export type StartDeploymentResult = {
@@ -648,133 +558,57 @@ export async function startDeployment(options: {
   // Already resolved by the caller (via resolveEnvVars) BEFORE the upload was
   // consumed, so a missing secret or dangling connection fails the request
   // without spending the upload.
-  resolvedEnvVars: { key: string, value: string }[],
+  resolvedEnv: Record<string, MarshalEnvValue>,
   redactionSecretsEncrypted: EncryptedDeploymentRedactionSecrets,
-  target: "production" | "preview",
-  tarballGzipped: Uint8Array,
+  // The Marshal upload slot id holding the source tarball.
+  marshalUploadId: string,
   triggeredBy: string,
 }): Promise<StartDeploymentResult> {
-  const { tenancy, prisma, serviceId, definition, resolvedEnvVars, redactionSecretsEncrypted, target, tarballGzipped, triggeredBy } = options;
-  const client = getVercelDeploymentsClientOrThrow();
+  const { tenancy, prisma, serviceId, definition, resolvedEnv, redactionSecretsEncrypted, marshalUploadId, triggeredBy } = options;
+  const client = getMarshalClientOrThrow();
+  const ns = marshalNamespaceForTenancy(tenancy);
 
   const service = await getOrCreateOperationalService(prisma, tenancy, serviceId);
 
-  // Lazy provisioning: the Vercel project is created on first deploy only.
-  let vercelProjectId = service.vercelProjectId;
-  if (vercelProjectId == null) {
-    const projectName = vercelProjectNameForService(tenancy.project.id, serviceId);
-    let created;
-    try {
-      created = await client.createProject({
-        name: projectName,
-        framework: frameworkSlugOrUndefined(definition.framework),
-      });
-    } catch (e) {
-      // Name conflict means WE already created this project (the name is
-      // namespaced by our project id + service id) but crashed before
-      // persisting its id — adopt it instead of being bricked forever on a
-      // deterministic conflict. Concurrent first deploys land here too.
-      if (e instanceof VercelApiError && e.status === 409) {
-        try {
-          created = await client.getProject(projectName);
-        } catch (adoptError) {
-          sanitizeVercelError(adoptError, "Provisioning the deployment target failed");
-        }
-      } else {
-        sanitizeVercelError(e, "Provisioning the deployment target failed");
-      }
-    }
-    vercelProjectId = created.id;
+  let result;
+  try {
+    result = await client.putService(ns, serviceId, marshalSpecForDefinition(definition, { upload_id: marshalUploadId }, resolvedEnv));
+  } catch (e) {
+    sanitizeMarshalError(e, "Starting the deployment failed");
+  }
+
+  if (service.provisionedAt == null) {
     await prisma.deploymentService.update({
       where: { tenancyId_id: { tenancyId: tenancy.id, id: service.id } },
-      data: { vercelProjectId },
+      data: { provisionedAt: new Date() },
     });
   }
 
-  // Team projects can inherit Vercel's deployment protection (an SSO auth
-  // wall), which would make the customer's site unreachable to the public.
-  // Run this on every deploy rather than only during provisioning: a transient
-  // failure on the first deploy must be retried, and a later team-policy change
-  // must not permanently re-protect the project.
+  // Find the build backing this apply. Marshal writes the build record before
+  // the PUT returns, so the newest build with our revision is ours; an
+  // UNCHANGED re-apply reuses the already-completed build of that revision,
+  // which correctly makes the run terminal immediately.
+  let build = null;
   try {
-    await client.disableDeploymentProtection(vercelProjectId);
+    const builds = await client.listBuilds(ns, serviceId, { limit: 10 });
+    build = builds.find((candidate) => candidate.revision === result.revision) ?? null;
   } catch (e) {
-    if (e instanceof VercelApiError) {
-      captureError("deployments-disable-deployment-protection", e);
-    } else {
-      throw e;
-    }
-  }
-
-  // Env push: the definition's resolved env set is authoritative for the
-  // Vercel project — upsert the current set, then delete keys no longer in the
-  // definition so a var removed from the config actually stops being injected
-  // into builds. The resolved set covers the WHOLE definition here: deploys
-  // fail earlier on missing secrets or unresolvable connections, so diffing
-  // against it cannot delete a merely-skipped key. Resolved values go to
-  // Vercel as encrypted env vars; secret plaintext exists only in this request
-  // and on Vercel.
-  try {
-    await client.upsertEnvVars(vercelProjectId, resolvedEnvVars);
-    const definitionKeys = new Set(resolvedEnvVars.map((envVar) => envVar.key));
-    const vercelVars = await client.listEnvVarKeys(vercelProjectId);
-    for (const vercelVar of vercelVars) {
-      if (!definitionKeys.has(vercelVar.key)) {
-        await client.deleteEnvVar(vercelProjectId, vercelVar.id);
-      }
-    }
-  } catch (e) {
-    sanitizeVercelError(e, "Pushing env vars to the deployment failed");
-  }
-
-  const files = unpackSourceTarball(tarballGzipped);
-  if (files.length === 0) {
-    throw new StatusError(400, "Uploaded source tarball contains no files.");
-  }
-
-  const deploymentFiles: VercelDeploymentFile[] = files.map((file) => ({
-    file: file.path,
-    sha: createHash("sha1").update(file.data).digest("hex"),
-    size: file.data.length,
-  }));
-  // Upload with bounded concurrency; Vercel deduplicates by SHA server-side.
-  const CONCURRENCY = 8;
-  for (let i = 0; i < files.length; i += CONCURRENCY) {
-    await Promise.all(files.slice(i, i + CONCURRENCY).map(async (file, j) => {
-      try {
-        await client.uploadFile(deploymentFiles[i + j].sha, file.data);
-      } catch (e) {
-        sanitizeVercelError(e, `Uploading source file ${JSON.stringify(file.path)} failed`);
-      }
-    }));
-  }
-
-  let deployment;
-  try {
-    deployment = await client.createDeployment({
-      projectId: vercelProjectId,
-      projectName: vercelProjectNameForService(tenancy.project.id, serviceId),
-      target,
-      files: deploymentFiles,
-      projectSettings: {
-        framework: frameworkSlugOrUndefined(definition.framework),
-        installCommand: definition.install_command,
-        buildCommand: definition.build_command,
-        outputDirectory: definition.output_directory,
-      },
-    });
-  } catch (e) {
-    sanitizeVercelError(e, "Creating the deployment failed");
+    // The run row can still be created; refreshRunFromMarshal keeps trying to
+    // attach status by revision on subsequent reads via the build id below.
+    captureError("deployments-find-build-after-put", e);
   }
 
   const run = await prisma.deploymentRun.create({
     data: {
       tenancyId: tenancy.id,
       deploymentServiceId: service.id,
-      vercelDeploymentId: deployment.id,
-      vercelDeploymentUrl: deployment.url,
-      status: mapVercelReadyState(deployment.readyState),
-      target,
+      marshalBuildId: build?.id ?? null,
+      revision: result.revision,
+      serviceUrl: result.state.outputs.url ?? null,
+      status: build != null ? mapMarshalBuildStatus(build.status) : "QUEUED",
+      error: build?.error ?? null,
+      finishedAt: build != null && build.finished_at_millis != null ? new Date(build.finished_at_millis) : null,
+      target: "production",
       triggeredBy,
       redactionSecretsEncrypted,
     },
@@ -783,29 +617,30 @@ export async function startDeployment(options: {
   // Write-through for the service's domains. Failures here must not fail the
   // deploy itself (the build is already running), so domain sync problems are
   // surfaced when the user opens the Domains tab instead.
-  await syncServiceDomainsToVercel({ tenancy, prisma, serviceDbId: service.id, client, vercelProjectId });
+  await syncServiceDomainsToMarshal({ tenancy, prisma, serviceDbId: service.id, serviceId, client });
 
   return { runId: run.id };
 }
 
 /**
- * Ensures every domain row of the service exists on the Vercel project and
- * mirrors Vercel's verification state back into the rows. Domains added in the
- * dashboard before the first deploy only exist as rows (there is no Vercel
- * project yet), so this runs on every deploy to push them once the project is
- * provisioned — and it self-heals rows that drifted from Vercel afterwards.
- * Intentionally tolerant: a domain that Vercel rejects (e.g. in use by another
- * team) is recorded as unverified rather than failing the caller — the Domains
- * tab shows per-domain state and errors.
+ * Ensures every domain row of the service is attached in Marshal and mirrors
+ * the verification state back into the rows. Domains added in the dashboard
+ * before the first deploy only exist as rows (Marshal has no spec to attach
+ * them to yet), so this runs on every deploy to push them once the service is
+ * provisioned — and it self-heals rows that drifted afterwards.
+ * Intentionally tolerant: a domain Marshal rejects (e.g. claimed by another
+ * namespace) is recorded as unverified rather than failing the caller — the
+ * Domains tab shows per-domain state and errors.
  */
-export async function syncServiceDomainsToVercel(options: {
+export async function syncServiceDomainsToMarshal(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   serviceDbId: string,
-  client: VercelDeploymentsClient,
-  vercelProjectId: string,
+  serviceId: string,
+  client: MarshalClient,
 }): Promise<void> {
-  const { tenancy, prisma, serviceDbId, client, vercelProjectId } = options;
+  const { tenancy, prisma, serviceDbId, serviceId, client } = options;
+  const ns = marshalNamespaceForTenancy(tenancy);
   const domains = await prisma.deploymentServiceDomain.findMany({
     where: {
       tenancyId: tenancy.id,
@@ -814,31 +649,19 @@ export async function syncServiceDomainsToVercel(options: {
   });
   for (const domain of domains) {
     // null = the check didn't complete; the row is left untouched then, so a
-    // transient Vercel/network error during a deploy can't clobber a
+    // transient Marshal/network error during a deploy can't clobber a
     // previously-verified domain back to unverified (which would also make
     // `<service>.url` connections resolve to the wrong URL until re-checked).
     let verified: boolean | null = null;
     try {
-      let vercelDomain;
-      try {
-        vercelDomain = await client.getProjectDomain(vercelProjectId, domain.hostname);
-      } catch (e) {
-        if (e instanceof VercelApiError && e.status === 404) {
-          vercelDomain = await client.addProjectDomain(vercelProjectId, domain.hostname);
-        } else {
-          throw e;
-        }
-      }
-      // "Live" needs both the ownership check and correctly-pointed DNS; see
-      // the domain read route for why these are separate signals.
-      verified = vercelDomain.verified && !await client.isDomainMisconfigured(domain.hostname);
+      const result = await client.putDomain(ns, domain.hostname, serviceId);
+      verified = result.verified;
     } catch (e) {
-      // NOTHING here may fail the caller — the build is already running on
-      // Vercel, so a domain hiccup (4xx like domain-in-use, a transient 5xx,
-      // or a network error) must not turn a started deploy into an error.
-      // A 4xx is a real answer from Vercel about THIS domain (e.g. in use by
-      // another team) — record it as unverified; anything else is transient.
-      if (e instanceof VercelApiError && e.status >= 400 && e.status < 500) {
+      // NOTHING here may fail the caller — the build is already running, so a
+      // domain hiccup must not turn a started deploy into an error. A 4xx is
+      // a real answer from Marshal about THIS domain (e.g. hostname claimed
+      // elsewhere) — record it as unverified; anything else is transient.
+      if (e instanceof MarshalApiError && e.status >= 400 && e.status < 500) {
         verified = false;
       } else {
         captureError("deployments-domain-sync", e);
@@ -854,68 +677,63 @@ export async function syncServiceDomainsToVercel(options: {
 }
 
 /**
- * Refreshes a non-terminal run from Vercel (poll-on-read — there is no
- * background poller). No-op when the run is already terminal.
+ * Refreshes a non-terminal run from Marshal (poll-on-read — there is no
+ * background poller). No-op when the run is already terminal. The run is
+ * considered READY when its build succeeds; machine rollout continues briefly
+ * after that and is reported through the service state, not the run.
  */
-export async function refreshRunFromVercel(prisma: PrismaClientTransaction, tenancy: Tenancy, run: {
+export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, tenancy: Tenancy, run: {
   id: string,
   status: DeploymentRunStatus,
-  vercelDeploymentId: string | null,
-}): Promise<void> {
-  if (isTerminalRunStatus(run.status) || run.vercelDeploymentId == null) {
+  marshalBuildId: string | null,
+}, serviceId: string): Promise<void> {
+  if (isTerminalRunStatus(run.status) || run.marshalBuildId == null) {
     return;
   }
-  const client = getVercelDeploymentsClientOrThrow();
-  let deployment;
+  const client = getMarshalClientOrThrow();
+  const ns = marshalNamespaceForTenancy(tenancy);
+  let build;
   try {
-    deployment = await client.getDeployment(run.vercelDeploymentId);
+    const builds = await client.listBuilds(ns, serviceId, { limit: 50 });
+    build = builds.find((candidate) => candidate.id === run.marshalBuildId) ?? null;
   } catch (e) {
-    sanitizeVercelError(e, "Fetching the deployment status failed");
+    sanitizeMarshalError(e, "Fetching the deployment status failed");
   }
-  const newStatus = mapVercelReadyState(deployment.readyState);
+  if (build == null) {
+    // The build record is gone (e.g. the service was deleted and recreated);
+    // leave the run as-is rather than inventing a state.
+    return;
+  }
+  const newStatus = mapMarshalBuildStatus(build.status);
+  let serviceUrl: string | null | undefined = undefined;
+  if (newStatus === "READY") {
+    try {
+      const state = await client.getService(ns, serviceId);
+      serviceUrl = state.outputs.url ?? null;
+    } catch (e) {
+      // URL mirroring is best-effort; the run's success is the build's.
+      captureError("deployments-run-refresh-service-url", e);
+    }
+  }
   await prisma.deploymentRun.update({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
     data: {
       status: newStatus,
-      vercelDeploymentUrl: deployment.url ?? undefined,
-      error: newStatus === "ERROR" ? (deployment.errorMessage ?? "Deployment failed") : null,
-      finishedAt: isTerminalRunStatus(newStatus) ? new Date() : null,
+      ...(serviceUrl !== undefined ? { serviceUrl } : {}),
+      error: newStatus === "ERROR" ? (build.error ?? "Deployment failed") : null,
+      finishedAt: isTerminalRunStatus(newStatus) ? (build.finished_at_millis != null ? new Date(build.finished_at_millis) : new Date()) : null,
     },
   });
 }
 
-export type DnsRecord = {
-  type: string,
-  name: string,
-  value: string,
-};
-
-/**
- * The DNS records the user must create for a domain: Vercel's published
- * anycast A record for apex domains, CNAME for subdomains, plus any TXT
- * verification challenges Vercel reports for the domain.
- */
-export function computeDnsRecords(hostname: string, apexName: string, verification: { type: string, domain: string, value: string }[] | undefined): DnsRecord[] {
-  const records: DnsRecord[] = [];
-  if (hostname === apexName) {
-    records.push({ type: "A", name: "@", value: "76.76.21.21" });
-  } else {
-    const subLabel = hostname.endsWith(`.${apexName}`) ? hostname.slice(0, -(apexName.length + 1)) : hostname;
-    records.push({ type: "CNAME", name: subLabel, value: "cname.vercel-dns.com" });
-  }
-  for (const challenge of verification ?? []) {
-    records.push({ type: challenge.type, name: challenge.domain, value: challenge.value });
-  }
-  return records;
-}
+export type DnsRecord = MarshalDnsRecord;
 
 export type DeploymentServiceApiShape = {
   id: string,
-  type: "vercel",
-  framework: string | null,
-  install_command: string | null,
-  build_command: string | null,
-  output_directory: string | null,
+  type: "container",
+  port: number | null,
+  min_instances: number | null,
+  max_instances: number | null,
   root_directory: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
@@ -951,7 +769,7 @@ export function runToApiShape(run: {
   status: DeploymentRunStatus,
   target: string,
   triggeredBy: string,
-  vercelDeploymentUrl: string | null,
+  serviceUrl: string | null,
   error: string | null,
   createdAt: Date,
   finishedAt: Date | null,
@@ -962,7 +780,8 @@ export function runToApiShape(run: {
     status: run.status.toLowerCase() as DeploymentRunApiShape["status"],
     target: run.target,
     triggered_by: run.triggeredBy,
-    url: run.vercelDeploymentUrl != null ? `https://${run.vercelDeploymentUrl}` : null,
+    // Marshal reports full URLs (or null for private services).
+    url: run.serviceUrl,
     error: run.error,
     created_at_millis: run.createdAt.getTime(),
     finished_at_millis: run.finishedAt?.getTime() ?? null,
@@ -985,16 +804,16 @@ export async function serviceToApiShape(options: {
   });
   // Poll-on-read, like the run endpoints: the dashboard's board only calls the
   // list/read service endpoints, so without this an in-flight deploy would
-  // stay "building" on the board forever. Skipped when Vercel isn't
+  // stay "building" on the board forever. Skipped when Marshal isn't
   // configured so listing still works on unconfigured instances.
-  if (latestRun != null && !isTerminalRunStatus(latestRun.status) && getVercelDeploymentsConfigOrNull() != null) {
+  if (latestRun != null && !isTerminalRunStatus(latestRun.status) && getMarshalDeploymentsConfigOrNull() != null) {
     try {
-      await refreshRunFromVercel(prisma, tenancy, latestRun);
+      await refreshRunFromMarshal(prisma, tenancy, latestRun, row.serviceId);
       latestRun = await prisma.deploymentRun.findUnique({
         where: { tenancyId_id: { tenancyId: tenancy.id, id: latestRun.id } },
       });
     } catch (e) {
-      // A Vercel hiccup must not take down the whole services list; the board
+      // A Marshal hiccup must not take down the whole services list; the board
       // just shows the last known status until the next poll.
       captureError("deployments-list-run-refresh", e);
     }
@@ -1034,7 +853,7 @@ export async function serviceToApiShape(options: {
   const verifiedPrimary = row.domains.find((d) => d.isPrimary && d.verified) ?? row.domains.find((d) => d.verified);
   const url = verifiedPrimary != null
     ? `https://${verifiedPrimary.hostname}`
-    : (latestRun?.status === "READY" && latestRun.vercelDeploymentUrl != null ? `https://${latestRun.vercelDeploymentUrl}` : null);
+    : (latestRun?.status === "READY" ? latestRun.serviceUrl : null);
 
   const domains = row.domains
     .map((domainRow) => ({
@@ -1068,13 +887,12 @@ export async function serviceToApiShape(options: {
 
   return {
     id: row.serviceId,
-    type: definition.type,
-    framework: definition.framework ?? null,
-    install_command: definition.install_command ?? null,
-    build_command: definition.build_command ?? null,
-    output_directory: definition.output_directory ?? null,
-    root_directory: definition.root_directory ?? null,
-    provisioned: row.vercelProjectId != null,
+    type: "container",
+    port: row.port,
+    min_instances: row.minInstances,
+    max_instances: row.maxInstances,
+    root_directory: row.rootDirectory,
+    provisioned: row.provisionedAt != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,
     url,

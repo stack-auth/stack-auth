@@ -1693,11 +1693,15 @@ model DeploymentService {
   updatedAt DateTime @updatedAt
 
   // The user-facing service id — the key of the record returned by the
-  // config file's `services` export (e.g. "api").
+  // config file's `services` export (e.g. "api"). Doubles as the Marshal
+  // service key (the runtime namespace is the tenancy id).
   serviceId String
 
-  // Set when the Vercel project is lazily provisioned on first deploy.
-  vercelProjectId String?
+  // Set when the service's spec was first successfully applied to Marshal
+  // (the Fly-backed runtime). Replaces the old lazily-provisioned Vercel
+  // project id — Marshal apps are deterministic names, so there is no foreign
+  // id to store, only the fact that provisioning happened.
+  provisionedAt DateTime?
 
   // The definition as last synced from the config file's `services` export.
   // Both fields are null only for rows that predate the services-export rework
@@ -1708,11 +1712,12 @@ model DeploymentService {
   // stored build settings and env definition.
   definitionSyncedAt DateTime?
   definitionSyncId   String?   @db.Uuid
-  framework       String?
-  installCommand  String?
-  buildCommand    String?
-  outputDirectory String?
-  rootDirectory   String?
+  // Container definition: the single HTTP port the container listens on, and
+  // the serverless scaling bounds (1/1 = serverful). Null on unsynced rows.
+  port          Int?
+  minInstances  Int?
+  maxInstances  Int?
+  rootDirectory String?
   // Note there is deliberately no dev command here: `devCommand` in the config
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only
@@ -1773,11 +1778,19 @@ model DeploymentRun {
 
   deploymentServiceId String @db.Uuid
 
-  vercelDeploymentId  String?
-  vercelDeploymentUrl String?
+  // The Marshal build backing this run (ULID) and the revision it built.
+  // Null for no-build runs (should not happen in practice — every deploy
+  // creates a build record, immediate for no-artifact revisions).
+  marshalBuildId String?
+  revision       String?
+  // The service's public URL observed when the run completed (null when the
+  // service has no verified domain — container services are private by
+  // default).
+  serviceUrl String?
 
   status DeploymentRunStatus @default(QUEUED)
-  // "production" | "preview" (kept a string to match Vercel's target values)
+  // "production" | "preview" (kept a string for compatibility; Marshal only
+  // has production deploys today, so "preview" is rejected at the route)
   target String
   // Free-form descriptor of what triggered the run (e.g. "cli").
   triggeredBy String
@@ -1800,11 +1813,11 @@ model DeploymentRun {
   @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
 }
 
-// Short-lived private-object references for `hexclave deploy`: the CLI
-// requests a presigned S3/R2 PUT URL, uploads directly to object storage, then
-// references this row in the deploy request. Rows and successfully-consumed
-// objects are deleted after use; a bucket lifecycle rule cleans up abandoned
-// objects whose clients never finish the deploy flow.
+// Short-lived upload references for `hexclave deploy`: the CLI requests an
+// upload slot (proxied from Marshal, which presigns a PUT into ITS bucket),
+// uploads directly to object storage, then references this row in the deploy
+// request. The row is what makes an upload consumable exactly once; Marshal's
+// bucket lifecycle rule cleans up abandoned objects.
 model DeploymentSourceUpload {
   tenancyId String @db.Uuid
 
@@ -1813,8 +1826,9 @@ model DeploymentSourceUpload {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  objectKey String
-  expiresAt DateTime
+  // The upload slot id in Marshal's bucket (passed as the spec's source).
+  marshalUploadId String
+  expiresAt       DateTime
 
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
