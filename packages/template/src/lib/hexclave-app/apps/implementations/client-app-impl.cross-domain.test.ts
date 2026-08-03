@@ -482,6 +482,8 @@ describe("StackClientApp cross-domain auth", () => {
     callbackUrl.searchParams.set("details", JSON.stringify({
       message: "Your sign up was rejected by an administrator's sign-up rule.",
     }));
+    callbackUrl.searchParams.set("after_auth_return_to", "/dashboard");
+    callbackUrl.searchParams.set("after_callback_redirect_url", "https://customer.example.test/settings?tab=connected-accounts");
     let currentHref = callbackUrl.toString();
     let redirectedUrl = "";
     const redirectSpy = vi.spyOn(StackClientApp.prototype as any, "_redirectTo").mockImplementation(async (...args: unknown[]) => {
@@ -535,6 +537,8 @@ describe("StackClientApp cross-domain auth", () => {
     expect(errorUrl.pathname).toBe("/handler/error");
     expect(errorUrl.searchParams.get("errorCode")).toBe("SIGN_UP_REJECTED");
     expect(errorUrl.searchParams.get("message")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+    expect(errorUrl.searchParams.get("after_auth_return_to")).toBe("/dashboard");
+    expect(errorUrl.searchParams.get("after_callback_redirect_url")).toBe("https://customer.example.test/settings?tab=connected-accounts");
     expect(new URL(currentHref).searchParams.has("errorCode")).toBe(false);
   });
 

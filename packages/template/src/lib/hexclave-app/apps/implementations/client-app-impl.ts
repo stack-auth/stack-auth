@@ -90,6 +90,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
+const oauthAfterCallbackRedirectUrlQueryParam = "after_callback_redirect_url";
 
 const nestedCrossDomainAuthQueryParams = {
   refreshTokenId: "stack_nested_cross_domain_auth_refresh_token_id",
@@ -98,7 +99,7 @@ const nestedCrossDomainAuthQueryParams = {
   state: "state",
   codeChallenge: "code_challenge",
   codeChallengeMethod: "code_challenge_method",
-  afterCallbackRedirectUrl: "after_callback_redirect_url",
+  afterCallbackRedirectUrl: oauthAfterCallbackRedirectUrlQueryParam,
 } as const;
 
 function getRedirectHelperInstruction(handlerName: string): string {
@@ -933,9 +934,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected async _redirectToOAuthCallbackError(error: KnownError): Promise<void> {
     const errorUrl = new URL(this._getUrls().error, window.location.href);
+    const callbackUrl = augmentUrlWithPersistedRedirectBackState({
+      currentUrl: new URL(window.location.href),
+      projectId: this.projectId,
+    });
     errorUrl.searchParams.set("errorCode", error.errorCode);
     errorUrl.searchParams.set("message", error.message);
     errorUrl.searchParams.set("details", JSON.stringify(error.details ?? {}));
+    for (const paramName of [
+      "after_auth_return_to",
+      crossDomainAuthQueryParams.state,
+      crossDomainAuthQueryParams.codeChallenge,
+      crossDomainAuthQueryParams.afterCallbackRedirectUrl,
+    ]) {
+      const value = callbackUrl.searchParams.get(paramName);
+      if (value != null) {
+        errorUrl.searchParams.set(paramName, value);
+      }
+    }
+    const afterCallbackRedirectUrl = callbackUrl.searchParams.get(oauthAfterCallbackRedirectUrlQueryParam);
+    if (afterCallbackRedirectUrl != null) {
+      // Account-link callbacks need to finish consuming the OAuth response before returning to
+      // their invoking page. Carry the already server-validated continuation through the
+      // configured error handler, which validates it again before navigation.
+      errorUrl.searchParams.set(oauthAfterCallbackRedirectUrlQueryParam, afterCallbackRedirectUrl);
+    }
     await this._redirectIfTrusted(errorUrl.toString(), { replace: true });
   }
 
@@ -3151,16 +3174,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
-    if (
-      currentUrl != null
-      && options?.noRedirectBack !== true
-      && (handlerName === "afterSignIn" || handlerName === "afterSignUp")
-    ) {
+    const shouldRestorePersistedRedirectBackState = (
+      (options?.noRedirectBack !== true && (handlerName === "afterSignIn" || handlerName === "afterSignUp"))
+      || handlerName === "forgotPassword"
+      || handlerName === "passwordReset"
+      || (handlerName === "signIn" && options?.noRedirectBack === true)
+    );
+    if (currentUrl != null && shouldRestorePersistedRedirectBackState) {
       // If intermediate hops dropped the redirect-back query params, restore them from the
-      // sessionStorage mirror so the user still returns to where they came from instead of
-      // stranding on the default post-auth page (on hosted components, that would be the hosted
-      // welcome page). The restored URL goes through the same _isTrusted / cross-domain-authorize
-      // validation below as one read from query params.
+      // sessionStorage mirror. Password-flow continuation pages only carry this inherited state;
+      // redirect planning never turns forgot/reset pages themselves into return targets. The
+      // restored URL still goes through the same _isTrusted / cross-domain-authorize validation
+      // below as one read from query params.
       currentUrl = augmentUrlWithPersistedRedirectBackState({ currentUrl, projectId: this.projectId });
     }
     const plan = await planRedirectToHandler({

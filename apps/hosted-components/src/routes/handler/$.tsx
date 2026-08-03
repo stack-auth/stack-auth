@@ -7,6 +7,7 @@ import {
   HostedEmailVerification,
   HostedError,
   HostedForgotPassword,
+  HostedMagicLinkCallback,
   HostedMfa,
   HostedPasswordReset,
   HostedSignIn,
@@ -17,13 +18,14 @@ import {
 } from '../../hosted-components/auth';
 import { HostedAuthMessage } from '../../hosted-components/auth/supporting/layout';
 import { requiresAfterAuthReturn } from './after-auth-return-policy';
+import { isCanonicalHandlerPathOrAlias } from './handler-path-policy';
 
 export const Route = createFileRoute('/handler/$')({
   component: HandlerPage,
 });
 
 type HostedPage = {
-  pageKey: DevelopmentPageKey,
+  pageKey?: DevelopmentPageKey,
   render: () => ReactNode,
 };
 
@@ -59,6 +61,9 @@ const hostedPages = new Map<string, HostedPage>([
   ["email-verification", {
     pageKey: "emailVerification",
     render: () => <HostedEmailVerification fullPage />,
+  }],
+  ["magic-link-callback", {
+    render: () => <HostedMagicLinkCallback fullPage />,
   }],
   ["mfa", {
     pageKey: "mfa",
@@ -97,13 +102,30 @@ function HandlerPage() {
   }
 
   if (hostedPage == null) {
-    return <HexclaveHandler fullPage />;
+    return isCanonicalHandlerPathOrAlias(handlerPath)
+      ? <HexclaveHandler fullPage />
+      : <UnknownHandlerPath handlerPath={handlerPath} />;
   }
 
   return (
     <WithDevelopmentPageNote pageKey={hostedPage.pageKey}>
       {hostedPage.render()}
     </WithDevelopmentPageNote>
+  );
+}
+
+function UnknownHandlerPath(props: {
+  handlerPath: string,
+}) {
+  return (
+    <HostedAuthMessage
+      title="Hosted page not found"
+      primaryAction={() => window.history.back()}
+      primaryText="Back"
+      fullPage
+    >
+      The hosted handler path <code>{props.handlerPath || "/"}</code> is not recognized. Go back to the website that opened it, or close this tab.
+    </HostedAuthMessage>
   );
 }
 
@@ -123,7 +145,7 @@ function MissingAfterAuthReturn() {
 }
 
 function WithDevelopmentPageNote(props: {
-  pageKey: DevelopmentPageKey,
+  pageKey?: DevelopmentPageKey,
   children: ReactNode,
 }) {
   return (
