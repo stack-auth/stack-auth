@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { assertFreeTrialAllowedForPurchase, getClientSecretFromStripeSubscription, getEffectiveFreeTrial, getStripeTrialPeriodDays, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
 import { upsertProductVersion } from "@/lib/product-versions";
@@ -48,8 +48,14 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       client_secret: yupString().optional().meta({
         openapiField: {
-          description: "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements.",
+          description: "Stripe client secret used by the browser to confirm payment or setup via Stripe Elements. Omitted when no confirmation step is required from the customer.",
           exampleValue: "1234567890abcdef_secret_xyz123",
+        },
+      }),
+      stripe_intent_type: yupString().oneOf(["payment", "setup"]).optional().meta({
+        openapiField: {
+          description: "Whether client_secret is a PaymentIntent (immediate charge) or SetupIntent (e.g. free trial card collection). Omitted when client_secret is omitted.",
+          exampleValue: "payment",
         },
       }),
     }),
@@ -114,6 +120,13 @@ export const POST = createSmartRouteHandler({
       productJson: data.product,
     });
 
+    // Price-level freeTrial preferred; product-level is transitional fallback
+    // while product-level freeTrial is being deprecated.
+    const effectiveFreeTrial = getEffectiveFreeTrial(data.product, selectedPrice);
+    assertFreeTrialAllowedForPurchase(selectedPrice, effectiveFreeTrial);
+    const trialPeriodDays = effectiveFreeTrial != null ? getStripeTrialPeriodDays(effectiveFreeTrial) : undefined;
+    const shouldExpectSetupIntent = effectiveFreeTrial != null;
+
     if (conflictingSubscriptions.length > 0) {
       const conflicting = conflictingSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
@@ -127,10 +140,15 @@ export const POST = createSmartRouteHandler({
           // granted directly (Prisma insert + bulldozer write, mirroring
           // ensureFreePlanForBillingTeam) and skip Stripe entirely.
           //
+          // Do not attach trial_period_days on in-place subscription updates
+          // (plan switch / conflict replace): re-trialing an existing customer
+          // is usually wrong. Trials only apply when creating a new Stripe sub.
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
-            expand: ['latest_invoice.confirmation_secret'],
+            // Expand nested objects so we get client_secret fields (otherwise
+            // Stripe returns id strings for pending_setup_intent / latest_invoice).
+            expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
             items: [{
               id: existingItem.id,
               price_data: {
@@ -164,12 +182,18 @@ export const POST = createSmartRouteHandler({
           // returns a malformed sub (no secret), we throw 500 here and the
           // customer can retry with the same code. Revoking first would burn
           // the code on every transient Stripe anomaly.
-          const clientSecretUpdated = getClientSecretFromStripeSubscription(updated);
-          if (typeof clientSecretUpdated !== "string") {
-            throwErr(500, "No client secret returned from Stripe for subscription");
-          }
+          // Conflict updates never start a new trial (see comment above).
+          const clientSecretUpdated = getClientSecretFromStripeSubscription(updated, false);
+          const stripeIntentType: "payment" | "setup" = clientSecretUpdated.type;
           await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-          return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecretUpdated } };
+          return {
+            statusCode: 200,
+            bodyType: "json",
+            body: {
+              client_secret: clientSecretUpdated.clientSecret,
+              stripe_intent_type: stripeIntentType,
+            },
+          };
         } else {
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
         }
@@ -220,7 +244,14 @@ export const POST = createSmartRouteHandler({
         throwErr(500, "No client secret returned from Stripe for payment intent");
       }
       await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
-      return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecret } };
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          client_secret: clientSecret,
+          stripe_intent_type: "payment" as const,
+        },
+      };
     }
 
     const product = await stripe.products.create({
@@ -235,11 +266,17 @@ export const POST = createSmartRouteHandler({
     // Note on $0 subs: Stripe auto-activates them on create (status="active",
     // invoice="paid") regardless of `default_incomplete` so we keep the same
     // call shape and only diverge in how we read the response below.
+    //
+    // Free trials: pass trial_period_days so the first invoice is $0 and
+    // Stripe attaches pending_setup_intent for card collection instead of a
+    // PaymentIntent. Charge happens automatically when the trial ends.
     const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
-      expand: ['latest_invoice.confirmation_secret'],
+      // Expand nested objects so we get client_secret fields (otherwise
+      // Stripe returns id strings for pending_setup_intent / latest_invoice).
+      expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
       items: [{
         price_data: {
           currency: "usd",
@@ -257,14 +294,14 @@ export const POST = createSmartRouteHandler({
         productVersionId,
         priceId: price_id,
       },
+      ...(trialPeriodDays !== undefined ? { trial_period_days: trialPeriodDays } : {}),
       ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
     });
     if (isFreePrice) {
-      // Stripe activates $0 subs synchronously (status=active, invoice=paid)
-      // and produces no PaymentIntent / confirmation_secret, so we have
-      // nothing to hand to Stripe Elements. The DB row is written when the
-      // `invoice.paid` webhook lands, exactly like paid purchases after card
-      // confirmation.
+      // Free+$0 freeTrial is rejected above. Stripe activates remaining $0
+      // subs synchronously (status=active, invoice=paid) with no PaymentIntent
+      // / confirmation_secret, so we have nothing to hand to Stripe Elements.
+      // The DB row is written when the `invoice.paid` webhook lands.
       await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
       return {
         statusCode: 200,
@@ -276,15 +313,16 @@ export const POST = createSmartRouteHandler({
     // malformed sub (no secret), we throw 500 here and the customer can retry
     // with the same code. Revoking first would burn the code on every
     // transient Stripe anomaly.
-    const clientSecret = getClientSecretFromStripeSubscription(created);
-    if (typeof clientSecret !== "string") {
-      throwErr(500, "No client secret returned from Stripe for subscription");
-    }
+    const clientSecretResult = getClientSecretFromStripeSubscription(created, shouldExpectSetupIntent);
+    const stripeIntentType: "payment" | "setup" = clientSecretResult.type;
     await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { client_secret: clientSecret },
+      body: {
+        client_secret: clientSecretResult.clientSecret,
+        stripe_intent_type: stripeIntentType,
+      },
     };
   }
 });
