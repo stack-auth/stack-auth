@@ -56,7 +56,11 @@ Optional:
 
 On construct: when automaticSideEffects=true, prefetch project info
 (GET /projects/current) unless noAutomaticPrefetch=true. When
-automaticSideEffects=false, perform no automatic side effects.
+automaticSideEffects=false, perform no automatic side effects. Browser action
+initialization removes `hexclave_action_id` from the address bar before consuming
+it and retries that removal during the initial event-loop turns so framework
+routers cannot restore the action URL after hydration. If consumption reports an
+already-used or expired action, treat it as an expected no-op.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]

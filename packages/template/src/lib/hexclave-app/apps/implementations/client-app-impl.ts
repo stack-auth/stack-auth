@@ -71,6 +71,22 @@ import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, 
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
 
+export function stripBrowserActionQueryParam() {
+  let stripAttemptsRemaining = 20;
+  const stripActionId = () => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has(BROWSER_ACTION_QUERY_PARAM)) {
+      currentUrl.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
+      window.history.replaceState(window.history.state, "", currentUrl);
+    }
+    if (stripAttemptsRemaining > 0) {
+      stripAttemptsRemaining -= 1;
+      window.setTimeout(stripActionId, 0);
+    }
+  };
+  stripActionId();
+}
+
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
@@ -777,14 +793,28 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       const urlAtConstructionTime = new URL(window.location.href);
       const actionId = urlAtConstructionTime.searchParams.get(BROWSER_ACTION_QUERY_PARAM);
       if (actionId != null) {
-        urlAtConstructionTime.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
-        window.history.replaceState(window.history.state, "", urlAtConstructionTime);
+        // App Router implementations can restore the URL from their pre-rendered state after
+        // this constructor runs. Repeat the synchronous strip for a few event-loop turns so the
+        // action ID does not remain reloadable after the router finishes hydrating.
+        stripBrowserActionQueryParam();
         runAsynchronously(async () => {
-          const result = await this._interface.consumeBrowserAction(actionId, null);
-          // The backend emits only closed-set snippets for browser actions; evaluating the
-          // response here preserves the existing console-snippet behavior without exposing
-          // the action implementation to the dashboard.
-          Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
+          try {
+            const result = await this._interface.consumeBrowserAction(actionId, null);
+            // The backend emits only closed-set snippets for browser actions; evaluating the
+            // response here preserves the existing console-snippet behavior without exposing
+            // the action implementation to the dashboard.
+            Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
+          } catch (error) {
+            // A reload can legitimately retry an already-consumed or expired one-time action.
+            // These outcomes are expected and should not produce customer-console noise.
+            if (
+              KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)
+              || KnownErrors.VerificationCodeExpired.isInstance(error)
+            ) {
+              return;
+            }
+            throw error;
+          }
         });
       }
       this._trackPendingAuthResolution(async () => {
