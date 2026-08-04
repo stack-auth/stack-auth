@@ -689,7 +689,7 @@ describe("item quantities: full-pipeline integration", () => {
      * rewrite stamped exactly at a repeat boundary that hasn't been processed yet would emit a
      * transaction whose id the boundary's own tick then emits a second time.
      *   t=0                subscription grants 100 emails/month (first reset at 1970-02-01)
-     *   t=firstReset       snapshot rewritten to 300 emails/month (reconciled just past the boundary)
+     *   t=firstReset       snapshot rewritten to 300 emails/month (reconciled 1ms before the boundary)
      *   tick to firstReset the reset grants the new 300
      * Expected: the reconciliation and the reset are two distinct transactions, 300 emails in total.
      */
@@ -709,7 +709,9 @@ describe("item quantities: full-pipeline integration", () => {
     snapshot = (await snapshot.tick(new Date(firstResetMillis))).newSnapshot;
     const group = customerGroup("u-boundary");
     const txnIds = (await rowDatas(snapshot, schema.transactions, group)).map(txn => asRecord(txn).txnId);
-    expect(new Set(txnIds).size).toBe(txnIds.length);
+    // Both the reconciliation and the reset landed, one millisecond apart, each with its own id.
+    expect(txnIds.length).toBe(3);
+    expect(new Set(txnIds)).toEqual(new Set([`igr:sub-boundary:${firstResetMillis - 1}`, `igr:sub-boundary:${firstResetMillis}`, "sub-start:sub-boundary"]));
     expect(await balanceAt(snapshot, group, "emails", firstResetMillis)).toBe(300);
   });
 
