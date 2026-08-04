@@ -702,7 +702,7 @@ Creates a new `HexclaveServerApp` instance.
       </ParamField>
 
       <ParamField body="options.limit" type="number">
-        Maximum number of items to return. If omitted, all users are returned.
+        Maximum number of items to return per page, up to 1000. For larger result sets, pass `limit` and paginate with `cursor`. If omitted, projects with more than 1000 users return an error requiring pagination.
       </ParamField>
 
       <ParamField body="options.orderBy" type='"signedUpAt"'>

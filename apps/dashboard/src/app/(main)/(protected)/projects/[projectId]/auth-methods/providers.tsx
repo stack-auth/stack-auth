@@ -411,7 +411,7 @@ function OAuthProviderSettingsForm(props: {
       {!shared && (
         <>
           <RedirectInline providerId={props.providerId} />
-          <div className="flex flex-col gap-3">
+          <div className="hexclave-sensitive flex flex-col gap-3">
             <CredentialFields form={props.form} providerId={props.providerId} />
           </div>
           {props.providerId === 'github' && <GithubNoteInline />}

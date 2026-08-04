@@ -61,7 +61,7 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
   // Only render Monaco when both mounted states are true
   const shouldRenderMonaco = mounted && isMounted;
 
-  return <div className="flex flex-col gap-3">
+  return <div className="hexclave-sensitive flex flex-col gap-3">
     <div className="flex items-center gap-1.5">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {title}
