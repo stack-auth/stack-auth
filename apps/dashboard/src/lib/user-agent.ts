@@ -31,7 +31,9 @@ const BROWSER_RULES: Array<{ name: string, regex: RegExp }> = [
   { name: "Brave", regex: /\bBrave\/([\d.]+)/ },
   { name: "Vivaldi", regex: /\bVivaldi\/([\d.]+)/ },
   { name: "Firefox", regex: /\b(?:Firefox|FxiOS)\/([\d.]+)/ },
-  { name: "Chrome", regex: /\b(?:Chrome|CriOS|Chromium)\/([\d.]+)/ },
+  // `HeadlessChrome` has no word boundary before `Chrome`, so it needs naming
+  // explicitly; it still gets classified as a bot separately.
+  { name: "Chrome", regex: /\b(?:HeadlessChrome|Chrome|CriOS|Chromium)\/([\d.]+)/ },
   // Safari puts the user-facing version in `Version/`; the `Safari/` token is a
   // WebKit build number and useless as a version.
   { name: "Safari", regex: /\bVersion\/([\d.]+).*\bSafari\// },

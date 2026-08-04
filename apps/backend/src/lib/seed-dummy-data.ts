@@ -2508,6 +2508,10 @@ async function seedDummySessionReplays({
     const projectUserId = userIds[Math.floor(rand() * userIds.length)]!;
     const replayId = deterministicUuid(`session-replay:${tenancyId}:${i}`);
     const refreshTokenId = deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`);
+    // The overview's bounce rate and average session duration group events by
+    // segment (one browser tab), skipping rows where it's null, so seeded events
+    // need one too — the browser SDK always sends it.
+    const segmentId = deterministicUuid(`session-replay-segment:${tenancyId}:${i}`);
 
     seeds.push({
       tenancyId,
@@ -2559,7 +2563,7 @@ async function seedDummySessionReplays({
         team_id: null,
         refresh_token_id: refreshTokenId,
         session_replay_id: replayId,
-        session_replay_segment_id: null,
+        session_replay_segment_id: segmentId,
       });
     }
 
@@ -2581,7 +2585,7 @@ async function seedDummySessionReplays({
         team_id: null,
         refresh_token_id: refreshTokenId,
         session_replay_id: replayId,
-        session_replay_segment_id: null,
+        session_replay_segment_id: segmentId,
       });
     }
   }

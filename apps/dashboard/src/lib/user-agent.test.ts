@@ -107,6 +107,14 @@ describe("describeUserAgent", () => {
     expect(describeUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36").deviceType).toBe("bot");
   });
 
+  test("headless Chrome keeps its browser label alongside the bot classification", () => {
+    expect(describeUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36")).toEqual({
+      deviceType: "bot",
+      browser: "Chrome 141",
+      os: "Linux",
+    });
+  });
+
   test("unrecognized user agents degrade to nulls instead of throwing", () => {
     expect(describeUserAgent("some-internal-client/1.0")).toEqual({
       deviceType: "desktop",

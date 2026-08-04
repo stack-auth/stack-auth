@@ -99,7 +99,9 @@ const ACTIVITY_COUNTS_QUERY = `
 // the session the replay belongs to. Matching on the refresh token rather than
 // the user is what keeps a user's other concurrent sessions — a phone on mobile
 // data, say — from lending their location to this replay. The time window is
-// only a guard against a long-lived token that travelled since.
+// only a guard against a long-lived token that travelled since: refreshes after
+// the replay ended may already come from somewhere else, so the window stops at
+// the session's last event.
 const SESSION_GEO_QUERY = `
   SELECT
     CAST(data.ip_info.country_code, 'Nullable(String)') AS country_code,
@@ -116,7 +118,6 @@ const SESSION_GEO_QUERY = `
 `;
 
 const GEO_LOOKBEHIND_MS = 24 * 60 * 60 * 1000;
-const GEO_LOOKAHEAD_MS = 60 * 60 * 1000;
 
 function toStringOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -173,7 +174,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
             params: {
               refreshTokenId,
               sinceMillis: startedAtMs - GEO_LOOKBEHIND_MS,
-              untilMillis: lastEventAtMs + GEO_LOOKAHEAD_MS,
+              untilMillis: lastEventAtMs,
             },
             include_all_branches: false,
             timeout_ms: 15_000,
