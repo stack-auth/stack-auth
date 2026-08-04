@@ -53,18 +53,23 @@ export const GET = createSmartRouteHandler({
       });
       const capped = users.length > limit;
       const rows = users.slice(0, limit);
-      const [projectPermissions, teamPermissions] = await Promise.all([
-        listPermissions(prisma, {
-          tenancy,
-          scope: "project",
-          recursive: true,
-        }),
-        listPermissions(prisma, {
-          tenancy,
-          scope: "team",
-          recursive: true,
-        }),
-      ]);
+      const pageUserIds = rows.map((user) => user.projectUserId);
+      const [projectPermissions, teamPermissions] = pageUserIds.length === 0
+        ? [[], []]
+        : await Promise.all([
+          listPermissions(prisma, {
+            tenancy,
+            scope: "project",
+            recursive: true,
+            userIds: pageUserIds,
+          }),
+          listPermissions(prisma, {
+            tenancy,
+            scope: "team",
+            recursive: true,
+            userIds: pageUserIds,
+          }),
+        ]);
       const effectivePermissionsByUser = new Map<string, Set<string>>();
       for (const permission of projectPermissions) {
         const permissions = effectivePermissionsByUser.get(permission.user_id) ?? new Set<string>();
