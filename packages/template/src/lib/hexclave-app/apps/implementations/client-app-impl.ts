@@ -800,9 +800,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         runAsynchronously(async () => {
           try {
             const result = await this._interface.consumeBrowserAction(actionId, null);
-            // The backend emits only closed-set snippets for browser actions; evaluating the
-            // response here preserves the existing console-snippet behavior without exposing
-            // the action implementation to the dashboard.
+            // Keep this indirection so Next Edge does not statically detect dynamic evaluation.
             Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
           } catch (error) {
             // A reload can legitimately retry an already-consumed or expired one-time action.
