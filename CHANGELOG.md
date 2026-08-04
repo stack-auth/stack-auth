@@ -12,6 +12,8 @@
 - Impersonating a user from the dashboard now works with a single click — no more copy-pasting a script into the browser console.
 - The Next.js SDK now supports Next.js 16.3.
 - Fixed a bug where signing out would sometimes take a long time.
+- Session replays now show a user overview in the header.
+- Adding a trusted domain now offers a scope dropdown instead of an "add www." switch, making it clearer which subdomains are covered.
 
 ## 7/31/26
 
