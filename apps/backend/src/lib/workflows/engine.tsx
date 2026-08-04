@@ -161,6 +161,11 @@ type ScheduledDefinitionRow = {
 const SCHEDULE_EVENT_INSERT_CHUNK_SIZE = 1000;
 
 async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>, deadlineMs: number): Promise<boolean> {
+  // Paused definitions are filtered out rather than materialized-then-dropped:
+  // an every-minute schedule paused for a month would otherwise write ~43k
+  // outbox rows that the event gate immediately discards. The resume path
+  // fast-forwards the schedule cursors (see setWorkflowPaused), so the
+  // interval spent paused cannot come back as a catch-up burst.
   const definitions = await retryTransaction(globalPrismaClient, async (tx) => {
     return await tx.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
       SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
@@ -168,6 +173,7 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
       JOIN "WorkflowVersion" v
         ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
       WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
+        AND d."pausedAt" IS NULL
     `);
   });
 
@@ -274,10 +280,18 @@ async function materializeDefinitionSchedules(definition: ScheduledDefinitionRow
       }
       didWork = true;
     }
-    await globalPrismaClient.workflowScheduleCursor.update({
-      where: { tenancyId_workflowId_scheduleKey: { tenancyId: definition.tenancyId, workflowId: definition.workflowId, scheduleKey } },
-      data: { lastMaterializedAt: now },
-    });
+    // GREATEST, not a blind write: `now` was captured before this (possibly
+    // slow, chunked) pass began, so an unconditional update can move the
+    // cursor BACKWARDS past a value written since — including a resume's
+    // fast-forward, which would hand the paused interval back as catch-up.
+    // Also stops two overlapping ticks from undoing each other's progress.
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      UPDATE "WorkflowScheduleCursor"
+      SET "lastMaterializedAt" = GREATEST("lastMaterializedAt", ${now})
+      WHERE "tenancyId" = ${definition.tenancyId}::uuid
+        AND "workflowId" = ${definition.workflowId}
+        AND "scheduleKey" = ${scheduleKey}
+    `);
   }
   return didWork;
 }
@@ -298,6 +312,25 @@ type DefinitionWithManifest = {
   latestVersion: number,
   manifest: WorkflowManifestJson,
 };
+
+/**
+ * Workflow ids paused at THIS moment. Deliberately not folded into the cached
+ * definition list: that cache lives for a whole batch, and a batch can span an
+ * entire tick (run-key derivation is a sandbox invocation). A resume landing
+ * mid-batch would then keep matching events against a stale `pausedAt` and
+ * drop them — permanently, because they get marked processed either way. An
+ * extra dispatch shortly after a resume is the accepted approximation; a
+ * permanent drop after one is not.
+ */
+async function listPausedWorkflowIdsForTenancy(tenancyId: string): Promise<Set<string>> {
+  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+    return await tx.$queryRaw<{ workflowId: string }[]>(Prisma.sql`
+      SELECT "workflowId" FROM "WorkflowDefinition"
+      WHERE "tenancyId" = ${tenancyId}::uuid AND "pausedAt" IS NOT NULL
+    `);
+  });
+  return new Set(rows.map((row) => row.workflowId));
+}
 
 async function listDefinitionsForTenancy(tenancyId: string, cache: Map<string, DefinitionWithManifest[]>): Promise<DefinitionWithManifest[]> {
   const cached = cache.get(tenancyId);
@@ -520,19 +553,28 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>, 
       const tenancy = await getCachedTenancy(event.tenancyId, tenancyCache);
       if (tenancy != null) {
         const definitions = await listDefinitionsForTenancy(event.tenancyId, definitionCache);
+        const matching = definitions.filter((definition) => workflowDefinitionMatchesEvent(definition.workflowId, definition.manifest, event));
+        // Only costs a query for events that actually match something.
+        const pausedWorkflowIds = matching.length === 0 ? new Set<string>() : await listPausedWorkflowIdsForTenancy(event.tenancyId);
         let processedEveryDefinition = true;
-        for (const definition of definitions) {
-          if (workflowDefinitionMatchesEvent(definition.workflowId, definition.manifest, event)) {
-            // runKey derivation is itself a sandbox invocation. Leave the
-            // event unprocessed once the latest-start deadline arrives;
-            // deterministic run ids make replay safe for definitions that
-            // were already handled in this partial pass.
-            if (Date.now() >= deadlineMs) {
-              processedEveryDefinition = false;
-              break;
-            }
-            await createRunForEvent(tenancy, event, definition);
+        for (const definition of matching) {
+          // Paused workflows consume their matching events without dispatching
+          // them. The event is still marked processed below (it may match
+          // other, unpaused definitions), so events the engine sees during a
+          // pause are dropped rather than queued up for the resume. The
+          // boundary is approximate by design: an event enqueued shortly
+          // before a resume can still dispatch if no tick reached it while the
+          // workflow was paused.
+          if (pausedWorkflowIds.has(definition.workflowId)) continue;
+          // runKey derivation is itself a sandbox invocation. Leave the
+          // event unprocessed once the latest-start deadline arrives;
+          // deterministic run ids make replay safe for definitions that
+          // were already handled in this partial pass.
+          if (Date.now() >= deadlineMs) {
+            processedEveryDefinition = false;
+            break;
           }
+          await createRunForEvent(tenancy, event, definition);
         }
         if (!processedEveryDefinition) break;
       }

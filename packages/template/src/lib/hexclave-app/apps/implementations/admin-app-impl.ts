@@ -582,6 +582,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     await this._adminWorkflowsCache.refresh([]);
   }
 
+  async setWorkflowPaused(workflowId: string, isPaused: boolean): Promise<void> {
+    await this._interface.setWorkflowPaused(workflowId, isPaused);
+    await this._adminWorkflowsCache.refresh([]);
+  }
+
   async listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]> {
     return (await this._interface.listWorkflowVersions(workflowId)).map(adminWorkflowVersionFromCrud);
   }
