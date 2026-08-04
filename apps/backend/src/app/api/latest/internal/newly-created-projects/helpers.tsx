@@ -273,6 +273,7 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
         // user-heavy projects). A manual argMax dedup spills to disk under the
         // same memory setting. `(project_id, branch_id, id)` is the table's
         // ORDER BY / dedup key, so grouping by it reproduces `FINAL` exactly.
+        // Re-seeded rows can share a version, so break ties by insertion time.
         query: `
           SELECT
             project_id AS projectId,
@@ -281,8 +282,8 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
           FROM (
             SELECT
               project_id,
-              argMax(is_anonymous, sync_sequence_id) AS isAnonymous,
-              argMax(sync_is_deleted, sync_sequence_id) AS syncIsDeleted
+              argMax(is_anonymous, (sync_sequence_id, sync_created_at)) AS isAnonymous,
+              argMax(sync_is_deleted, (sync_sequence_id, sync_created_at)) AS syncIsDeleted
             FROM analytics_internal.users
             WHERE branch_id = {branchId:String}
               AND project_id IN {projectIds:Array(String)}
