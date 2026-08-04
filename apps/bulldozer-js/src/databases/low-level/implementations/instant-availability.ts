@@ -157,26 +157,18 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         })
         .catch(() => {});
     };
-    const waitForPreviousWriteToBeIssued = async (previousWriteSeq: DatabaseSeq | undefined) => {
-      if (previousWriteSeq === undefined) return;
+    const chainRequiresSeq = async (previousWriteSeq: DatabaseSeq | undefined, requiresSeq: DatabaseSeq): Promise<DatabaseSeq> => {
+      if (previousWriteSeq === undefined) return requiresSeq;
       // Same-key underlying writes must be issued in instant-seq order; otherwise an evicted cache entry exposes and persists the older value.
-      await getSeqRecord(previousWriteSeq).underlyingSeq.catch(() => {});
-    };
-    const getPreviousUnderlyingSeq = async (previousWriteSeq: DatabaseSeq | undefined) => {
-      if (previousWriteSeq === undefined) return undefined;
-      return await getSeqRecord(previousWriteSeq).underlyingSeq.catch(() => undefined);
+      const previousUnderlyingSeq = await getSeqRecord(previousWriteSeq).underlyingSeq.catch(() => undefined);
+      return previousUnderlyingSeq === undefined ? requiresSeq : wrapped.combineSeqs(requiresSeq, previousUnderlyingSeq);
     };
 
     const setAllLocked = (entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, setOptions?: { requiresSeq?: DatabaseSeq }): { seq: DatabaseSeq } => {
       const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
       const previousWriteSeq = lastWriteSeq;
       const underlyingSeq = (async () => {
-        await waitForPreviousWriteToBeIssued(previousWriteSeq);
-        const requiresSeq = await getUnderlyingSeq(setOptions?.requiresSeq);
-        const previousUnderlyingSeq = await getPreviousUnderlyingSeq(previousWriteSeq);
-        const chainedRequiresSeq = previousUnderlyingSeq === undefined
-          ? requiresSeq
-          : wrapped.combineSeqs(requiresSeq, previousUnderlyingSeq);
+        const chainedRequiresSeq = await chainRequiresSeq(previousWriteSeq, await getUnderlyingSeq(setOptions?.requiresSeq));
         // The chained dependency deliberately propagates prior commit failures so later writes cannot overtake a failed predecessor.
         const { seq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq: chainedRequiresSeq });
         return seq;
@@ -218,7 +210,6 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
             const keysForWrapped = keys.map(cloneArrayBuffer);
             const previousWriteSeq = lastWriteSeq;
             const underlyingSeq = (async () => {
-              await waitForPreviousWriteToBeIssued(previousWriteSeq);
               await getSeqRecord(previousWriteSeq).underlyingAvailable;
               const { seq } = await wrappedStore.deleteAll(keysForWrapped);
               return seq;
