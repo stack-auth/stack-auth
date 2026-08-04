@@ -584,14 +584,17 @@ describe("internal GTM dashboard content", () => {
     expect(secondPage.body.items.length).toBeGreaterThan(0);
 
     // The internal project keeps notes created by earlier tests (and by earlier runs against the same
-    // database), so the second page is not necessarily the last one. Page to the end instead, and check
-    // that pagination terminates and yields every note this test created.
+    // database), so the second page is not necessarily the last one. Page until every note this test
+    // created has been returned instead. Notes are listed recent-first, so this only depends on how many
+    // notes this test creates, not on how much leftover data the database happens to hold.
     const seenIds = new Set<string>([...firstPage.body.items, ...secondPage.body.items].map(requireId));
     let cursor: string | null = secondPage.body.next_cursor;
-    for (let page = 0; cursor != null; page++) {
-      if (page > 100) throw new Error("Paginating through the GTM notes did not terminate.");
+    while (cursor != null && createdIds.some((id) => !seenIds.has(id))) {
       const nextPage = await niceBackendFetch(`${BASE_PATH}/notes?cursor=${encodeURIComponent(cursor)}`, { accessType: "client" });
       expect(nextPage.status).toBe(200);
+      // Guard against a cursor that never advances, which would otherwise loop forever.
+      expect(nextPage.body.items.length).toBeGreaterThan(0);
+      expect(nextPage.body.next_cursor).not.toBe(cursor);
       for (const item of nextPage.body.items) seenIds.add(requireId(item));
       cursor = nextPage.body.next_cursor;
     }
