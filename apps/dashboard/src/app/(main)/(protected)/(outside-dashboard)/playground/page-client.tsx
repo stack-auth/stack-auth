@@ -409,6 +409,7 @@ export default function PageClient() {
   const [badgeColor, setBadgeColor] = useState<DesignBadgeColor>("green");
   const [badgeSize, setBadgeSize] = useState<"sm" | "md">("md");
   const [badgeIcon, setBadgeIcon] = useState(true);
+  const [badgeSpin, setBadgeSpin] = useState(false);
   const [badgeContentMode, setBadgeContentMode] = useState<DesignBadgeContentMode>("both");
 
   // Button
@@ -824,6 +825,7 @@ export default function PageClient() {
           color={badgeColor}
           size={badgeSize}
           icon={badgeIconProp}
+          iconClassName={badgeSpin ? "animate-spin" : undefined}
           contentMode={badgeContentMode}
         />
       );
@@ -1509,6 +1511,11 @@ export default function PageClient() {
           {badgeContentMode === "both" && (
             <PropField label="Icon">
               <BoolToggle value={badgeIcon} onChange={setBadgeIcon} on="Show" off="Hide" />
+            </PropField>
+          )}
+          {(badgeContentMode === "icon" || (badgeContentMode === "both" && badgeIcon)) && (
+            <PropField label="Spin icon">
+              <BoolToggle value={badgeSpin} onChange={setBadgeSpin} on="Spin" off="Static" />
             </PropField>
           )}
         </div>
@@ -2239,12 +2246,14 @@ export default function PageClient() {
       const iconProp = badgeContentMode === "icon"
         ? 'icon={CheckCircle}'
         : (badgeIcon ? "icon={CheckCircle}" : "icon={undefined}");
+      const hasIcon = badgeContentMode === "icon" || (badgeContentMode === "both" && badgeIcon);
+      const spinProp = hasIcon && badgeSpin ? '\n  iconClassName="animate-spin"' : "";
       return `<DesignBadge
   label="${escapeAttr(badgeLabel || "Badge")}"
   color="${badgeColor}"
   size="${badgeSize}"
   contentMode="${badgeContentMode}"
-  ${iconProp}
+  ${iconProp}${spinProp}
 />`;
     }
     if (selected === "button") {

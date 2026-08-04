@@ -52,6 +52,13 @@ isRestricted: bool
 restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null
   The reason why user is restricted, or null if not restricted.
 
+restrictedByAdmin: bool
+  Whether the user is restricted by an administrator (set manually or by sign-up rules).
+
+restrictedByAdminReason: string | null
+  Public reason shown to the user explaining why an administrator restricted them, or null if none was given.
+  Readable by the user themselves, unlike the server-only restrictedByAdminPrivateDetails.
+
 
 ## Deprecated Properties
 

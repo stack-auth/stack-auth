@@ -308,7 +308,10 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
       async $allOperations(params: { args: any, query: (args: any) => Promise<any>, operation: string, model?: string, __internalParams?: unknown }) {
         const { args, query, operation, model } = params;
 
-        // note that we intentionally trigger this after EVERY operation, including reads, as this is on the primary — reads aren't sent here in the first place
+        // This extension must be applied AFTER (i.e. inside) the read-replicas extension: query extension callbacks
+        // run in the order they were applied, so the read-replicas hook runs first and dispatches read operations
+        // directly onto the replica client, which never reaches this hook. Everything that does arrive here executes
+        // on the primary and therefore needs a replication wait.
         // (do note that $allOperations does not trigger for the transaction commit itself, so we do that separately above)
 
         // __internalParams is an undocumented property, so let's validate that it fits our schema with yup first
@@ -334,12 +337,16 @@ function extendWithReadReplicas<T extends PrismaClient>(client: T, replicaConnec
   // Create a separate PrismaClient for the read replica
   const replicaClient = getPostgresPrismaClient(replicaConnectionString, "replica").client;
 
-  // First extend with replication wait (passing replica clients for direct querying), then with read replicas
-  const clientWithReplicationWait = extendWithReplicationWait(client, [replicaClient]);
-
-  return clientWithReplicationWait.$extends(readReplicas({
+  // Extend with read replicas FIRST so its query hook runs outermost: it routes read operations directly onto the
+  // replica client, so the replication-wait hook (applied second, i.e. inner) only ever sees operations that hit
+  // the primary. This is what makes replica-routed reads skip the replication wait.
+  const clientWithReadReplicas = client.$extends(readReplicas({
     replicas: [replicaClient],
-  })) as PrismaClientWithReplica<T>;
+  }));
+
+  // The $extends result doesn't structurally satisfy PrismaClient (e.g. it drops $on), but at runtime it supports
+  // everything extendWithReplicationWait uses ($extends, $transaction, $queryRaw), hence the cast.
+  return extendWithReplicationWait(clientWithReadReplicas as unknown as T, [replicaClient]) as unknown as PrismaClientWithReplica<T>;
 }
 
 function extendWithFakeReadReplica<T extends PrismaClient>(client: T): PrismaClientWithReplica<T> {

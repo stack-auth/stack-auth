@@ -50,6 +50,7 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   oauthCallbackRedirectUrl?: string,
   errorRedirectUrl?: string,
+  afterCallbackRedirectUrl?: string,
 }) => {
   const targetRedirectUrl =
     options.oauthCallbackRedirectUrl && (validateRedirectUrl(options.oauthCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.oauthCallbackRedirectUrl))
@@ -67,6 +68,14 @@ const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   url.searchParams.set("errorCode", error.errorCode);
   url.searchParams.set("message", error.message);
   url.searchParams.set("details", error.details ? JSON.stringify(error.details) : JSON.stringify({}));
+  if (
+    options.afterCallbackRedirectUrl != null
+    && (validateRedirectUrl(options.afterCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.afterCallbackRedirectUrl))
+  ) {
+    // The callback page must consume the OAuth error before the browser can return to this
+    // continuation, so preserve it as metadata rather than redirecting there directly.
+    url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
+  }
   redirect(url.toString());
 };
 
@@ -206,7 +215,7 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
-          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
         }
         throw error;
       }
@@ -419,7 +428,7 @@ const handler = createSmartRouteHandler({
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
-                    redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+                    redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
                   }
                   throw error;
                 }
@@ -450,7 +459,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
       }
       throw error;
     }

@@ -150,6 +150,23 @@ async function fetchJsonOrThrow(adminApp: object, path: string): Promise<unknown
   return await response.json();
 }
 
+/**
+ * Sends an authenticated user request through the dashboard app's existing
+ * request plumbing. Internal feature pages use this instead of rebuilding
+ * client authentication headers in dashboard code.
+ */
+export async function sendInternalUserRequest(adminApp: object, path: string, requestOptions: RequestInit = {}): Promise<Response> {
+  return await getInternalsHookOrThrow(adminApp, "sendRequest")(path, requestOptions, "client");
+}
+
+/**
+ * Sends a project-admin request through the dashboard app's request plumbing.
+ * Use this for internal routes that return or mutate project-owner-only data.
+ */
+export async function sendInternalAdminRequest(adminApp: object, path: string, requestOptions: RequestInit = {}): Promise<Response> {
+  return await getInternalsHookOrThrow(adminApp, "sendRequest")(path, requestOptions, "admin");
+}
+
 export async function fetchMetricsOrThrow(
   adminApp: object,
   includeAnonymous: boolean,

@@ -1,7 +1,12 @@
 import * as Sentry from "@sentry/nextjs";
 import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { registerErrorSink, type CaptureLevel } from "@hexclave/shared/dist/utils/errors";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
+
+const sentryErrorSink = (location: string, error: unknown, level: CaptureLevel) => {
+  Sentry.captureException(error, { extra: { location }, level });
+};
 
 export async function register() {
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {
@@ -34,6 +39,7 @@ export async function register() {
         return event;
       },
     });
+    registerErrorSink(sentryErrorSink);
   }
 }
 

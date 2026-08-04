@@ -29,6 +29,8 @@ export type DesignBadgeProps = {
   label: string,
   color: DesignBadgeColor,
   icon?: React.ElementType,
+  /** Extra classes merged onto the rendered icon, e.g. `animate-spin` for an in-progress status. */
+  iconClassName?: string,
   size?: DesignBadgeSize,
   /** What to display: "both" (default), "text" (label only), or "icon" (icon only; requires icon prop). */
   contentMode?: DesignBadgeContentMode,
@@ -78,6 +80,7 @@ export function DesignBadge({
   label,
   color,
   icon,
+  iconClassName,
   size = "md",
   contentMode = "both",
 }: DesignBadgeProps) {
@@ -101,7 +104,7 @@ export function DesignBadge({
       title={!showLabel ? label : undefined}
       aria-label={label}
     >
-      {showIcon && Icon && <Icon className="h-3 w-3" />}
+      {showIcon && Icon && <Icon className={cn("h-3 w-3", iconClassName)} />}
       {showLabel ? label : null}
     </div>
   );

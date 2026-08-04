@@ -59,6 +59,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config_warnings": [],
         "display_name": "Hexclave Dashboard",
         "id": "internal",
+        "is_development_environment": false,
         "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -1233,12 +1234,12 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
         "details": {
           "message": deindent\`
             Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.oauth_providers[0].client_secret must not be empty
+              - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
           \`,
         },
         "error": deindent\`
           Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.oauth_providers[0].client_secret must not be empty
+            - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
         \`,
       },
       "headers": Headers {

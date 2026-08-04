@@ -7,7 +7,7 @@ import { defineConfig, type Plugin } from "vite";
 import { nitro } from "nitro/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
-const stackAuthRootPath = fileURLToPath(new URL("../..", import.meta.url));
+const hexclaveRootPath = fileURLToPath(new URL("../..", import.meta.url));
 
 function watchNodeModules(modules: string[]): Plugin {
   return {
@@ -66,7 +66,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: Number(`${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}43`),
       fs: {
-        allow: [stackAuthRootPath],
+        allow: [hexclaveRootPath],
       },
     },
     resolve: {

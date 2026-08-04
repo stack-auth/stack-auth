@@ -482,7 +482,7 @@ export function LinkExistingOnboarding(props: Props) {
   const [gitTreeTruncated, setGitTreeTruncated] = useState(false);
   const [loadingConfigPathSuggestions, setLoadingConfigPathSuggestions] = useState(false);
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("chore(stack-auth): add Hexclave config sync workflow");
+  const [commitMessage, setCommitMessage] = useState("chore(hexclave): add Hexclave config sync workflow");
   const [commitDescription, setCommitDescription] = useState("Add a GitHub Actions workflow that pushes hexclave.config to Hexclave whenever it changes.");
   const [isSettingUpGithubWorkflow, setIsSettingUpGithubWorkflow] = useState(false);
   const [isCheckingSource, setIsCheckingSource] = useState(false);
@@ -1961,7 +1961,7 @@ export function LinkExistingOnboarding(props: Props) {
             <DesignInput
               value={commitMessage}
               onChange={(event) => setCommitMessage(event.target.value)}
-              placeholder="chore(stack-auth): add Hexclave config sync workflow"
+              placeholder="chore(hexclave): add Hexclave config sync workflow"
             />
           </div>
           <div className="space-y-2">

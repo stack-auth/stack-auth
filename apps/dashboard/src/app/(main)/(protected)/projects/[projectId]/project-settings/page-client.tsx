@@ -17,7 +17,8 @@ import type { PushedConfigSource } from "@hexclave/next";
 import { TeamSwitcher } from "@hexclave/next";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GithubLogoIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -84,6 +85,7 @@ export default function PageClient() {
   }, [project, toast]);
 
   const baseApiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
+  const isDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
 
   // Memoize computed URLs
   const jwksUrl = useMemo(
@@ -472,11 +474,23 @@ export default function PageClient() {
         {isLoadingSource ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : configSource?.type === "unlinked" ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold text-foreground">Dashboard</p>
-            <p className="text-xs text-muted-foreground">
-              Your configuration is managed directly on this dashboard. Changes take effect immediately when saved.
-            </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-foreground">Dashboard</p>
+              <p className="text-xs text-muted-foreground">
+                Your configuration is managed directly on this dashboard. Changes take effect immediately when saved.
+              </p>
+            </div>
+            {!isDevelopmentEnvironment && (
+              <div>
+                <DesignButton asChild variant="secondary" size="sm">
+                  <Link href={urlString`/new-project?project_id=${project.id}&mode=link-existing`}>
+                    <GithubLogoIcon className="mr-2 h-4 w-4" />
+                    Link to GitHub
+                  </Link>
+                </DesignButton>
+              </div>
+            )}
           </div>
         ) : configSource?.type === "pushed-from-github" ? (
           <div className="flex flex-col gap-4">

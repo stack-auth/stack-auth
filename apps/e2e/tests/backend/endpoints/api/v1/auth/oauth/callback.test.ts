@@ -40,7 +40,9 @@ it("should fail when inner callback has invalid provider ID", async ({ expect })
 it("should fail when account is new and sign ups are disabled", async ({ expect }) => {
   await Project.createAndSwitch({ config: { sign_up_enabled: false, oauth_providers: [ { id: "spotify", type: "shared" } ] } });
   await InternalApiKey.createAndSetProjectKeys();
-  const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl();
+  const afterCallbackRedirectUrl = localRedirectUrl + "/settings?tab=connected-accounts#oauth";
+  const authorize = await Auth.OAuth.authorize({ afterCallbackRedirectUrl });
+  const getInnerCallbackUrlResponse = await Auth.OAuth.getInnerCallbackUrl(authorize);
   const cookie = updateCookiesFromResponse("", getInnerCallbackUrlResponse.authorizeResponse);
   const response = await niceBackendFetch(getInnerCallbackUrlResponse.innerCallbackUrl, {
     redirect: "manual",
@@ -62,6 +64,7 @@ it("should fail when account is new and sign ups are disabled", async ({ expect 
   expect(locationUrl.searchParams.get("error_description")).toBe("Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.");
   expect(locationUrl.searchParams.get("message")).toBe("Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.");
   expect(locationUrl.searchParams.get("details")).toBe("{}");
+  expect(locationUrl.searchParams.get("after_callback_redirect_url")).toBe(afterCallbackRedirectUrl);
   expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
 });
 

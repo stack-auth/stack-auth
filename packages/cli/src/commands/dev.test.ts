@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -88,6 +88,91 @@ describe("devDashboardCommandFromEnv", () => {
   });
 });
 
+describe("dashboardEnvWithStatePath", () => {
+  it("passes the resolved state path to the dashboard child", () => {
+    expect(dashboardEnvWithStatePath({ NODE_ENV: "production" }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json")).toEqual({
+      NODE_ENV: "production",
+      STACK_DEV_ENVS_PATH: "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json",
+    });
+  });
+
+  it("preserves an explicit state path override", () => {
+    expect(dashboardEnvWithStatePath({
+      STACK_DEV_ENVS_PATH: "C:\\custom\\dev-envs.json",
+    }, "C:\\Users\\Test\\AppData\\Local\\Hexclave\\dev-envs.json").STACK_DEV_ENVS_PATH).toBe("C:\\custom\\dev-envs.json");
+  });
+});
+
+describe("runChildProcess", () => {
+  const args = [
+    "plain",
+    "space containing argument",
+    "a&b",
+    "%PATH%",
+    "!PATH!",
+    "^caret",
+    'a"quoted"b',
+    '{"json":"value"}',
+    "trailing\\",
+    'back\\slash"quote',
+    "",
+  ];
+
+  function createArgvShim() {
+    const tempDir = mkdtempSync(join(tmpdir(), "hexclave-windows-argv-"));
+    const outputPath = join(tempDir, "argv.json");
+    const scriptPath = join(tempDir, "print-argv.cjs");
+    const shimPath = join(tempDir, "print-argv.cmd");
+
+    writeFileSync(scriptPath, [
+      'const fs = require("node:fs");',
+      "const args = process.argv.slice(2);",
+      'fs.writeFileSync(process.env.HEXCLAVE_TEST_ARGV_OUTPUT, JSON.stringify(args));',
+    ].join("\n"));
+    writeFileSync(shimPath, [
+      "@echo off",
+      `node "%~dp0print-argv.cjs" %*`,
+    ].join("\r\n"));
+
+    return { outputPath, shimPath, tempDir };
+  }
+
+  it.skipIf(process.platform !== "win32")("preserves argv through a Windows command shim", async () => {
+    const { outputPath, shimPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: shimPath,
+        args,
+      }, {
+        ...process.env,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform !== "win32")("resolves a bare command name to its Windows shim", async () => {
+    const { outputPath, tempDir } = createArgvShim();
+
+    try {
+      await expect(runChildProcess({
+        command: "print-argv",
+        args,
+      }, {
+        ...process.env,
+        PATH: `;${tempDir};${process.env.PATH ?? ""}`,
+        HEXCLAVE_TEST_ARGV_OUTPUT: outputPath,
+      })).resolves.toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(args);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("configErrorLogPrefix", () => {
   it("highlights the config error badge when color is supported", () => {
     expect(configErrorLogPrefix(true)).toBe("[Hexclave] \x1b[41;37;1m[CONFIG ERROR]\x1b[0m ");
@@ -103,6 +188,11 @@ describe("isHeartbeatResponse", () => {
     expect(isHeartbeatResponse({
       ok: true,
       config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "syncing",
+          created_at_millis: 1_717_999_999_999,
+        },
         {
           config_file_path: "/app/hexclave.config.ts",
           status: "success",
@@ -139,6 +229,37 @@ describe("isHeartbeatResponse", () => {
         },
       ],
     })).toBe(false);
+  });
+});
+
+describe("logConfigSyncEvents", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reports detection before confirming a successful sync", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    logConfigSyncEvents({
+      ok: true,
+      config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "syncing",
+          created_at_millis: 1_718_000_000_000,
+        },
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "success",
+          created_at_millis: 1_718_000_000_001,
+        },
+      ],
+    });
+
+    expect(warn.mock.calls).toEqual([
+      ["[Hexclave] Detected change to config file at /app/hexclave.config.ts. Syncing..."],
+      ["[Hexclave] Updated config sync successful!"],
+    ]);
   });
 });
 

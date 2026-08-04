@@ -116,12 +116,23 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
               "/api/latest/internal/external-db-sync/poller",
               "/api/latest/internal/external-db-sync/sequencer",
               "/api/latest/internal/external-db-sync/sync-engine",
+              "/api/latest/internal/workflow-engine-step",
+            ];
+            // Prefix entries for routes with dynamic path segments (which exact
+            // matching can't express): deploys upload many files to Vercel and
+            // the run-log stream follows a build until it finishes.
+            const allowedLongRequestPathPrefixes = [
+              "/api/latest/deployments/",
             ];
             const allAllowedLongRequestPaths = [
               ...allowedLongRequestPaths,
               ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
             ];
-            const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) ? 240 : 12;
+            const allAllowedLongRequestPathPrefixes = [
+              ...allowedLongRequestPathPrefixes,
+              ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+            ];
+            const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) || allAllowedLongRequestPathPrefixes.some(prefix => requestUrl.pathname.startsWith(prefix)) ? 240 : 12;
             runAsynchronously(async () => {
               // This diagnostic timer must not keep a drained server process alive.
               await waitForTimeout(warnAfterSeconds * 1000, undefined, { ref: false });

@@ -6,7 +6,7 @@ import { buildSkillSitePrompt, skillSitePrompt } from "../unified-prompts/skill-
 export const llmsTxt = deindent`
   # Hexclave
 
-  > Hexclave is an authentication and user management platform for SaaS apps, with teams, RBAC, payments, and analytics. Formerly Stack Auth.
+  > Hexclave is an authentication and user management platform for SaaS apps, with teams, RBAC, payments, and analytics.
 
   ${remindersPrompt}
 

@@ -26,6 +26,16 @@ import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import type { PlanUsageResponse } from "./plan-usage";
 import { HexclaveServerInterface, ServerAuthApplicationOptions } from "./server-interface";
+import type {
+  WorkflowCancelRunsResultJson,
+  WorkflowRunDetailsJson,
+  WorkflowRunJson,
+  WorkflowRunsFilterJson,
+  WorkflowSummaryJson,
+  WorkflowSyncResultJson,
+  WorkflowUpgradeRunsResultJson,
+  WorkflowVersionJson,
+} from "./workflows";
 
 export type { PlanUsageResponse } from "./plan-usage";
 
@@ -35,6 +45,74 @@ export type ChatContent = Array<
   | { type: "text", text: string }
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
 >;
+
+export type AdminDeploymentRunJson = {
+  id: string,
+  service_id: string,
+  status: "queued" | "building" | "ready" | "error" | "canceled",
+  target: string,
+  triggered_by: string,
+  url: string | null,
+  error: string | null,
+  created_at_millis: number,
+  finished_at_millis: number | null,
+};
+
+// One env var of a deployment service, normalized from the config-side
+// definition: "plain" vars carry their literal `value`, "connection" vars
+// carry the "serviceId.outputKey" reference they resolve to at deploy time,
+// and "secret" vars carry only the `secret_key` whose value is supplied via
+// `hexclave deploy --secret <key>=<value>` (never stored).
+export type AdminDeploymentEnvVarJson = {
+  key: string,
+  type: "plain" | "secret" | "connection",
+  value: string | null,
+  secret_key: string | null,
+};
+
+// The config-side shape of one env var, mirroring
+// `deployments-alpha.services.<id>.env.<KEY>` in hexclave.config.ts: no type means a
+// plain value, "secret" requires `key`, "connection" requires a
+// "serviceId.outputKey" `value`.
+export type AdminDeploymentEnvVarOptions =
+  | { type?: undefined, value: string }
+  | { type: "secret", key: string }
+  | { type: "connection", value: string };
+
+export type AdminDeploymentServiceJson = {
+  id: string,
+  type: "vercel",
+  framework: string | null,
+  install_command: string | null,
+  build_command: string | null,
+  output_directory: string | null,
+  root_directory: string | null,
+  provisioned: boolean,
+  status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
+  has_successful_deploy: boolean,
+  url: string | null,
+  env: AdminDeploymentEnvVarJson[],
+  domains: { hostname: string, is_primary: boolean, verified: boolean }[],
+  latest_run: AdminDeploymentRunJson | null,
+};
+
+// null means "unset this field" (falls back to platform auto-detection);
+// undefined means "leave unchanged".
+export type AdminDeploymentServiceBuildOptions = {
+  framework?: string | null,
+  install_command?: string | null,
+  build_command?: string | null,
+  output_directory?: string | null,
+  root_directory?: string | null,
+};
+
+export type AdminDeploymentDomainJson = {
+  hostname: string,
+  is_primary: boolean,
+  verified: boolean,
+  pending_first_deploy: boolean,
+  dns_records: { type: string, name: string, value: string }[],
+};
 
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
@@ -180,6 +258,124 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
     const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
+  }
+
+  // ─── Workflows (internal-project gated; see the Workflows v1 spec) ───────
+
+  async listWorkflows(): Promise<WorkflowSummaryJson[]> {
+    const response = await this.sendAdminRequest(`/internal/workflows`, {}, null);
+    const result = await response.json() as { workflows: WorkflowSummaryJson[] };
+    return result.workflows;
+  }
+
+  async createWorkflow(options: { id: string, display_name?: string, source: string }): Promise<WorkflowSyncResultJson> {
+    const response = await this.sendAdminRequest(
+      `/internal/workflows`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateWorkflowSource(workflowId: string, source: string): Promise<WorkflowSyncResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/source`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async listWorkflowVersions(workflowId: string): Promise<WorkflowVersionJson[]> {
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/${workflowId}/versions`, {}, null);
+    const result = await response.json() as { versions: WorkflowVersionJson[] };
+    return result.versions;
+  }
+
+  async listWorkflowRuns(workflowId: string, filter: WorkflowRunsFilterJson = {}): Promise<{ runs: WorkflowRunJson[], next_cursor: string | null }> {
+    const params = new URLSearchParams();
+    if (filter.state !== undefined) params.set("state", filter.state);
+    if (filter.version !== undefined) params.set("version", String(filter.version));
+    if (filter.run_key !== undefined) params.set("run_key", filter.run_key);
+    if (filter.cursor !== undefined) params.set("cursor", filter.cursor);
+    if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+    if (filter.include_state !== undefined) params.set("include_state", String(filter.include_state));
+    const query = params.toString();
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/${workflowId}/runs` + (query ? `?${query}` : ""), {}, null);
+    return await response.json();
+  }
+
+  async getWorkflowRun(runId: string): Promise<WorkflowRunDetailsJson> {
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/runs/${runId}`, {}, null);
+    return await response.json();
+  }
+
+  async cancelWorkflowRuns(workflowId: string, filter: { run_key?: string, run_id?: string, state?: string, version?: number }): Promise<WorkflowCancelRunsResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/runs/cancel`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(filter),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async upgradeWorkflowRuns(workflowId: string, options: { to_version: number, run_key?: string, from_version?: number }): Promise<WorkflowUpgradeRunsResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/runs/upgrade`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async retryWorkflowRun(runId: string): Promise<{ run_id: string }> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/runs/${runId}/retry`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async sendWorkflowEvent(name: string, data: unknown): Promise<{ event_id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/workflows/events`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, data }),
+      },
+      null,
+    );
+    return await response.json();
   }
 
   async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {
@@ -1202,6 +1398,111 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  // ---- Deployments app ------------------------------------------------------
+
+  async listDeploymentServices(): Promise<AdminDeploymentServiceJson[]> {
+    const response = await this.sendAdminRequest(
+      "/deployments/services",
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async createDeploymentService(id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson> {
+    const response = await this.sendAdminRequest(
+      "/deployments/services",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ id, ...build }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateDeploymentService(serviceId: string, update: AdminDeploymentServiceBuildOptions & {
+    // Replaces the service's whole env var set (config-side definition shape).
+    env?: Record<string, AdminDeploymentEnvVarOptions>,
+  }): Promise<AdminDeploymentServiceJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(update),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteDeploymentService(serviceId: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async listDeploymentRuns(serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/runs` + (options?.limit !== undefined ? `?limit=${options.limit}` : ""),
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async getDeploymentRunLogs(runId: string, options?: { signal?: AbortSignal }): Promise<string> {
+    // The endpoint streams chunked plain text until the run is terminal (or a
+    // server-side cap); reading the full body gives "the logs so far". Pass a
+    // signal so an abandoned view can abort — otherwise the server keeps
+    // following the build for minutes.
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/runs/${runId}/logs`,
+      { method: "GET", signal: options?.signal },
+      null,
+    );
+    return await response.text();
+  }
+
+  async addDeploymentServiceDomain(serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ hostname, ...(options?.isPrimary ? { is_primary: true } : {}) }),
+      },
+      null,
+    );
+  }
+
+  async getDeploymentServiceDomain(serviceId: string, hostname: string): Promise<AdminDeploymentDomainJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains/${hostname}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteDeploymentServiceDomain(serviceId: string, hostname: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains/${hostname}`,
+      { method: "DELETE" },
+      null,
+    );
   }
 
 }

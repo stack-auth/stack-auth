@@ -37,6 +37,8 @@
     "api",
     "node_modules",
     ".next/dev",
-    "dist"
+    "dist",
+    "**/*.untracked.ts",
+    "**/*.untracked.tsx"
   ]
 }
