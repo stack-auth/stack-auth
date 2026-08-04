@@ -162,6 +162,11 @@ function getLoggedResponseStatus(response: unknown, fallbackStatus: number | str
   return response instanceof Response ? response.status : fallbackStatus;
 }
 
+import.meta.vitest?.test("development logging uses the returned Response status", ({ expect }) => {
+  expect(getLoggedResponseStatus(new Response(null, { status: 404 }), 200)).toBe(404);
+  expect(getLoggedResponseStatus("response body", 201)).toBe(201);
+});
+
 function isRedirectError(error: unknown): error is { redirectStatus: 307 | 308, redirectUrl: string } {
   if (!(error instanceof Error) || !("digest" in error) || !("redirectUrl" in error) || !("redirectStatus" in error)) {
     return false;

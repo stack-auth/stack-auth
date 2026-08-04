@@ -1,6 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
+import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
@@ -77,6 +78,15 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
     try {
       const requestId = generateSecureRandomString(80);
       const requestUrl = new URL(req.url);
+      // Sentry's httpIntegration already forks an isolation scope per incoming request (which is
+      // what keeps concurrent requests on Fluid Compute / Cloud Run from leaking context into each
+      // other), so we only need to attach the request context to that scope — error events must be
+      // correlatable with the x-stack-request-id a user reports. Never add auth headers or query
+      // values here; both routinely contain credentials.
+      Sentry.getIsolationScope().setContext("stack-request", {
+        requestId,
+        method: req.method,
+      });
       return await traceSpan({
         description: 'handling API request',
         attributes: {

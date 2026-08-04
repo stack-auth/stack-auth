@@ -36,7 +36,8 @@ export function createRequestCompletionLog(input: {
     requestId,
     environment: getNodeEnvironment(),
     commit: getEnvVariable("VERCEL_GIT_COMMIT_SHA", getEnvVariable("GITHUB_SHA", "")) || null,
-    region: getEnvVariable("VERCEL_REGION", "") || null,
+    // The Cloud Run fallback deployment sets GOOGLE_CLOUD_REGION instead of VERCEL_REGION.
+    region: getEnvVariable("VERCEL_REGION", getEnvVariable("GOOGLE_CLOUD_REGION", "")) || null,
     runtime: process.version,
   };
 }
