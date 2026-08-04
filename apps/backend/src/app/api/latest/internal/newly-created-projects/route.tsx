@@ -14,10 +14,12 @@ import {
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import {
   FEATURED_APP_IDS,
+  CANDIDATE_WINDOW_SIZE,
   INTERNAL_PROJECT_ID,
   LIST_RETURN_LIMIT,
   buildNewlyCreatedProjectRows,
   loadProjectActivityMetrics,
+  mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
 import { ProjectRowSchema } from "./schemas";
@@ -89,25 +91,35 @@ export const GET = createSmartRouteHandler({
       req.query.activity_24h_after_creation,
     );
 
-    const projects = await globalPrismaClient.$replica().project.findMany({
-      where: {
-        ...(rde === "rde" ? { isDevelopmentEnvironment: true } : {}),
-        ...(rde === "not_rde" ? { isDevelopmentEnvironment: false } : {}),
-        ...(onboarding === "completed" ? { onboardingStatus: "completed" } : {}),
-        ...(onboarding === "incomplete" ? { onboardingStatus: { not: "completed" } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        displayName: true,
-        createdAt: true,
-        isDevelopmentEnvironment: true,
-        onboardingStatus: true,
-        ownerTeamId: true,
-        stripeAccountId: true,
-        description: true,
-      },
-    });
+    const projectWhere = {
+      ...(rde === "rde" ? { isDevelopmentEnvironment: true } : {}),
+      ...(rde === "not_rde" ? { isDevelopmentEnvironment: false } : {}),
+      ...(onboarding === "completed" ? { onboardingStatus: "completed" as const } : {}),
+      ...(onboarding === "incomplete" ? { onboardingStatus: { not: "completed" as const } } : {}),
+    };
+    const projectSelect = {
+      id: true,
+      displayName: true,
+      createdAt: true,
+      isDevelopmentEnvironment: true,
+      onboardingStatus: true,
+      ownerTeamId: true,
+      stripeAccountId: true,
+      description: true,
+    } as const;
+    const [recentProjects, internalProject] = await Promise.all([
+      globalPrismaClient.$replica().project.findMany({
+        where: projectWhere,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: CANDIDATE_WINDOW_SIZE,
+        select: projectSelect,
+      }),
+      globalPrismaClient.$replica().project.findUnique({
+        where: { id: INTERNAL_PROJECT_ID, ...projectWhere },
+        select: projectSelect,
+      }),
+    ]);
+    const projects = mergeInternalProjectIntoCandidates(recentProjects, internalProject);
 
     // Activity-backed filters cannot run in Prisma because those metrics live
     // in ClickHouse. Filter and limit first, then render each selected project's

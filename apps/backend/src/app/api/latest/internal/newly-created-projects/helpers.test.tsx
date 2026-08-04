@@ -4,6 +4,7 @@ import {
   getEnabledAppIds,
   getTrustedDomainBaseUrls,
   isStripeAccountSetupComplete,
+  mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
 
@@ -83,6 +84,24 @@ describe("newly-created-projects helpers", () => {
       { id: "second" },
       { id: "internal" },
     ], 2)).toEqual([
+      { id: "newest" },
+      { id: "internal" },
+    ]);
+  });
+
+  it("pins the internal project when it falls outside the candidate window", () => {
+    const candidates = mergeInternalProjectIntoCandidates(
+      [{ id: "newest" }, { id: "second" }],
+      { id: "internal" },
+    );
+    expect(selectProjectsWithInternalPinned(candidates, 2)).toEqual([
+      { id: "newest" },
+      { id: "internal" },
+    ]);
+    expect(mergeInternalProjectIntoCandidates(
+      [{ id: "newest" }, { id: "internal" }],
+      { id: "internal" },
+    )).toEqual([
       { id: "newest" },
       { id: "internal" },
     ]);
