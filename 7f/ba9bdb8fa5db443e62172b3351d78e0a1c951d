@@ -1,0 +1,478 @@
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_f72b9deee41b66::t_e0161f4663409d 24,30,33,38,48,62,64,75-90,98,112,121,124-198,360,797-813,819,880-903,947-949,1066-1069,1073-1090,1178-1197,1200-1204,1209-1214,1216-1221,1223,1249-1254,1258-1262,2743-2747,2985,3201-3216,3218-3241,3329-3333,3369-3375,3377-3380,3389,3414-3418,3539-3545,3599-3605,4161-4164,4261-4264,4271-4283,4526,4533-4538,4565,4602-4609
+  s_f72b9deee41b66::t_be5d210e604467 4610
+apps/backend/src/scripts/regen-internal-subscriptions-to-latest.test.ts
+  s_f72b9deee41b66::t_e0161f4663409d 1-5,10-12
+packages/shared/src/utils/stores.tsx
+  s_f72b9deee41b66::t_e0161f4663409d 176
+CHANGELOG.md
+  s_f72b9deee41b66::t_1930a03274b2e9 5-14
+apps/backend/.env.development
+  s_f72b9deee41b66::t_c46b2e6256a918 100
+apps/backend/package.json
+  s_f72b9deee41b66::t_7182f75177ddd4 3,104,115
+apps/backend/prisma/migrations/20260311120000_browser_actions/migration.sql
+  s_f72b9deee41b66::t_51852be6d3b98b 1
+apps/backend/prisma/migrations/20260311120000_browser_actions/tests/browser-action-enum.ts
+  s_f72b9deee41b66::t_a8c175b0c3078d 1-34
+apps/backend/prisma/schema.prisma
+  s_f72b9deee41b66::t_4b0a294ed5a10c 878
+apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx
+  s_f72b9deee41b66::t_2a9087bcfd6eb8 53,71-78,92-118,145-166,267,480,511
+apps/backend/src/app/api/latest/auth/sessions/route.tsx
+  s_f72b9deee41b66::t_995a8570c4b0c6 2,22,51-64
+apps/backend/src/app/api/latest/browser-actions/consume/route.ts
+  s_f72b9deee41b66::t_609c522767f49b 1-40
+apps/backend/src/app/api/latest/browser-actions/route.ts
+  s_f72b9deee41b66::t_13c553ed366900 1-59
+apps/backend/src/app/api/latest/integrations/neon/oauth-providers/crud.tsx
+  s_f72b9deee41b66::t_5c5e07829ca950 17,22-38,46,51-53,58-71,118-120,154-156
+apps/backend/src/app/api/latest/integrations/stripe/webhooks/route.tsx
+  s_f72b9deee41b66::t_01e27e740acc2e 349-354,396-436
+apps/backend/src/app/api/latest/internal/newly-created-projects/[projectId]/route.tsx
+  s_f72b9deee41b66::t_9109a06571185a 1-119
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.test.tsx
+  s_f72b9deee41b66::t_f28b93a7d39bc8 1-109
+apps/backend/src/app/api/latest/internal/newly-created-projects/helpers.tsx
+  s_f72b9deee41b66::t_0e95fe436d01b5 1-756
+apps/backend/src/app/api/latest/internal/newly-created-projects/route.tsx
+  s_f72b9deee41b66::t_c2fcb9f998b3f5 1-155
+apps/backend/src/app/api/latest/internal/newly-created-projects/schemas.tsx
+  s_f72b9deee41b66::t_0367919b05401b 1-64
+apps/backend/src/app/api/latest/internal/payments/test-mode-purchase-session/route.tsx
+  s_f72b9deee41b66::t_eb64fc21df11ea 41-42
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_f72b9deee41b66::t_3428c387977642 8-14,79-80,82-85,87,268-272,274-279,281,337,401
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/switch/route.ts
+  s_f72b9deee41b66::t_0cc0ab7b18d07b 1,10-13,18-20,189-190,192-194,279,328-330,332-334,343,357
+apps/backend/src/app/api/latest/payments/purchases/purchase-session/route.tsx
+  s_f72b9deee41b66::t_95b277aa86a74f 2,12-14,18-20,56,60-65,97-101,104,108,118-122,133-139,153-155,159-161,166,195-197,199-206,230,257-264,279-282,287-289,293,307,311-314,326-327,332-335
+apps/backend/src/app/api/latest/payments/purchases/validate-code/route.ts
+  s_f72b9deee41b66::t_ae36bf85f77078 1,4,12,51-58,93,107-127,142
+apps/backend/src/app/api/latest/users/crud.tsx
+  s_f72b9deee41b66::t_e921a77505b3f7 69-74,559,690,705-708
+apps/backend/src/lib/analytics-clickmap-tokens.test.ts
+  s_f72b9deee41b66::t_3654fc0b6346ab 4-5,9,13
+apps/backend/src/lib/analytics-clickmap-tokens.ts
+  s_f72b9deee41b66::t_dd47309b007890 2,36,57
+apps/backend/src/lib/browser-actions.ts
+  s_f72b9deee41b66::t_d315b1929c585a 1-234
+apps/backend/src/lib/config/index.tsx
+  s_f72b9deee41b66::t_b55f5bacafcf65 1509-1511
+apps/backend/src/lib/email-queue-step.test.tsx
+  s_f72b9deee41b66::t_790a8652d66531 1,3-4,8,159-259
+apps/backend/src/lib/email-queue-step.tsx
+  s_f72b9deee41b66::t_5c833cd041d7b3 10,35-43,216,573,590-612,624-635,644-645
+apps/backend/src/lib/emailable.tsx
+  s_f72b9deee41b66::t_6e6d5b3a4155e7 85,102-107,161-170
+apps/backend/src/lib/external-db-sync-queue.test.ts
+  s_f72b9deee41b66::t_0f328a45009102 2-8,13-22,25,29,35-71,73-89,92,96,114,124-125,134,138,143,151-152,169-170
+apps/backend/src/lib/external-db-sync-queue.ts
+  s_f72b9deee41b66::t_b15d23adae0615 1,13-14,16,21,31
+apps/backend/src/lib/payments.tsx
+  s_f72b9deee41b66::t_d666b52e56416e 11,336-337,504-599,609-614,616,722-798
+apps/backend/src/lib/projects.tsx
+  s_f72b9deee41b66::t_c37ba5b459c5b2 241-243
+apps/backend/src/lib/redirect-urls.test.tsx
+  s_f72b9deee41b66::t_06bba285c90643 2,84-85,123,130,142,144-145,150-160
+apps/backend/src/lib/redirect-urls.tsx
+  s_f72b9deee41b66::t_1520e755d90259 7-9,13-14,19-39,45,54-55
+apps/backend/src/lib/tokens.tsx
+  s_f72b9deee41b66::t_7e703c1ded72c0 22-23,454-468
+apps/backend/src/lib/trusted-origins.ts
+  s_f72b9deee41b66::t_d16f3797226efe 1-26
+apps/backend/src/oauth/index.tsx
+  s_f72b9deee41b66::t_a7cb75f15c4d40 147-157,159
+apps/backend/src/oauth/providers/apple.tsx
+  s_f72b9deee41b66::t_df655650d87ef5 1-2,13-51,63,95-131
+apps/backend/src/route-handlers/verification-code-handler.tsx
+  s_f72b9deee41b66::t_9a849dcae5c0a0 21-44,227-231
+apps/bulldozer-js/package.json
+  s_f72b9deee41b66::t_416090bb281b74 3
+apps/bulldozer-js/src/databases/bulldozer/studio.ts
+  s_f72b9deee41b66::t_9d70dcf5371de6 19,30-37,447
+apps/bulldozer-js/src/payments/schema/index.test.ts
+  s_f72b9deee41b66::t_38601ba82cb925 84,100-192
+apps/bulldozer-js/src/payments/schema/index.ts
+  s_f72b9deee41b66::t_5b202bde2658c5 183-203,325,343,356,368-369,755-758,953,956-962,967
+apps/dashboard/DESIGN-GUIDE.md
+  s_f72b9deee41b66::t_fafd2bc1d1ee82 523,525,532,534-538
+apps/dashboard/package.json
+  s_f72b9deee41b66::t_92f54e49a3554c 3,82
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/playground/page-client.tsx
+  s_f72b9deee41b66::t_3fe8de5f4db17b 540,553,568,586,599,609,1093,1098-1099,1101,1106-1111,1114
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/page-client.tsx
+  s_f72b9deee41b66::t_151fb77ef4dd92 23,26-27,33,39,55,57,89,99,102-118,136,148,153,155,163-164,167,171-180,198,220,224-232
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/page-client.tsx
+  s_f72b9deee41b66::t_0e4534ce0a9295 129-131,152-154,174-176,347-349,459
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/providers.tsx
+  s_f72b9deee41b66::t_94d315f3eff636 9,14,64-117,190-192,209-223,255-354,414,431-440,446-449,459,466-481,488
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/domain-settings.tsx
+  s_f72b9deee41b66::t_2a60b74ec9b037 1183,1198
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails/page-client.tsx
+  s_f72b9deee41b66::t_d7e9660801437f 843-852,914-928
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/expert-mode/page-client.tsx
+  s_f72b9deee41b66::t_2c33f257de5f63 131,208
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/newly-created-projects/page-client.tsx
+  s_f72b9deee41b66::t_19a59b0085cb76 1-1031
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/newly-created-projects/page.tsx
+  s_f72b9deee41b66::t_389d0c9fcc525a 1,3-4,7-9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/page-client.tsx
+  s_f72b9deee41b66::t_dc9bb5d11548cd 3-12,46-47,56,75-84,127,130,133,135,155-292,301,304-307,314-315,317,319,322-323,325-363,366-371,373,375-376,378-382,385-396,701-708,798,803-831,833-845
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/utils.ts
+  s_f72b9deee41b66::t_90cef580be343a 3-5,7-10,170,173,176-180,183
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx
+  s_f72b9deee41b66::t_a082cdddae97a6 129-133,518,625
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/page-client.tsx
+  s_f72b9deee41b66::t_57d95ba4815182 41,116,147,179,314,394
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/webhooks/[endpointId]/page-client.tsx
+  s_f72b9deee41b66::t_419f65d2e71fc6 77
+apps/dashboard/src/app/(main)/purchase/[code]/page-client.tsx
+  s_f72b9deee41b66::t_4ed85e30bede30 13-15,23-25,33,75-87,114-120,129-145,147-149,154,156,158,161,231-237,424,442
+apps/dashboard/src/app/(main)/purchase/return/page-client.tsx
+  s_f72b9deee41b66::t_ffe3078441afe9 25-27,67-100,132
+apps/dashboard/src/components/cmdk-commands.tsx
+  s_f72b9deee41b66::t_63019a132da80c 558
+apps/dashboard/src/components/commands/create-dashboard/dashboard-sandbox-host.tsx
+  s_f72b9deee41b66::t_002f8bf100b30d 462
+apps/dashboard/src/components/dashboard-account-settings/sidebar-layout.tsx
+  s_f72b9deee41b66::t_849f8f828c4abb 6,19-29
+apps/dashboard/src/components/dashboard-account-settings/supporting/api-key-dialogs.tsx
+  s_f72b9deee41b66::t_a642b66bfa29cb 147
+apps/dashboard/src/components/data-table/user-table.tsx
+  s_f72b9deee41b66::t_96654243ed84ca 47,622,633,652
+apps/dashboard/src/components/design-components/editable-grid.tsx
+  s_f72b9deee41b66::t_8e1f540411acef 4-7,18-25,31,33,44,56,66,69,72,78-79,87-88,94,105,115-116,119-127,130-181,183-200,202-210,212-255,257-264,266-270,273-280,283-300,303-349,355,357,359,361,364-367,369-380,383,390-397,399-415,419,424-425,427-428,431,434-435,437-438,441-450,452,455,465-466,469,471-477,480,482,484,486-487,494-495,498,502,504,506-511,514,521-522,530-531,533,535,537,540-563,567-568,570,572,574,578,581,585-588,590-591,593-594,599,603-604,606-614,616-617,621,626-660,662-667,670,672,675,677-686,690-691,693-715,727,731,735-742,745-746,749-771,773-774
+apps/dashboard/src/components/design-components/index.ts
+  s_f72b9deee41b66::t_14804e8d809377 17-27
+apps/dashboard/src/components/env-keys.tsx
+  s_f72b9deee41b66::t_785b5e83a7fc6c 27
+apps/dashboard/src/components/hexclave-companion/unified-docs-widget.tsx
+  s_f72b9deee41b66::t_c02bfbc58d5ef1 50-52
+apps/dashboard/src/components/metadata-editor.tsx
+  s_f72b9deee41b66::t_edb53b7139107b 64
+apps/dashboard/src/components/payments/checkout.test.tsx
+  s_f72b9deee41b66::t_8ec17d8bb8635f 10,54,59-62,87,95,115-126,146-149,214-231
+apps/dashboard/src/components/payments/checkout.tsx
+  s_f72b9deee41b66::t_761be96a1d21a3 17,27-36,55,60,67-71,97,101-106,136-144,173,231,233,237-256,266-268,277-285
+apps/dashboard/src/components/payments/purchase-quantity-selector.tsx
+  s_f72b9deee41b66::t_016506b2e3186e 6-8,12-14,37-42
+apps/dashboard/src/components/payments/stripe-connect-provider.test.tsx
+  s_f72b9deee41b66::t_582a7ff51b8d66 1-59
+apps/dashboard/src/components/payments/stripe-connect-provider.tsx
+  s_f72b9deee41b66::t_87f223e6cc37fc 21-36
+apps/dashboard/src/components/payments/stripe-elements-provider.tsx
+  s_f72b9deee41b66::t_82bb6e23655cc5 16,34-37,39-40,43,45-53,55-60
+apps/dashboard/src/components/ui/copy-field.tsx
+  s_f72b9deee41b66::t_c375e1bb8eb563 28
+apps/dashboard/src/components/ui/input.tsx
+  s_f72b9deee41b66::t_72b6d5268b01f9 36,50,61
+apps/dashboard/src/components/user-dialog.tsx
+  s_f72b9deee41b66::t_9fd74227cde27f 239
+apps/dashboard/src/components/user-dialogs.tsx
+  s_f72b9deee41b66::t_68242fb853e0bb 1,3-5,7-9,60-61,64-163
+apps/dashboard/src/hexclave/client.tsx
+  s_f72b9deee41b66::t_3b48764d7f5c29 30
+apps/dashboard/src/lib/browser-actions.ts
+  s_f72b9deee41b66::t_eb85943efe2b0e 1-64
+apps/dashboard/src/lib/trusted-origins.test.ts
+  s_f72b9deee41b66::t_4e8ef400dbb700 2,4,6,10,29-30,34-55
+apps/dashboard/src/lib/trusted-origins.ts
+  s_f72b9deee41b66::t_7c0c622fafad06 3,8,13,24-26,31-35,37-38,46-53,58
+apps/dev-launchpad/package.json
+  s_f72b9deee41b66::t_ad9b946a2135bd 3
+apps/e2e/package.json
+  s_f72b9deee41b66::t_15a3d44bdebf1a 3
+apps/e2e/tests/backend/backend-helpers.ts
+  s_f72b9deee41b66::t_ce1627d122092b 7,167-194,823,834
+apps/e2e/tests/backend/endpoints/api/v1/auth/anonymous/anonymous-comprehensive.test.ts
+  s_f72b9deee41b66::t_89aca5ef76afb3 152-153,176-177
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/callback.test.ts
+  s_f72b9deee41b66::t_116cd80bb4d453 2,44-46,68,180-224
+apps/e2e/tests/backend/endpoints/api/v1/browser-actions.test.ts
+  s_f72b9deee41b66::t_edc249dae109dc 1-141
+apps/e2e/tests/backend/endpoints/api/v1/internal/gtm/dashboard-content.test.ts
+  s_f72b9deee41b66::t_08da6deaa808cb 43-45,47-48,50-51,53-54,329-341,585-601
+apps/e2e/tests/backend/endpoints/api/v1/internal/newly-created-projects.test.ts
+  s_f72b9deee41b66::t_f4c7cc38a135b6 1-91
+apps/e2e/tests/backend/endpoints/api/v1/internal/transactions.test.ts
+  s_f72b9deee41b66::t_0e7877d815abe2 419-564
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-catalog-to-product-line-rename/outdated--purchase-session.test.ts
+  s_f72b9deee41b66::t_d21944b40ad776 205-208,239-242
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-offer-to-product-rename/outdated--purchase-session.test.ts
+  s_f72b9deee41b66::t_2d9a6a657ec2ab 133-136,185-188,318-321,433-436,712-715,746-749,853-856
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-offer-to-product-rename/outdated--validate-code.test.ts
+  s_f72b9deee41b66::t_5bbc5ed384effd 64,249
+apps/e2e/tests/backend/endpoints/api/v1/payments/create-purchase-url.test.ts
+  s_f72b9deee41b66::t_969f3e411f2a99 397
+apps/e2e/tests/backend/endpoints/api/v1/payments/purchase-session.test.ts
+  s_f72b9deee41b66::t_6bb17cf2ef2f9b 131-412,461-464,594-597,709-712,1119-1122,1153-1156,1260-1263
+apps/e2e/tests/backend/endpoints/api/v1/payments/validate-code.test.ts
+  s_f72b9deee41b66::t_d0eb3f4db443c1 102,287,386
+apps/e2e/tests/backend/endpoints/api/v1/projects.test.ts
+  s_f72b9deee41b66::t_d3dd2cc13d4853 1237,1242
+apps/e2e/tests/backend/endpoints/api/v1/stripe-webhooks.test.ts
+  s_f72b9deee41b66::t_b9b8e23a6fae35 988-1193
+apps/e2e/tests/backend/endpoints/api/v1/users-list-limit.test.ts
+  s_f72b9deee41b66::t_c0c260ed604dc6 1-184
+apps/e2e/tests/backend/performance/metrics.test.ts
+  s_f72b9deee41b66::t_3ff78053ec3f3b 16
+apps/e2e/tests/js/config.test.ts
+  s_f72b9deee41b66::t_3d79efa2d13561 80-111
+apps/e2e/tests/js/cross-domain-auth.test.ts
+  s_f72b9deee41b66::t_c87a3baf9f2b92 2,701-703,743-750
+apps/hosted-components/package.json
+  s_f72b9deee41b66::t_8be824705ccc9f 4
+apps/hosted-components/src/hosted-components/account-settings/account-deletion-boundary.test.tsx
+  s_f72b9deee41b66::t_04ca885dc87e78 1-122
+apps/hosted-components/src/hosted-components/account-settings/account-deletion-boundary.tsx
+  s_f72b9deee41b66::t_af4886f37ce87f 1-41
+apps/hosted-components/src/hosted-components/account-settings/index.tsx
+  s_f72b9deee41b66::t_1f2ceca087061b 5,59,76,90-103,251-262
+apps/hosted-components/src/hosted-components/account-settings/settings/delete-account-section.tsx
+  s_f72b9deee41b66::t_e4de6612b11b0c 12-16,20,25,31
+apps/hosted-components/src/hosted-components/account-settings/settings/settings-page.tsx
+  s_f72b9deee41b66::t_de98e056d1168c 6,8-9,13-18
+apps/hosted-components/src/hosted-components/account-settings/sidebar-layout.tsx
+  s_f72b9deee41b66::t_eeb69a95697298 2,16-21
+apps/hosted-components/src/hosted-components/auth/auth-page.tsx
+  s_f72b9deee41b66::t_5506167ba0c760 2,60,70-79,123-124
+apps/hosted-components/src/hosted-components/auth/cli-auth-confirm-page.tsx
+  s_f72b9deee41b66::t_022b6ae490ab44 1,3,13-21,40,62,104
+apps/hosted-components/src/hosted-components/auth/email-verification-page.tsx
+  s_f72b9deee41b66::t_ac9b007012cee6 14,22,30-37,47,62,72,87
+apps/hosted-components/src/hosted-components/auth/error-page.tsx
+  s_f72b9deee41b66::t_b6c1f8ff852ec7 2,17-28,35,55-56,68-69,110
+apps/hosted-components/src/hosted-components/auth/forgot-password-page.tsx
+  s_f72b9deee41b66::t_88869294342370 1,36-40,51-52
+apps/hosted-components/src/hosted-components/auth/forms/credential-sign-up.tsx
+  s_f72b9deee41b66::t_029ea74f6bea37 2-3,8,52-63
+apps/hosted-components/src/hosted-components/auth/index.tsx
+  s_f72b9deee41b66::t_f5e48c78b054dd 6
+apps/hosted-components/src/hosted-components/auth/magic-link-callback-page.tsx
+  s_f72b9deee41b66::t_7411ba7ee1c82a 1-86
+apps/hosted-components/src/hosted-components/auth/onboarding-page.tsx
+  s_f72b9deee41b66::t_6dce8a04ff4d2e 1-2,8,266-279
+apps/hosted-components/src/hosted-components/auth/supporting/layout.test.tsx
+  s_f72b9deee41b66::t_c9e29264d0572f 1-18
+apps/hosted-components/src/hosted-components/auth/supporting/layout.tsx
+  s_f72b9deee41b66::t_f044394a27b9b9 52-73,78-81,88-101
+apps/hosted-components/src/hosted-components/auth/supporting/no-auth-methods.tsx
+  s_f72b9deee41b66::t_d3bcc1fca59017 7-8
+apps/hosted-components/src/hosted-components/auth/team-invitation-page.tsx
+  s_f72b9deee41b66::t_6f4ca3e574f00d 5,8-20,30-31,38,47,56,65,73-96,103,118,138-141,143-156,159,172-176,178-182,185-186
+apps/hosted-components/src/routes/__root.tsx
+  s_f72b9deee41b66::t_33c02005fbb6d3 22-23
+apps/hosted-components/src/routes/handler/$.tsx
+  s_f72b9deee41b66::t_06870fbc14b7a0 2,10,19-21,28,65-67,92-102,105-107,117-146,148
+apps/hosted-components/src/routes/handler/after-auth-return-policy.test.ts
+  s_f72b9deee41b66::t_d8c835bab2f80e 1-87
+apps/hosted-components/src/routes/handler/after-auth-return-policy.ts
+  s_f72b9deee41b66::t_856a3ed0d18598 1-53
+apps/hosted-components/src/routes/handler/handler-path-policy.test.ts
+  s_f72b9deee41b66::t_444d57138e8337 1-27
+apps/hosted-components/src/routes/handler/handler-path-policy.ts
+  s_f72b9deee41b66::t_1ea5b3f1b96944 1-23
+apps/hosted-components/src/routes/index.tsx
+  s_f72b9deee41b66::t_acc0878ac88c94 3,6,9,12-20
+apps/hosted-components/vitest.config.ts
+  s_f72b9deee41b66::t_f99ba3fb02806a 1-7
+apps/internal-tool/package.json
+  s_f72b9deee41b66::t_011a7a57c03d7e 4,24
+apps/internal-tool/src/hooks/useSpacetimeDB.ts
+  s_f72b9deee41b66::t_e1bd069b24e67e 14
+apps/mcp/package.json
+  s_f72b9deee41b66::t_ed10399ef580b3 3,19
+apps/mock-oauth-server/package.json
+  s_f72b9deee41b66::t_1e9dcb4da72752 3
+apps/skills/package.json
+  s_f72b9deee41b66::t_f942f40a26688a 3,18
+apps/skills/src/ask-route.test.ts
+  s_f72b9deee41b66::t_b57458acb4aa35 279
+docs-mintlify/guides/apps/authentication/auth-providers/apple.mdx
+  s_f72b9deee41b66::t_91e3fadcd4187f 52,54,58,60,68-76
+docs-mintlify/guides/getting-started/setup.mdx
+  s_f72b9deee41b66::t_2117f6d8e53dff 9,1172,1194
+docs-mintlify/migration.mdx
+  s_f72b9deee41b66::t_618aa77f8aa7b6 50
+docs-mintlify/openapi/admin.json
+  s_f72b9deee41b66::t_4860b9d816f69e 5317-5326,5501-5505,5520,9468,9470
+docs-mintlify/openapi/client.json
+  s_f72b9deee41b66::t_8ad911b7ebd5d9 4050-4059,4234-4238,4253
+docs-mintlify/openapi/server.json
+  s_f72b9deee41b66::t_f310a49c211591 5277-5286,5461-5465,5480,8759,8761
+docs-mintlify/package.json
+  s_f72b9deee41b66::t_45b5035cd4de5e 3
+docs-mintlify/sdk/objects/hexclave-app.mdx
+  s_f72b9deee41b66::t_0c40c6a4b95ca8 97-100,123,586-589,609,705
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_f72b9deee41b66::t_c0f7fa6ca19847 3
+docs/package.json
+  s_f72b9deee41b66::t_03fd2f6f234eb7 3
+examples/cjs-test/package.json
+  s_f72b9deee41b66::t_61a1f4e2a0cc0c 3
+examples/convex/package.json
+  s_f72b9deee41b66::t_25e13b617f37ea 3
+examples/demo/package.json
+  s_f72b9deee41b66::t_2f0858c6fef570 3
+examples/docs-examples/package.json
+  s_f72b9deee41b66::t_cb985f977d5cbd 3
+examples/e-commerce/package.json
+  s_f72b9deee41b66::t_e56dd1d9ee2ab6 3
+examples/js-example/package.json
+  s_f72b9deee41b66::t_59a93b8dbd7dc1 3
+examples/lovable-react-18-example/package.json
+  s_f72b9deee41b66::t_d0e363714c2ade 4
+examples/middleware/package.json
+  s_f72b9deee41b66::t_9a0911baf2edbd 3
+examples/react-example/package.json
+  s_f72b9deee41b66::t_af37ddcdec777b 4
+examples/supabase/package.json
+  s_f72b9deee41b66::t_8adc4e246601f3 3
+examples/tanstack-start-demo/package.json
+  s_f72b9deee41b66::t_a9f63104b4c190 3
+packages/cli/package.json
+  s_f72b9deee41b66::t_7d4c73c15390c7 3
+packages/dashboard-ui-components/package.json
+  s_f72b9deee41b66::t_f48853d6fe0f5c 3
+packages/js/package.json
+  s_f72b9deee41b66::t_fe4e8ab145404c 4
+packages/next/package.json
+  s_f72b9deee41b66::t_94f4bb7739fc81 4
+packages/react/package.json
+  s_f72b9deee41b66::t_11824d65d5e995 4
+packages/sc/package.json
+  s_f72b9deee41b66::t_7cadf074c3d410 3
+packages/shared-backend/package.json
+  s_f72b9deee41b66::t_8ec664fd83ab7a 3
+packages/shared/package.json
+  s_f72b9deee41b66::t_9d9baeaaa6dec3 3
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_f72b9deee41b66::t_776e60619890f9 244-246
+packages/shared/src/config/schema.ts
+  s_f72b9deee41b66::t_78ede3797a73d3 501-503,516-527,594-617,1007-1009
+packages/shared/src/helpers/emails.ts
+  s_f72b9deee41b66::t_e1c9b6c5203638 203,240-244,256
+packages/shared/src/interface/client-interface.ts
+  s_f72b9deee41b66::t_929f1c3f3c9ada 871-900
+packages/shared/src/interface/crud/email-templates.ts
+  s_f72b9deee41b66::t_f89fbcb0690fb0 5
+packages/shared/src/interface/crud/projects.ts
+  s_f72b9deee41b66::t_fbd16fe3a2c521 18-21,27-40
+packages/shared/src/schema-fields.ts
+  s_f72b9deee41b66::t_e0e3264adac188 616-618
+packages/shared/src/utils/browser-action-snippets.ts
+  s_f72b9deee41b66::t_3d9b3f5aa530a4 1-30
+packages/shared/src/utils/currencies.tsx
+  s_f72b9deee41b66::t_38f728538ccdee 82-88
+packages/shared/src/utils/errors.tsx
+  s_f72b9deee41b66::t_d3f250b15b7ae6 96-146
+packages/shared/src/utils/redirect-urls.tsx
+  s_f72b9deee41b66::t_57cf4b1aa7fa77 9,33,64,73,223,227
+packages/tanstack-start/package.json
+  s_f72b9deee41b66::t_2f052b33d94537 4
+packages/template/package-template.json
+  s_f72b9deee41b66::t_51ba32aed3ec42 16
+packages/template/package.json
+  s_f72b9deee41b66::t_129245e4bc70fa 5
+packages/template/src/components-page/team-invitation-cache.test.ts
+  s_f72b9deee41b66::t_f191f9bfd9857d 1-21
+packages/template/src/components-page/team-invitation-cache.ts
+  s_f72b9deee41b66::t_d57891f1099a7e 1-9
+packages/template/src/components-page/team-invitation.tsx
+  s_f72b9deee41b66::t_59880fe25795e4 11,13-15,19,23,28,131,146-153
+packages/template/src/components/elements/sidebar-layout.tsx
+  s_f72b9deee41b66::t_2f866fd8643601 4,8,20-38
+packages/template/src/dev-tool/dev-tool-core.ts
+  s_f72b9deee41b66::t_b28ea0d21e15e6 9
+packages/template/src/dev-tool/index.ts
+  s_f72b9deee41b66::t_72fbddfea2e3b2 6,37-39
+packages/template/src/in-page-ui/dev-environment.ts
+  s_f72b9deee41b66::t_53c0814e838bf5 1-29
+packages/template/src/in-page-ui/issue-card.test.ts
+  s_f72b9deee41b66::t_5a72136a09634b 1-63
+packages/template/src/in-page-ui/issue-card.ts
+  s_f72b9deee41b66::t_b529641737463f 1-496
+packages/template/src/in-page-ui/logo.ts
+  s_f72b9deee41b66::t_de5143086387e8 1-4
+packages/template/src/lib/auth.test.ts
+  s_f72b9deee41b66::t_029dd07c7b6418 31,51
+packages/template/src/lib/auth.ts
+  s_f72b9deee41b66::t_5ea2b2257e1fd5 23-25
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_f72b9deee41b66::t_ec8d200c8f91de 232,235-237
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.automatic-side-effects.test.ts
+  s_f72b9deee41b66::t_4674d985a1c577 1-34,36-39,41-54,56-64,67-72,74,76-84,87-92,94,96-119,121-144,146-149,151-156,158-159
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_f72b9deee41b66::t_f4ee23b9578e82 3,7,9-11,57-78,80-149,170,199,280,342,421,496,530-645,676,705-706,745,757,761-762,778,801,820,837,907,944,976,984,1013
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.sign-out.test.ts
+  s_f72b9deee41b66::t_b443c9b423538b 1-92
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.untrusted-redirect-card.test.ts
+  s_f72b9deee41b66::t_387e552934f90d 1-142
+packages/template/src/lib/hexclave-app/apps/implementations/common.ts
+  s_f72b9deee41b66::t_ecc46c945b124f 8,15
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-back-state.test.ts
+  s_f72b9deee41b66::t_8652796c248170 2,113-140
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-back-state.ts
+  s_f72b9deee41b66::t_0109e87f67f960 110-126
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-page-urls.test.ts
+  s_f72b9deee41b66::t_90649878f8979a 1-116
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-page-urls.ts
+  s_f72b9deee41b66::t_a170a462af0313 41-42,57-60,102-103,108,112-114,136-142,146-147,153-155,158,165-187,195-197,218-219,227-228,247-248,258,261,266-290,294-302,305-307,350-355,364-365
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_f72b9deee41b66::t_759ff14637be9c 35,946
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_f72b9deee41b66::t_d3f621a873281a 2,5,41-48,180-181
+packages/template/src/lib/hexclave-app/passkey-rp-id.test.ts
+  s_f72b9deee41b66::t_c362e0817c401b 1-39
+packages/template/src/lib/hexclave-app/passkey-rp-id.ts
+  s_f72b9deee41b66::t_53921b9e28ad7e 1-23
+packages/template/src/lib/hexclave-app/project-configs/index.ts
+  s_f72b9deee41b66::t_51d69142cd5539 70,73-75
+packages/template/src/lib/hexclave-app/projects/index.ts
+  s_f72b9deee41b66::t_7f4bba43173dec 252-254
+packages/template/src/lib/hexclave-app/teams/index.ts
+  s_f72b9deee41b66::t_406913656b7ff6 132-134
+packages/template/src/pushed-config-error-overlay/index.ts
+  s_f72b9deee41b66::t_9401b304ae249f 5-7,19,46,80-89,96,128-132,138,142-157,159-164,198
+packages/template/src/setup-error-overlay/index.test.ts
+  s_f72b9deee41b66::t_323234accdb915 1-129
+packages/template/src/setup-error-overlay/index.ts
+  s_f72b9deee41b66::t_fcadafabaa049b 1-148
+packages/template/src/utils/monkey-patch.tsx
+  s_f72b9deee41b66::t_bf5352ce7fa563 1,9-10,18-19
+packages/template/src/utils/react.tsx
+  s_f72b9deee41b66::t_125029bd2f405a 1-90
+packages/template/src/utils/url.test.ts
+  s_f72b9deee41b66::t_e0b05079355a2d 1-50
+packages/template/src/utils/url.ts
+  s_f72b9deee41b66::t_7a6e4ba20dd38a 10-18,22-24
+packages/ui/package.json
+  s_f72b9deee41b66::t_52afc6abb88e1c 3
+pnpm-lock.yaml
+  s_f72b9deee41b66::t_d919e15c2c9842 187,234-235,267-268,498,519,522,549,563-564,902-903,949,952,954-955,1014,1016-1017,1538,1541,1768,2046,2308,4763-4772,4779-4790,4797-4812,4818-4827,4833-4843,4850-4861,4868-4873,4880-4885,4892-4903,4910-4921,4928-4939,4946-4957,4964-4976,4984-4997,5005-5011,5019-5025,5033-5046,5054-5067,5075-5088,5096-5109,5117-5128,5134-5142,5149-5160,5167-5178,5185-5190,5571-5572,5595-5596,5613-5614,5633-5634,5654-5655,5675-5676,5696-5697,5715-5716,5739-5740,6783,6787,6791,6798,9066-9067,9070-9071,9077-9078,9081-9082,9090-9091,9094-9095,9582-9584,9720-9722,14306-14310,14428-14429,15107-15110,16155-16158,16163-16171,20299-20305,20311-20320,20326-20338,20342-20347,20351-20356,20360-20365,20369-20371,20375-20377,20381-20386,20390-20395,20399-20404,20408-20413,20417-20424,20430-20439,20445-20449,20455-20459,20465-20474,20480-20489,20495-20504,20510-20519,20525-20534,20540-20549,20553-20558,20562-20567,20571-20573,20586-20595,20603-20609,20623-20635,20644-20651,20660-20667,20675-20681,20691-20697,20705-20711,20720-20727,20743-20757,20781-20788,20798-20806,20817-20826,20831-20834,21337,21369,21662,21682,21691,21700,21709,21718,21727,21736,21748,23470,23519,23527,23537,23545,23555,23563,26096,26110,26123,26136,26148,26161,26949,26953,26959,26963,26968,26970,26973,26978,26980-26984,28030-28033,28237,28295,28299,28310,28313,28315,28341,28343,30130,31420,31697,31699,32574,33289,33296,34028-34029,34073,34077,34081,34085,34089,34093,34265,34267,34271,34276-34283,34285,34288,34291,34293,34297,34302-34309,34311,34314,34317,34319,34323,34328-34335,34337,34340,34343,34345,34349-34375,34380-34387,34389,34392,34519,35148,35150,35154,35156,36704-36729,36734,36761-36827
+pnpm-workspace.yaml
+  s_f72b9deee41b66::t_7eba41fa9d77d5 12-25
+sdks/implementations/swift/package.json
+  s_f72b9deee41b66::t_0b3cc10c48eaea 3
+sdks/spec/package.json
+  s_f72b9deee41b66::t_b2a0bd77e350be 3
+sdks/spec/src/apps/client-app.spec.md
+  s_f72b9deee41b66::t_4e8f581d2462af 47-63,1012-1015,1039-1050
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "7fba9bdb8fa5db443e62172b3351d78e0a1c951d",
+  "prompts": {},
+  "sessions": {
+    "s_f72b9deee41b66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fce08-511c-7310-bb46-002784473011",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
