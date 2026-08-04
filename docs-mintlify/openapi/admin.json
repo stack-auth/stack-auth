@@ -9465,9 +9465,9 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "description": "The maximum number of items to return"
+              "description": "The maximum number of items to return (capped at 1000). Larger result sets must be paged with cursor."
             },
-            "description": "The maximum number of items to return",
+            "description": "The maximum number of items to return (capped at 1000). Larger result sets must be paged with cursor.",
             "required": false
           },
           {

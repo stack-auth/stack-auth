@@ -109,20 +109,48 @@ describe.sequential("users list limit safety", () => {
       }
     `);
 
-    const firstPage = await testRequest("?limit=1000");
+    const firstPage = await testRequest({ limit: 1000 });
     expect(firstPage.status).toBe(200);
     expect(firstPage.body.items).toHaveLength(1000);
-    expect(firstPage.body.pagination.next_cursor).not.toBeNull();
+    const cursor = firstPage.body.pagination.next_cursor;
+    expect(cursor).not.toBeNull();
+    if (cursor == null) {
+      throw new Error("Expected a cursor after the first page");
+    }
 
-    const secondPage = await testRequest(`?limit=1000&cursor=${firstPage.body.pagination.next_cursor}`);
+    const secondPage = await testRequest({ limit: 1000, cursor });
     expect(secondPage.status).toBe(200);
     expect(secondPage.body.items).toHaveLength(1);
     expect(secondPage.body.pagination.next_cursor).toBeNull();
 
-    const largeLimitPage = await testRequest("?limit=1500");
-    expect(largeLimitPage.status).toBe(200);
-    expect(largeLimitPage.body.items).toHaveLength(1001);
-    expect(largeLimitPage.body.pagination.next_cursor).toBeNull();
+    const maximumLimitPage = await testRequest({ limit: 1000 });
+    expect(maximumLimitPage.status).toBe(200);
+    expect(maximumLimitPage.body.items).toHaveLength(1000);
+    expect(maximumLimitPage.body.pagination.next_cursor).not.toBeNull();
+
+    const overLimitResponse = await testRequest({ limit: 1001 });
+    expect(overLimitResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": {
+            "message": deindent\`
+              Request validation failed on GET /api/v1/users:
+                - query.limit must be less than or equal to 1000
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on GET /api/v1/users:
+              - query.limit must be less than or equal to 1000
+          \`,
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   }, 120_000);
 
   test("rejects the former high-volume failure case before loading the tenancy", async ({ expect }) => {
@@ -141,8 +169,16 @@ describe.sequential("users list limit safety", () => {
   }, 180_000);
 });
 
-async function testRequest(query = "") {
-  return await niceBackendFetch(`/api/v1/users${query}`, {
+async function testRequest(query?: { limit?: number, cursor?: string }) {
+  const searchParams = new URLSearchParams();
+  if (query?.limit != null) {
+    searchParams.set("limit", String(query.limit));
+  }
+  if (query?.cursor != null) {
+    searchParams.set("cursor", query.cursor);
+  }
+  const queryString = searchParams.toString();
+  return await niceBackendFetch(`/api/v1/users${queryString.length > 0 ? `?${queryString}` : ""}`, {
     accessType: "admin",
   });
 }
