@@ -105,7 +105,7 @@ export const GET = createSmartRouteHandler({
     const [recentProjects, internalProject] = await Promise.all([
       globalPrismaClient.$replica().project.findMany({
         where: projectWhere,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: CANDIDATE_WINDOW_SIZE,
         select: projectSelect,
       }),

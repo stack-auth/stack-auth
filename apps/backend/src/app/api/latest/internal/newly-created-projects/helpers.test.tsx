@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   getEmailSetup,
   getEnabledAppIds,
@@ -107,6 +108,21 @@ describe("newly-created-projects helpers", () => {
       { id: "newest" },
       { id: "internal" },
     ]);
+  });
+
+  it("keeps a tied candidate-window boundary deterministic", () => {
+    const tiedCreatedAt = new Date("2026-01-01T00:00:00.000Z");
+    const firstOrder = [
+      { id: "project-c", createdAt: tiedCreatedAt },
+      { id: "project-a", createdAt: tiedCreatedAt },
+      { id: "project-b", createdAt: tiedCreatedAt },
+    ].sort((left, right) => stringCompare(right.id, left.id));
+    const secondOrder = [
+      { id: "project-b", createdAt: tiedCreatedAt },
+      { id: "project-c", createdAt: tiedCreatedAt },
+      { id: "project-a", createdAt: tiedCreatedAt },
+    ].sort((left, right) => stringCompare(right.id, left.id));
+    expect(firstOrder.slice(0, 2)).toEqual(secondOrder.slice(0, 2));
   });
 
   it("merges per-project activity rows from disjoint ClickHouse chunks", () => {

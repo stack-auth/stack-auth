@@ -137,6 +137,7 @@ type ListResponse = {
     rde: RdeFilter,
     onboarding: OnboardingFilter,
     activity_24h_after_creation: boolean,
+    // TODO next-release: make these required after the rolling deployment transition.
     candidate_window_size?: number,
     candidate_window_saturated?: boolean,
   },
