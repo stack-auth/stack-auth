@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Rolldown, type UserConfig } from "tsdown";
 // @ts-expect-error - this is a workspace tsdown helper imported from source.
 import { createBasePlugin } from "../../configs/tsdown/plugins.ts";
-import { getSentryRelease } from "./src/sentry-release";
+// @ts-expect-error - the explicit .ts extension is required because tsdown loads this config via Node's
+// native ESM loader (type stripping), which doesn't resolve extensionless relative imports. Locally the
+// tsx fallback loader masks this, but CI/Vercel (Node 22) fail with "Cannot find module" without it.
+import { getSentryRelease } from "./src/sentry-release.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
