@@ -229,6 +229,33 @@ export const TELEMETRY_SCOPE_NAME_MAX_BYTES = 1_024;
 export const TELEMETRY_MAX_LOG_MESSAGE_BYTES = 8_192;
 
 /**
+ * One entry of an `$error` event's `data.debug_images`: an emitted bundle file
+ * that appears in the error's stack, together with the debug id of the source
+ * map the CLI uploaded for it. Read-time symbolication joins `debug_id` onto
+ * the frames it parsed out of the (minified) stack.
+ *
+ * Note the shape: an ARRAY of `{ code_file, debug_id }` pairs, NOT the more
+ * obvious `{ [codeFile]: debugId }` object. `data` is stored in a ClickHouse
+ * `JSON` column, which materializes one subcolumn per distinct JSON path it
+ * ever sees. A filename-keyed object would therefore mint a brand-new
+ * subcolumn for every content-hashed chunk name of every deploy of every
+ * project, blow through the table's `max_dynamic_paths` budget, and degrade
+ * reads for the entire `logs` table. The array costs exactly two fixed paths
+ * (`debug_images.code_file` and `debug_images.debug_id`) forever. Chunk names
+ * also contain `.` and `/`, which collide with ClickHouse's JSON path syntax,
+ * so they could not be used as keys without escaping anyway.
+ */
+export type DebugImage = { code_file: string, debug_id: string };
+
+// Caps on `data.debug_images`. A page can legitimately load 100+ chunks, but
+// only the handful named by one error's own stack are useful, and `data` as a
+// whole must stay under CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES alongside an 8 KB
+// message and an 8 KB stack. Both caps are enforced together (count first,
+// then serialized bytes) because chunk URLs vary wildly in length.
+export const ERROR_MAX_DEBUG_IMAGES = 20;
+export const ERROR_MAX_DEBUG_IMAGES_BYTES = 4_096;
+
+/**
  * Truncates to a UTF-8 byte budget without splitting a code point. Lives here
  * (next to the byte caps it enforces) because every bounded telemetry text —
  * `$error` messages/stacks on both tiers, `$log` bodies, the backend's console

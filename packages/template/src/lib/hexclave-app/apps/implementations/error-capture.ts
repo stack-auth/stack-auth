@@ -1,3 +1,5 @@
+import type { DebugImage } from "@hexclave/shared/dist/utils/analytics-wire";
+import { getDebugImagesForStack } from "./debug-ids";
 import type { ErrorCaptureOptions } from "./observability-config";
 import { truncateUtf8Bytes } from "./telemetry-core";
 
@@ -150,6 +152,12 @@ export type BuildErrorEventDataOptions = {
   synthetic?: boolean,
   /** Extra flat fields (filename/lineno/colno, url/path, route metadata, …). */
   extra?: Record<string, unknown>,
+  /**
+   * Resolves the `debug_images` for a stack (see debug-ids.ts). Injectable so
+   * tests can exercise the payload without writing to `globalThis`; production
+   * callers leave it unset and get the real global reader.
+   */
+  getDebugImages?: (stack: string | null) => DebugImage[],
 };
 
 /**
@@ -174,10 +182,15 @@ export function buildErrorEventData(error: unknown, options: BuildErrorEventData
 function buildErrorEventDataFromNormalized(normalized: NormalizedError, options: BuildErrorEventDataOptions): Record<string, unknown> {
   const message = truncateUtf8Bytes(normalized.message, ERROR_TEXT_MAX_BYTES);
   const stack = normalized.stack !== null ? truncateUtf8Bytes(normalized.stack, ERROR_TEXT_MAX_BYTES) : null;
+  // Resolved from the TRUNCATED stack on purpose: symbolication joins debug
+  // images onto the frames parsed out of the stack that actually shipped, so an
+  // image for a frame that got truncated away would never be used.
+  const debugImages = (options.getDebugImages ?? getDebugImagesForStack)(stack);
   return {
     message,
     name: normalized.name,
     ...stack !== null ? { stack } : {},
+    ...debugImages.length > 0 ? { debug_images: debugImages } : {},
     mechanism_type: options.mechanismType,
     handled: options.handled,
     ...normalized.synthetic || options.synthetic === true ? { synthetic: 1 } : {},
