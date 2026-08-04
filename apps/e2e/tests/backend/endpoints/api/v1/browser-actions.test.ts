@@ -40,8 +40,8 @@ it("creates and consumes a clickmap browser action once", async ({ expect }) => 
 
   const consumed = await consumeAction(created.body.id);
   expect(consumed.status).toMatchInlineSnapshot(`200`);
-  expect(consumed.body.javascript).toContain("sessionStorage.setItem");
-  expect(consumed.body.javascript).toContain("hexclave:clickmap-token-updated");
+  expect(consumed.body.type).toMatchInlineSnapshot(`"clickmap-overlay"`);
+  expect(consumed.body.token).toEqual(expect.any(String));
 
   const consumedAgain = await consumeAction(created.body.id);
   expect(consumedAgain.status).toMatchInlineSnapshot(`409`);
@@ -60,8 +60,9 @@ it("creates and consumes an impersonation browser action without returning the r
 
   const consumed = await consumeAction(created.body.id);
   expect(consumed.status).toMatchInlineSnapshot(`200`);
-  expect(consumed.body.javascript).toContain("hexclave-refresh-");
-  expect(consumed.body.javascript).toContain("window.location.reload");
+  expect(consumed.body.type).toMatchInlineSnapshot(`"impersonation"`);
+  expect(consumed.body.refresh_token).toEqual(expect.any(String));
+  expect(consumed.body.expires_at_millis).toEqual(expect.any(Number));
 });
 
 it("rejects missing and mismatched origins", async ({ expect }) => {

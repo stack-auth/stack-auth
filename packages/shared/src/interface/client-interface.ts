@@ -16,6 +16,8 @@ import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { urlString } from '../utils/urls';
+import { isBrowserActionConsumeResult } from '../utils/browser-action-snippets';
+import type { BrowserActionConsumeResult } from '../utils/browser-action-snippets';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
@@ -860,7 +862,7 @@ export class HexclaveClientInterface {
   public async consumeBrowserAction(
     actionId: string,
     session: InternalSession | null = null,
-  ): Promise<{ javascript: string }> {
+  ): Promise<BrowserActionConsumeResult> {
     const response = await this.sendClientRequest(
       "/browser-actions/consume",
       {
@@ -876,15 +878,10 @@ export class HexclaveClientInterface {
       "client",
     );
     const body: unknown = await response.json();
-    if (
-      typeof body !== "object"
-      || body === null
-      || !("javascript" in body)
-      || typeof body.javascript !== "string"
-    ) {
+    if (!isBrowserActionConsumeResult(body)) {
       throw new HexclaveAssertionError("Browser action endpoint returned an invalid response");
     }
-    return { javascript: body.javascript };
+    return body;
   }
 
   async sendForgotPasswordEmail(

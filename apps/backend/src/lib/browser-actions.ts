@@ -6,11 +6,8 @@ import { claimVerificationCode, createVerificationCodeHandler } from "@/route-ha
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import {
-  BROWSER_ACTION_QUERY_PARAM,
-  createClickmapOverlaySnippet,
-  generateImpersonateSnippet,
-} from "@hexclave/shared/dist/utils/browser-action-snippets";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
+import type { BrowserActionConsumeResult } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import type { Tenancy } from "@/lib/tenancies";
 import { normalizeTrustedOrigin, validateTrustedOrigin } from "@/lib/trusted-origins";
@@ -166,7 +163,7 @@ export async function consumeBrowserAction(options: {
   tenancy: Tenancy,
   code: string,
   requestOrigin: string | undefined,
-}): Promise<{ javascript: string }> {
+}): Promise<BrowserActionConsumeResult> {
   if (options.requestOrigin == null) {
     throw new StatusError(StatusError.Forbidden, "Browser action origin is not allowed");
   }
@@ -199,13 +196,8 @@ export async function consumeBrowserAction(options: {
   if (data.origin !== requestOrigin) {
     throw new StatusError(StatusError.Forbidden, "Browser action origin is not allowed");
   }
-  // Origin matching is defense in depth; it is not an authentication boundary.
+  // Origin matching only limits leaked URLs; short TTL, one-time claims, tenancy scope, and server-only creation are the security boundaries.
   if (data.type === "impersonation") {
-    const javascript = generateImpersonateSnippet(
-      options.tenancy.project.id,
-      data.refresh_token,
-      new Date(data.expires_at_millis),
-    );
     await claimVerificationCode({
       projectId: options.tenancy.project.id,
       branchId: options.tenancy.branchId,
@@ -213,7 +205,9 @@ export async function consumeBrowserAction(options: {
       code: options.code,
     });
     return {
-      javascript,
+      type: "impersonation",
+      refresh_token: data.refresh_token,
+      expires_at_millis: data.expires_at_millis,
     };
   }
 
@@ -229,6 +223,7 @@ export async function consumeBrowserAction(options: {
     code: options.code,
   });
   return {
-    javascript: createClickmapOverlaySnippet(clickmapToken.token),
+    type: "clickmap-overlay",
+    token: clickmapToken.token,
   };
 }
