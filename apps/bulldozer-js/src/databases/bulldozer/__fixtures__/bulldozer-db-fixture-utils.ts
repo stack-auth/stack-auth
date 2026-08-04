@@ -200,6 +200,9 @@ function declareSeededLowLevelDatabase(dump: BulldozerDbDump): LowLevelDatabase 
     combineSeqs() {
       return seqSentinel;
     },
+    async close() {
+      // The seeded fixture backend holds only in-memory maps; nothing to release.
+    },
     initialSeq: seqSentinel,
   };
 }
