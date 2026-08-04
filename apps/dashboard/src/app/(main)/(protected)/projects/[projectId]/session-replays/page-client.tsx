@@ -68,6 +68,7 @@ type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
 
 type RecordingRow = {
   id: string,
+  refreshTokenId: string,
   projectUser: {
     id: string,
     displayName: string | null,
@@ -1917,6 +1918,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                         replay={{
                           id: selectedRecording.id,
                           userId: selectedRecording.projectUser.id,
+                          refreshTokenId: selectedRecording.refreshTokenId,
                           startedAt: selectedRecording.startedAt,
                           lastEventAt: selectedRecording.lastEventAt,
                         }}

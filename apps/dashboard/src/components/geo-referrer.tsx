@@ -15,8 +15,11 @@ export function getReferrerHost(referrer: string): string | null {
 }
 
 export function ReferrerFavicon({ host }: { host: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
+  // Remember *which* host failed rather than just that one did: React reuses this
+  // component instance when the host changes, and a boolean would keep showing
+  // the placeholder for a new host whose favicon might load fine.
+  const [failedHost, setFailedHost] = useState<string | null>(null);
+  if (failedHost === host) {
     return <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm bg-foreground/[0.06]" />;
   }
   return (
@@ -28,16 +31,16 @@ export function ReferrerFavicon({ host }: { host: string }) {
       height={16}
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setFailedHost(host)}
       className="h-4 w-4 shrink-0 rounded-sm object-contain"
     />
   );
 }
 
 export function CountryFlag({ code }: { code: string }) {
-  const [failed, setFailed] = useState(false);
+  const [failedCode, setFailedCode] = useState<string | null>(null);
   const lower = code.toLowerCase();
-  if (failed || !/^[a-z]{2}$/.test(lower)) {
+  if (failedCode === code || !/^[a-z]{2}$/.test(lower)) {
     return (
       <span aria-hidden className="inline-flex h-4 w-5 shrink-0 items-center justify-center rounded-sm bg-foreground/[0.06] text-[9px] font-semibold tabular-nums text-muted-foreground">
         {code.toUpperCase()}
@@ -54,7 +57,7 @@ export function CountryFlag({ code }: { code: string }) {
       height={15}
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setFailedCode(code)}
       className="h-[15px] w-5 shrink-0 rounded-[2px] object-cover ring-1 ring-black/[0.08] dark:ring-white/[0.08]"
     />
   );

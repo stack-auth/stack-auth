@@ -82,6 +82,26 @@ describe("describeUserAgent", () => {
     });
   });
 
+  test("Internet Explorer 11 hides behind Trident/rv:", () => {
+    expect(describeUserAgent("Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko")).toEqual({
+      deviceType: "desktop",
+      browser: "Internet Explorer 11",
+      os: "Windows 7",
+    });
+  });
+
+  test("older Internet Explorer uses the MSIE token", () => {
+    expect(describeUserAgent("Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)")).toEqual({
+      deviceType: "desktop",
+      browser: "Internet Explorer 9",
+      os: "Windows 7",
+    });
+  });
+
+  test("unnamed Windows NT versions degrade to a plain Windows", () => {
+    expect(describeUserAgent("Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.0.0 Safari/537.36").os).toBe("Windows");
+  });
+
   test("crawlers are flagged as bots", () => {
     expect(describeUserAgent("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)").deviceType).toBe("bot");
     expect(describeUserAgent("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36").deviceType).toBe("bot");
@@ -103,6 +123,7 @@ describe("formatUserAgentSummary", () => {
 
   test("falls back to whichever half is known", () => {
     expect(formatUserAgentSummary("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe("macOS");
+    expect(formatUserAgentSummary("Mozilla/5.0 Firefox/133.0")).toBe("Firefox 133");
     expect(formatUserAgentSummary("some-internal-client/1.0")).toBe(null);
   });
 });

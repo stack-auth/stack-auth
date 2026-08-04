@@ -39,12 +39,14 @@ const BROWSER_RULES: Array<{ name: string, regex: RegExp }> = [
   { name: "Internet Explorer", regex: /\bMSIE ([\d.]+)/ },
 ];
 
-const WINDOWS_NT_VERSIONS: Record<string, string> = {
-  "10.0": "Windows 10+",
-  "6.3": "Windows 8.1",
-  "6.2": "Windows 8",
-  "6.1": "Windows 7",
-};
+// A Map rather than a Record so unlisted NT versions (older or newer than the
+// ones we name) are typed as absent and fall back to a plain "Windows".
+const WINDOWS_NT_VERSIONS = new Map<string, string>([
+  ["10.0", "Windows 10+"],
+  ["6.3", "Windows 8.1"],
+  ["6.2", "Windows 8"],
+  ["6.1", "Windows 7"],
+]);
 
 function majorVersion(version: string): string {
   return version.split(".")[0] ?? version;
@@ -63,7 +65,7 @@ function describeBrowser(userAgent: string): string | null {
 function describeOs(userAgent: string): string | null {
   const windows = /Windows NT ([\d.]+)/.exec(userAgent);
   if (windows?.[1] != null) {
-    return WINDOWS_NT_VERSIONS[windows[1]] ?? "Windows";
+    return WINDOWS_NT_VERSIONS.get(windows[1]) ?? "Windows";
   }
 
   // iPadOS/iOS report the version with underscores, and iPad Safari in desktop

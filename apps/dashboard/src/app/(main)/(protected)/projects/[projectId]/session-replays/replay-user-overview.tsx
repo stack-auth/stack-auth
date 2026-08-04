@@ -27,6 +27,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import type { ServerUser } from "@hexclave/next";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { useEffect, useMemo, useState } from "react";
 import { useAdminApp, useServerApp } from "../use-admin-app";
@@ -35,6 +36,8 @@ import { useAdminApp, useServerApp } from "../use-admin-app";
 export type ReplayUserOverviewReplay = {
   id: string,
   userId: string,
+  /** Identifies the session, which is how the replay is correlated with its analytics events. */
+  refreshTokenId: string,
   startedAt: Date,
   lastEventAt: Date,
 };
@@ -92,10 +95,11 @@ const ACTIVITY_COUNTS_QUERY = `
 `;
 
 // Geo is only ever attached to `$token-refresh` events (it's derived from the
-// request IP, which replay events don't carry), so we take the refresh closest
-// to — but not after — the end of the session. Refreshes happen every few
-// minutes while a user is active, so one within the surrounding day describes
-// where this session came from; anything older would be a different trip.
+// request IP, which replay events don't carry), so we take the latest refresh of
+// the session the replay belongs to. Matching on the refresh token rather than
+// the user is what keeps a user's other concurrent sessions — a phone on mobile
+// data, say — from lending their location to this replay. The time window is
+// only a guard against a long-lived token that travelled since.
 const SESSION_GEO_QUERY = `
   SELECT
     CAST(data.ip_info.country_code, 'Nullable(String)') AS country_code,
@@ -103,7 +107,7 @@ const SESSION_GEO_QUERY = `
     CAST(data.ip_info.city_name, 'Nullable(String)') AS city_name,
     CAST(data.ip_info.tz_identifier, 'Nullable(String)') AS tz_identifier
   FROM default.events
-  WHERE user_id = {userId:String}
+  WHERE refresh_token_id = {refreshTokenId:String}
     AND event_type = '$token-refresh'
     AND event_at >= fromUnixTimestamp64Milli({sinceMillis:Int64})
     AND event_at <= fromUnixTimestamp64Milli({untilMillis:Int64})
@@ -140,7 +144,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
   const [state, setState] = useState<SessionContextState>({ status: "loading" });
 
   const replayId = replay.id;
-  const userId = replay.userId;
+  const refreshTokenId = replay.refreshTokenId;
   const startedAtMs = replay.startedAt.getTime();
   const lastEventAtMs = replay.lastEventAt.getTime();
 
@@ -149,7 +153,9 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
     setState({ status: "loading" });
     runAsynchronously(async () => {
       try {
-        const [entryRes, countsRes, geoRes] = await Promise.all([
+        // The three queries describe unrelated facets of the session, so a failure
+        // in one (a geo lookup timing out, say) shouldn't hide the other two.
+        const results = await Promise.allSettled([
           serverApp.queryAnalytics({
             query: ENTRY_PAGE_VIEW_QUERY,
             params: { replayId },
@@ -165,7 +171,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
           serverApp.queryAnalytics({
             query: SESSION_GEO_QUERY,
             params: {
-              userId,
+              refreshTokenId,
               sinceMillis: startedAtMs - GEO_LOOKBEHIND_MS,
               untilMillis: lastEventAtMs + GEO_LOOKAHEAD_MS,
             },
@@ -175,11 +181,27 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
         ]);
         if (cancelled) return;
 
+        const queryNames = ["entry-page-view", "activity-counts", "session-geo"] as const;
+        const rejections: unknown[] = [];
+        for (const [index, result] of results.entries()) {
+          if (result.status === "rejected") {
+            rejections.push(result.reason);
+            captureError(`replay-user-overview-query:${queryNames[index]}`, result.reason);
+          }
+        }
+        // Only a total failure is worth telling the operator about; a single
+        // missing facet just renders one fewer fact.
+        if (rejections.length === results.length) {
+          setState({ status: "error", error: rejections[0] });
+          return;
+        }
+
+        const [entryRes, countsRes, geoRes] = results;
         // `.at(0)` rather than `[0]`: an empty result set is the normal case for
         // replays whose project doesn't send analytics events.
-        const entry = entryRes.result.at(0) ?? null;
-        const counts = countsRes.result.at(0) ?? null;
-        const geoRow = geoRes.result.at(0) ?? null;
+        const entry = entryRes.status === "fulfilled" ? entryRes.value.result.at(0) ?? null : null;
+        const counts = countsRes.status === "fulfilled" ? countsRes.value.result.at(0) ?? null : null;
+        const geoRow = geoRes.status === "fulfilled" ? geoRes.value.result.at(0) ?? null : null;
         const geo: ReplayGeo | null = geoRow === null ? null : {
           countryCode: toStringOrNull(geoRow.country_code),
           regionCode: toStringOrNull(geoRow.region_code),
@@ -210,7 +232,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
     return () => {
       cancelled = true;
     };
-  }, [lastEventAtMs, replayId, serverApp, startedAtMs, userId]);
+  }, [lastEventAtMs, refreshTokenId, replayId, serverApp, startedAtMs]);
 
   return state;
 }
@@ -232,7 +254,9 @@ function Fact({ icon, label, tooltip, children, className }: {
 }) {
   const IconComponent = icon;
   const content = (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+    // The icon is decorative, so the label is the only thing naming the value
+    // for a screen reader ("Location: Berlin, Germany" instead of a bare city).
+    <span aria-label={label} className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
       <IconComponent className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden />
       <span className="truncate text-[11px] text-foreground/90">{children}</span>
     </span>
@@ -344,9 +368,10 @@ function SessionFacts({ replay, state, deviceType }: {
 
   const context = state.context;
   const device = context.userAgent === null ? null : describeUserAgent(context.userAgent);
-  const deviceLabel = device === null
-    ? null
-    : [device.browser, device.os].filter((p): p is string => p !== null).join(" on ");
+  // An entirely unrecognized user agent leaves both halves null; joining those
+  // would give an empty string, which would render as an icon with no text.
+  const deviceParts = device === null ? [] : [device.browser, device.os].filter((p): p is string => p !== null);
+  const deviceLabel = deviceParts.length === 0 ? null : deviceParts.join(" on ");
   const screenLabel = context.screenWidth !== null && context.screenHeight !== null
     ? `${context.screenWidth}×${context.screenHeight}`
     : null;

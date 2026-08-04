@@ -711,6 +711,7 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
           "id": "<stripped UUID>",
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
         },
+        "refresh_token_id": "<stripped UUID>",
         "started_at_millis": 1700000000100,
       },
       "headers": Headers { <some fields may have been hidden> },
