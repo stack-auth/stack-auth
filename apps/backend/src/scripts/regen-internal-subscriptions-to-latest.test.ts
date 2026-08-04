@@ -1,19 +1,19 @@
-import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type Stripe from "stripe";
-import { ITEM_IDS } from "@hexclave/shared/dist/plans";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
-import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
-import { wait } from "@hexclave/shared/dist/utils/promises";
-import {
-  runRegenInternalSubscriptionsToLatest,
-  type StripeClientForRegen,
-} from "../../scripts/regen-internal-subscriptions-to-latest";
-import { Prisma, PurchaseCreationSource, SubscriptionStatus, CustomerType } from "@/generated/prisma/client";
+import { CustomerType, Prisma, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getItemQuantityForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import type { ProductSnapshot } from "@/lib/payments/schema/types";
 import { canonicalJsonStringify, computeProductVersionId } from "@/lib/product-versions";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { randomUUID } from "node:crypto";
+import type Stripe from "stripe";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  runRegenInternalSubscriptionsToLatest,
+  type StripeClientForRegen,
+} from "../../scripts/regen-internal-subscriptions-to-latest";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";

@@ -11,7 +11,7 @@ function resolveEnv(raw: string | undefined, devDefault: string, name: string): 
   if (IS_DEV) return devDefault;
   throw new Error(`${name} is not configured. Set it in .env.local or hosting platform env.`);
 }
-const HOST = resolveEnv(rawHost, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
+const HOST = resolveEnv(rawHost, `ws://localhost:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}39`, "NEXT_PUBLIC_SPACETIMEDB_HOST");
 const DB_NAME = resolveEnv(rawDbName, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
 const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 

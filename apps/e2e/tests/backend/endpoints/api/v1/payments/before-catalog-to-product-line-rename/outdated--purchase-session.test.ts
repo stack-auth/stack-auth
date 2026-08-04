@@ -202,7 +202,10 @@ it("should work with subscription switching using old catalogs config", async ({
   expect(purchaseA).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -233,7 +236,10 @@ it("should work with subscription switching using old catalogs config", async ({
   expect(purchaseB).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
