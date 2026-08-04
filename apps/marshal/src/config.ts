@@ -105,7 +105,10 @@ export function getConfig(): MarshalConfig {
     },
     builderKind,
     s3: {
-      endpoint: env("MARSHAL_S3_ENDPOINT", `http://localhost:${portPrefix()}21`),
+      // The localhost default is the dev s3mock and is only offered in mock mode: silently
+      // pointing a real deployment at localhost would fail every spec, upload and build with
+      // a connection error instead of saying which env var is missing.
+      endpoint: env("MARSHAL_S3_ENDPOINT", isMockFly ? `http://localhost:${portPrefix()}21` : undefined),
       region: env("MARSHAL_S3_REGION", "auto"),
       accessKeyId: env("MARSHAL_S3_ACCESS_KEY_ID"),
       secretAccessKey: env("MARSHAL_S3_SECRET_ACCESS_KEY"),

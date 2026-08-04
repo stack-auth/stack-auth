@@ -39,17 +39,20 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
     const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
-    const existing = await prisma.deploymentServiceDomain.findUnique({
+    // Scoped to the whole tenancy, not just this service: the runtime holds ONE claim per
+    // hostname, so attaching a hostname that another service in this project already has
+    // would repoint the certificate on the runtime while leaving the old service's row
+    // claiming it is still verified — a row that then advertises a URL routing elsewhere.
+    const existing = await prisma.deploymentServiceDomain.findFirst({
       where: {
-        tenancyId_deploymentServiceId_hostname: {
-          tenancyId: auth.tenancy.id,
-          deploymentServiceId: service.id,
-          hostname: body.hostname,
-        },
+        tenancyId: auth.tenancy.id,
+        hostname: body.hostname,
       },
     });
     if (existing != null) {
-      throw new StatusError(400, `The domain ${JSON.stringify(body.hostname)} is already added to this service.`);
+      throw new StatusError(400, existing.deploymentServiceId === service.id
+        ? `The domain ${JSON.stringify(body.hostname)} is already added to this service.`
+        : `The domain ${JSON.stringify(body.hostname)} is already added to another service in this project. Remove it there first.`);
     }
 
     // Attach on the runtime first (if provisioned): if Marshal rejects the
@@ -90,9 +93,10 @@ export const POST = createSmartRouteHandler({
     } catch (e) {
       // Two concurrent adds of the same hostname both pass the existence check
       // above; the loser's unique-constraint violation must surface as the
-      // same clean 400 the sequential path returns, not a 500.
-      if (isPrismaUniqueConstraintViolation(e, "DeploymentServiceDomain", ["tenancyId", "deploymentServiceId", "hostname"])) {
-        throw new StatusError(400, `The domain ${JSON.stringify(body.hostname)} is already added to this service.`);
+      // same clean 400 the sequential path returns, not a 500. The constraint is
+      // tenancy-wide, so the loser may be adding it to a different service.
+      if (isPrismaUniqueConstraintViolation(e, "DeploymentServiceDomain", ["tenancyId", "hostname"])) {
+        throw new StatusError(400, `The domain ${JSON.stringify(body.hostname)} is already added to a service in this project.`);
       }
       throw e;
     }

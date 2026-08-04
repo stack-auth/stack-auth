@@ -90,12 +90,50 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   };
 }
 
-export async function detachDomain(ns: string, hostname: string): Promise<void> {
+// Read-only counterpart to attachDomain: reports who owns the hostname and the current
+// certificate state WITHOUT touching Fly. `attachDomain` is a repoint — using it as the
+// "re-check verification now" primitive means merely reading one service's domain silently
+// steals the certificate back from whichever service currently holds the hostname.
+export async function readDomain(ns: string, hostname: string): Promise<AttachDomainResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const claim = await readDomainClaim(hostname);
   if (claim === null || claim.ns !== ns) {
     throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+  }
+  const appName = appNameForService(config.envId, ns, claim.service_key);
+  const certificate = await fly.getCertificate(appName, hostname);
+  if (certificate === null) {
+    // Claimed in the registry but no cert on the app: the runtime state was reset (or the
+    // app was rebuilt) — same 404 the callers already translate into "deploy first".
+    throw notFound(`hostname ${JSON.stringify(hostname)} has no certificate on service ${JSON.stringify(claim.service_key)}`);
+  }
+  const ips = await fly.getAppIps(appName);
+  return {
+    hostname,
+    service_key: claim.service_key,
+    verified: certificate.clientStatus === "Ready",
+    dns_records: dnsRecordsForCertificate(
+      appName,
+      certificate,
+      ips.sharedIpv4,
+      ips.dedicated.filter((ip) => ip.type === "v6").map((ip) => ip.address),
+    ),
+  };
+}
+
+// `expectedServiceKey` fences a stale detach: when the hostname has since been repointed to
+// another service in this namespace, removing it on behalf of the OLD service would tear down
+// the new owner's live certificate. Treated as already-detached (404) instead.
+export async function detachDomain(ns: string, hostname: string, expectedServiceKey?: string): Promise<void> {
+  const config = getConfig();
+  const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
+  const claim = await readDomainClaim(hostname);
+  if (claim === null || claim.ns !== ns) {
+    throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
+  }
+  if (expectedServiceKey !== undefined && claim.service_key !== expectedServiceKey) {
+    throw notFound(`hostname ${JSON.stringify(hostname)} is not attached to service ${JSON.stringify(expectedServiceKey)} in namespace ${JSON.stringify(ns)}`);
   }
   const appName = appNameForService(config.envId, ns, claim.service_key);
   await fly.deleteCertificate(appName, hostname);

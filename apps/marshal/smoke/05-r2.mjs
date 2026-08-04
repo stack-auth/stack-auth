@@ -1,12 +1,13 @@
 // Smoke 5: R2 S3-compatible ops that Marshal depends on — direct PUT, presigned PUT/GET,
 // ListObjectsV2 prefix listing, conditional writes (If-None-Match, for the domain registry),
 // DeleteObject, public-URL GET. Also uploads the build-context tarball for smoke 06.
-// Uses the repo's hoisted @aws-sdk packages.
+// Resolves @aws-sdk relative to this file, so the harness runs from any checkout —
+// apps/marshal/package.json declares both packages itself.
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { log } from "./lib.mjs";
 
-const require = createRequire("/Users/bgodil/source/stack-auth/apps/backend/package.json");
+const require = createRequire(import.meta.url);
 const { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 

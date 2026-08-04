@@ -13,7 +13,9 @@ const remaining = await flyMachines(`/apps?org_slug=${process.env.FLY_ORG_SLUG}`
 const leftover = (remaining.json.apps ?? []).filter((a) => a.name.startsWith("hxc-smoke-"));
 log(`remaining hxc-smoke apps: ${leftover.length === 0 ? "none" : leftover.map((a) => a.name).join(", ")}`);
 
-const require = createRequire("/Users/bgodil/source/stack-auth/apps/backend/package.json");
+// Relative to this file, not an absolute checkout path: apps/marshal/package.json declares
+// the @aws-sdk packages, so the documented `node smoke/99-cleanup.mjs` works anywhere.
+const require = createRequire(import.meta.url);
 const { S3Client, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const s3 = new S3Client({
   region: "auto",

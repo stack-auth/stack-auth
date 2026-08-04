@@ -207,8 +207,10 @@ export async function listBuilds(ns: string, key: string, options: { limit: numb
     .sort()
     .reverse()
     // The ULID's own timestamp bounds the before_millis window without a body read; the
-    // record's started_at_millis is re-checked below as the authority (they can differ
-    // slightly, but the id time is always <= started_at, so this never over-excludes).
+    // record's started_at_millis is re-checked below as the authority. This prefilter is
+    // only sound because the id time NEVER runs ahead of started_at_millis — callers must
+    // mint build ids with `ulid(startedAtMillis)`, not a bare `ulid()` some awaits later,
+    // or a record whose started_at is inside the window gets silently dropped from the page.
     .filter((id) => options.beforeMillis === undefined || ulidTimeMillis(id) < options.beforeMillis);
   const builds: StoredBuild[] = [];
   for (const id of ids) {

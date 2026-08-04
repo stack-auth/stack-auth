@@ -142,18 +142,42 @@ export type MarshalDomainResult = {
   dns_records: MarshalDnsRecord[],
 };
 
+// Every Marshal call is bounded. `fetch` has no default timeout, so without these a Marshal
+// that accepts a connection and then stalls holds the backend invocation open forever —
+// outliving even the build-log route's own four-minute stream cap. The generous tiers exist
+// because some Marshal endpoints legitimately block on Fly: an apply rolls machines one at a
+// time with a started-wait between, and a delete tears down an app.
+const DEFAULT_TIMEOUT_MS = 60 * 1000;
+const APPLY_TIMEOUT_MS = 15 * 60 * 1000;
+const DELETE_TIMEOUT_MS = 5 * 60 * 1000;
+const LIST_TIMEOUT_MS = 2 * 60 * 1000;
+
 export class MarshalClient {
   constructor(private readonly config: MarshalDeploymentsConfig) {}
 
-  private async fetchMarshal<T>(path: string, init?: { method?: string, body?: unknown }): Promise<T> {
-    const response = await fetch(`${this.config.baseUrl}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        "authorization": `Bearer ${this.config.apiKey}`,
-        ...(init?.body !== undefined ? { "content-type": "application/json" } : {}),
-      },
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    });
+  private async fetchMarshal<T>(path: string, init?: { method?: string, body?: unknown, timeoutMs?: number }): Promise<T> {
+    const method = init?.method ?? "GET";
+    const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    let response: Response;
+    try {
+      response = await fetch(`${this.config.baseUrl}${path}`, {
+        method,
+        headers: {
+          "authorization": `Bearer ${this.config.apiKey}`,
+          ...(init?.body !== undefined ? { "content-type": "application/json" } : {}),
+        },
+        body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+        // Covers the body read below too — an abort tears down the whole exchange.
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        // 504 is deliberately not a USER_INPUT_MARSHAL_STATUS: a stalled runtime is an
+        // infrastructure failure, so sanitizeMarshalError logs it and hides it from the client.
+        throw new MarshalApiError(504, "timeout", `Marshal did not respond within ${Math.round(timeoutMs / 1000)}s`, `${method} ${path}`);
+      }
+      throw error;
+    }
     const text = await response.text();
     let json: unknown;
     try {
@@ -167,7 +191,7 @@ export class MarshalClient {
         response.status,
         errorBody.error ?? "unknown",
         errorBody.message ?? text.slice(0, 500),
-        `${init?.method ?? "GET"} ${path}`,
+        `${method} ${path}`,
       );
     }
     return json as T;
@@ -178,7 +202,7 @@ export class MarshalClient {
   }
 
   async putService(ns: string, serviceKey: string, spec: MarshalServiceSpec): Promise<MarshalApplyResult> {
-    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/services/${serviceKey}`, { method: "PUT", body: spec });
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/services/${serviceKey}`, { method: "PUT", body: spec, timeoutMs: APPLY_TIMEOUT_MS });
   }
 
   async getService(ns: string, serviceKey: string): Promise<MarshalServiceState> {
@@ -186,20 +210,28 @@ export class MarshalClient {
   }
 
   async deleteService(ns: string, serviceKey: string): Promise<void> {
-    await this.fetchMarshal(urlString`/v1/namespaces/${ns}/services/${serviceKey}`, { method: "DELETE" });
+    await this.fetchMarshal(urlString`/v1/namespaces/${ns}/services/${serviceKey}`, { method: "DELETE", timeoutMs: DELETE_TIMEOUT_MS });
   }
 
   async listServices(ns: string): Promise<MarshalServiceState[]> {
-    const result = await this.fetchMarshal<{ services: MarshalServiceState[] }>(urlString`/v1/namespaces/${ns}`);
+    const result = await this.fetchMarshal<{ services: MarshalServiceState[] }>(urlString`/v1/namespaces/${ns}`, { timeoutMs: LIST_TIMEOUT_MS });
     return result.services;
+  }
+
+  // Read-only. Use this for "is it verified yet?" polling: putDomain is a repoint, so calling
+  // it on a read would move the certificate off whichever service currently owns the hostname.
+  async getDomain(ns: string, hostname: string): Promise<MarshalDomainResult> {
+    return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/domains/${hostname}`);
   }
 
   async putDomain(ns: string, hostname: string, serviceKey: string): Promise<MarshalDomainResult> {
     return await this.fetchMarshal(urlString`/v1/namespaces/${ns}/domains/${hostname}`, { method: "PUT", body: { service_key: serviceKey } });
   }
 
-  async deleteDomain(ns: string, hostname: string): Promise<void> {
-    await this.fetchMarshal(urlString`/v1/namespaces/${ns}/domains/${hostname}`, { method: "DELETE" });
+  // serviceKey fences the delete: if the hostname has been repointed to another service in
+  // this tenancy, Marshal 404s instead of detaching the new owner's live certificate.
+  async deleteDomain(ns: string, hostname: string, serviceKey: string): Promise<void> {
+    await this.fetchMarshal(`${urlString`/v1/namespaces/${ns}/domains/${hostname}`}?service_key=${encodeURIComponent(serviceKey)}`, { method: "DELETE" });
   }
 
   async listBuilds(ns: string, serviceKey: string, options?: { limit?: number, beforeMillis?: number }): Promise<MarshalBuild[]> {

@@ -1760,7 +1760,10 @@ model DeploymentServiceDomain {
   service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
 
   @@id([tenancyId, id])
-  @@unique([tenancyId, deploymentServiceId, hostname])
+  // Per-TENANCY, not per-service: the deployments runtime holds exactly one claim per
+  // hostname, so two services in one project both holding a row for the same hostname would
+  // leave the loser advertising a verified URL that routes to the winner.
+  @@unique([tenancyId, hostname])
 }
 
 enum DeploymentRunStatus {

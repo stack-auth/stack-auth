@@ -365,7 +365,9 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     // mock) may land at any moment after startBuild, and a blind write here afterwards
     // could clobber a terminal record.
     const build: StoredBuild = {
-      id: ulid(),
+      // Minted from `now` (not the current clock): `now` is what lands in started_at_millis,
+      // and listBuilds' ULID prefilter requires the id time never to run ahead of it.
+      id: ulid(now),
       ns,
       key,
       revision,
@@ -421,7 +423,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     // No-artifact revision (rescale / env edit / direct { image } deploy): record an
     // immediate succeeded build with has_logs: false so the build history stays complete.
     await writeBuild({
-      id: ulid(),
+      id: ulid(now),
       ns,
       key,
       revision,
@@ -661,11 +663,15 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
   const status = ((): ServiceState["status"] => {
     if (!resolved.ok) return "blocked";
     if (checkedBuild !== null && (checkedBuild.status === "queued" || checkedBuild.status === "running")) return "building";
+    // Checked BEFORE the no-machine branch: an apply that failed before it created anything
+    // (ensureApp/ensureFlycastIp/the first createMachine) leaves zero machines and a terminal
+    // last_apply_error, and reporting that as "pending" tells callers to keep waiting for a
+    // deploy that is already over. `error` below has always surfaced it — only status lied.
+    if (stored.last_apply_error !== null) return startedCount > 0 ? "degraded" : "failed";
     if (machines.length === 0) {
       if (checkedBuild !== null && checkedBuild.status === "failed") return "failed";
       return "pending";
     }
-    if (stored.last_apply_error !== null) return startedCount > 0 ? "degraded" : "failed";
     // A failed build for the target revision, with machines still on a stale revision, is a
     // terminal failure — not perpetual "deploying". Nothing is in flight and the failed build
     // is deliberately not retried, so the old machines keep serving in a degraded state.

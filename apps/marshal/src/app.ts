@@ -3,7 +3,7 @@ import { Elysia } from "elysia";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createFlyBuilder, createMockBuilder, verifyWebhookToken, type Builder } from "./builds.js";
 import { MAX_UPLOAD_BYTES, getConfig, resolveNamespaceOrg } from "./config.js";
-import { attachDomain, detachDomain, normalizeHostnameOrThrow } from "./domains.js";
+import { attachDomain, detachDomain, normalizeHostnameOrThrow, readDomain } from "./domains.js";
 import { MarshalError } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { fetchLogPage } from "./logs.js";
@@ -25,6 +25,13 @@ import {
 } from "./services.js";
 import { createUploadSlot, readBuild, readBuildLog } from "./store.js";
 import type { Build, LogLine, StoredBuild } from "./types.js";
+
+// How long after a build goes terminal its durable log object may still be missing before
+// the logs route stops pretending the build is live. persistBuildLog runs BEFORE the terminal
+// record on the completeBuild paths, so the only real window is maybeFinalizeStaleBuild
+// (which writes the record first); past that, a missing object means the drain was empty or
+// failed and no further lines are ever coming.
+const DURABLE_LOG_GRACE_MS = 30 * 1000;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -162,12 +169,18 @@ export function createMarshalApp() {
       if (!checked.has_logs) {
         return { lines: [], next_since_millis: sinceMillis ?? Date.now(), complete: true };
       }
+      // A terminal build whose durable object never showed up must still end its stream: the
+      // live proxy below is a best-effort last look, not an open-ended follow. Without this
+      // the caller polls a finished build until its own timeout (4 minutes, backend-side) and
+      // is told the build is "still running" the whole way.
+      const liveIsFinal = terminal && Date.now() - (checked.finished_at_millis ?? 0) > DURABLE_LOG_GRACE_MS;
+
       if (terminal) {
         // Durable path: the bucket log object written at finalization.
         const raw = await readBuildLog(ns, key, params.id);
         // No durable object yet (persist skipped an empty drain, or it's still being written
-        // in the window right after the terminal record): report complete:false and fall
-        // through to the live proxy rather than claiming a complete-but-empty log.
+        // in the window right after the terminal record): fall through to the live proxy
+        // rather than claiming a complete-but-empty log.
         if (raw !== null) {
           // One corrupt/truncated line must not 500 the whole request — skip it.
           const parseLine = (line: string): LogLine[] => {
@@ -189,7 +202,7 @@ export function createMarshalApp() {
       // Live path: proxy the builder machine's logs, scrubbing the credentials Marshal
       // handed to the build (stage 1 of the two-stage redaction).
       if (checked.builder_app === null || checked.builder_machine_id === null) {
-        return { lines: [], next_since_millis: sinceMillis ?? checked.started_at_millis, complete: false };
+        return { lines: [], next_since_millis: sinceMillis ?? checked.started_at_millis, complete: liveIsFinal };
       }
       const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
       const page = await fetchLogPage(fly, checked.builder_app, {
@@ -201,7 +214,7 @@ export function createMarshalApp() {
       return {
         lines: page.lines.map((line) => ({ ...line, text: redactBuildLogText(line.text, redactionValues) })),
         next_since_millis: page.nextSinceMillis,
-        complete: false,
+        complete: liveIsFinal,
       };
     }))
 
@@ -216,6 +229,14 @@ export function createMarshalApp() {
       return { lines: page.lines, next_since_millis: page.nextSinceMillis };
     }))
 
+    // Read-only: the "re-check verification now" primitive. A PUT would repoint the hostname,
+    // so callers that only want current state must use this.
+    .get("/v1/namespaces/:ns/domains/:hostname", ({ params }) => handle(async () => {
+      const ns = validateNamespace(params.ns);
+      const hostname = normalizeHostnameOrThrow(params.hostname);
+      return await readDomain(ns, hostname) as unknown as Record<string, unknown>;
+    }))
+
     .put("/v1/namespaces/:ns/domains/:hostname", ({ params, body }) => handle(async () => {
       const ns = validateNamespace(params.ns);
       const hostname = normalizeHostnameOrThrow(params.hostname);
@@ -224,10 +245,14 @@ export function createMarshalApp() {
       return await attachDomain(ns, hostname, validateServiceKey(serviceKey)) as unknown as Record<string, unknown>;
     }))
 
-    .delete("/v1/namespaces/:ns/domains/:hostname", ({ params }) => handle(async () => {
+    .delete("/v1/namespaces/:ns/domains/:hostname", ({ params, query }) => handle(async () => {
       const ns = validateNamespace(params.ns);
       const hostname = normalizeHostnameOrThrow(params.hostname);
-      await detachDomain(ns, hostname);
+      // Optional ownership fence — see detachDomain. Absent = detach whoever holds it.
+      const expectedServiceKey = typeof query.service_key === "string" && query.service_key !== ""
+        ? validateServiceKey(query.service_key)
+        : undefined;
+      await detachDomain(ns, hostname, expectedServiceKey);
       return { deleted: true };
     }))
 

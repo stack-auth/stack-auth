@@ -697,6 +697,49 @@ describe("domains", () => {
     expect(JSON.stringify(secondAdd.body)).toContain("already attached elsewhere");
   });
 
+  it("rejects a hostname already attached to another service in the SAME project", { timeout: 120_000 }, async ({ expect }) => {
+    // Marshal holds exactly one claim per hostname, so two services in one project must not
+    // both keep a row for it: the loser would go on advertising a verified URL that routes to
+    // the winner, and either service's delete would tear down the other's live certificate.
+    await Project.createAndSwitch();
+    const ownerServiceId = uniqueServiceId("owner");
+    const otherServiceId = uniqueServiceId("other");
+    const definitionSyncId = await syncServices({
+      [ownerServiceId]: { type: "container", port: 3000, env: {} },
+      [otherServiceId]: { type: "container", port: 3000, env: {} },
+    });
+    const ownerUpload = await createUpload();
+    await pollRunToStatus(await startDeploy(ownerServiceId, ownerUpload.uploadId, definitionSyncId), "ready");
+    const otherUpload = await createUpload();
+    await pollRunToStatus(await startDeploy(otherServiceId, otherUpload.uploadId, definitionSyncId), "ready");
+
+    const hostname = `${ownerServiceId}.verified.test`;
+    const ownerAdd = await niceBackendFetch(`/api/v1/deployments/services/${ownerServiceId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname, is_primary: true },
+    });
+    expect(ownerAdd.status).toBe(201);
+
+    const otherAdd = await niceBackendFetch(`/api/v1/deployments/services/${otherServiceId}/domains`, {
+      method: "POST",
+      accessType: "admin",
+      body: { hostname },
+    });
+    expect(otherAdd.status).toBe(400);
+    expect(JSON.stringify(otherAdd.body)).toContain("already added to another service");
+
+    // Reading the domain is a pure read on the runtime, so the owner still holds the
+    // certificate afterwards and its public URL is unchanged.
+    const ownerGet = await niceBackendFetch(`/api/v1/deployments/services/${ownerServiceId}/domains/${hostname}`, { accessType: "admin" });
+    expect(ownerGet.status).toBe(200);
+    expect((ownerGet.body as any).verified).toBe(true);
+    const ownerService = await niceBackendFetch(`/api/v1/deployments/services/${ownerServiceId}`, { accessType: "admin" });
+    expect((ownerService.body as any).url).toBe(`https://${hostname}`);
+    const otherService = await niceBackendFetch(`/api/v1/deployments/services/${otherServiceId}`, { accessType: "admin" });
+    expect((otherService.body as any).url).toBeNull();
+  });
+
   it("keeps domains as rows before the first deploy", async ({ expect }) => {
     await Project.createAndSwitch();
     const serviceId = uniqueServiceId("undeployed");

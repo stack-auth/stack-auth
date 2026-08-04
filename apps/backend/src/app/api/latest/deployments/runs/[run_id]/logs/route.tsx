@@ -94,9 +94,16 @@ export const GET = createSmartRouteHandler({
               controller.enqueue(encoder.encode(text.endsWith("\n") ? text : `${text}\n`));
             }
             // Guard a non-advancing cursor (a bug or a bogus next_since_millis) from becoming
-            // a hot loop that re-enqueues the same window until MAX_STREAM_MS.
-            const cursorAdvanced = sinceMillis === undefined || page.next_since_millis > sinceMillis;
-            sinceMillis = page.next_since_millis;
+            // a hot loop that re-enqueues the same window until MAX_STREAM_MS. The cursor is
+            // also kept strictly monotonic: out-of-order log timestamps can make Marshal hand
+            // back a LOWER next_since_millis, and storing that verbatim would re-emit the same
+            // lines on every poll instead of making forward progress.
+            // Both annotated: `sinceMillis` feeds the getBuildLogs call above, so letting TS
+            // infer either of these through the assignment below is a circular reference.
+            const previousSinceMillis: number | undefined = sinceMillis;
+            const cursorAdvanced: boolean = previousSinceMillis === undefined || page.next_since_millis > previousSinceMillis;
+            const nextSinceMillis: number = cursorAdvanced ? page.next_since_millis : (previousSinceMillis ?? page.next_since_millis) + 1;
+            sinceMillis = nextSinceMillis;
 
             if (page.complete) {
               break;

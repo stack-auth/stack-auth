@@ -27,13 +27,14 @@ async function findDomainRowOrThrow(prisma: PrismaClientTransaction, tenancy: Te
       },
     },
   });
-  const domain = service == null ? null : await prisma.deploymentServiceDomain.findUnique({
+  // Hostnames are unique per tenancy, so the lookup is by (tenancy, hostname) and the row
+  // must additionally belong to THIS service — a hostname held by a sibling service is a 404
+  // here, not someone else's row to read or delete.
+  const domain = service == null ? null : await prisma.deploymentServiceDomain.findFirst({
     where: {
-      tenancyId_deploymentServiceId_hostname: {
-        tenancyId: tenancy.id,
-        deploymentServiceId: service.id,
-        hostname,
-      },
+      tenancyId: tenancy.id,
+      deploymentServiceId: service.id,
+      hostname,
     },
   });
   if (service == null || domain == null) {
@@ -95,14 +96,16 @@ export const GET = createSmartRouteHandler({
     const client = getMarshalClientOrThrow();
     let result;
     try {
-      // A re-PUT of an already-attached domain is idempotent on Marshal and
-      // returns the current certificate state + DNS records — it's the
-      // "re-check now" primitive, the same role Vercel's verify call played.
-      result = await client.putDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname, params.service_id);
+      // Strictly a read: it returns the current certificate state + DNS records
+      // without touching Fly. It must NOT be putDomain — a PUT repoints the
+      // hostname, so polling this endpoint would silently steal the domain from
+      // whichever service currently holds it.
+      result = await client.getDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname);
     } catch (e) {
       if (e instanceof MarshalApiError && e.status === 404) {
-        // Runtime spec is gone despite our provisionedAt (state reset); treat
-        // like pre-first-deploy so the UI shows "deploy first".
+        // The runtime doesn't have this hostname attached (spec reset, or it is
+        // attached to a different service); treat like pre-first-deploy so the
+        // UI shows "deploy first" rather than a stale verified state.
         return {
           statusCode: 200,
           bodyType: "json",
@@ -116,6 +119,28 @@ export const GET = createSmartRouteHandler({
         } as const;
       }
       sanitizeMarshalError(e, "Checking the domain failed");
+    }
+
+    // The runtime holds one claim per hostname, so it can legitimately answer with a
+    // DIFFERENT service than the one being read (a repoint, or a duplicate row predating the
+    // per-tenancy uniqueness constraint). This service does not own the certificate in that
+    // case, so it must not report the other service's verification state as its own.
+    if (result.service_key !== params.service_id) {
+      await prisma.deploymentServiceDomain.update({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
+        data: { verified: false },
+      });
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          hostname: params.hostname,
+          is_primary: domain.isPrimary,
+          verified: false,
+          pending_first_deploy: true,
+          dns_records: [],
+        },
+      } as const;
     }
 
     await prisma.deploymentServiceDomain.update({
@@ -165,10 +190,13 @@ export const DELETE = createSmartRouteHandler({
 
     if (service.provisionedAt != null && getMarshalDeploymentsConfigOrNull() != null) {
       try {
-        await getMarshalClientOrThrow().deleteDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname);
+        // Scoped to this service on purpose: the runtime's hostname claim is global, so an
+        // unscoped delete would tear down the certificate of whichever service currently owns
+        // the hostname — which is not necessarily this one.
+        await getMarshalClientOrThrow().deleteDomain(marshalNamespaceForTenancy(auth.tenancy), params.hostname, params.service_id);
       } catch (e) {
-        // Already detached on the runtime (or never attached) — deleting the
-        // row is still correct.
+        // Already detached on the runtime, never attached, or held by another
+        // service — deleting this service's row is still correct.
         if (!(e instanceof MarshalApiError && e.status === 404)) {
           sanitizeMarshalError(e, "Removing the domain failed");
         }

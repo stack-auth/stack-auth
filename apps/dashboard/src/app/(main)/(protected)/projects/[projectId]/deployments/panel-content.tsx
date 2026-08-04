@@ -734,7 +734,10 @@ export function SettingsContent({ service, isHexclave }: {
     { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: service.api?.port != null ? "None (Railpack auto-detected build)" : "Not synced yet" },
     { label: "Container port", value: service.api?.port?.toString(), fallback: "Not synced yet" },
     { label: "Min instances", value: service.api?.min_instances?.toString(), fallback: "0 (scale to zero)" },
-    { label: "Max instances", value: service.api?.max_instances?.toString(), fallback: "1" },
+    // Mirrors the deploy-time default (`max_instances ?? Math.max(min_instances, 1)`): a
+    // service that declares only `minInstances: 3` really does run with a max of 3, so a
+    // flat "1" here would contradict the fleet the user gets.
+    { label: "Max instances", value: service.api?.max_instances?.toString(), fallback: Math.max(service.api?.min_instances ?? 0, 1).toString() },
     // No "Dev command" row: `devCommand` is consumed locally by `hexclave dev`
     // and never sent to the server, so there is nothing here to show.
   ];
