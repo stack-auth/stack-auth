@@ -285,7 +285,7 @@ jobs:
       - name: Start marshal in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm run start:marshal &
+          run: NODE_ENV=test pnpm run start:marshal &
           wait-on: |
             http://localhost:8147/health
           tail: true

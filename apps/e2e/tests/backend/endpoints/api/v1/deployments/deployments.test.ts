@@ -106,10 +106,9 @@ type MockApp = {
 };
 
 // Finds the fly-mock app backing a service by the hexclave_key metadata its machines carry
-// (the test doesn't need Marshal's app-naming scheme), and WAITS for the rollout to converge
-// to the expected machine count — a run flips READY when the build succeeds, before Marshal
-// has finished creating machines, so reading /__mock/apps immediately would race a partial
-// fleet. Matches on ns too so a fixed-id service in a parallel worker can't shadow it.
+// (the test doesn't need Marshal's app-naming scheme), and waits for the expected machine
+// count as an independent assertion on the runtime fleet. Matches on ns too so a fixed-id
+// service in a parallel worker can't shadow it.
 async function findMockApp(serviceId: string, expectedMachines = 1, ns?: string): Promise<MockApp> {
   let seen: MockApp | undefined;
   for (let attempt = 0; attempt < 60; attempt++) {
@@ -391,6 +390,7 @@ describe("deploys against the Marshal runtime", () => {
           PLAIN_VAR: { value: "plain-value" },
           OPENAI_KEY: { type: "secret", key: "openai_api_key" },
           PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+          ["__proto__"]: { value: "special-key-value" },
         },
       },
     });
@@ -422,6 +422,7 @@ describe("deploys against the Marshal runtime", () => {
         PLAIN_VAR: "plain-value",
         OPENAI_KEY: "sk-secret-value-123",
         PROJECT_ID: projectKeys.projectId,
+        ["__proto__"]: "special-key-value",
       });
       expect(machine.image).toMatch(/^registry\.fly\.io\/.*@sha256:[0-9a-f]{64}$/);
       expect(machine.metadata.hexclave_key).toBe(serviceId);
@@ -613,6 +614,29 @@ describe("deploys against the Marshal runtime", () => {
     expect((await findMockApp(serviceId)).machines[0].env).toEqual({ KEEP: "yes" });
   });
 
+  it("serializes concurrent deploys so a stale completion cannot overwrite the winner", { timeout: 120_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("concurrent");
+    const definitionSyncId = await syncServices({ [serviceId]: { type: "container", port: 3000, env: {} } });
+    const [firstUpload, secondUpload] = await Promise.all([createUpload(), createUpload()]);
+    const [firstRunId, secondRunId] = await Promise.all([
+      startDeploy(serviceId, firstUpload.uploadId, definitionSyncId),
+      startDeploy(serviceId, secondUpload.uploadId, definitionSyncId),
+    ]);
+
+    const terminalStatuses = new Map<string, string>();
+    for (let attempt = 0; attempt < 240 && terminalStatuses.size < 2; attempt++) {
+      for (const runId of [firstRunId, secondRunId]) {
+        if (terminalStatuses.has(runId)) continue;
+        const response = await niceBackendFetch(`/api/v1/deployments/runs/${runId}`, { accessType: "admin" });
+        const status = (response.body as any)?.status;
+        if (status === "ready" || status === "error" || status === "canceled") terminalStatuses.set(runId, status);
+      }
+      if (terminalStatuses.size < 2) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    expect([...terminalStatuses.values()].sort()).toEqual(["canceled", "ready"]);
+  });
+
   // NOTE: there is deliberately no backend DELETE-service route (removal is config-driven;
   // auto-cleanup of services dropped from the config is a tracked gap), so Marshal's
   // deleteService — which releases the hostname claim and tears down the Fly app — has no
@@ -738,6 +762,40 @@ describe("domains", () => {
     expect((ownerService.body as any).url).toBe(`https://${hostname}`);
     const otherService = await niceBackendFetch(`/api/v1/deployments/services/${otherServiceId}`, { accessType: "admin" });
     expect((otherService.body as any).url).toBeNull();
+  });
+
+  it("uses the database reservation as the arbiter for concurrent same-project domain adds", { timeout: 120_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const firstServiceId = uniqueServiceId("race-a");
+    const secondServiceId = uniqueServiceId("race-b");
+    const definitionSyncId = await syncServices({
+      [firstServiceId]: { type: "container", port: 3000, env: {} },
+      [secondServiceId]: { type: "container", port: 3000, env: {} },
+    });
+    const [firstUpload, secondUpload] = await Promise.all([createUpload(), createUpload()]);
+    const [firstRunId, secondRunId] = await Promise.all([
+      startDeploy(firstServiceId, firstUpload.uploadId, definitionSyncId),
+      startDeploy(secondServiceId, secondUpload.uploadId, definitionSyncId),
+    ]);
+    await Promise.all([pollRunToStatus(firstRunId, "ready"), pollRunToStatus(secondRunId, "ready")]);
+
+    const hostname = `race-${randomUUID().slice(0, 8)}.verified.test`;
+    const [firstAdd, secondAdd] = await Promise.all([
+      niceBackendFetch(`/api/v1/deployments/services/${firstServiceId}/domains`, {
+        method: "POST", accessType: "admin", body: { hostname },
+      }),
+      niceBackendFetch(`/api/v1/deployments/services/${secondServiceId}/domains`, {
+        method: "POST", accessType: "admin", body: { hostname },
+      }),
+    ]);
+    expect([firstAdd.status, secondAdd.status].sort((first, second) => first - second)).toEqual([201, 400]);
+
+    const winner = firstAdd.status === 201 ? firstServiceId : secondServiceId;
+    const loser = winner === firstServiceId ? secondServiceId : firstServiceId;
+    const winnerService = await niceBackendFetch(`/api/v1/deployments/services/${winner}`, { accessType: "admin" });
+    const loserService = await niceBackendFetch(`/api/v1/deployments/services/${loser}`, { accessType: "admin" });
+    expect((winnerService.body as any).url).toBe(`https://${hostname}`);
+    expect((loserService.body as any).url).toBeNull();
   });
 
   it("keeps domains as rows before the first deploy", async ({ expect }) => {

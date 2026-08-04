@@ -7,6 +7,7 @@ import { ulidTimeMillis } from "./ulid.js";
 // The bucket is Marshal's only state. Layout:
 //   specs/<ns>/<key>.json                 — current desired spec + revision (written on every PUT)
 //   uploads/<ns>/<id>.tar.gz              — source tarballs (presigned PUT slots; lifecycle-expired)
+//   uploads/.validated/<ns>/<build>.tar.gz — immutable validated copies consumed by builders
 //   builds/<ns>/<key>/rec/<ulid>.json     — build records (ULID ids → lexicographic ≈ chronological)
 //   builds/<ns>/<key>/log/<ulid>.jsonl    — durable build logs (LogLine per line), written at terminal state
 //   domains/<hostname>.json               — GLOBAL hostname-uniqueness registry (conditional-PUT claims)
@@ -34,6 +35,14 @@ function isNoSuchKey(error: unknown): boolean {
   const name = (error as { name?: string }).name;
   const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
   return name === "NoSuchKey" || name === "NotFound" || status === 404;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const name = "name" in error && typeof error.name === "string" ? error.name : null;
+  const metadata = "$metadata" in error && typeof error.$metadata === "object" && error.$metadata !== null ? error.$metadata : null;
+  const status = metadata !== null && "httpStatusCode" in metadata ? metadata.httpStatusCode : null;
+  return name === "PreconditionFailed" || status === 412;
 }
 
 // The AWS SDK retries failed requests but NOT responses that die mid-flight (ECONNRESET /
@@ -68,19 +77,6 @@ async function getJson<T>(key: string): Promise<T | null> {
   }
 }
 
-// KNOWN LIMITATION — spec/build writes are last-writer-wins (no compare-and-swap).
-// `writeSpec`/`writeBuild` go through this plain PutObject, so a read-modify-write whose
-// window spans a machine rollout (minutes) can be clobbered by a concurrent apply/webhook:
-//   - a completeBuild finishing its rollout can overwrite a newer PUT's spec, stranding the
-//     newer revision (its later build then sees revision-mismatch and refuses to roll);
-//   - two concurrent same-revision PUTs can each spawn a builder;
-//   - a delete racing an in-flight apply can be resurrected by the apply's ensureApp/writeSpec.
-// The `buildForRevision` adoption in applyServiceSpec and the idempotency guards in
-// completeBuild soften the blast radius, and in practice the backend serializes deploys per
-// service (the CLI applies one revision at a time and waits), so concurrent same-service
-// applies are unlikely. The real fix is optimistic concurrency: carry the GetObject ETag
-// through readSpec and do an If-Match conditional PutObject in writeSpec/writeBuild, retrying
-// (or dropping the write when a newer revision owns the spec) on 412. Tracked for a follow-up.
 async function putJson(key: string, value: unknown): Promise<void> {
   await withTransientRetry(async () => await s3().send(new PutObjectCommand({
     Bucket: bucket(),
@@ -88,6 +84,42 @@ async function putJson(key: string, value: unknown): Promise<void> {
     Body: JSON.stringify(value),
     ContentType: "application/json",
   })));
+}
+
+export type Versioned<T> = { value: T, etag: string };
+
+async function getJsonVersioned<T>(key: string): Promise<Versioned<T> | null> {
+  try {
+    return await withTransientRetry(async () => {
+      const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+      const body = await result.Body?.transformToString();
+      if (body === undefined) return null;
+      if (result.ETag === undefined) throw new Error(`S3 omitted ETag for ${key}; conditional updates cannot be made safely`);
+      return { value: JSON.parse(body) as T, etag: result.ETag };
+    });
+  } catch (error) {
+    if (isNoSuchKey(error)) return null;
+    throw error;
+  }
+}
+
+type WriteCondition = { ifMatch: string } | { ifNoneMatch: true };
+
+async function putJsonConditionally(key: string, value: unknown, condition: WriteCondition): Promise<string | null> {
+  try {
+    const result = await s3().send(new PutObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      Body: JSON.stringify(value),
+      ContentType: "application/json",
+      ...("ifMatch" in condition ? { IfMatch: condition.ifMatch } : { IfNoneMatch: "*" }),
+    }));
+    if (result.ETag === undefined) throw new Error(`S3 omitted ETag for conditional write to ${key}`);
+    return result.ETag;
+  } catch (error) {
+    if (isPreconditionFailed(error)) return null;
+    throw error;
+  }
 }
 
 async function deleteObject(key: string): Promise<void> {
@@ -122,8 +154,12 @@ export async function readSpec(ns: string, key: string): Promise<StoredSpec | nu
   return await getJson<StoredSpec>(specKey(ns, key));
 }
 
-export async function writeSpec(spec: StoredSpec): Promise<void> {
-  await putJson(specKey(spec.ns, spec.key), spec);
+export async function readSpecVersioned(ns: string, key: string): Promise<Versioned<StoredSpec> | null> {
+  return await getJsonVersioned<StoredSpec>(specKey(ns, key));
+}
+
+export async function writeSpec(spec: StoredSpec, condition: WriteCondition): Promise<string | null> {
+  return await putJsonConditionally(specKey(spec.ns, spec.key), spec, condition);
 }
 
 export async function deleteSpec(ns: string, key: string): Promise<void> {
@@ -165,11 +201,47 @@ export async function statUpload(ns: string, id: string): Promise<{ sizeBytes: n
   }
 }
 
+export async function readUpload(ns: string, id: string): Promise<Uint8Array | null> {
+  try {
+    return await withTransientRetry(async () => {
+      const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: uploadObjectKey(ns, id) }));
+      return await result.Body?.transformToByteArray() ?? null;
+    });
+  } catch (error) {
+    if (isNoSuchKey(error)) return null;
+    throw error;
+  }
+}
+
 export async function presignUploadGet(ns: string, id: string, expiresInSeconds: number): Promise<string> {
   return await getSignedUrl(s3(), new GetObjectCommand({
     Bucket: bucket(),
     Key: uploadObjectKey(ns, id),
   }), { expiresIn: expiresInSeconds });
+}
+
+function validatedUploadObjectKey(ns: string, buildId: string): string {
+  return `uploads/.validated/${ns}/${buildId}.tar.gz`;
+}
+
+export async function writeValidatedUpload(ns: string, buildId: string, bytes: Uint8Array): Promise<void> {
+  await withTransientRetry(async () => await s3().send(new PutObjectCommand({
+    Bucket: bucket(),
+    Key: validatedUploadObjectKey(ns, buildId),
+    Body: bytes,
+    ContentType: "application/gzip",
+  })));
+}
+
+export async function presignValidatedUploadGet(ns: string, buildId: string, expiresInSeconds: number): Promise<string> {
+  return await getSignedUrl(s3(), new GetObjectCommand({
+    Bucket: bucket(),
+    Key: validatedUploadObjectKey(ns, buildId),
+  }), { expiresIn: expiresInSeconds });
+}
+
+export async function deleteValidatedUpload(ns: string, buildId: string): Promise<void> {
+  await deleteObject(validatedUploadObjectKey(ns, buildId));
 }
 
 export async function deleteUpload(ns: string, id: string): Promise<void> {

@@ -38,7 +38,7 @@ import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets"
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { MarshalApiError, MarshalClient, MarshalDnsRecord, MarshalEnvValue, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "./marshal-client";
+import { MarshalApiError, MarshalClient, MarshalDnsRecord, MarshalEnvValue, MarshalBuild, MarshalServiceState, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "./marshal-client";
 
 export { HEXCLAVE_SERVICE_ID };
 
@@ -76,16 +76,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * down a whole listing.
  */
 function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string, DeploymentEnvVarDefinition> {
-  if (!isRecord(env)) {
-    throw new HexclaveAssertionError(`Stored env of deployment service ${JSON.stringify(serviceId)} is not a record; the sync route should have validated this`, { env });
+  // New writes use entry arrays because Prisma's JSON serializer drops special object keys
+  // such as `__proto__`. Keep accepting the original object representation so existing rows
+  // remain readable without a data migration.
+  const entries: [string, Prisma.JsonValue][] = [];
+  if (Array.isArray(env)) {
+    for (const tuple of env) {
+      if (!Array.isArray(tuple) || tuple.length !== 2) {
+        throw new HexclaveAssertionError(`Stored env entry of deployment service ${JSON.stringify(serviceId)} is not a key-value pair`, { env });
+      }
+      const [envVarKey, entry] = tuple;
+      if (typeof envVarKey !== "string") {
+        throw new HexclaveAssertionError(`Stored env entry of deployment service ${JSON.stringify(serviceId)} has an invalid key or value`, { env });
+      }
+      entries.push([envVarKey, entry]);
+    }
+  } else if (isRecord(env)) {
+    for (const [envVarKey, entry] of Object.entries(env)) {
+      if (entry === undefined) {
+        throw new HexclaveAssertionError(`Stored env entry ${JSON.stringify(envVarKey)} of deployment service ${JSON.stringify(serviceId)} is undefined`, { env });
+      }
+      entries.push([envVarKey, entry]);
+    }
+  } else {
+    throw new HexclaveAssertionError(`Stored env of deployment service ${JSON.stringify(serviceId)} is neither an entry array nor a legacy record`, { env });
   }
-  const result: Record<string, DeploymentEnvVarDefinition> = {};
-  for (const [envVarKey, entry] of Object.entries(env)) {
+  const result = new Map<string, DeploymentEnvVarDefinition>();
+  for (const [envVarKey, entry] of entries) {
     if (!isRecord(entry)) {
       captureError("deployments-stored-env-entry-invalid", new HexclaveAssertionError(`Skipping non-object stored env entry ${JSON.stringify(envVarKey)} of service ${JSON.stringify(serviceId)}`));
       continue;
     }
-    result[envVarKey] = {
+    result.set(envVarKey, {
       // Unknown type STRINGS are passed through on purpose (hence the cast:
       // the type system can't express "the union, or an unknown string to be
       // rejected later" without widening every consumer). Erasing them here
@@ -95,9 +117,9 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
       type: typeof entry.type === "string" ? entry.type as DeploymentEnvVarDefinition["type"] : undefined,
       value: typeof entry.value === "string" ? entry.value : undefined,
       key: typeof entry.key === "string" ? entry.key : undefined,
-    };
+    });
   }
-  return result;
+  return Object.fromEntries(result);
 }
 
 export function definitionFromServiceRow(row: {
@@ -167,15 +189,16 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       dockerfilePath: definition.dockerfile_path ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
-      // out field-by-field so the result is a Prisma-storable
-      // Record<string, string> without any type assertions.
-      env: Object.fromEntries(Object.entries(definition.env).map(([envVarKey, entry]): [string, Record<string, string>] => {
+      // out field-by-field so the result is a Prisma-storable entry array
+      // without any type assertions. The entry-array representation also preserves
+      // object-prototype names through Prisma's JSON serializer.
+      env: Object.entries(definition.env).map(([envVarKey, entry]): [string, Record<string, string>] => {
         const stored: Record<string, string> = {};
         if (entry.type !== undefined) stored.type = entry.type;
         if (entry.value !== undefined) stored.value = entry.value;
         if (entry.key !== undefined) stored.key = entry.key;
         return [envVarKey, stored];
-      })),
+      }),
     };
     await prisma.deploymentService.upsert({
       where: {
@@ -246,6 +269,33 @@ export function mapMarshalBuildStatus(status: string): DeploymentRunStatus {
       return "BUILDING";
     }
   }
+}
+
+export function deploymentRunStatusFromMarshal(build: MarshalBuild, state: MarshalServiceState, revision: string): {
+  status: DeploymentRunStatus,
+  error: string | null,
+} {
+  const buildStatus = mapMarshalBuildStatus(build.status);
+  if (buildStatus !== "READY") return { status: buildStatus, error: buildStatus === "ERROR" ? (build.error ?? "Deployment failed") : null };
+
+  const converged = state.revision === revision
+    && state.target_revision === null
+    && (state.status === "running" || state.status === "idle");
+  if (converged) return { status: "READY", error: null };
+
+  // A later desired revision owns the service. This run can never converge, even though its
+  // image build succeeded, so terminalize it instead of polling forever.
+  if (marshalRevisionIsSuperseded(state, revision)) return { status: "CANCELED", error: null };
+
+  if (state.status === "failed" || state.status === "degraded" || state.status === "stopped" || state.status === "blocked") {
+    return { status: "ERROR", error: state.error ?? "The image built successfully, but the service rollout failed." };
+  }
+  return { status: "BUILDING", error: null };
+}
+
+function marshalRevisionIsSuperseded(state: MarshalServiceState, revision: string): boolean {
+  return (state.target_revision !== null && state.target_revision !== revision)
+    || (state.target_revision === null && state.revision !== null && state.revision !== revision);
 }
 
 export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
@@ -378,7 +428,7 @@ export async function resolveEnvVars(options: {
   };
 
   const missingSecretKeys: string[] = [];
-  const resolvedEnv: Record<string, MarshalEnvValue> = {};
+  const resolvedEnv = new Map<string, MarshalEnvValue>();
   const redactionSecrets = new Set<string>();
   for (const [envVarKey, config] of Object.entries(env)) {
     if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
@@ -387,7 +437,7 @@ export async function resolveEnvVars(options: {
     const normalized = normalizeEnvVarConfig(envVarKey, config);
     switch (normalized.type) {
       case "plain": {
-        resolvedEnv[envVarKey] = { value: normalized.value };
+        resolvedEnv.set(envVarKey, { value: normalized.value });
         break;
       }
       case "secret": {
@@ -401,7 +451,7 @@ export async function resolveEnvVars(options: {
           missingSecretKeys.push(normalized.secretKey);
           break;
         }
-        resolvedEnv[envVarKey] = { value: secretValue };
+        resolvedEnv.set(envVarKey, { value: secretValue });
         if (secretValue.length > 0) redactionSecrets.add(secretValue);
         break;
       }
@@ -412,7 +462,7 @@ export async function resolveEnvVars(options: {
             throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
           }
           const output = await resolveHexclaveOutputCached(normalized.outputKey, raw);
-          resolvedEnv[envVarKey] = { value: output.value };
+          resolvedEnv.set(envVarKey, { value: output.value });
           if (output.secret && output.value.length > 0) redactionSecrets.add(output.value);
           break;
         }
@@ -433,7 +483,7 @@ export async function resolveEnvVars(options: {
         // service `blocked` — the run then fails (there is no backend re-apply on domain
         // verification yet; see startDeployment / refreshRunFromMarshal). Prefer internalUrl
         // for service-to-service wiring.
-        resolvedEnv[envVarKey] = { ref: `${normalized.serviceId}.${marshalOutputKey}` };
+        resolvedEnv.set(envVarKey, { ref: `${normalized.serviceId}.${marshalOutputKey}` });
         break;
       }
     }
@@ -445,7 +495,7 @@ export async function resolveEnvVars(options: {
   }
 
   return {
-    resolvedEnv,
+    resolvedEnv: Object.fromEntries(resolvedEnv),
     redactionSecrets: [...redactionSecrets],
   };
 }
@@ -627,6 +677,9 @@ export async function startDeployment(options: {
     captureError("deployments-find-build-after-put", e);
   }
 
+  const runState = build != null
+    ? deploymentRunStatusFromMarshal(build, result.state, result.revision)
+    : { status: "QUEUED" as const, error: null };
   const run = await prisma.deploymentRun.create({
     data: {
       tenancyId: tenancy.id,
@@ -634,9 +687,9 @@ export async function startDeployment(options: {
       marshalBuildId: build?.id ?? null,
       revision: result.revision,
       serviceUrl: result.state.outputs.url ?? null,
-      status: build != null ? mapMarshalBuildStatus(build.status) : "QUEUED",
-      error: build?.error ?? null,
-      finishedAt: build != null && build.finished_at_millis != null ? new Date(build.finished_at_millis) : null,
+      status: runState.status,
+      error: runState.error,
+      finishedAt: isTerminalRunStatus(runState.status) ? new Date() : null,
       target: "production",
       triggeredBy,
       redactionSecretsEncrypted,
@@ -714,8 +767,7 @@ export async function syncServiceDomainsToMarshal(options: {
 /**
  * Refreshes a non-terminal run from Marshal (poll-on-read — there is no
  * background poller). No-op when the run is already terminal. The run is
- * considered READY when its build succeeds; machine rollout continues briefly
- * after that and is reported through the service state, not the run.
+ * considered READY only once both the image build and the machine rollout converge.
  */
 export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, tenancy: Tenancy, run: {
   id: string,
@@ -759,6 +811,16 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
     // run's failure instead of letting pollers hang on QUEUED forever.
     try {
       const state = await client.getService(ns, serviceId);
+      if (run.revision !== null && marshalRevisionIsSuperseded(state, run.revision)) {
+        // A racing PUT may replace the desired spec before this request creates a build.
+        // There will never be a build to attach in that case, so waiting for the generic
+        // stuck-run timeout would leave an accepted deploy queued for 30 minutes.
+        await prisma.deploymentRun.update({
+          where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
+          data: { status: "CANCELED", error: null, finishedAt: new Date() },
+        });
+        return;
+      }
       if (state.status === "blocked") {
         await prisma.deploymentRun.update({
           where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
@@ -790,24 +852,27 @@ export async function refreshRunFromMarshal(prisma: PrismaClientTransaction, ten
       data: { marshalBuildId: build.id },
     });
   }
-  const newStatus = mapMarshalBuildStatus(build.status);
+  let runState = { status: mapMarshalBuildStatus(build.status), error: build.error };
   let serviceUrl: string | null | undefined = undefined;
-  if (newStatus === "READY") {
+  if (build.status === "succeeded") {
     try {
       const state = await client.getService(ns, serviceId);
-      serviceUrl = state.outputs.url ?? null;
+      runState = deploymentRunStatusFromMarshal(build, state, run.revision ?? build.revision);
+      if (runState.status === "READY") serviceUrl = state.outputs.url ?? null;
     } catch (e) {
-      // URL mirroring is best-effort; the run's success is the build's.
-      captureError("deployments-run-refresh-service-url", e);
+      // Keep polling while Marshal's service state is temporarily unavailable. Build success
+      // alone is not enough to mark the run READY.
+      captureError("deployments-run-refresh-service-state", e);
+      runState = { status: "BUILDING", error: null };
     }
   }
   await prisma.deploymentRun.update({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: run.id } },
     data: {
-      status: newStatus,
+      status: runState.status,
       ...(serviceUrl !== undefined ? { serviceUrl } : {}),
-      error: newStatus === "ERROR" ? (build.error ?? "Deployment failed") : null,
-      finishedAt: isTerminalRunStatus(newStatus) ? (build.finished_at_millis != null ? new Date(build.finished_at_millis) : new Date()) : null,
+      error: runState.error,
+      finishedAt: isTerminalRunStatus(runState.status) ? new Date() : null,
     },
   });
 }

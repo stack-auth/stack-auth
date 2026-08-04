@@ -1,9 +1,10 @@
 import { HOSTNAME_REGEX, getOrCreateOperationalService, getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
 import { MarshalApiError, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "@/lib/deployments/marshal-client";
-import { getPrismaClientForTenancy, isPrismaUniqueConstraintViolation } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { randomUUID } from "node:crypto";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -55,14 +56,44 @@ export const POST = createSmartRouteHandler({
         : `The domain ${JSON.stringify(body.hostname)} is already added to another service in this project. Remove it there first.`);
     }
 
-    // Attach on the runtime first (if provisioned): if Marshal rejects the
-    // domain (e.g. the hostname is claimed by another project), nothing is
-    // persisted and the user gets the reason. Before the first deploy the
-    // runtime has no service to attach to, so the row alone records intent —
-    // the deploy path pushes pending rows once the service is provisioned.
-    let verified = false;
+    // Reserve tenancy-wide ownership before touching Marshal. The unique index is the
+    // concurrency arbiter: only the request that owns the row may attach the runtime claim.
+    const domainId = randomUUID();
+    const reservation = await prisma.deploymentServiceDomain.createMany({
+      data: [{
+        tenancyId: auth.tenancy.id,
+        id: domainId,
+        deploymentServiceId: service.id,
+        hostname: body.hostname,
+        isPrimary: body.is_primary ?? false,
+        verified: false,
+      }],
+      skipDuplicates: true,
+    });
+    if (reservation.count === 0) {
+      // Confirm the intended conflict after ON CONFLICT DO NOTHING. This distinguishes the
+      // hostname race from an implausible generated-id collision or a future unique index.
+      const raceWinner = await prisma.deploymentServiceDomain.findUnique({
+        where: {
+          tenancyId_hostname: {
+            tenancyId: auth.tenancy.id,
+            hostname: body.hostname,
+          },
+        },
+      });
+      if (raceWinner != null) {
+        throw new StatusError(400, `The domain ${JSON.stringify(body.hostname)} is already added to a service in this project.`);
+      }
+      throw new HexclaveAssertionError("A deployment domain reservation was skipped without a hostname conflict");
+    }
+    let domain = await prisma.deploymentServiceDomain.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domainId } },
+    });
+
+    let verified = domain.verified;
     if (service.provisionedAt != null) {
       if (getMarshalDeploymentsConfigOrNull() == null) {
+        await prisma.deploymentServiceDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
         throw new StatusError(400, "Deployments are not configured on this Hexclave instance.");
       }
       const client = getMarshalClientOrThrow();
@@ -75,30 +106,26 @@ export const POST = createSmartRouteHandler({
           // (e.g. the runtime state was reset). Keep the row-only path; the
           // next deploy re-attaches it.
         } else {
+          // The PUT may have reached Marshal before a network error. Release both sides
+          // before returning the failure so retries cannot inherit a split-brain claim.
+          try {
+            await client.deleteDomain(marshalNamespaceForTenancy(auth.tenancy), body.hostname, params.service_id);
+          } catch (cleanupError) {
+            if (!(cleanupError instanceof MarshalApiError && cleanupError.status === 404)) {
+              captureError("deployments-domain-add-runtime-compensation", cleanupError);
+            }
+          }
+          await prisma.deploymentServiceDomain.delete({ where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } } });
           sanitizeMarshalError(e, "Adding the domain failed");
         }
       }
     }
 
-    try {
-      await prisma.deploymentServiceDomain.create({
-        data: {
-          tenancyId: auth.tenancy.id,
-          deploymentServiceId: service.id,
-          hostname: body.hostname,
-          isPrimary: body.is_primary ?? false,
-          verified,
-        },
+    if (verified !== domain.verified) {
+      domain = await prisma.deploymentServiceDomain.update({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
+        data: { verified },
       });
-    } catch (e) {
-      // Two concurrent adds of the same hostname both pass the existence check
-      // above; the loser's unique-constraint violation must surface as the
-      // same clean 400 the sequential path returns, not a 500. The constraint is
-      // tenancy-wide, so the loser may be adding it to a different service.
-      if (isPrismaUniqueConstraintViolation(e, "DeploymentServiceDomain", ["tenancyId", "hostname"])) {
-        throw new StatusError(400, `The domain ${JSON.stringify(body.hostname)} is already added to a service in this project.`);
-      }
-      throw e;
     }
 
     return {
@@ -106,8 +133,8 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         hostname: body.hostname,
-        is_primary: body.is_primary ?? false,
-        verified,
+        is_primary: domain.isPrimary,
+        verified: domain.verified,
       },
     };
   },

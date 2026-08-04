@@ -1,6 +1,7 @@
 // All Marshal configuration comes from env vars — Marshal is stateless and holds no DB.
-// The mock sentinel token (like the backend's mock_hexclave_vercel_key pattern) points all
-// Fly API URLs at the fly-mock docker service and is refused outside dev/test.
+// The mock sentinel token points all Fly API URLs at the fly-mock docker service and is
+// refused unless the process explicitly opts in. This must not depend on NODE_ENV: an
+// omitted production NODE_ENV must fail closed.
 
 export const MOCK_FLY_TOKEN = "mock_hexclave_fly_key";
 
@@ -43,15 +44,10 @@ function portPrefix(): string {
   return process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81";
 }
 
-// NOTE: the mock-token / mock-builder guards key off NODE_ENV === "production", matching the
-// backend's vercel-client/js-execution convention. This is fail-OPEN if a real prod deploy
-// forgets to set NODE_ENV=production (the guard then permits the mock token). It takes two
-// mistakes (mock token set AND NODE_ENV unset) to trip, but a harder guard — deriving
-// prod-ness from a Marshal-owned signal like MARSHAL_ENV_ID, or requiring an explicit
-// MARSHAL_ALLOW_MOCKS=1 to permit the sentinel at all — would be strictly safer. Left aligned
-// with the existing codebase convention for now; worth tightening repo-wide.
-function isProductionLike(): boolean {
-  return (process.env.NODE_ENV ?? "development") === "production" && process.env.MARSHAL_ALLOW_MOCKS_IN_PRODUCTION !== "1";
+export function assertMocksExplicitlyAllowed(description: string, environment: NodeJS.ProcessEnv = process.env): void {
+  if (environment.MARSHAL_ALLOW_MOCKS !== "1") {
+    throw new Error(`marshal refuses to start: ${description} requires MARSHAL_ALLOW_MOCKS=1`);
+  }
 }
 
 let cached: MarshalConfig | null = null;
@@ -61,9 +57,7 @@ export function getConfig(): MarshalConfig {
 
   const flyToken = env("MARSHAL_FLY_API_TOKEN");
   const isMockFly = flyToken === MOCK_FLY_TOKEN;
-  if (isMockFly && isProductionLike()) {
-    throw new Error("marshal refuses to start: the mock Fly token is set in a production environment. Set MARSHAL_FLY_API_TOKEN to a real org token.");
-  }
+  if (isMockFly) assertMocksExplicitlyAllowed("the mock Fly token");
   // The fly-mock docker service serves all three API surfaces on one port.
   const flyMockUrl = `http://localhost:${portPrefix()}48`;
 
@@ -71,9 +65,7 @@ export function getConfig(): MarshalConfig {
   if (builderKind !== "fly" && builderKind !== "mock") {
     throw new Error(`marshal refuses to start: MARSHAL_BUILDER must be "fly" or "mock" (got ${JSON.stringify(builderKind)})`);
   }
-  if (builderKind === "mock" && isProductionLike()) {
-    throw new Error("marshal refuses to start: the mock builder is enabled in a production environment.");
-  }
+  if (builderKind === "mock") assertMocksExplicitlyAllowed("the mock builder");
 
   const port = Number(env("MARSHAL_PORT", `${portPrefix()}47`));
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

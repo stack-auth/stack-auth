@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDER_GUEST, RAILPACK_BUILDKIT_TMPFS_SIZE, RAILPACK_CLI_SHA256, RAILPACK_CLI_URL, RAILPACK_FRONTEND_IMAGE, getConfig, resolveNamespaceOrg } from "./config.js";
 import { flyClientForNamespaceOrg } from "./fly/client.js";
 import { builderAppName, builderNetworkName } from "./naming.js";
-import { presignUploadGet, readSpec } from "./store.js";
+import { presignValidatedUploadGet, readSpec } from "./store.js";
 
 // Builders start a build for an uploaded source tarball; completion always flows through
 // the webhook path (POST /internal/builds/:id/complete → services.completeBuild), so the
@@ -90,10 +90,8 @@ mkdir -p /ctx
 # Fetch and extract OUTSIDE the context dir, then extract INTO it — otherwise the tarball
 # itself sits in the build context and a plain \`COPY . .\` bakes a compressed copy of the
 # whole source tree into the user's image.
-# FUTURE: this extracts a fully tenant-controlled archive as root in the harness VM (the
-# same VM that holds the registry credential); Marshal's own tar writer only produces plain
-# relative-path file entries, but a defense-in-depth pass (unprivileged extraction user,
-# explicit ../-and-symlink rejection) would stop relying on that invariant.
+# Marshal validates the archive and copies it to an immutable, build-specific object before
+# this machine receives credentials. The original client-writable upload is never extracted.
 wget -q -O /tmp/ctx.tar.gz "$TARBALL_URL" || fail "failed to fetch the source tarball"
 tar xzf /tmp/ctx.tar.gz -C /ctx || fail "the source tarball is not a valid gzipped tarball"
 cd /ctx
@@ -145,7 +143,7 @@ export function createFlyBuilder(): Builder {
       const builderApp = builderAppName(config.envId);
       await fly.ensureApp(builderApp, builderNetworkName(config.envId));
 
-      const tarballUrl = await presignUploadGet(options.ns, options.uploadId, BUILD_TIMEOUT_SECONDS + 60);
+      const tarballUrl = await presignValidatedUploadGet(options.ns, options.buildId, BUILD_TIMEOUT_SECONDS + 60);
       const webhookToken = computeWebhookToken(options.buildId, options.ns, options.key);
       const webhookUrl = `${config.publicUrl}/internal/builds/${options.buildId}/complete?ns=${encodeURIComponent(options.ns)}&key=${encodeURIComponent(options.key)}`;
 

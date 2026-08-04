@@ -1726,8 +1726,10 @@ model DeploymentService {
   // --service-id`, and the backend never acts on it, so storing it would only
   // buy a display row in the dashboard at the price of a column that can drift
   // from the config file.
-  // Record of env var key -> DeploymentEnvVarDefinition (see
-  // @hexclave/shared/dist/deployments): { value } for plain vars,
+  // Array of [env var key, DeploymentEnvVarDefinition] entries (see
+  // @hexclave/shared/dist/deployments). An entry array, rather than a JSON object, preserves
+  // special keys such as `__proto__` through Prisma's JSON serializer. Legacy object rows
+  // remain readable: { value } for plain vars,
   // { type: "secret", key } for secrets (never their values, and never their
   // `secret(key, default)` fallbacks — those travel with the deploy request
   // and are rejected by deploymentEnvVarSchema on every write path),

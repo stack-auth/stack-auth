@@ -241,7 +241,7 @@ function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, E
   if (envRaw === null || typeof envRaw !== "object" || Array.isArray(envRaw)) {
     throw new CliError(`services.${serviceId}.env must be a record of env var values.`);
   }
-  const env: Record<string, EvaluatedEnvVarValue> = {};
+  const env = new Map<string, EvaluatedEnvVarValue>();
   for (const [envVarKey, value] of Object.entries(envRaw as Record<string, unknown>)) {
     if (!DEPLOYMENT_ENV_VAR_KEY_REGEX.test(envVarKey)) {
       throw new CliError(`services.${serviceId}.env has an invalid key ${JSON.stringify(envVarKey)}. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
@@ -252,11 +252,11 @@ function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, E
       continue;
     }
     if (typeof value === "string") {
-      env[envVarKey] = { kind: "plain", value };
+      env.set(envVarKey, { kind: "plain", value });
     } else if (isSecretRef(value)) {
-      env[envVarKey] = { kind: "secret", secretKey: value.secretKey, defaultValue: value.defaultValue };
+      env.set(envVarKey, { kind: "secret", secretKey: value.secretKey, defaultValue: value.defaultValue });
     } else if (isConnectionRef(value)) {
-      env[envVarKey] = { kind: "connection", reference: value.reference, hexclaveOutputKey: value.hexclaveOutputKey };
+      env.set(envVarKey, { kind: "connection", reference: value.reference, hexclaveOutputKey: value.hexclaveOutputKey });
     } else if (typeof value === "object" && (SERVICE_OUTPUT_KEYS as readonly string[]).some((outputKey) => outputKey in (value as object))) {
       // The whole outputs object was assigned instead of one of its outputs.
       throw new CliError(`services.${serviceId}.env.${envVarKey} is a service returned by service() — pick one of its outputs instead (e.g. service("...").url).`);
@@ -264,7 +264,7 @@ function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, E
       throw new CliError(`services.${serviceId}.env.${envVarKey} must be a string, null, secret(...), service(...).<output>, or hexclave.<output> (got ${typeof value}).`);
     }
   }
-  return env;
+  return Object.fromEntries(env);
 }
 
 function serializeEnvForWire(env: Record<string, EvaluatedEnvVarValue>): Record<string, DeploymentEnvVarDefinition> {
@@ -526,13 +526,13 @@ function findDependencyCycle(serviceIds: string[], dependencies: Map<string, Set
  * there" and nothing in between.
  */
 export function collectSecretDefaults(service: EvaluatedService): Record<string, string> {
-  const defaults: Record<string, string> = {};
+  const defaults = new Map<string, string>();
   for (const [envVarKey, value] of Object.entries(service.env)) {
     if (value.kind === "secret" && value.defaultValue !== undefined) {
-      defaults[envVarKey] = value.defaultValue;
+      defaults.set(envVarKey, value.defaultValue);
     }
   }
-  return defaults;
+  return Object.fromEntries(defaults);
 }
 
 /**
@@ -541,11 +541,11 @@ export function collectSecretDefaults(service: EvaluatedService): Record<string,
  * credentials). Called by `hexclave dev` after the session exists.
  */
 export function resolveDevEnv(service: EvaluatedService, sessionEnv: Record<string, string>): Record<string, string> {
-  const resolved: Record<string, string> = {};
+  const resolved = new Map<string, string>();
   for (const [envVarKey, value] of Object.entries(service.env)) {
     switch (value.kind) {
       case "plain": {
-        resolved[envVarKey] = value.value;
+        resolved.set(envVarKey, value.value);
         break;
       }
       case "secret": {
@@ -556,7 +556,7 @@ export function resolveDevEnv(service: EvaluatedService, sessionEnv: Record<stri
         if (value.defaultValue === undefined) {
           throw new CliError(`The secret ${JSON.stringify(value.secretKey)} (env var ${JSON.stringify(envVarKey)}) has no default value, so it cannot be resolved during \`hexclave dev\`. Add a default (secret(${JSON.stringify(value.secretKey)}, "some-dev-value")) or guard it with isDev (e.g. \`isDev ? null : secret(${JSON.stringify(value.secretKey)})\`).`);
         }
-        resolved[envVarKey] = value.defaultValue;
+        resolved.set(envVarKey, value.defaultValue);
         break;
       }
       case "connection": {
@@ -565,12 +565,12 @@ export function resolveDevEnv(service: EvaluatedService, sessionEnv: Record<stri
           // connection refs cannot be constructed.
           throw new CliError(`Internal error: env var ${JSON.stringify(envVarKey)} is an unresolved service connection in dev mode.`);
         }
-        resolved[envVarKey] = resolveHexclaveOutputFromSessionEnv(envVarKey, value.hexclaveOutputKey, sessionEnv);
+        resolved.set(envVarKey, resolveHexclaveOutputFromSessionEnv(envVarKey, value.hexclaveOutputKey, sessionEnv));
         break;
       }
     }
   }
-  return resolved;
+  return Object.fromEntries(resolved);
 }
 
 function resolveHexclaveOutputFromSessionEnv(envVarKey: string, outputKey: HexclaveOutputKey, sessionEnv: Record<string, string>): string {

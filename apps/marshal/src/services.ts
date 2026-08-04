@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { computeWebhookToken, type Builder } from "./builds.js";
 import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_UPLOAD_BYTES, SOFT_CONCURRENCY_LIMIT, getConfig, resolveNamespaceOrg } from "./config.js";
-import { MarshalError, badRequest, notFound } from "./errors.js";
+import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
 import { redactSecrets } from "./redact.js";
 import { computeRevision } from "./revision.js";
-import { deleteSpec, deleteUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaim, readSpec, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec } from "./store.js";
+import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaim, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec } from "./types.js";
 import { ulid } from "./ulid.js";
 
@@ -79,7 +80,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
 
   const env = asRecord(record.env);
   if (env === null) throw badRequest("env is required (use {} for no env vars)");
-  const validatedEnv: Record<string, EnvValue> = {};
+  const validatedEnv = new Map<string, EnvValue>();
   for (const [key, value] of Object.entries(env)) {
     if (!ENV_KEY_REGEX.test(key)) throw badRequest(`invalid env var key ${JSON.stringify(key)}`);
     const envValue = asRecord(value);
@@ -88,7 +89,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     const hasRef = typeof envValue.ref === "string";
     if (hasValue === hasRef) throw badRequest(`env.${key} must be exactly one of { value } or { ref }`);
     if (hasRef && !REF_REGEX.test(envValue.ref as string)) throw badRequest(`env.${key}.ref must look like "<service_key>.<output_key>"`);
-    validatedEnv[key] = hasValue ? { value: envValue.value as string } : { ref: envValue.ref as string };
+    validatedEnv.set(key, hasValue ? { value: envValue.value as string } : { ref: envValue.ref as string });
   }
 
   return {
@@ -98,7 +99,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
     source: hasUploadId
       ? { upload_id: source.upload_id as string, ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}) }
       : { image: source.image as string },
-    env: validatedEnv,
+    env: Object.fromEntries(validatedEnv),
   };
 }
 
@@ -114,13 +115,13 @@ type ResolvedEnv =
 // deadlocking). Only `url` depends on external state (a verified domain) and can block.
 async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>): Promise<ResolvedEnv> {
   const { envId } = getConfig();
-  const resolved: Record<string, string> = {};
+  const resolved = new Map<string, string>();
   const blockedRefs: string[] = [];
   const urlCache = new Map<string, string | null>();
 
   for (const [key, value] of Object.entries(env)) {
     if ("value" in value) {
-      resolved[key] = value.value;
+      resolved.set(key, value.value);
       continue;
     }
     const match = REF_REGEX.exec(value.ref);
@@ -131,11 +132,11 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
     const [, targetKey, outputKey] = match;
     switch (outputKey) {
       case "internal_host": {
-        resolved[key] = internalHostForService(envId, ns, targetKey);
+        resolved.set(key, internalHostForService(envId, ns, targetKey));
         break;
       }
       case "internal_url": {
-        resolved[key] = `http://${internalHostForService(envId, ns, targetKey)}`;
+        resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}`);
         break;
       }
       case "url": {
@@ -146,7 +147,7 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         if (url === null) {
           blockedRefs.push(value.ref);
         } else {
-          resolved[key] = url;
+          resolved.set(key, url);
         }
         break;
       }
@@ -158,7 +159,7 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
     }
   }
   if (blockedRefs.length > 0) return { ok: false, blockedRefs };
-  return { ok: true, env: resolved };
+  return { ok: true, env: Object.fromEntries(resolved) };
 }
 
 function certificateIsVerified(certificate: FlyCertificate): boolean {
@@ -306,31 +307,72 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
 
 export type ApplyResult = { revision: string, changed: boolean, state: ServiceState };
 
+async function claimDesiredSpec(ns: string, key: string, spec: ServiceSpec, revision: string, now: number): Promise<{
+  stored: StoredSpec,
+  changed: boolean,
+  etag: string,
+  archive: Uint8Array | null,
+}> {
+  const validatedArchives = new Map<string, Uint8Array>();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const previousVersion = await readSpecVersioned(ns, key);
+    const previous = previousVersion?.value ?? null;
+    const changed = previous === null || previous.revision !== revision;
+    const stored: StoredSpec = {
+      ns,
+      key,
+      // Unchanged re-PUTs keep the stored source: it may already be rewritten to { image }
+      // by a completed build, and reverting it to { upload_id } would orphan the deploy.
+      spec: changed ? spec : previous.spec,
+      revision,
+      created_at_millis: previous?.created_at_millis ?? now,
+      updated_at_millis: Date.now(),
+      last_apply_error: changed ? null : previous.last_apply_error,
+    };
+    let archive: Uint8Array | null = null;
+    if ("upload_id" in stored.spec.source) {
+      const uploadId = stored.spec.source.upload_id;
+      archive = validatedArchives.get(uploadId) ?? null;
+      if (archive === null) {
+        const upload = await statUpload(ns, uploadId);
+        if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
+        if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
+        archive = await readUpload(ns, uploadId);
+        if (archive === null) throw badRequest(`upload ${JSON.stringify(uploadId)} disappeared before it could be consumed`);
+        validateSourceArchive(archive);
+        validatedArchives.set(uploadId, archive);
+      }
+    }
+    const etag = await writeSpec(stored, previousVersion === null ? { ifNoneMatch: true } : { ifMatch: previousVersion.etag });
+    if (etag !== null) return { stored, changed, etag, archive };
+  }
+  throw conflict(`service ${JSON.stringify(key)} was updated too frequently; retry the request`);
+}
+
+async function stateAfterSpecWrite(ns: string, key: string, stored: StoredSpec, previousEtag: string): Promise<ServiceState> {
+  const etag = await writeSpec(stored, { ifMatch: previousEtag });
+  if (etag !== null) return await getServiceState(ns, key, stored);
+  // Another request (or a delete) owns the desired state now. Never resurrect/overwrite it.
+  return await getServiceState(ns, key);
+}
+
+async function specIsStillOwned(ns: string, key: string, etag: string): Promise<boolean> {
+  return (await readSpecVersioned(ns, key))?.etag === etag;
+}
+
 export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, builder: Builder): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const revision = computeRevision(spec);
-  const previous = await readSpec(ns, key);
-  const changed = previous === null || previous.revision !== revision;
   const now = Date.now();
-
-  const stored: StoredSpec = {
-    ns,
-    key,
-    // Unchanged re-PUTs keep the stored source: it may already be rewritten to { image }
-    // by a completed build, and reverting it to { upload_id } would orphan the deploy.
-    spec: changed ? spec : previous.spec,
-    revision,
-    created_at_millis: previous?.created_at_millis ?? now,
-    updated_at_millis: now,
-    last_apply_error: changed ? null : previous.last_apply_error,
-  };
+  const claimed = await claimDesiredSpec(ns, key, spec, revision, now);
+  const { stored, changed } = claimed;
+  const ownedSpecEtag = claimed.etag;
 
   // Unresolvable refs: persist the spec and report blocked WITHOUT touching machines or
   // starting builds — the backend re-applies when the blocking output appears.
   const resolved = await resolveEnv(fly, ns, stored.spec.env);
   if (!resolved.ok) {
-    await writeSpec(stored);
     return { revision, changed, state: await getServiceState(ns, key, stored) };
   }
 
@@ -348,9 +390,11 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
   const needsBuild = "upload_id" in stored.spec.source && buildForRevision === null;
   if (needsBuild && "upload_id" in stored.spec.source) {
     const uploadId = stored.spec.source.upload_id;
-    const upload = await statUpload(ns, uploadId);
-    if (upload === null) throw badRequest(`upload ${JSON.stringify(uploadId)} does not exist (expired, already consumed, or never uploaded)`);
-    if (upload.sizeBytes > MAX_UPLOAD_BYTES) throw badRequest(`upload is ${upload.sizeBytes} bytes; the maximum is ${MAX_UPLOAD_BYTES}`);
+    const archive = claimed.archive;
+    if (archive === null) throw new Error("claimed upload-sourced spec was not validated");
+    if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
+      return { revision, changed, state: await getServiceState(ns, key) };
+    }
 
     // The service app must exist BEFORE the build: registry.fly.io only
     // accepts pushes to repositories of existing apps (real-Fly-verified —
@@ -360,7 +404,6 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     await fly.ensureApp(appName, network);
     await fly.ensureFlycastIp(appName, network);
 
-    await writeSpec(stored);
     // The record is written as "running" BEFORE the builder starts: completion (webhook or
     // mock) may land at any moment after startBuild, and a blind write here afterwards
     // could clobber a terminal record.
@@ -381,6 +424,10 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
       image: null,
       upload_id: uploadId,
     };
+    // Copy the validated bytes to a build-specific key that the client cannot overwrite.
+    // The original presigned PUT remains valid until expiry, so building from it would leave
+    // a validation-to-extraction race even after strict tar validation.
+    await writeValidatedUpload(ns, build.id, archive);
     await writeBuild(build);
     try {
       const started = await builder.startBuild({
@@ -405,6 +452,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
       if (current !== null && (current.status === "queued" || current.status === "running")) {
         await writeBuild({ ...current, status: "failed", error: "starting the build failed", finished_at_millis: Date.now() });
       }
+      await deleteValidatedUploadBestEffort(ns, build.id);
       throw error;
     }
     return { revision, changed, state: await getServiceState(ns, key, stored) };
@@ -444,6 +492,9 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
   // { upload_id } source — nothing to apply yet.
   const source = stored.spec.source;
   if ("image" in source) {
+    if (!await specIsStillOwned(ns, key, ownedSpecEtag)) {
+      return { revision, changed, state: await getServiceState(ns, key) };
+    }
     try {
       await applyMachines(fly, stored, source.image, resolved.env);
       stored.last_apply_error = null;
@@ -451,8 +502,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
       stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
     }
   }
-  await writeSpec(stored);
-  return { revision, changed, state: await getServiceState(ns, key, stored) };
+  return { revision, changed, state: await stateAfterSpecWrite(ns, key, stored, ownedSpecEtag) };
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +531,7 @@ export async function completeBuild(options: {
     const failed: StoredBuild = { ...build, status: "failed", error: truncateError(options.errorText) ?? "build failed", finished_at_millis: Date.now() };
     await persistBuildLog(fly, failed);
     await writeBuild(failed);
+    await deleteValidatedUploadBestEffort(options.ns, build.id);
     // The upload is deliberately kept on failure (a retry of the identical spec can reuse
     // it); the bucket lifecycle rule on uploads/ reclaims it.
     return;
@@ -503,6 +554,7 @@ export async function completeBuild(options: {
     const failed: StoredBuild = { ...build, status: "failed", error: "build reported success but the built image digest could not be resolved", finished_at_millis: Date.now() };
     await persistBuildLog(fly, failed);
     await writeBuild(failed);
+    await deleteValidatedUploadBestEffort(options.ns, build.id);
     return;
   }
 
@@ -510,14 +562,16 @@ export async function completeBuild(options: {
   const succeeded: StoredBuild = { ...build, status: "succeeded", image: imageRef, finished_at_millis: Date.now() };
   await persistBuildLog(fly, succeeded);
   await writeBuild(succeeded);
+  await deleteValidatedUploadBestEffort(options.ns, build.id);
 
-  const stored = await readSpec(options.ns, options.key);
+  const storedVersion = await readSpecVersioned(options.ns, options.key);
   // Only roll machines if this build is still the target — a newer PUT supersedes it.
-  if (stored !== null && stored.revision === build.revision) {
+  if (storedVersion !== null && storedVersion.value.revision === build.revision) {
+    const stored = storedVersion.value;
     stored.spec = { ...stored.spec, source: { image: imageRef } };
     stored.updated_at_millis = Date.now();
     const resolved = await resolveEnv(fly, options.ns, stored.spec.env);
-    if (resolved.ok) {
+    if (resolved.ok && await specIsStillOwned(options.ns, options.key, storedVersion.etag)) {
       try {
         await applyMachines(fly, stored, imageRef, resolved.env);
         stored.last_apply_error = null;
@@ -525,7 +579,8 @@ export async function completeBuild(options: {
         stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
       }
     }
-    await writeSpec(stored);
+    // Drop the write if a newer apply took ownership while the rollout was in flight.
+    await writeSpec(stored, { ifMatch: storedVersion.etag });
   }
   // Success consumed the upload; deleting it here is an optimization — the bucket
   // lifecycle rule on uploads/ owns correctness for every other path.
@@ -541,6 +596,16 @@ export async function completeBuild(options: {
 function truncateError(text: string | null): string | null {
   if (text === null || text.trim() === "") return null;
   return text.length > 2000 ? `${text.slice(0, 2000)}…` : text;
+}
+
+async function deleteValidatedUploadBestEffort(ns: string, buildId: string): Promise<void> {
+  try {
+    await deleteValidatedUpload(ns, buildId);
+  } catch (error) {
+    // The object contains already-validated source and expires with the bucket lifecycle;
+    // cleanup must never prevent a terminal build record or its rollout from completing.
+    console.error(`deleting validated source for build ${ns}/${buildId} failed`, error);
+  }
 }
 
 // Durable build log: Marshal (not the harness) drains the builder machine's logs from the

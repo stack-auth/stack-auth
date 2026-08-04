@@ -9,6 +9,16 @@ function evaluate(servicesExport: unknown, mode: "deploy" | "dev" = "deploy") {
 }
 
 describe("evaluateServicesFunction (deploy mode)", () => {
+  it("preserves __proto__ as an environment variable instead of mutating the result prototype", () => {
+    const { services } = evaluate(() => ({
+      web: { type: "container", port: 3000, env: { ["__proto__"]: "safe" } },
+    }));
+    const definitionEnv = services.get("web")?.definition.env;
+    expect(definitionEnv).toBeDefined();
+    expect(Object.getOwnPropertyDescriptor(definitionEnv ?? {}, "__proto__")).toBeDefined();
+    expect(definitionEnv?.__proto__).toEqual({ value: "safe" });
+  });
+
   it("serializes a full services export into wire-shape definitions", () => {
     const { services } = evaluate(({ isDev, secret, service, hexclave }: ServicesFunctionContext) => ({
       frontend: {

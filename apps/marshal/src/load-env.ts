@@ -9,13 +9,10 @@ import { fileURLToPath } from "node:url";
 // non-secret config. Must stay the first import in index.ts.
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-config({
-  path: [
-    ".env.test.local",
-    ".env.test",
-    ".env.development.local",
-    ".env.local",
-    ".env.development",
-    ".env",
-  ].map(file => resolve(packageRoot, file)),
-});
+const environmentFiles = process.env.NODE_ENV === "test"
+  ? [".env.test.local", ".env.test", ".env.development.local", ".env.local", ".env.development", ".env"]
+  : process.env.NODE_ENV === "development"
+    ? [".env.development.local", ".env.local", ".env.development", ".env"]
+    : [".env.local", ".env"];
+
+config({ path: environmentFiles.map(file => resolve(packageRoot, file)) });
