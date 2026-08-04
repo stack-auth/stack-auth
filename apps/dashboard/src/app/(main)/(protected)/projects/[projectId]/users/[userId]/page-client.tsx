@@ -38,7 +38,7 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { DeleteUserDialog, generateImpersonateSnippet, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
@@ -113,7 +113,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const name = user.displayName ?? nameFallback;
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
-  const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const [impersonateOpen, setImpersonateOpen] = useState(false);
   const hexclaveAdminApp = useAdminApp();
 
   return (
@@ -144,19 +144,7 @@ function UserHeader({ user }: UserHeaderProps) {
             {
               id: "impersonate",
               label: "Impersonate",
-              onClick: () => {
-                runAsynchronouslyWithAlert(async () => {
-                  const expiresInMillis = 1000 * 60 * 60 * 2;
-                  const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                  const session = await user.createSession({ expiresInMillis, isImpersonation: true });
-                  const tokens = await session.getTokens();
-                  setImpersonateSnippet(generateImpersonateSnippet(
-                    hexclaveAdminApp.projectId,
-                    tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
-                    expiresAtDate,
-                  ));
-                });
-              },
+              onClick: () => setImpersonateOpen(true),
             },
             ...user.isMultiFactorRequired ? [{
               id: "remove-2fa",
@@ -188,7 +176,7 @@ function UserHeader({ user }: UserHeaderProps) {
           profileHref={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`}
           redirectTo={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users`}
         />
-        <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
+        <ImpersonateUserDialog user={user} adminApp={hexclaveAdminApp} open={impersonateOpen} onClose={() => setImpersonateOpen(false)} />
       </div>
     </div>
   );

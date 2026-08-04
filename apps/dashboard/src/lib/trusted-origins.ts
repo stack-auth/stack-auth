@@ -1,20 +1,16 @@
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
-export type ClickmapOrigin = {
+export type TrustedOrigin = {
   id: string,
   origin: string,
 };
 
-export type ClickmapWildcardDomain = {
+export type TrustedWildcardDomain = {
   id: string,
   baseUrl: string,
 };
 
-export function normalizeClickmapOrigin(baseUrl: string): string | null {
-  if (baseUrl.includes("*")) {
-    return null;
-  }
-
+export function normalizeTrustedOrigin(baseUrl: string): string | null {
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -25,20 +21,21 @@ export function normalizeClickmapOrigin(baseUrl: string): string | null {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     return null;
   }
+  if (url.hostname.includes("*")) {
+    return null;
+  }
 
   return url.origin;
 }
 
-function isWildcardDomain(baseUrl: string): boolean {
-  return baseUrl.includes("*");
-}
-
-export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUrl?: string | null }>): {
-  origins: ClickmapOrigin[],
-  wildcardDomains: ClickmapWildcardDomain[],
+export function getTrustedOriginOptions(
+  trustedDomains: Record<string, { baseUrl?: string | null }>,
+): {
+  origins: TrustedOrigin[],
+  wildcardDomains: TrustedWildcardDomain[],
 } {
-  const byOrigin = new Map<string, ClickmapOrigin>();
-  const wildcardDomains: ClickmapWildcardDomain[] = [];
+  const byOrigin = new Map<string, TrustedOrigin>();
+  const wildcardDomains: TrustedWildcardDomain[] = [];
 
   for (const id in trustedDomains) {
     const domain = trustedDomains[id];
@@ -46,12 +43,19 @@ export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUr
       continue;
     }
 
-    if (isWildcardDomain(domain.baseUrl)) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(domain.baseUrl);
+    } catch {
+      continue;
+    }
+
+    if (parsedUrl.hostname.includes("*")) {
       wildcardDomains.push({ id, baseUrl: domain.baseUrl });
       continue;
     }
 
-    const origin = normalizeClickmapOrigin(domain.baseUrl);
+    const origin = normalizeTrustedOrigin(domain.baseUrl);
     if (origin == null) {
       continue;
     }

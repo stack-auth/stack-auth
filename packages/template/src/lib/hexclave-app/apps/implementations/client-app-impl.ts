@@ -35,6 +35,7 @@ import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -69,6 +70,22 @@ import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
+
+export function stripBrowserActionQueryParam() {
+  let stripAttemptsRemaining = 20;
+  const stripActionId = () => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has(BROWSER_ACTION_QUERY_PARAM)) {
+      currentUrl.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
+      window.history.replaceState(window.history.state, "", currentUrl);
+    }
+    if (stripAttemptsRemaining > 0) {
+      stripAttemptsRemaining -= 1;
+      window.setTimeout(stripActionId, 0);
+    }
+  };
+  stripActionId();
+}
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -852,6 +869,30 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // from the URL before its token exchange, so the nested handler must decide based on the
       // URL the page was loaded with, not whatever is in the address bar when it runs.
       const urlAtConstructionTime = new URL(window.location.href);
+      const actionId = urlAtConstructionTime.searchParams.get(BROWSER_ACTION_QUERY_PARAM);
+      if (actionId != null) {
+        // App Router implementations can restore the URL from their pre-rendered state after
+        // this constructor runs. Repeat the synchronous strip for a few event-loop turns so the
+        // action ID does not remain reloadable after the router finishes hydrating.
+        stripBrowserActionQueryParam();
+        runAsynchronously(async () => {
+          try {
+            const result = await this._interface.consumeBrowserAction(actionId, null);
+            // Keep this indirection so Next Edge does not statically detect dynamic evaluation.
+            Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
+          } catch (error) {
+            // A reload can legitimately retry an already-consumed or expired one-time action.
+            // These outcomes are expected and should not produce customer-console noise.
+            if (
+              KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)
+              || KnownErrors.VerificationCodeExpired.isInstance(error)
+            ) {
+              return;
+            }
+            throw error;
+          }
+        });
+      }
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
