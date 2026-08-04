@@ -4,6 +4,7 @@ import {
   getEnabledAppIds,
   getTrustedDomainBaseUrls,
   isStripeAccountSetupComplete,
+  mergeProjectActivityMetricsRows,
   selectProjectsWithInternalPinned,
 } from "./helpers";
 
@@ -86,5 +87,60 @@ describe("newly-created-projects helpers", () => {
       { id: "newest" },
       { id: "internal" },
     ]);
+  });
+
+  it("merges per-project activity rows from disjoint ClickHouse chunks", () => {
+    const metrics = mergeProjectActivityMetricsRows(
+      [
+        { projectId: "project-a", nonAnon: "2", anon: 1 },
+        { projectId: "project-b", nonAnon: 3, anon: "4" },
+      ],
+      [
+        { projectId: "project-a", lastActive: "2026-01-02 03:04:05" },
+        { projectId: "project-b", lastActive: "2026-01-03T04:05:06Z" },
+      ],
+    );
+
+    expect({
+      nonAnon: [...metrics.nonAnonByProjectId.entries()],
+      anon: [...metrics.anonByProjectId.entries()],
+      lastActivity: [...metrics.lastActivityByProjectId.entries()].map(([projectId, date]) => [
+        projectId,
+        date.toISOString(),
+      ]),
+    }).toMatchInlineSnapshot(`
+      {
+        "anon": [
+          [
+            "project-a",
+            1,
+          ],
+          [
+            "project-b",
+            4,
+          ],
+        ],
+        "lastActivity": [
+          [
+            "project-a",
+            "2026-01-02T03:04:05.000Z",
+          ],
+          [
+            "project-b",
+            "2026-01-03T04:05:06.000Z",
+          ],
+        ],
+        "nonAnon": [
+          [
+            "project-a",
+            2,
+          ],
+          [
+            "project-b",
+            3,
+          ],
+        ],
+      }
+    `);
   });
 });

@@ -1,11 +1,137 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from "@clickhouse/client";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 
 // Re-exported so other modules can hold a typed ClickHouse client (e.g. to
 // thread a single warmed client through helpers) without taking a direct
 // dependency on the @clickhouse/client package.
 export type { ClickHouseClient } from "@clickhouse/client";
+
+/** Keep each encoded query parameter comfortably below ClickHouse's 128 KiB field limit. */
+export const CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET = 96 * 1024;
+const CLICKHOUSE_STRING_ID_CHUNK_CONCURRENCY = 4;
+type ClickHouseJsonQueryClient<Row> = {
+  query: (params: {
+    query: string,
+    query_params: Record<string, unknown>,
+    format: "JSONEachRow",
+  }) => Promise<{
+    json: () => Promise<Row[]>,
+  }>,
+};
+
+function escapeClickhouseString(value: string): string {
+  let escaped = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    switch (character) {
+      case "\t": {
+        escaped += "\\t";
+        break;
+      }
+      case "\n": {
+        escaped += "\\n";
+        break;
+      }
+      case "\r": {
+        escaped += "\\r";
+        break;
+      }
+      case "'": {
+        escaped += "\\'";
+        break;
+      }
+      case "\\": {
+        escaped += "\\\\";
+        break;
+      }
+      default: {
+        escaped += character;
+      }
+    }
+  }
+  return escaped;
+}
+
+/** Mirrors clickhouse-js's Array(String) query-param serialization for byte budgeting. */
+export function serializeClickHouseStringArrayParam(ids: readonly string[]): string {
+  return `[${ids.map((id) => `'${escapeClickhouseString(id)}'`).join(",")}]`;
+}
+
+/**
+ * Sort before chunking so each chunk is a contiguous project_id range in the
+ * ClickHouse primary key. This keeps the chunks close to one ordered pass
+ * instead of making every request scan unrelated primary-key ranges.
+ */
+export function chunkClickHouseStringIds(
+  ids: readonly string[],
+  parameterName: string,
+): string[][] {
+  if (parameterName.length === 0) {
+    throw new HexclaveAssertionError("ClickHouse query parameter name must not be empty");
+  }
+  const sortedUniqueIds = [...new Set(ids)].sort((left, right) => (
+    left < right ? -1 : left > right ? 1 : 0
+  ));
+  const chunks: string[][] = [];
+  let currentChunk: string[] = [];
+  let currentSerializedLength = 2;
+
+  for (const id of sortedUniqueIds) {
+    const serializedIdLength = Buffer.byteLength(`'${escapeClickhouseString(id)}'`, "utf8");
+    const separatorLength = currentChunk.length === 0 ? 0 : 1;
+    const nextLength = currentSerializedLength + separatorLength + serializedIdLength;
+    if (currentChunk.length > 0 && nextLength > CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentSerializedLength = 2;
+    }
+    currentChunk.push(id);
+    currentSerializedLength += (currentChunk.length === 1 ? 0 : 1) + serializedIdLength;
+    if (currentSerializedLength > CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET) {
+      throw new HexclaveAssertionError(
+        `ClickHouse query parameter ${parameterName} exceeds its byte budget for one ID`,
+        { parameterName, id, serializedParamLength: currentSerializedLength, byteBudget: CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET },
+      );
+    }
+  }
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+  for (const chunk of chunks) {
+    const serializedParamLength = Buffer.byteLength(serializeClickHouseStringArrayParam(chunk), "utf8");
+    if (serializedParamLength > CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET) {
+      throw new HexclaveAssertionError(
+        `ClickHouse query parameter ${parameterName} exceeds its byte budget`,
+        { parameterName, serializedParamLength, byteBudget: CLICKHOUSE_STRING_ID_PARAM_BYTE_BUDGET },
+      );
+    }
+  }
+  return chunks;
+}
+
+export async function queryClickHouseByStringIdChunks<Row>(
+  client: ClickHouseJsonQueryClient<Row>,
+  options: {
+    query: string,
+    parameterName: string,
+    ids: readonly string[],
+    queryParams?: Record<string, unknown>,
+  },
+): Promise<Row[]> {
+  const chunks = chunkClickHouseStringIds(options.ids, options.parameterName);
+  const chunkRows = await mapWithConcurrency(chunks, CLICKHOUSE_STRING_ID_CHUNK_CONCURRENCY, async (ids) => {
+    const result = await client.query({
+      query: options.query,
+      query_params: {
+        ...options.queryParams,
+        [options.parameterName]: ids,
+      },
+      format: "JSONEachRow",
+    });
+    return await result.json();
+  });
+  return chunkRows.flat();
+}
 
 function getAdminAuth() {
   return {

@@ -1,5 +1,9 @@
 import { Prisma } from "@/generated/prisma/client";
-import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
+import {
+  chunkClickHouseStringIds,
+  getClickhouseAdminClientForMetrics,
+  queryClickHouseByStringIdChunks,
+} from "@/lib/clickhouse";
 import { getBranchConfigOverrideQuery } from "@/lib/config";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getHexclaveStripe } from "@/lib/stripe";
@@ -232,6 +236,37 @@ export type ProjectActivityMetrics = {
   lastActivityByProjectId: Map<string, Date>,
 };
 
+export function mergeProjectActivityMetricsRows(
+  userRows: Array<{ projectId: string, nonAnon: string | number, anon: string | number }>,
+  activityRows: Array<{ projectId: string, lastActive: string }>,
+): ProjectActivityMetrics {
+  const nonAnonByProjectId = new Map<string, number>();
+  const anonByProjectId = new Map<string, number>();
+  for (const row of userRows) {
+    if (nonAnonByProjectId.has(row.projectId)) {
+      throw new HexclaveAssertionError(`Duplicate ClickHouse user metrics row for project ${row.projectId}`);
+    }
+    nonAnonByProjectId.set(row.projectId, Number(row.nonAnon) || 0);
+    anonByProjectId.set(row.projectId, Number(row.anon) || 0);
+  }
+  const lastActivityByProjectId = new Map<string, Date>();
+  for (const row of activityRows) {
+    if (lastActivityByProjectId.has(row.projectId)) {
+      throw new HexclaveAssertionError(`Duplicate ClickHouse activity metrics row for project ${row.projectId}`);
+    }
+    // ClickHouse DateTime comes back as "YYYY-MM-DD HH:MM:SS" (UTC, no zone).
+    const normalized = row.lastActive.includes("T")
+      ? row.lastActive
+      : row.lastActive.replace(" ", "T");
+    const withZone = /[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`;
+    const parsed = new Date(withZone);
+    if (!Number.isNaN(parsed.getTime())) {
+      lastActivityByProjectId.set(row.projectId, parsed);
+    }
+  }
+  return { nonAnonByProjectId, anonByProjectId, lastActivityByProjectId };
+}
+
 export async function loadProjectActivityMetrics(projectIds: string[]): Promise<ProjectActivityMetrics> {
   const empty = {
     nonAnonByProjectId: new Map<string, number>(),
@@ -242,67 +277,58 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
 
   const clickhouse = getClickhouseAdminClientForMetrics();
   const branchId = DEFAULT_BRANCH_ID;
+  const projectIdChunkCount = chunkClickHouseStringIds(projectIds, "projectIds").length;
 
   try {
     const [userRowsResult, activityRowsResult] = await Promise.all([
-      clickhouse.query({
-        query: `
-          SELECT
-            project_id AS projectId,
-            countIf(is_anonymous = 0) AS nonAnon,
-            countIf(is_anonymous = 1) AS anon
-          FROM analytics_internal.users FINAL
-          WHERE branch_id = {branchId:String}
-            AND sync_is_deleted = 0
-            AND project_id IN {projectIds:Array(String)}
-          GROUP BY project_id
-        `,
-        query_params: { branchId, projectIds },
-        format: "JSONEachRow",
-      }),
-      clickhouse.query({
-        query: `
-          SELECT
-            project_id AS projectId,
-            max(event_at) AS lastActive
-          FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND user_id IS NOT NULL
-            AND project_id IN {projectIds:Array(String)}
-          GROUP BY project_id
-        `,
-        query_params: { projectIds },
-        format: "JSONEachRow",
-      }),
+      queryClickHouseByStringIdChunks<{ projectId: string, nonAnon: string | number, anon: string | number }>(
+        clickhouse,
+        {
+          query: `
+            SELECT
+              project_id AS projectId,
+              countIf(is_anonymous = 0) AS nonAnon,
+              countIf(is_anonymous = 1) AS anon
+            FROM analytics_internal.users FINAL
+            WHERE branch_id = {branchId:String}
+              AND sync_is_deleted = 0
+              AND project_id IN {projectIds:Array(String)}
+            GROUP BY project_id
+          `,
+          parameterName: "projectIds",
+          ids: projectIds,
+          queryParams: { branchId },
+        },
+      ),
+      queryClickHouseByStringIdChunks<{ projectId: string, lastActive: string }>(
+        clickhouse,
+        {
+          query: `
+            SELECT
+              project_id AS projectId,
+              max(event_at) AS lastActive
+            FROM analytics_internal.events
+            WHERE event_type = '$token-refresh'
+              AND user_id IS NOT NULL
+              AND project_id IN {projectIds:Array(String)}
+            GROUP BY project_id
+          `,
+          parameterName: "projectIds",
+          ids: projectIds,
+        },
+      ),
     ]);
 
-    // clickhouse-js `json<T>()` returns T[] — pass the row type, not Array<row>.
-    const userRows = await userRowsResult.json<{ projectId: string, nonAnon: string | number, anon: string | number }>();
-    const activityRows = await activityRowsResult.json<{ projectId: string, lastActive: string }>();
-
-    const nonAnonByProjectId = new Map<string, number>();
-    const anonByProjectId = new Map<string, number>();
-    for (const row of userRows) {
-      nonAnonByProjectId.set(row.projectId, Number(row.nonAnon) || 0);
-      anonByProjectId.set(row.projectId, Number(row.anon) || 0);
-    }
-    const lastActivityByProjectId = new Map<string, Date>();
-    for (const row of activityRows) {
-      // ClickHouse DateTime comes back as "YYYY-MM-DD HH:MM:SS" (UTC, no zone).
-      const normalized = row.lastActive.includes("T")
-        ? row.lastActive
-        : row.lastActive.replace(" ", "T");
-      const withZone = /[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`;
-      const parsed = new Date(withZone);
-      if (!Number.isNaN(parsed.getTime())) {
-        lastActivityByProjectId.set(row.projectId, parsed);
-      }
-    }
-    return { nonAnonByProjectId, anonByProjectId, lastActivityByProjectId };
+    return mergeProjectActivityMetricsRows(userRowsResult, activityRowsResult);
   } catch (cause) {
+    const causeMessage = cause instanceof Error ? cause.message : String(cause);
     throw new HexclaveAssertionError(
-      `Failed to load newly-created-projects user metrics from ClickHouse: ${cause instanceof Error ? cause.message : String(cause)}`,
-      { cause },
+      `Failed to load newly-created-projects user metrics from ClickHouse: ${
+        causeMessage.trim() === ""
+          ? `ClickHouse rejected the metrics request for ${projectIds.length} project IDs across ${projectIdChunkCount} chunks`
+          : causeMessage
+      }`,
+      { cause, projectIdCount: projectIds.length, projectIdChunkCount },
     );
   }
 }
