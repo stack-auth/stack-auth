@@ -113,6 +113,7 @@ function createUntrustedUrlError(options: {
   message: string,
   url: string,
   projectId: string,
+  cause?: unknown,
 }): HexclaveSetupError {
   const origin = createUrlIfValid(options.url)?.origin ?? options.url;
   return new HexclaveSetupError({
@@ -126,6 +127,7 @@ function createUntrustedUrlError(options: {
     extraData: {
       url: options.url,
       projectId: options.projectId,
+      ...options.cause === undefined ? {} : { cause: options.cause },
     },
   });
 }
@@ -162,6 +164,18 @@ function createMalformedNestedCrossDomainUrlError(options: {
       url: options.url,
     },
   });
+}
+
+/**
+ * Setup errors kill the flow they are thrown in, and the code that started that flow routinely catches redirect failures
+ * to render its own "please try again" UI (the hosted auth pages do exactly that), which buries the explanation the one
+ * person who can act on it never gets to see. Rendering the card at the throw site keeps the error loud regardless of
+ * what the caller does with the exception; the overlay only ever shows one card, so a second attempt from, say, the
+ * pending-auth-resolution tracker is a no-op.
+ */
+function throwSetupError(error: HexclaveSetupError): never {
+  showSetupErrorOverlay(error); // THIS_LINE_PLATFORM js-like
+  throw error;
 }
 
 function getRedirectHelperInstruction(handlerName: string): string {
@@ -3134,23 +3148,47 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // be minted from the refresh token we are about to send, instead of reusing
     // a still-valid cached token from a pre-handoff session snapshot.
     await session.fetchNewTokens();
-    const response = await this._interface.sendClientRequest(
-      "/auth/oauth/cross-domain/authorize",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+    let response;
+    try {
+      response = await this._interface.sendClientRequest(
+        "/auth/oauth/cross-domain/authorize",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            redirect_uri: options.redirectUri,
+            state: options.state,
+            code_challenge: options.codeChallenge,
+            code_challenge_method: "S256",
+            after_callback_redirect_url: options.afterCallbackRedirectUrl,
+          }),
         },
-        body: JSON.stringify({
-          redirect_uri: options.redirectUri,
-          state: options.state,
-          code_challenge: options.codeChallenge,
-          code_challenge_method: "S256",
-          after_callback_redirect_url: options.afterCallbackRedirectUrl,
-        }),
-      },
-      session,
-    );
+        session,
+      );
+    } catch (error) {
+      // The server runs the trusted-domain check again on both URLs, and for a cross-domain handoff it is usually the
+      // first place the check happens at all (the SDK only sees that the target is on another domain, which is the
+      // entire point of the flow). Its rejection is the same developer-owned problem as a client-side trust failure, so
+      // it gets the same card instead of a bare known error that whoever started the redirect turns into "please try
+      // again" — the domain is untrusted, and retrying will fail forever.
+      if (KnownErrors.RedirectUrlNotWhitelisted.isInstance(error)) {
+        const untrustedUrl = error.constructorArgs[0] ?? options.redirectUri;
+        // The URL the server rejected carries the entire handoff (state, code challenge, return URL) in its query, none
+        // of which has anything to do with why it was rejected, so the message shows only the part that is checked. The
+        // full URL still goes to the error tracker through `extraData`.
+        const untrustedUrlObject = createUrlIfValid(untrustedUrl);
+        const displayedUrl = untrustedUrlObject == null ? untrustedUrl : `${untrustedUrlObject.origin}${untrustedUrlObject.pathname}`;
+        throwSetupError(createUntrustedUrlError({
+          message: `Cross-domain auth redirect URL ${displayedUrl} is not trusted.`,
+          url: untrustedUrl,
+          projectId: this.projectId,
+          cause: error,
+        }));
+      }
+      throw error;
+    }
     if (!response.ok) {
       const responseBody = await response.text();
       throw new HexclaveAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
@@ -3238,11 +3276,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
   protected async _redirectIfTrusted(url: string, options?: RedirectToOptions) {
     if (!await this._isTrusted(url)) {
-      throw createUntrustedUrlError({
+      throwSetupError(createUntrustedUrlError({
         message: `Redirect URL ${url} is not trusted; should be relative.`,
         url,
         projectId: this.projectId,
-      });
+      }));
     }
     return await this._redirectTo({ url, ...options });
   }
@@ -3323,11 +3361,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       })
       : plan.url;
     if (!await this._isTrusted(redirectUrl)) {
-      throw createUntrustedUrlError({
+      throwSetupError(createUntrustedUrlError({
         message: `Redirect URL ${redirectUrl} is not trusted; should be relative.`,
         url: redirectUrl,
         projectId: this.projectId,
-      });
+      }));
     }
     return redirectUrl;
   }
