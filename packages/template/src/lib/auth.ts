@@ -20,7 +20,9 @@ export async function getNewOAuthProviderOrScopeUrl(
     provider: options.provider,
     redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
     errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    afterCallbackRedirectUrl: constructRedirectUrl(window.location.href, "afterCallbackRedirectUrl"),
+    // Unlike callback URLs, this is the final user-facing location and may legitimately use a
+    // fragment for an account-settings tab. Preserve it exactly.
+    afterCallbackRedirectUrl: window.location.href,
     codeChallenge,
     state,
     type: "link",

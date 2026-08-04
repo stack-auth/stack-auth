@@ -137,6 +137,15 @@ export type BaseUser = {
    * Null if the user is not restricted.
    */
   readonly restrictedReason: RestrictedReason | null,
+  /** Whether the user is restricted by an administrator. Can be set manually or by sign-up rules. */
+  readonly restrictedByAdmin: boolean,
+  /**
+   * Public reason shown to the user explaining why an administrator restricted them, or null if none was given.
+   *
+   * This is intentionally readable by the user themselves (unlike `restrictedByAdminPrivateDetails`, which is
+   * server-only), so onboarding screens can tell them why they can't continue.
+   */
+  readonly restrictedByAdminReason: string | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -354,10 +363,6 @@ export type ServerBaseUser = {
   setServerMetadata(metadata: any): Promise<void>,
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
 
-  /** Whether the user is restricted by an administrator. Can be set manually or by sign-up rules. */
-  readonly restrictedByAdmin: boolean,
-  /** Public reason shown to the user explaining why they are restricted. Optional. */
-  readonly restrictedByAdminReason: string | null,
   /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
   readonly restrictedByAdminPrivateDetails: string | null,
   /** Best-effort ISO country code captured at sign-up time from request geo headers. */

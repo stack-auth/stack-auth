@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +9,13 @@ import {
   dashboardDirOverride,
   dashboardManifestUrl,
   fetchDashboardManifestCached,
+  dashboardPlatformKey,
+  dashboardVersionDir,
+  hasZstdSupport,
+  latestCachedDashboard,
   parseDashboardManifest,
   pickLatestVersion,
+  selectDashboardArchive,
 } from "./dashboard-release.js";
 import { readDevEnvState, writeDevEnvState } from "./dev-env-state.js";
 
@@ -23,6 +28,7 @@ const VALID_MANIFEST = {
 };
 
 let tempDir: string | undefined;
+const temporaryDirectories: string[] = [];
 
 function useTempStateFile() {
   tempDir = mkdtempSync(join(tmpdir(), "hexclave-dashboard-release-"));
@@ -35,6 +41,9 @@ afterEach(() => {
   if (tempDir != null) {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
+  }
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -88,6 +97,95 @@ describe("parseDashboardManifest", () => {
     expect(parseDashboardManifest({ version: "1.2", sha256: VALID_SHA, url: "https://x/y.zip" })).toBeNull();
     expect(parseDashboardManifest({ version: "latest", sha256: VALID_SHA, url: "https://x/y.zip" })).toBeNull();
     expect(parseDashboardManifest({ version: "1.2.3/../x", sha256: VALID_SHA, url: "https://x/y.zip" })).toBeNull();
+  });
+
+  it("accepts optional platform archives while retaining the universal zip fields", () => {
+    expect(parseDashboardManifest({
+      version: "1.2.3",
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+      platformArchives: {
+        "linux-x64": { sha256: VALID_SHA.toUpperCase(), url: "https://x/dashboard-linux-x64.tar.zst" },
+      },
+    })).toEqual({
+      version: "1.2.3",
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+      platformArchives: {
+        "linux-x64": { sha256: VALID_SHA, url: "https://x/dashboard-linux-x64.tar.zst" },
+      },
+    });
+  });
+
+  it("ignores malformed platform archives so the universal zip remains usable", () => {
+    expect(parseDashboardManifest({
+      version: "1.2.3",
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+      platformArchives: { "linux-x64": { sha256: "bad", url: "https://x/dashboard.tar.zst" } },
+    })).toEqual({ version: "1.2.3", sha256: VALID_SHA, url: "https://x/dashboard.zip" });
+    expect(parseDashboardManifest({
+      version: "1.2.3",
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+      platformArchives: { "plan9-x64": { sha256: VALID_SHA, url: "https://x/dashboard.tar.zst" } },
+    })).toEqual({ version: "1.2.3", sha256: VALID_SHA, url: "https://x/dashboard.zip" });
+  });
+});
+
+describe("dashboard archive selection", () => {
+  const manifest = {
+    version: "1.2.3",
+    sha256: VALID_SHA,
+    url: "https://x/dashboard.zip",
+    platformArchives: {
+      "linux-x64": { sha256: "b".repeat(64), url: "https://x/dashboard-linux-x64.tar.zst" },
+    },
+  };
+
+  it("uses the platform archive when one matches", () => {
+    expect(selectDashboardArchive(manifest, "linux-x64", true)).toEqual({
+      sha256: "b".repeat(64),
+      url: "https://x/dashboard-linux-x64.tar.zst",
+      cacheSuffix: "linux-x64",
+    });
+  });
+
+  it("falls back to the universal zip for an unsupported or missing platform", () => {
+    expect(selectDashboardArchive(manifest, "darwin-arm64")).toEqual({
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+    });
+    expect(selectDashboardArchive(manifest, "win32-x64")).toEqual({
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+    });
+    expect(dashboardPlatformKey("linux", "x64")).toBe("linux-x64");
+    expect(dashboardPlatformKey("aix", "ppc64")).toBeUndefined();
+  });
+
+  it("falls back when zstd is unavailable at runtime", () => {
+    expect(hasZstdSupport({ createZstdCompress: undefined, createZstdDecompress: undefined })).toBe(false);
+    expect(selectDashboardArchive(manifest, "linux-x64", false)).toEqual({
+      sha256: VALID_SHA,
+      url: "https://x/dashboard.zip",
+    });
+  });
+
+  it("keeps platform-specific and universal cache directories separate", () => {
+    expect(dashboardVersionDir("1.2.3", "linux-x64")).not.toBe(dashboardVersionDir("1.2.3"));
+    expect(dashboardVersionDir("1.2.3", "linux-x64")).toContain("1.2.3--linux-x64");
+  });
+
+  it("never returns a platform cache from the universal lookup", () => {
+    const cacheRoot = mkdtempSync(join(tmpdir(), "dashboard-cache-test-"));
+    temporaryDirectories.push(cacheRoot);
+    const platformRoot = join(cacheRoot, "1.2.3--linux-x64");
+    mkdirSync(join(platformRoot, "apps", "dashboard"), { recursive: true });
+    writeFileSync(join(platformRoot, ".hexclave-complete"), "hash\n");
+    writeFileSync(join(platformRoot, "apps", "dashboard", "server.js"), "");
+
+    expect(latestCachedDashboard(undefined, cacheRoot)).toBeUndefined();
   });
 });
 

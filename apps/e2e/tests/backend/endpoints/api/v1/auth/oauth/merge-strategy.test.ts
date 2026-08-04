@@ -116,7 +116,7 @@ it("should not merge accounts if the merge strategy is set to link_method, but t
   });
   await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const cc = await ContactChannels.getTheOnlyContactChannel();
   expect(cc.is_verified).toBe(false);
   expect(cc.used_for_auth).toBe(true);

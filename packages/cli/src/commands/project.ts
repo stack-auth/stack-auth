@@ -50,7 +50,7 @@ export function registerProjectCommand(program: Command) {
     const { runList } = await import("./project.impl.js");
     await runList(program, opts);
   });
-  project.command("create").description("Create a new cloud project").option("--cloud", "Confirm that this creates a cloud project").option("--display-name <name>", "Project display name").action(async (opts) => {
+  project.command("create").description("Create a new cloud project").option("--cloud", "Confirm that this creates a cloud project").option("--display-name <name>", "Project display name").option("--team-id <id>", "Team that owns the project").action(async (opts) => {
     const { runCreate } = await import("./project.impl.js");
     await runCreate(program, opts);
   });

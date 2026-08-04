@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { augmentUrlWithPersistedRedirectBackState, readRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, readRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 
 function createMockSessionStorage() {
   const map = new Map<string, string>();
@@ -108,6 +108,34 @@ describe("redirect-back state mirror", () => {
     const explicitUrl = new URL("https://hosted.example.test/handler/sign-in?after_auth_return_to=/somewhere-else");
     const unchanged = augmentUrlWithPersistedRedirectBackState({ currentUrl: explicitUrl, projectId });
     expect(unchanged.toString()).toBe(explicitUrl.toString());
+  });
+
+  it("reads the explicit return target before persisted state", () => {
+    saveRedirectBackStateFromUrl({
+      url: new URL("https://hosted.example.test/handler/sign-in?after_auth_return_to=/persisted"),
+      projectId,
+    });
+
+    expect(getRawAfterAuthReturnTo({
+      currentUrl: new URL("https://hosted.example.test/handler/mfa?after_auth_return_to=/explicit"),
+      projectId,
+    })).toBe("/explicit");
+    expect(getRawAfterAuthReturnTo({
+      currentUrl: new URL("https://hosted.example.test/handler/mfa"),
+      projectId,
+    })).toBe("/persisted");
+  });
+
+  it("treats an explicitly empty return target as missing instead of reviving persisted state", () => {
+    saveRedirectBackStateFromUrl({
+      url: new URL("https://hosted.example.test/handler/sign-in?after_auth_return_to=/persisted"),
+      projectId,
+    });
+
+    expect(getRawAfterAuthReturnTo({
+      currentUrl: new URL("https://hosted.example.test/handler/mfa?after_auth_return_to=%20%20"),
+      projectId,
+    })).toBeNull();
   });
 
   it("leaves the URL unchanged when there is no mirrored state", () => {

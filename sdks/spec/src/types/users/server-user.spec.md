@@ -14,6 +14,9 @@ lastActiveAt: Date
 serverMetadata: json
   Server-only metadata, not visible to client.
 
+restrictedByAdminPrivateDetails: string | null
+  Private details about the restriction (e.g. which sign-up rule triggered it), never visible to the client.
+
 
 ## Server-specific Update Methods
 

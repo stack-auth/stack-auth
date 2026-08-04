@@ -179,8 +179,9 @@ it("MCP setup page should show client installation instructions", async ({ expec
   expect(response.body).toContain("Codex");
   expect(response.body).toContain("Claude Code");
   expect(response.body).toContain("VS Code");
-  expect(response.body).toContain(`codex mcp add stack-auth --url ${mcpUrl}`);
+  expect(response.body).toContain(`codex mcp add hexclave --url ${mcpUrl}`);
   expect(response.body).toContain(mcpUrl);
+  expect(response.body).not.toContain("stack-auth");
   expect(response.body).not.toContain("https://mcp.stack-auth.com/mcp");
   expect(response.body).not.toContain("Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code assistance in your development environment.");
   expect(response.body).toContain("<details class=\"markdown-section\">");

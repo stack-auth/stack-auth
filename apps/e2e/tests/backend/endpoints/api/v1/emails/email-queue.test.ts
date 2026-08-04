@@ -119,7 +119,7 @@ describe("email queue edge cases", () => {
     });
 
     const mailbox = await bumpEmailAddress();
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Get the contact channel ID
     const contactChannelsResponse = await niceBackendFetch(`/api/v1/contact-channels?user_id=${userId}`, {
@@ -185,7 +185,7 @@ describe("email queue edge cases", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     const createDraftResponse = await niceBackendFetch("/api/v1/internal/email-drafts", {
       method: "POST",
@@ -249,7 +249,7 @@ describe("email queue edge cases", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Unsubscribe from Marketing first
     await niceBackendFetch(
@@ -333,7 +333,7 @@ describe("email queue edge cases", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
     const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
       method: "POST",
       accessType: "server",
@@ -512,7 +512,7 @@ describe("template rendering edge cases", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Create a draft with a subject in the template
     const templateWithSubject = `import { Container } from "@react-email/components";
@@ -569,7 +569,7 @@ export function EmailTemplate({ user, project }: Props) {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Create a draft with a subject in the template
     const templateWithSubject = `import { Container } from "@react-email/components";
@@ -627,7 +627,7 @@ export function EmailTemplate({ user, project }: Props) {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Create a draft without NotificationCategory export
     const templateWithoutCategory = `import { Container } from "@react-email/components";
@@ -956,7 +956,7 @@ describe("template variables", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Create a simple template
     const simpleTemplate = deindent`
@@ -1065,7 +1065,7 @@ describe("template variables", () => {
       },
     });
 
-    const { userId } = await Auth.Password.signUpWithEmail();
+    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Create a simple template
     const simpleTemplate = deindent`

@@ -394,6 +394,7 @@ it("should return inline product metadata when validating purchase code", async 
         },
         "project_id": "<stripped UUID>",
         "project_logo_url": null,
+        "replaces_stripe_subscription": false,
         "stripe_account_id": null,
         "test_mode": true,
       },
