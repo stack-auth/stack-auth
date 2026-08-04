@@ -719,6 +719,52 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
   `);
 });
 
+it("admin session replay endpoints expose the recording session's refresh token", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  // The session that uploaded the replay, straight from the sessions endpoint —
+  // asserting against this is what proves the field isn't just some other UUID
+  // (the replay's own id, say) that happens to survive snapshot anonymization.
+  const sessions = await niceBackendFetch("/api/v1/auth/sessions?user_id=me", {
+    method: "GET",
+    accessType: "client",
+  });
+  expect(sessions.status).toBe(200);
+  const currentSessionId = sessions.body?.items?.find((s: any) => s.is_current_session)?.id;
+  if (typeof currentSessionId !== "string") {
+    throw new Error("Expected the signed-in session to be listed as the current session.");
+  }
+
+  const single = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(single.status).toBe(200);
+  expect(single.body?.refresh_token_id).toBe(currentSessionId);
+
+  const list = await listReplaysWithRetry(
+    {},
+    (res) => res.status === 200 && (res.body?.items ?? []).some((i: any) => i.id === recordingId),
+  );
+  const listed = list.body?.items?.find((i: any) => i.id === recordingId);
+  expect(listed?.refresh_token_id).toBe(currentSessionId);
+});
+
 it("admin get session replay returns 404 for nonexistent id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();

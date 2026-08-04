@@ -27,7 +27,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import type { ServerUser } from "@hexclave/next";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { useEffect, useMemo, useState } from "react";
 import { useAdminApp, useServerApp } from "../use-admin-app";
@@ -57,8 +57,8 @@ type ReplaySessionContext = {
   screenHeight: number | null,
   viewportWidth: number | null,
   viewportHeight: number | null,
-  pageViews: number,
-  clicks: number,
+  /** `null` when the counting query failed, which is different from a session with no page views. */
+  activity: { pageViews: number, clicks: number } | null,
   geo: ReplayGeo | null,
 };
 
@@ -154,6 +154,11 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
     setState({ status: "loading" });
     runAsynchronously(async () => {
       try {
+        // ClickHouse rejects a blank substitution with an opaque "is not set"
+        // error, which would surface as a generic failed facet; the replay row
+        // always carries its session, so an empty one means the row was built
+        // from something other than the replay API.
+        if (refreshTokenId === "") throwErr("Session replay row has no refreshTokenId, so its analytics events can't be looked up", { replayId });
         // The three queries describe unrelated facets of the session, so a failure
         // in one (a geo lookup timing out, say) shouldn't hide the other two.
         const results = await Promise.allSettled([
@@ -220,12 +225,14 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
             screenHeight: entry === null ? null : toNumberOrNull(entry.screen_height),
             viewportWidth: entry === null ? null : toNumberOrNull(entry.viewport_width),
             viewportHeight: entry === null ? null : toNumberOrNull(entry.viewport_height),
-            pageViews: counts === null ? 0 : toCount(counts.page_views),
-            clicks: counts === null ? 0 : toCount(counts.clicks),
+            activity: counts === null ? null : { pageViews: toCount(counts.page_views), clicks: toCount(counts.clicks) },
             geo: geo !== null && geo.countryCode === null && geo.cityName === null ? null : geo,
           },
         });
       } catch (error) {
+        // Not the rejected-query path above (those are captured individually);
+        // this is a bug in the overview itself, so it must reach Sentry.
+        captureError("replay-user-overview", error);
         if (cancelled) return;
         setState({ status: "error", error });
       }
@@ -385,10 +392,14 @@ function SessionFacts({ replay, state, deviceType }: {
     : formatLocalTime(replay.startedAt, context.geo.tzIdentifier);
   const referrerHost = context.referrer === null ? null : getReferrerHost(context.referrer);
 
+  // Without the counts we only know the duration; showing "0 pages" would
+  // claim the visitor never loaded anything.
   const activityParts = [
     formatDurationMs(durationMs),
-    `${context.pageViews} ${context.pageViews === 1 ? "page" : "pages"}`,
-    `${context.clicks} ${context.clicks === 1 ? "click" : "clicks"}`,
+    ...context.activity === null ? [] : [
+      `${context.activity.pageViews} ${context.activity.pageViews === 1 ? "page" : "pages"}`,
+      `${context.activity.clicks} ${context.activity.clicks === 1 ? "click" : "clicks"}`,
+    ],
   ];
 
   return (
@@ -396,7 +407,7 @@ function SessionFacts({ replay, state, deviceType }: {
       <Fact
         icon={ClockIcon}
         label="This session"
-        tooltip={`Session started ${replay.startedAt.toLocaleString()}`}
+        tooltip={`Session started ${replay.startedAt.toLocaleString()}${context.activity === null ? " (page and click counts unavailable)" : ""}`}
       >
         {activityParts.join(" · ")}
       </Fact>
