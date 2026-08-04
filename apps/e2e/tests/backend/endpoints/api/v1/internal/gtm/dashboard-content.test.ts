@@ -40,12 +40,18 @@ describe("internal GTM dashboard content", () => {
 
     await Project.createAndSwitch();
     await Auth.fastSignUp();
+    // A signed-in user on a customer project is rejected with EXPECTED_INTERNAL_PROJECT, which is a
+    // project authentication error and therefore a 401 — the status alone does not distinguish it from
+    // the unauthenticated case above, so assert on the error code too.
     const customerProject = await niceBackendFetch(`${BASE_PATH}/insights`, { accessType: "client" });
-    expect(customerProject.status).toBe(400);
+    expect(customerProject.status).toBe(401);
+    expect(customerProject.body).toMatchObject({ code: "EXPECTED_INTERNAL_PROJECT" });
     const customerOnboarding = await niceBackendFetch(`${BASE_PATH}/onboarding`, { accessType: "client" });
-    expect(customerOnboarding.status).toBe(400);
+    expect(customerOnboarding.status).toBe(401);
+    expect(customerOnboarding.body).toMatchObject({ code: "EXPECTED_INTERNAL_PROJECT" });
     const customerProjects = await niceBackendFetch(`${BASE_PATH}/onboarding/projects`, { accessType: "client" });
-    expect(customerProjects.status).toBe(400);
+    expect(customerProjects.status).toBe(401);
+    expect(customerProjects.body).toMatchObject({ code: "EXPECTED_INTERNAL_PROJECT" });
 
     const customerUserAuth = backendContext.value.userAuth;
     backendContext.set({ projectKeys: InternalProjectKeys, userAuth: customerUserAuth });
@@ -320,18 +326,19 @@ describe("internal GTM dashboard content", () => {
     await signInAsInternalAdmin();
     const listed = await niceBackendFetch(`${BASE_PATH}/onboarding/projects`, { accessType: "client" });
     expect(listed.status).toBe(200);
-    expect(listed.body).toMatchObject({
-      items: [{
-        id: onboardedProject.projectId,
-        display_name: "Acme GTM",
-        completed_at_millis: expect.any(Number),
-        details: {
-          domain: "acme.example.com",
-          phone: "+1 415 555 0100",
-          notes: "Ready for GTM.",
-        },
-      }],
-    });
+    // This endpoint lists every onboarded project in the database, so other tests (and any leftover data
+    // in a shared dev database) legitimately add items. Assert on the projects this test owns instead of
+    // on the exact contents of the list.
+    expect(listed.body.items).toContainEqual(expect.objectContaining({
+      id: onboardedProject.projectId,
+      display_name: "Acme GTM",
+      completed_at_millis: expect.any(Number),
+      details: {
+        domain: "acme.example.com",
+        phone: "+1 415 555 0100",
+        notes: "Ready for GTM.",
+      },
+    }));
     expect(listed.body.items).not.toContainEqual(expect.objectContaining({ id: notOnboardedProject.projectId }));
     expect(listed.body.items).not.toContainEqual(expect.objectContaining({ id: "internal" }));
   });
@@ -575,6 +582,19 @@ describe("internal GTM dashboard content", () => {
     });
     expect(secondPage.status).toBe(200);
     expect(secondPage.body.items.length).toBeGreaterThan(0);
-    expect(secondPage.body.next_cursor).toBeNull();
+
+    // The internal project keeps notes created by earlier tests (and by earlier runs against the same
+    // database), so the second page is not necessarily the last one. Page to the end instead, and check
+    // that pagination terminates and yields every note this test created.
+    const seenIds = new Set<string>([...firstPage.body.items, ...secondPage.body.items].map(requireId));
+    let cursor: string | null = secondPage.body.next_cursor;
+    for (let page = 0; cursor != null; page++) {
+      if (page > 100) throw new Error("Paginating through the GTM notes did not terminate.");
+      const nextPage = await niceBackendFetch(`${BASE_PATH}/notes?cursor=${encodeURIComponent(cursor)}`, { accessType: "client" });
+      expect(nextPage.status).toBe(200);
+      for (const item of nextPage.body.items) seenIds.add(requireId(item));
+      cursor = nextPage.body.next_cursor;
+    }
+    expect(createdIds.filter((id) => !seenIds.has(id))).toEqual([]);
   });
 });
