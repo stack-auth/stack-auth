@@ -288,6 +288,10 @@ export type TransactionRow = {
   customerId: string,
   paymentProvider: PaymentProvider | null,
   createdAtMillis: number,
+  // Set only on subscription-renewal rows so list/refund UIs can target the
+  // parent sub without a Prisma invoice lookup. Null on every other txn type.
+  // Missing on pre-field LMDB manual rows — readers must use `?? null`.
+  renewalTargetSubscriptionId: string | null,
 };
 
 /**

@@ -808,6 +808,7 @@ async function handleSubscriptionRefund(options: {
     // payment provider (the listing route derives `test_mode: false` from it).
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
@@ -966,6 +967,7 @@ async function handleOneTimePurchaseRefund(options: {
     customerId: purchase.customerId,
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
+    renewalTargetSubscriptionId: null,
   };
   await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
