@@ -13,6 +13,7 @@ async function plan(options: {
     ...options,
     noRedirectBack: options.noRedirectBack === true,
     localOAuthCallbackUrl,
+    rawHomeUrl: "/",
     getCrossDomainHandoffParams: async () => {
       throw new Error("Continuation-only redirects must not mint a new cross-domain handoff");
     },
