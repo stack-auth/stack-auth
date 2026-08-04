@@ -365,7 +365,7 @@ const handler = createSmartRouteHandler({
       // OAuthModel.saveToken() *after* authenticateHandler.handle() returns, and that's where TOTP
       // MFA is enforced and refresh tokens are persisted. So we defer the success event until after
       // authorize() resolves — otherwise an MFA challenge or a token-persistence failure would be
-      // recorded as a successful sign-in in the compliance evidence.
+      // recorded as a successful sign-in in the Compliance Center.
       const successfulSignInUserIdRef: { current: string | null } = { current: null };
       try {
         await oauthServer.authorize(

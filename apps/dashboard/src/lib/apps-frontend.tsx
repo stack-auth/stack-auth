@@ -492,7 +492,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: (
       <>
         <p>Compliance Center surfaces authentication, access-denial, and restricted-user activity.</p>
-        <p>Review security posture and access assignments, then export evidence for SOC 2 and other compliance reviews.</p>
+        <p>Review security posture and access assignments, then export the Compliance Center data for further analysis.</p>
       </>
     ),
   },

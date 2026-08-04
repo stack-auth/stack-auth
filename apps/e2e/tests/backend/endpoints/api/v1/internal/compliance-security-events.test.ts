@@ -83,6 +83,20 @@ describe("Compliance Center security events", () => {
     expect(signInResponse.status).toBe(400);
     expect(signInResponse.body.code).toBe("MULTI_FACTOR_AUTHENTICATION_REQUIRED");
 
+    const validTotp = generateTOTP(totpSecret, 30, 6);
+    const invalidTotp = `${(Number(validTotp[0]) + 1) % 10}${validTotp.slice(1)}`;
+    const invalidMfaResponse = await niceBackendFetch("/api/v1/auth/mfa/sign-in", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        code: signInResponse.body.details.attempt_code,
+        type: "totp",
+        totp: invalidTotp,
+      },
+    });
+    expect(invalidMfaResponse.status).toBe(400);
+    expect(invalidMfaResponse.body.code).toBe("INVALID_TOTP_CODE");
+
     const mfaResponse = await niceBackendFetch("/api/v1/auth/mfa/sign-in", {
       method: "POST",
       accessType: "client",
@@ -106,9 +120,14 @@ describe("Compliance Center security events", () => {
       const matching = response.status === 200
         ? response.body.events.filter((event: { email: string | null }) => event.email === email)
         : [];
-      if (matching.some((event: { outcome: string | null, method: string | null }) =>
-        event.outcome === "success" && event.method === "password"
-      )) {
+      if (
+        matching.some((event: { outcome: string | null, method: string | null }) =>
+          event.outcome === "success" && event.method === "password"
+        )
+        && matching.some((event: { outcome: string | null, failure_reason: string | null }) =>
+          event.outcome === "failed" && event.failure_reason === "invalid_mfa_totp"
+        )
+      ) {
         break;
       }
       await wait(500);
@@ -121,6 +140,13 @@ describe("Compliance Center security events", () => {
           category: "sign_in_attempt",
           outcome: "success",
           method: "password",
+          email,
+        }),
+        expect.objectContaining({
+          category: "sign_in_attempt",
+          outcome: "failed",
+          method: "password",
+          failure_reason: "invalid_mfa_totp",
           email,
         }),
       ]),
@@ -146,5 +172,33 @@ describe("Compliance Center security events", () => {
       capped: expect.any(Boolean),
       limit: 1000,
     });
+  });
+
+  it("excludes anonymous visitors from the restricted-user review", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        require_email_verification: true,
+      },
+    });
+    const anonymousUser = await Auth.Anonymous.signUp();
+    await Auth.signOut();
+    const registeredUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+
+    const response = await niceBackendFetch("/api/v1/internal/compliance/restricted-users", {
+      accessType: "admin",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: registeredUser.userId,
+        restricted_reason: "email_not_verified",
+      }),
+    ]));
+    expect(response.body.users).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: anonymousUser.userId,
+      }),
+    ]));
   });
 });
