@@ -1,0 +1,103 @@
+import { yupNumber, yupObject, yupString } from "../../schema-fields";
+import { IssueStatusSchema, IssueSubstatusSchema } from "../admin-issues";
+import { WebhookEvent } from "../webhooks";
+
+// Webhook declarations for the `issue.*` family.
+//
+// Unlike the other files in this directory these are not backed by a `createCrud` call: issues have no public
+// REST surface yet (the dashboard talks to `/internal/issues*`, whose shapes live in `../admin-issues`), so
+// the webhook payload is the only externally-visible issue contract. It is declared standalone, the same way
+// `webhookTeamDeletedSchema` is in `./teams.ts`.
+//
+// `status` and `substatus` are imported from `../admin-issues` rather than restated: the webhook's `status` is
+// literally the stored `Issue.status`, so a second copy of the enum could only ever drift out of agreement
+// with the thing it describes.
+
+/**
+ * `short_id` and `times_seen` are strings, not numbers, and that is not a style choice.
+ *
+ * Both are Postgres `BigInt`. `apps/backend/src/route-handlers/smart-response.tsx` runs `JSON.stringify` over
+ * the response body, and `JSON.stringify` THROWS on a BigInt rather than coercing it — so a numeric field here
+ * would take down the request that tried to emit the webhook. They cross the wire as decimal strings, and a
+ * consumer that needs arithmetic should use `BigInt(...)` rather than `Number(...)`: `times_seen` on a busy
+ * project can exceed `Number.MAX_SAFE_INTEGER`.
+ *
+ * The `*_at_millis` fields are safe as numbers — epoch millis stay well inside the safe integer range.
+ */
+export const webhookIssueSchema = yupObject({
+  id: yupString().uuid().defined().meta({ openapiField: { description: 'The unique identifier of the issue', exampleValue: '3241a285-8329-4d69-8f3d-316e08cf140c' } }),
+  short_id: yupString().defined().meta({ openapiField: { description: 'Per-project monotonic counter identifying the issue, as a decimal string (it is a 64-bit integer and does not fit a JSON number safely)', exampleValue: '42' } }),
+
+  // Display identity, denormalized from the occurrence that created the issue and never rewritten, so the
+  // title in a webhook payload always matches the title in the dashboard.
+  type: yupString().defined().meta({ openapiField: { description: 'The error type, eg. the constructor name of the thrown error', exampleValue: 'TypeError' } }),
+  value: yupString().defined().meta({ openapiField: { description: 'The error message', exampleValue: "Cannot read properties of undefined (reading 'id')" } }),
+  culprit: yupString().defined().meta({ openapiField: { description: 'The code location the issue was attributed to', exampleValue: 'app/dashboard/page.tsx in DashboardPage' } }),
+  level: yupString().defined().meta({ openapiField: { description: 'The severity the occurrence was reported with', exampleValue: 'error' } }),
+
+  status: IssueStatusSchema.meta({ openapiField: { description: 'The lifecycle status of the issue', exampleValue: 'unresolved' } }),
+  substatus: IssueSubstatusSchema.meta({ openapiField: { description: 'A finer-grained view of an unresolved issue, derived from its timestamps', exampleValue: 'regressed' } }),
+
+  first_seen_at_millis: yupNumber().defined().meta({ openapiField: { description: 'When the issue was first seen, in milliseconds since epoch', exampleValue: 1630000000000 } }),
+  last_seen_at_millis: yupNumber().defined().meta({ openapiField: { description: 'When the issue was most recently seen, in milliseconds since epoch', exampleValue: 1630000000000 } }),
+  times_seen: yupString().defined().meta({ openapiField: { description: 'Lifetime occurrence count, as a decimal string (it is a 64-bit integer and does not fit a JSON number safely)', exampleValue: '1337' } }),
+
+  // Nullable because they come from the reporting SDK's configuration, which is optional.
+  service_name: yupString().nullable().defined().meta({ openapiField: { description: 'The service that reported the issue, if configured', exampleValue: 'web' } }),
+  environment: yupString().nullable().defined().meta({ openapiField: { description: 'The environment the issue was reported from, if configured', exampleValue: 'production' } }),
+  release: yupString().nullable().defined().meta({ openapiField: { description: 'The release the issue was reported from, if configured', exampleValue: '1.4.2' } }),
+
+  // The first thing anyone does with an issue notification is click through to it, so the deep link is part of
+  // the payload rather than something every consumer has to reassemble from ids.
+  url: yupString().defined().meta({ openapiField: { description: 'Deep link to the issue in the Hexclave dashboard', exampleValue: 'https://app.hexclave.com/projects/3241a285-8329-4d69-8f3d-316e08cf140c/observability/issues/8f3d316e-08cf-4d69-8329-140c3241a285' } }),
+}).defined();
+
+export const issueCreatedWebhookEvent = {
+  type: "issue.created",
+  schema: webhookIssueSchema,
+  metadata: {
+    summary: "Issue Created",
+    description: "This event is triggered the first time an error is grouped into a new issue. It does not fire again for subsequent occurrences of the same issue.",
+    tags: ["Observability"],
+  },
+} satisfies WebhookEvent<typeof webhookIssueSchema>;
+
+export const issueRegressedWebhookEvent = {
+  type: "issue.regressed",
+  schema: webhookIssueSchema,
+  metadata: {
+    summary: "Issue Regressed",
+    description: "This event is triggered when an issue that had been resolved occurs again.",
+    tags: ["Observability"],
+  },
+} satisfies WebhookEvent<typeof webhookIssueSchema>;
+
+export const issueResolvedWebhookEvent = {
+  type: "issue.resolved",
+  schema: webhookIssueSchema,
+  metadata: {
+    summary: "Issue Resolved",
+    description: "This event is triggered when an issue is marked as resolved.",
+    tags: ["Observability"],
+  },
+} satisfies WebhookEvent<typeof webhookIssueSchema>;
+
+export const issueIgnoredWebhookEvent = {
+  type: "issue.ignored",
+  schema: webhookIssueSchema,
+  metadata: {
+    summary: "Issue Ignored",
+    description: "This event is triggered when an issue is marked as ignored.",
+    tags: ["Observability"],
+  },
+} satisfies WebhookEvent<typeof webhookIssueSchema>;
+
+export const issueMergedWebhookEvent = {
+  type: "issue.merged",
+  schema: webhookIssueSchema,
+  metadata: {
+    summary: "Issue Merged",
+    description: "This event is triggered when issues are merged together. The payload describes the surviving primary issue; the issues merged into it no longer resolve on their own.",
+    tags: ["Observability"],
+  },
+} satisfies WebhookEvent<typeof webhookIssueSchema>;

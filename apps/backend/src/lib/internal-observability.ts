@@ -3,11 +3,35 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { context } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
 import type { NextRequest } from "next/server";
-import { runWithCustomerRequestObservability } from "./customer-request-observability";
+import { getVerifiedCustomerRequestLinkTarget, runWithCustomerRequestObservability } from "./customer-request-observability";
+import type { Span } from "@hexclave/next";
 import { runWithNodeTelemetrySuppressed } from "./node-telemetry-suppression";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
 
 export { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+
+const TRUSTED_SPAN_LINK_WRITER = Symbol.for("hexclave.analytics.trusted-span-link-writer.v1");
+
+function addTrustedBackendSpanLink(span: Span, link: {
+  traceId: string,
+  spanId: string,
+  projectId: string,
+  branchId: string,
+}): Promise<void> {
+  if (!(TRUSTED_SPAN_LINK_WRITER in span)) {
+    throw new Error("The internal request span does not support trusted target-scoped links");
+  }
+  const writer = span[TRUSTED_SPAN_LINK_WRITER];
+  if (typeof writer !== "function") {
+    throw new Error("The internal request span has an invalid trusted-link writer");
+  }
+  return writer({
+    traceId: link.traceId,
+    spanId: link.spanId,
+    linkedProjectId: link.projectId,
+    linkedBranchId: link.branchId,
+  });
+}
 
 /**
  * Runs one backend API request inside the internal project's SDK span.
@@ -34,28 +58,48 @@ export async function runWithInternalRequestObservability(
       );
     }
 
-    // The detailed control-plane trace stays in `internal`, but its W3C parent
-    // still matches the safe customer bridge span written by the outer wrapper.
-    return await getHexclaveServerApp().withSpan("hexclave.api.request", {
-      // Pass the request explicitly instead of relying on the framework's
-      // ambient request provider. The SDK uses this context to honor the
-      // incoming W3C sampled flag before its local trace sampler runs.
-      request,
+    // The detailed control-plane trace stays rooted in `internal`. The incoming
+    // client span is attached as a verified link below, after auth resolves its
+    // project and branch. Rooting here also guarantees that a sampled request
+    // cannot name a locally sampled-out Next.js span as its parent.
+    const span = getHexclaveServerApp().startSpan("hexclave.api.request", {
+      // Do not pass `{ request }` into the internal SDK. The outer authenticated
+      // boundary owns customer correlation, while this trace must not inherit
+      // the customer's session, sampling decision, or hierarchy.
+      root: true,
       data: {
         request_id: requestId,
         method: request.method,
         path: request.nextUrl.pathname,
       },
-    }, async (span) => {
-      const response = await fn();
-      // setData mutates the span synchronously before withSpan enqueues its final
-      // row; the acknowledgement must not add an internal telemetry round-trip
-      // to every customer request's latency.
-      runAsynchronously(span.setData({
-        status_code: response.status,
-        ...response.status >= 500 ? { error: `HTTP ${response.status}` } : {},
-      }), { noErrorLogging: true });
-      return response;
+    });
+    return await span.run(async () => {
+      try {
+        const response = await fn();
+        // setData mutates the span synchronously before end enqueues its final row;
+        // the acknowledgement must not add an internal telemetry round-trip
+        // to every customer request's latency.
+        runAsynchronously(span.setData({
+          status_code: response.status,
+          ...response.status >= 500 ? { error: `HTTP ${response.status}` } : {},
+        }), { noErrorLogging: true });
+        return response;
+      } catch (error) {
+        runAsynchronously(span.setData({
+          error: error instanceof Error ? error.message : String(error),
+        }), { noErrorLogging: true });
+        throw error;
+      } finally {
+        const clientLink = getVerifiedCustomerRequestLinkTarget();
+        if (clientLink !== null) {
+          // The target scope comes from authenticated tenancy state, never from
+          // a public wire field. Mutation happens synchronously before withSpan
+          // ends, including when the authenticated handler throws; the
+          // acknowledgement stays off the request's latency path.
+          runAsynchronously(addTrustedBackendSpanLink(span, clientLink), { noErrorLogging: true });
+        }
+        runAsynchronously(span.end(), { noErrorLogging: true });
+      }
     });
   });
 }

@@ -303,7 +303,31 @@ describe("buildBatchSpanLinkRows", () => {
       owner_span_id: SPAN_ROOT,
       linked_trace_id: TRACE_B,
       linked_span_id: SPAN_CHILD,
+      linked_project_id: "p1",
+      linked_branch_id: "b1",
     }]);
+  });
+
+  it("accepts trusted cross-project target metadata without changing owner scope", () => {
+    const rows = buildBatchSpanLinkRows({
+      projectId: "internal",
+      branchId: "main",
+      spans: [{
+        ...baseSpan,
+        links: [{
+          trace_id: TRACE_B,
+          span_id: SPAN_CHILD,
+          linked_project_id: "customer-project",
+          linked_branch_id: "production",
+        }],
+      }],
+    });
+    expect(rows[0]).toMatchObject({
+      project_id: "internal",
+      branch_id: "main",
+      linked_project_id: "customer-project",
+      linked_branch_id: "production",
+    });
   });
 
   it("flattens links across every span in the batch", () => {

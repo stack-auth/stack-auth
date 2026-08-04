@@ -1,6 +1,6 @@
 import { runWithSpanFrame } from "./span-context";
 import { generateW3cSpanId } from "@hexclave/shared/dist/utils/analytics-wire";
-import { assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, resolveEndedAtMs, resolveSpanParent, withSpanImpl, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { MAX_SPAN_LINKS, assertValidSpanStartInput, getCustomTelemetryDataError, rejectedPreCaught, resolveEndedAtMs, resolveSpanParent, withSpanImpl, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type StoredSpanLink, type TrackOptions } from "./telemetry-core";
 
 /**
  * The shared span lifecycle state machine. Every span handle in the SDK —
@@ -25,7 +25,7 @@ export type SpanCoreOptions = {
   /** null = this span IS the trace root (frozen at creation, like the trace id). */
   parentSpanId: string | null,
   /** Non-hierarchical references, frozen at creation. */
-  links?: readonly SpanContext[],
+  links?: readonly StoredSpanLink[],
   /** null = the row carries no page correlation (frozen at creation). */
   pageViewSpanId: string | null,
   initialData: Record<string, unknown>,
@@ -60,12 +60,15 @@ export type SpanCore = {
   /** Flips the inert switch: local state keeps mutating, rows stop being emitted. */
   markInert: () => void,
   setData: (data: Record<string, unknown>) => Promise<void>,
+  /** Adds links and emits a versioned rewrite. Used by OTel and trusted request glue. */
+  addLinks: (links: readonly StoredSpanLink[]) => Promise<void>,
   end: (endedAtMs: number | undefined) => Promise<void>,
   spanContext: () => SpanContext,
 };
 
 export function createSpanCore(opts: SpanCoreOptions): SpanCore {
   let accumulatedData: Record<string, unknown> = { ...opts.initialData };
+  let links: StoredSpanLink[] = [...opts.links ?? []];
   let lastVersion = 0;
   let ended = false;
   let inert = false;
@@ -87,7 +90,14 @@ export function createSpanCore(opts: SpanCoreOptions): SpanCore {
       data: { ...accumulatedData },
       updated_at_ms: nextVersion(),
       ...opts.pageViewSpanId !== null ? { page_view_span_id: opts.pageViewSpanId } : {},
-      ...opts.links !== undefined && opts.links.length > 0 ? { links: opts.links.map((link) => ({ trace_id: link.traceId, span_id: link.spanId })) } : {},
+      ...links.length > 0 ? {
+        links: links.map((link) => ({
+          trace_id: link.traceId,
+          span_id: link.spanId,
+          ...link.linkedProjectId !== undefined ? { linked_project_id: link.linkedProjectId } : {},
+          ...link.linkedBranchId !== undefined ? { linked_branch_id: link.linkedBranchId } : {},
+        })),
+      } : {},
     });
   };
 
@@ -109,6 +119,20 @@ export function createSpanCore(opts: SpanCoreOptions): SpanCore {
       const mergedError = opts.validateData?.(merged) ?? null;
       if (mergedError) return rejectedPreCaught(mergedError);
       accumulatedData = merged;
+      return enqueue(null);
+    },
+    addLinks: (newLinks: readonly StoredSpanLink[]) => {
+      if (ended) return rejectedPreCaught(`addLink() called on already-ended span "${opts.spanType}"`);
+      const next = [...links];
+      for (const link of newLinks) {
+        if (!next.some((existing) => existing.traceId === link.traceId && existing.spanId === link.spanId)) {
+          next.push(link);
+        }
+      }
+      if (next.length > MAX_SPAN_LINKS) {
+        return rejectedPreCaught(`A span may link to at most ${MAX_SPAN_LINKS} other spans`);
+      }
+      links = next;
       return enqueue(null);
     },
     end: (endedAtMs: number | undefined) => {
@@ -154,6 +178,8 @@ export type SpanHandle = {
   markInert: () => void,
 };
 
+const TRUSTED_SPAN_LINK_WRITER = Symbol.for("hexclave.analytics.trusted-span-link-writer.v1");
+
 /**
  * Builds a public Span handle on top of the shared state machine. The handle
  * pins ITSELF as the parent for trackEvent/startSpan/withSpan — handle-based
@@ -189,6 +215,16 @@ export function createSpanHandle(opts: SpanHandleOptions): SpanHandle {
     fetch: (input: RequestInfo | URL, init?: RequestInit) => capabilities.fetch(span, input, init),
     spanContext: () => core.spanContext(),
   };
+
+  // The platform backend needs to attach a cross-project request link only
+  // after route authentication resolves its target tenancy. A global symbol
+  // keeps that hook private from the public Span type while surviving generated
+  // package copies in the monorepo. Ingestion accepts the target fields only for
+  // the internal project's server-authenticated batches.
+  Object.defineProperty(span, TRUSTED_SPAN_LINK_WRITER, {
+    enumerable: false,
+    value: (link: StoredSpanLink) => core.addLinks([link]),
+  });
 
   return { span, markInert: core.markInert };
 }

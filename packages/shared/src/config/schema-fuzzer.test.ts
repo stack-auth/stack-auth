@@ -305,6 +305,14 @@ const environmentSchemaFuzzerConfig = [{
       }],
     }],
   }],
+  observability: [{
+    errorGrouping: [{
+      activeConfigId: [undefined, "hexclave-js:2026-08-01"] as const,
+      readableConfigIds: [{
+        "hexclave-js:2026-08-01": [{ enabled: [true, false] }],
+      }],
+    }],
+  }],
   customDashboards: [{
     "12345678-1234-4234-9234-123456789012": [{
       displayName: ["My Dashboard", "User Growth Dashboard"],

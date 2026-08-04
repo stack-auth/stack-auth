@@ -184,6 +184,10 @@ model Tenancy {
   workflowRuns WorkflowRun[]
   workflowEvents WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
+  issues              Issue[]
+  issueHashes         IssueHash[]
+  issueRedirects      IssueRedirect[]
+  issueCounter        IssueCounter?
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -2116,4 +2120,214 @@ model WorkflowScheduleCursor {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, workflowId, scheduleKey])
+}
+
+// ================== Issues (error tracking) ==================
+// Persistent, mutable state for grouped `$error` occurrences. The occurrences
+// themselves live in ClickHouse; these tables hold everything ClickHouse cannot
+// express: a stable identity per group, a resolve/ignore/regression lifecycle,
+// merge/unmerge, and a per-branch short id.
+//
+// COUNTER AUTHORITY IS SPLIT, AND THE SPLIT IS ABSOLUTE. Read this before
+// touching any counter here:
+//   - Postgres `Issue.timesSeen` / `firstSeenAt` / `lastSeenAt` are LIFETIME
+//     values. They move ONLY by deltas applied through the IssueMaterialization
+//     ledger, one delta per ingest batch.
+//   - ClickHouse is authoritative for WINDOWED stats (last 24h/7d/30d counts,
+//     unique users, sparklines).
+// It is tempting to "repair" the Postgres counters from a ClickHouse snapshot
+// during merge or reconciliation. That is arithmetically impossible, not merely
+// racy: the occurrence rollup only retains 90 days, so a snapshot cannot
+// reconstruct an all-time `firstSeenAt` or `timesSeen`. Merge folds lifetime
+// counters by SUMMING the two Postgres values. No snapshot, anywhere.
+
+enum IssueStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/// Only one variant today, but it is an enum rather than a boolean because the
+/// lease below is a state machine we expect to grow (e.g. a future MIGRATING
+/// state for algorithm changes), and a nullable enum keeps "no lease" free of a
+/// second column.
+enum IssueHashState {
+  LOCKED
+}
+
+model Issue {
+  id String @default(uuid()) @db.Uuid
+
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  /// The human-facing id (HEXCLAVE-123). Allocated from IssueCounter and unique
+  /// PER TENANCY — and a Tenancy is (project, branch), so this is per project AND
+  /// branch, not per project. BigInt rather than Int because a single firehose
+  /// project must not be able to wrap the counter.
+  shortId BigInt
+
+  // Descriptive fields, all taken from the occurrence that CREATED the issue and
+  // never rewritten afterwards. Rewriting them on every occurrence would make the
+  // title of a long-lived issue flicker between variants of the same error, and
+  // would make the list view non-deterministic under concurrent ingest.
+  type     String
+  value    String
+  culprit  String
+  platform String
+
+  /// Mechanism facts, taken from the occurrence that created the issue. They live
+  /// here rather than being derived per-read because they are properties of the
+  /// ERROR, not of a time window: every occurrence of one grouped error shares a
+  /// mechanism. Persisting them is what lets the list filter on handled-ness in
+  /// Postgres, alongside status, instead of needing a second ClickHouse pass.
+  handled   Boolean @default(true)
+  synthetic Boolean @default(false)
+
+  status          IssueStatus @default(UNRESOLVED)
+  statusChangedAt DateTime?
+  resolvedAt      DateTime?
+  ignoredUntil    DateTime?
+
+  /// The dashboard user this issue is assigned to. Deliberately not a foreign
+  /// key: assignees are members of the internal Hexclave project, not rows in
+  /// this tenancy's ProjectUser table, so there is nothing here to reference.
+  assigneeUserId String? @db.Uuid
+
+  // LIFETIME counters — see the header comment above. Ledger deltas only.
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+  regressedAt DateTime?
+  timesSeen   BigInt    @default(0)
+
+  /// Set by unmerge, which is the one operation where the lifetime counters
+  /// genuinely cannot be split: the occurrences that produced them are only
+  /// retained for 90 days in ClickHouse, so there is no way to attribute
+  /// all-time totals back to the hashes being separated. Rather than silently
+  /// reporting a wrong number, we restart the counters from this instant and the
+  /// UI renders "since <date>".
+  countersTruncatedAt DateTime?
+
+  /// Last `issue.*` webhook dispatch, used to debounce noisy issues.
+  lastWebhookAt DateTime?
+
+  serviceName               String?
+  deploymentEnvironmentName String?
+  firstSeenRelease          String?
+  lastSeenRelease           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hashes IssueHash[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, shortId])
+  // The list view is always tenancy-scoped and almost always status-scoped; the
+  // four orderings below are the four sort options the UI offers, each served
+  // directly off its own index so the default view never sorts in memory.
+  @@index([tenancyId, status, lastSeenAt])
+  @@index([tenancyId, lastSeenAt])
+  @@index([tenancyId, status, firstSeenAt])
+  @@index([tenancyId, status, timesSeen])
+}
+
+/// hash -> issue. MANY-TO-ONE FROM DAY ONE, and that is the whole point of the
+/// table. A scalar `Issue.hash` would be smaller and simpler, and it would make
+/// the app/system variant split, merge, unmerge, and every future grouping
+/// algorithm change impossible without migrating the entire hash space. With
+/// this indirection each of those is a row-level rewrite.
+model IssueHash {
+  tenancyId String @db.Uuid
+  hash      String
+
+  issueId String @db.Uuid
+
+  /// Which grouping algorithm produced this hash. Kept per row so a config bump
+  /// can re-point hashes incrementally instead of all at once.
+  groupingConfigId String
+
+  /// A COMMITTED LEASE, not an in-transaction flag. It is set in one transaction
+  /// and cleared in another, precisely so that concurrent ingest transactions can
+  /// actually observe it and skip the hash while a merge is rewriting it — an
+  /// uncommitted flag, or a row lock, would be invisible to them (they would
+  /// block, not skip).
+  state IssueHashState?
+
+  /// The lease timestamp. Without it, a merge that crashes between the two
+  /// transactions would wedge this hash as LOCKED forever and its occurrences
+  /// would stop materializing. With it, the lease simply expires and a sweep
+  /// reclaims it.
+  lockedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  issue   Issue   @relation(fields: [tenancyId, issueId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  /// This primary key is ALSO the concurrency control. When two ingest batches
+  /// see the same never-before-seen error at the same instant, both race to
+  /// insert this row; the unique index means exactly one wins and the loser
+  /// re-reads the winner's issue instead of creating a duplicate.
+  @@id([tenancyId, hash])
+  // Merge/unmerge and the detail view both walk issue -> hashes.
+  @@index([tenancyId, issueId])
+  // The stale-lease sweep scans by state.
+  @@index([tenancyId, state])
+}
+
+/// Exactly-once ledger. One row per (tenancy, ingest batch).
+///
+/// Its INSERT *is* the idempotency check: `ON CONFLICT DO NOTHING` returning 0
+/// rows means this batch's deltas were already applied, so materialization stops
+/// there. This is not belt-and-braces — ClickHouse deduplicates a retried insert
+/// by insert token, so without this ledger a retried batch would write no new
+/// occurrences yet still bump every Postgres counter a second time.
+model IssueMaterialization {
+  tenancyId String @db.Uuid
+  batchId   String @db.Uuid
+
+  appliedAt DateTime @default(now())
+
+  /// Deliberately NOT related to Tenancy. This row is inserted once per ingest
+  /// batch on the write path, and an FK would take a row-share lock on the hot
+  /// Tenancy row for every single batch. Retention is handled by pruning on
+  /// `appliedAt` (which also drives the reconciler's watermark), so rows left
+  /// behind by a deleted tenancy age out on the same schedule as everything else.
+  @@id([tenancyId, batchId])
+  @@index([appliedAt])
+}
+
+/// Merge leaves the source issue's id and short id resolvable, so a bookmarked
+/// URL or a webhook payload from before the merge still lands somewhere useful.
+model IssueRedirect {
+  tenancyId String @db.Uuid
+
+  /// No FK to Issue in either direction: `fromIssueId` names a row that the merge
+  /// has already deleted, which is exactly why the redirect exists.
+  fromIssueId String @db.Uuid
+  toIssueId   String @db.Uuid
+
+  fromShortId BigInt
+
+  createdAt DateTime @default(now())
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, fromIssueId])
+  /// Short ids are the ids users actually type, so they must resolve too. Merge
+  /// REWRITES existing redirects to point at the new target rather than chaining
+  /// them, which is what keeps this lookup a single hop no matter how many times
+  /// an issue has been merged.
+  @@unique([tenancyId, fromShortId])
+}
+
+/// Short id allocator. One row per tenancy; `nextShortId` is bumped under the
+/// row lock taken by the same transaction that creates the issue, so short ids
+/// are gapless per branch.
+model IssueCounter {
+  tenancyId   String @id @db.Uuid
+  nextShortId BigInt @default(1)
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 }

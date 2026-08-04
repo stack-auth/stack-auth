@@ -2164,7 +2164,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const resolved = resolveSpanParent({
       explicit: options?.parent,
       ambient: this._ambientSpanContextsWith(batchContext),
-      links: options?.links,
       root: options?.root,
     });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
@@ -2750,7 +2749,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       spanId,
       sampled: upstreamSampled || isTraceSampled(traceId, this._traceSampleRate),
       ambientSpanId: sdkAmbient?.spanId ?? info.otelParent?.ambientSpanId ?? null,
-      end: (endedAtMs, data) => {
+      end: (endedAtMs, data, links) => {
         const dataError = getCustomTelemetryDataError(data);
         if (dataError !== null) {
           // The bridge caps attribute count/bytes well under the row limit,
@@ -2780,6 +2779,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           ended_at_ms: Math.max(info.startedAtMs, Math.round(endedAtMs)),
           data,
           updated_at_ms: Date.now(),
+          ...links.length > 0 ? {
+            links: links.map((link) => ({ trace_id: link.traceId, span_id: link.spanId })),
+          } : {},
           ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
         };
         if (upstreamSampled) {
@@ -2818,7 +2820,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * via getServerAppInstrumentation. The returned promise settles with batch
    * delivery and is pre-caught.
    */
-  _captureServerRequestError(error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }): Promise<void> {
+  _captureServerRequestError(error: unknown, info: { mechanism: string, handled: boolean, request?: RequestLike, data?: Record<string, unknown> }): Promise<void> {
     if (this._isTelemetrySuppressed()) return Promise.resolve();
     // Shared payload builder (see error-capture.ts): message/name/stack
     // bounded to 8KB, flattened mechanism_type/handled scalars, local
@@ -2826,9 +2828,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const data: Record<string, unknown> = {
       ...buildErrorEventData(error, {
         mechanismType: info.mechanism,
-        // Every caller of this seam reports UNCAUGHT errors; a future manual
-        // capture API ("captured" mechanism) would pass handled: true.
-        handled: false,
+        // Handledness is explicit at the capture seam. Inferring it from the
+        // mechanism string would make a newly added adapter silently distort
+        // crash-free rates until its first production event was inspected.
+        handled: info.handled,
         release: this._telemetryResource.service.version ?? null,
         environment: this._telemetryResource.deploymentEnvironmentName ?? null,
         sdkVersion: clientVersion,
@@ -2871,7 +2874,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         // likely about to exit. The capture flushes after the coalescing window —
         // best-effort delivery; loss on a hard exit is the documented cost of
         // never touching the app's crash policy (see installServerErrorMonitor).
-        this._captureServerRequestError(error, { mechanism: "node.uncaughtexception" }).catch(() => {});
+        this._captureServerRequestError(error, { mechanism: "node.uncaughtexception", handled: false }).catch(() => {});
       },
     });
   }
@@ -2914,7 +2917,7 @@ export type ServerAppInstrumentation = {
   installServerErrorMonitor: () => void,
   setTelemetrySuppressionPredicate: (predicate: (() => boolean) | null) => void,
   runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
-  captureServerRequestError: (error: unknown, info: { mechanism: string, request?: RequestLike, data?: Record<string, unknown> }) => Promise<void>,
+  captureServerRequestError: (error: unknown, info: { mechanism: string, handled: boolean, request?: RequestLike, data?: Record<string, unknown> }) => Promise<void>,
   /**
    * Registers the framework's ambient request provider: a function that
    * returns the current request's RequestLike when called inside a request

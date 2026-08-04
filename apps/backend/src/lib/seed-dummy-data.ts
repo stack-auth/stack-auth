@@ -2,6 +2,8 @@
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { BooleanTrue, ContactChannelType, CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhouse';
+import { insertBatchEvents, normalizeBatchEvents } from '@/lib/analytics-telemetry-writers';
+import { materializeIssuesFromBatch } from '@/lib/issues/issue-store';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
@@ -2308,6 +2310,17 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       userEmailToId,
       freshProject,
     }),
+    // Error occurrences + the Issue records derived from them. Runs alongside
+    // the other analytics seeders: it writes `analytics_internal.logs` and the
+    // `Issue*` Postgres tables, which nothing else here touches.
+    seedDummyIssues({
+      prisma: dummyPrisma,
+      tenancy: dummyTenancy,
+      projectId,
+      userEmailToId,
+      freshProject,
+      clickhouseClient,
+    }),
   ]);
 
   // Wait for the concurrently-started bulk signup/activity seeding to finish.
@@ -2545,6 +2558,299 @@ async function seedDummyAnalyticsMirrorTables(options: {
     insertTable('analytics_internal.teams', teamRows),
     insertTable('analytics_internal.contact_channels', contactChannelRows),
   ]);
+}
+
+/**
+ * Realistic `$error` traffic for the Observability > Issues surface.
+ *
+ * The shapes below are chosen to exercise the grouping rules rather than to
+ * look plausible, so the seeded dashboard doubles as a live check that grouping
+ * still behaves:
+ *
+ *  - A `TypeError` and a `RangeError` thrown from the SAME frame must stay two
+ *    issues (exception type is a grouping leaf).
+ *  - Two different non-`Error` throws must stay two issues even though the SDK
+ *    forces `name: "Error"` on both — that is what the synthetic rule is for.
+ *  - A Node error carries absolute filesystem paths rather than URLs, so the
+ *    in-app ruleset takes its other branch.
+ *  - One issue is resolved and one is ignored, so the status tabs, the counts,
+ *    and the lapsed-snooze compensation all have something to show.
+ */
+type DummyIssueSeed = {
+  key: string,
+  name: string,
+  message: string,
+  stack: string,
+  runtime: "browser" | "server",
+  serviceName: string,
+  environment: string,
+  synthetic?: boolean,
+  handled?: boolean,
+  /** Roughly how many occurrences to plant across the window. */
+  occurrences: number,
+  /** Lifecycle to apply after materialization. */
+  status?: "resolved" | "ignored",
+  /** Resolved, then recurring — lands as `regressed` in the UI. */
+  regresses?: boolean,
+};
+
+const CHECKOUT_STACK_FRAMES = [
+  "    at applyDiscount (https://app.example.com/_next/static/chunks/checkout-8f21ab3c.js:2:19844)",
+  "    at renderSummary (https://app.example.com/_next/static/chunks/checkout-8f21ab3c.js:2:20133)",
+  "    at commitHookEffectListMount (https://app.example.com/_next/static/chunks/framework-1a2b3c4d.js:9:64210)",
+].join("\n");
+
+const PROFILE_STACK_FRAMES = [
+  "    at loadProfile (https://app.example.com/_next/static/chunks/profile-77dd12aa.js:2:9120)",
+  "    at ProfilePage (https://app.example.com/_next/static/chunks/profile-77dd12aa.js:2:9611)",
+].join("\n");
+
+const SERVER_STACK_FRAMES = [
+  "    at chargeCustomer (/var/task/.next/server/chunks/payments.js:14:2201)",
+  "    at async handler (/var/task/.next/server/app/api/checkout/route.js:3:812)",
+  "    at async node:internal/process/task_queues:104:5",
+].join("\n");
+
+const DUMMY_ISSUE_SEEDS: readonly DummyIssueSeed[] = [
+  {
+    key: "checkout-type",
+    name: "TypeError",
+    message: "cart.total is not a function",
+    stack: `TypeError: cart.total is not a function\n${CHECKOUT_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    handled: false, occurrences: 46,
+  },
+  {
+    // Same frames as above. Must NOT merge with it.
+    key: "checkout-range",
+    name: "RangeError",
+    message: "Maximum call stack size exceeded",
+    stack: `RangeError: Maximum call stack size exceeded\n${CHECKOUT_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    handled: false, occurrences: 7,
+  },
+  {
+    key: "profile-reference",
+    name: "ReferenceError",
+    message: "profile is not defined",
+    stack: `ReferenceError: profile is not defined\n${PROFILE_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    handled: false, occurrences: 19, regresses: true,
+  },
+  {
+    key: "server-charge",
+    name: "Error",
+    message: "Stripe request failed with status 402",
+    stack: `Error: Stripe request failed with status 402\n${SERVER_STACK_FRAMES}`,
+    runtime: "server", serviceName: "api", environment: "production",
+    handled: true, occurrences: 12,
+  },
+  {
+    key: "synthetic-declined",
+    name: "Error",
+    message: "Object captured as exception with keys: code, reason",
+    stack: `Error\n${CHECKOUT_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    synthetic: true, handled: false, occurrences: 5,
+  },
+  {
+    // Distinct message, same synthetic shape. Must NOT merge with the one above.
+    key: "synthetic-expired",
+    name: "Error",
+    message: "Object captured as exception with keys: expiredAt, sessionId",
+    stack: `Error\n${CHECKOUT_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    synthetic: true, handled: false, occurrences: 3,
+  },
+  {
+    key: "preview-hydration",
+    name: "Error",
+    message: "Hydration failed because the server rendered HTML didn't match the client",
+    stack: `Error: Hydration failed\n${PROFILE_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "preview",
+    handled: false, occurrences: 9, status: "ignored",
+  },
+  {
+    key: "legacy-parse",
+    name: "SyntaxError",
+    message: "Unexpected token < in JSON at position 0",
+    stack: `SyntaxError: Unexpected token < in JSON at position 0\n${PROFILE_STACK_FRAMES}`,
+    runtime: "browser", serviceName: "storefront", environment: "production",
+    handled: true, occurrences: 4, status: "resolved",
+  },
+];
+
+/** How far back seeded error traffic spreads, so the sparklines have shape. */
+const DUMMY_ISSUE_WINDOW_DAYS = 14;
+
+async function seedDummyIssues(options: {
+  prisma: TenancyPrismaClient,
+  tenancy: Tenancy,
+  projectId: string,
+  userEmailToId: Map<string, string>,
+  freshProject: boolean,
+  clickhouseClient: ClickHouseClient,
+}): Promise<void> {
+  const { prisma, tenancy, projectId, userEmailToId, freshProject, clickhouseClient } = options;
+
+  if (getEnvVariable('STACK_CLICKHOUSE_URL', '') === '') {
+    return;
+  }
+
+  // Re-seeding: clear this project's previous error occurrences and the Issue
+  // records derived from them. Occurrences live in `analytics_internal.logs`
+  // (not `events`), so the project-wide events DELETE at the top of
+  // `seedDummyProject` does not cover them. Postgres goes first: an Issue whose
+  // occurrences were already deleted would render as a row with no detail.
+  if (!freshProject) {
+    await prisma.$executeRaw`DELETE FROM "Issue" WHERE "tenancyId" = ${tenancy.id}::uuid`;
+    await prisma.$executeRaw`DELETE FROM "IssueMaterialization" WHERE "tenancyId" = ${tenancy.id}::uuid`;
+    await prisma.$executeRaw`DELETE FROM "IssueCounter" WHERE "tenancyId" = ${tenancy.id}::uuid`;
+    await clickhouseClient.command({
+      query: `DELETE FROM analytics_internal.logs WHERE project_id = {projectId:String} AND event_type = '$error'`,
+      query_params: { projectId },
+    });
+    // The rollup must be cleared SEPARATELY. A materialized view is an insert
+    // trigger, not a live view, so deleting the source occurrences leaves the
+    // aggregate rows behind — a re-seed would otherwise stack the new window
+    // counts on top of the old ones and report double the occurrences.
+    await clickhouseClient.command({
+      query: 'DELETE FROM analytics_internal.issue_occurrence_rollup WHERE project_id = {projectId:String}',
+      query_params: { projectId },
+    });
+  }
+
+  const userIds = [...userEmailToId.values()];
+  const rand = deterministicPrng(seedFromString(`${projectId}:issues`));
+  const now = new Date();
+
+  // Deliberately routed through the PRODUCTION ingest path — `normalizeBatchEvents`
+  // does the grouping and stamps `occurrence_id`/`issue_hash`/`error_frames`,
+  // `insertBatchEvents` writes ClickHouse, and `materializeIssuesFromBatch`
+  // creates the Issue rows through the same exactly-once ledger real traffic
+  // uses. Hand-rolling rows here would let seeded data drift from real data the
+  // first time any of those change, and the seeded dashboard is often the only
+  // place anyone looks at this feature.
+  const issueIdByKey = new Map<string, string>();
+
+  for (const seed of DUMMY_ISSUE_SEEDS) {
+    const events = Array.from({ length: seed.occurrences }, (_unused, index) => {
+      // Weight occurrences toward the recent end of the window so the sparkline
+      // slopes instead of sitting flat.
+      const dayOffset = Math.floor(DUMMY_ISSUE_WINDOW_DAYS * rand() * rand());
+      // `daysAgo(0, h)` returns TODAY at hour `h`, which is in the future for
+      // any `h` past the current hour — and a future-dated error reads as a
+      // bug in the dashboard. Clamp to a few minutes ago instead.
+      const candidate = daysAgo(dayOffset, 1 + Math.floor(rand() * 22));
+      const at = candidate.getTime() > now.getTime()
+        ? new Date(now.getTime() - Math.floor(rand() * 60 * 60 * 1000))
+        : candidate;
+      return {
+        event_type: '$error',
+        event_at_ms: at.getTime(),
+        data: {
+          name: seed.name,
+          message: seed.message,
+          stack: seed.stack,
+          mechanism_type: seed.runtime === 'browser' ? 'global.onerror' : 'node.uncaughtexception',
+          handled: seed.handled ?? true,
+          ...seed.synthetic === true ? { synthetic: 1 } : {},
+          release: '1.4.2',
+          environment: seed.environment,
+          sdk_version: '0.0.0-seed',
+        },
+        // Only some occurrences carry a user, so "users affected" is a smaller
+        // number than the occurrence count, the way it is in real traffic.
+        _userId: userIds.length === 0 || rand() < 0.25
+          ? null
+          : userIds[Math.floor(rand() * userIds.length)],
+        _index: index,
+      };
+    });
+
+    // One batch per (issue, user) so the identity the route would have derived
+    // from the session is reproduced faithfully — a batch carries a single
+    // authenticated user.
+    const byUser = new Map<string | null, typeof events>();
+    for (const event of events) {
+      const bucket = byUser.get(event._userId) ?? [];
+      bucket.push(event);
+      byUser.set(event._userId, bucket);
+    }
+
+    for (const [userId, bucket] of byUser) {
+      // Deliberately NOT deterministic. The occurrence inserts carry
+      // `insert_deduplication_token = <batchId>:<table>`, and ClickHouse keeps a
+      // 10k-entry dedup window — so a re-seed that reused the same batch id
+      // would have its re-insert silently rejected, leaving an Issue with a
+      // lifetime count and zero viewable occurrences. Idempotency here comes
+      // from the DELETEs above, not from stable ids.
+      const batchId = randomUUID();
+      const normalized = normalizeBatchEvents(
+        bucket.map(({ event_type, event_at_ms, data }) => ({ event_type, event_at_ms, data })),
+        {
+          projectId,
+          branchId: DEFAULT_BRANCH_ID,
+          userId,
+          refreshTokenId: null,
+          sessionReplayId: null,
+          sessionReplaySegmentId: null,
+          runtime: seed.runtime,
+          resource: {
+            service: { name: seed.serviceName, version: '1.4.2' },
+            deploymentEnvironmentName: seed.environment,
+          },
+          producer: 'sdk',
+        },
+        batchId,
+      );
+      await insertBatchEvents(clickhouseClient, normalized, batchId);
+      const outcomes = await materializeIssuesFromBatch({
+        tenancy,
+        batchId,
+        inputs: normalized.issueInputs,
+        // Backdated so `firstSeenAt` reflects the seeded window rather than the
+        // instant the seed ran; the list's "first seen" column would otherwise
+        // read "just now" for every issue.
+        receivedAt: new Date(now.getTime() - DUMMY_ISSUE_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+      });
+      const created = outcomes.find((outcome) => outcome.isNew);
+      if (created !== undefined) issueIdByKey.set(seed.key, created.issueId);
+    }
+  }
+
+  // Lifecycle, applied after the occurrences exist so the seeded list shows all
+  // three status tabs populated.
+  for (const seed of DUMMY_ISSUE_SEEDS) {
+    const issueId = issueIdByKey.get(seed.key);
+    if (issueId === undefined) continue;
+
+    if (seed.status === 'resolved') {
+      await prisma.$executeRaw`
+        UPDATE "Issue"
+        SET "status" = 'RESOLVED', "resolvedAt" = ${daysAgo(2)}::timestamptz,
+            "statusChangedAt" = ${daysAgo(2)}::timestamptz
+        WHERE "tenancyId" = ${tenancy.id}::uuid AND "id" = ${issueId}::uuid
+      `;
+    } else if (seed.status === 'ignored') {
+      await prisma.$executeRaw`
+        UPDATE "Issue"
+        SET "status" = 'IGNORED', "statusChangedAt" = ${daysAgo(3)}::timestamptz
+        WHERE "tenancyId" = ${tenancy.id}::uuid AND "id" = ${issueId}::uuid
+      `;
+    } else if (seed.regresses === true) {
+      // Resolved in the past, then seen again after that — which is exactly the
+      // state the ingest path stamps when a resolved issue recurs.
+      await prisma.$executeRaw`
+        UPDATE "Issue"
+        SET "status" = 'UNRESOLVED',
+            "resolvedAt" = ${daysAgo(5)}::timestamptz,
+            "regressedAt" = ${daysAgo(1)}::timestamptz,
+            "statusChangedAt" = ${daysAgo(1)}::timestamptz
+        WHERE "tenancyId" = ${tenancy.id}::uuid AND "id" = ${issueId}::uuid
+      `;
+    }
+  }
 }
 
 async function seedDummySessionReplays({

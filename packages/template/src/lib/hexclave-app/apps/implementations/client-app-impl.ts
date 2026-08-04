@@ -4594,9 +4594,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (nameError) return rejectedPreCaught(nameError);
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
-    // Still validate the parent/link refs so invalid input fails the same way it
+    // Still validate the parent ref so invalid input fails the same way it
     // would in the browser, rather than being masked by the unavailability error.
-    const resolved = resolveSpanParent({ explicit: options?.parent, links: options?.links, ambient: [] });
+    const resolved = resolveSpanParent({ explicit: options?.parent, ambient: [] });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     return rejectedPreCaught("telemetry is unavailable in this environment");
   }

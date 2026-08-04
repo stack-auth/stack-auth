@@ -985,7 +985,6 @@ export class EventTracker {
       explicit: options?.parent,
       ambient: this._ambientSpanContexts(),
       fallbackParent: this._currentPageViewContext(),
-      links: options?.links,
       root: options?.root,
     });
     if ("error" in resolved) return resolved;

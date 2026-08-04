@@ -17,7 +17,7 @@ type SeamCall = {
   spanId: string,
   /** The parent the seam decided on — exactly what would land in `parent_span_id`. */
   parentSpanId: string | null,
-  ends: { endedAtMs: number, data: Record<string, unknown> }[],
+  ends: { endedAtMs: number, data: Record<string, unknown>, links: readonly { traceId: string, spanId: string }[] }[],
 };
 
 /**
@@ -46,7 +46,7 @@ function makeFakeSeam(options?: { ambientParent?: { traceId: string, spanId: str
         spanId: call.spanId,
         sampled: true,
         ambientSpanId: ambient?.spanId ?? info.otelParent?.ambientSpanId ?? null,
-        end: (endedAtMs, data) => call.ends.push({ endedAtMs, data }),
+        end: (endedAtMs, data, links) => call.ends.push({ endedAtMs, data, links }),
       };
     },
   };
@@ -426,7 +426,7 @@ describe("library-span-bridge", () => {
       expect(calls[1].traceId).toBe(AMBIENT_PARENT.traceId);
     });
 
-    it("an extracted remote W3C span becomes the concrete cross-tier parent", async () => {
+    it("does not adopt an unauthenticated remote W3C context as a local parent", async () => {
       const { calls, deps } = makeFakeSeam();
       await registerLibrarySpanBridge(deps);
       const foreign = traceApi.wrapSpanContext({
@@ -437,14 +437,9 @@ describe("library-span-bridge", () => {
       });
       const ctx = traceApi.setSpan(ROOT_CONTEXT, foreign);
       traceApi.getTracer("prisma").startSpan("query", undefined, ctx).end();
-      expect(calls[0].info.otelParent).toEqual({
-        traceId: "0123456789abcdef0123456789abcdef",
-        recordedSpanId: "0123456789abcdef",
-        sampled: true,
-        ambientSpanId: null,
-      });
-      expect(calls[0].traceId).toBe("0123456789abcdef0123456789abcdef");
-      expect(calls[0].parentSpanId).toBe("0123456789abcdef");
+      expect(calls[0].info.otelParent).toBeNull();
+      expect(calls[0].traceId).not.toBe("0123456789abcdef0123456789abcdef");
+      expect(calls[0].parentSpanId).toBeNull();
     });
   });
 
@@ -526,6 +521,21 @@ describe("library-span-bridge", () => {
       expect(data["exception.message"]).toBe("kaboom");
       expect(typeof data["exception.stacktrace"]).toBe("string");
       expect(data.dropped_event_count).toBe(2);
+    });
+
+    it("retains creation-time and late links, deduplicated by W3C identity", async () => {
+      const { calls, deps } = makeFakeSeam();
+      await registerLibrarySpanBridge(deps);
+      const first = { context: { traceId: generateW3cTraceId(), spanId: generateW3cSpanId(), traceFlags: 1 } };
+      const second = { context: { traceId: generateW3cTraceId(), spanId: generateW3cSpanId(), traceFlags: 0 } };
+      const span = traceApi.getTracer("lib").startSpan("linked-op", { links: [first] });
+      span.addLink(first);
+      span.addLinks([second]);
+      span.end();
+      expect(calls[0].ends[0].links).toEqual([
+        { traceId: first.context.traceId, spanId: first.context.spanId },
+        { traceId: second.context.traceId, spanId: second.context.spanId },
+      ]);
     });
 
     it("reserved data keys win over colliding library attributes", async () => {
@@ -697,7 +707,7 @@ describe("library-span-bridge", () => {
       }
     });
 
-    it("preserves browser → Next.js → SDK → Prisma hierarchy in one W3C trace", async () => {
+    it("keeps local Next.js → SDK → Prisma hierarchy without adopting a foreign remote parent", async () => {
       const requests = stubAnalyticsFetch();
       const app = new StackServerApp({
         projectId: PROJECT_ID,
@@ -706,7 +716,7 @@ describe("library-span-bridge", () => {
         baseUrl: "https://api.example.test",
         tokenStore: "memory",
         noAutomaticPrefetch: true,
-        observability: { traceSampleRate: 0 },
+        observability: { traceSampleRate: 1 },
         telemetry: { resource: { service: { name: "test-server" } } },
       });
       const instrumentation = getServerAppInstrumentation(app);
@@ -751,11 +761,12 @@ describe("library-span-bridge", () => {
         throw new Error(`Expected complete cross-tier tree, received: ${[...byType.keys()].join(", ")}`);
       }
 
-      expect(nextSpan.parent_span_id).toBe(browserFetchSpanId);
+      expect(nextSpan.parent_span_id).toBeNull();
       expect(sdkSpan.parent_span_id).toBe(nextSpan.span_id);
       expect(operation.parent_span_id).toBe(sdkSpan.span_id);
       expect(compile.parent_span_id).toBe(operation.span_id);
-      expect(new Set(spans.map((span) => span.trace_id))).toEqual(new Set([traceId]));
+      expect(new Set(spans.map((span) => span.trace_id))).toEqual(new Set([nextSpan.trace_id]));
+      expect(nextSpan.trace_id).not.toBe(traceId);
     });
   });
 });

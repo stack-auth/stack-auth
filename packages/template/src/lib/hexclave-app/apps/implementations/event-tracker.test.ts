@@ -888,7 +888,7 @@ describe("EventTracker", () => {
       await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "not-a-trace", spanId: "1111111111111111" } })).rejects.toThrow(/must be 32 lowercase hex characters and not all-zero/);
       await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "0".repeat(32), spanId: "1111111111111111" } })).rejects.toThrow(/not all-zero/);
       await expect(tracker.trackCustomEvent("ok", {}, { parent: { traceId: "a".repeat(32), spanId: "0".repeat(16) } })).rejects.toThrow(/must be 16 lowercase hex characters and not all-zero/);
-      await expect(tracker.trackCustomEvent("ok", {}, { links: [{ traceId: "a".repeat(32), spanId: "nope" }] })).rejects.toThrow(/Invalid link spanId/);
+      expect(() => tracker.startSpan("ok", { links: [{ traceId: "a".repeat(32), spanId: "nope" }] })).toThrow(/Invalid link spanId/);
 
       expect(() => tracker.startSpan("$reserved")).toThrow(/reserved for system telemetry/);
 

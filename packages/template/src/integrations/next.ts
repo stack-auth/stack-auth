@@ -95,6 +95,20 @@ export type HexclaveNextInstrumentation = {
    * async context, preventing self-ingestion feedback loops.
    */
   runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
+  /**
+   * Reports an error the HOST already caught and handled, with no HTTP request
+   * to attribute it to.
+   *
+   * `onRequestError` is Next's hook for errors that escaped a request, so it
+   * requires a request. An application that catches its own errors — a global
+   * reporting helper, a background job, a queue consumer — has nowhere to send
+   * them, and they would otherwise only ever reach `console.error`, which
+   * produces a log line rather than a tracked error.
+   *
+   * Reported with `handled: true`, so these never count against crash-free
+   * rate the way an uncaught exception does.
+   */
+  captureHandledError: (error: unknown, info?: { location?: string, data?: Record<string, unknown> }) => Promise<void>,
 };
 
 export type HexclaveNextInstrumentationOptions = {
@@ -249,6 +263,16 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
   }
   return {
     runWithTelemetrySuppressed: async (fn) => await instrumentation.runWithTelemetrySuppressed(fn),
+    captureHandledError: async (error, info) => {
+      await instrumentation.captureServerRequestError(error, {
+        mechanism: "captured",
+        handled: true,
+        data: {
+          ...info?.data ?? {},
+          ...info?.location === undefined ? {} : { location: info.location },
+        },
+      });
+    },
     register: async () => {
       instrumentation.installServerFetchInstrumentation();
       instrumentation.installServerErrorMonitor();
@@ -286,6 +310,7 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
           : undefined;
         await instrumentation.captureServerRequestError(error, {
           mechanism: "next.onRequestError",
+          handled: false,
           ...options?.requestAttribution === false ? {} : { request: nextRequestToRequestLike(request) },
           data: {
             ...typeof request.path === "string" ? { path: request.path } : {},
