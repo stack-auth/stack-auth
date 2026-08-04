@@ -66,6 +66,12 @@ const personalTeamDefaultDisplayName = "Personal Team";
 // excluding gmail.com intentionally does not exclude mail.gmail.com.
 const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const maxExcludedEmailDomains = 100; // to prevent abuse
+// Prisma loads each userFullInclude relation with a follow-up query whose IN-list over
+// the composite key (tenancyId, projectUserId) uses two bind parameters per user. The
+// former whole-tenancy path hit PostgreSQL's 65535-parameter limit at ~32.7k users
+// (32.5k OK, 33k -> "bind message has 465 parameter formats but 0 parameters") and
+// already took 10.6s at 30k users.
+const maxUnlimitedListSize = 1000;
 
 function getSignedUpAtMillis(signedUpAt: Date): number {
   return signedUpAt.getTime();
@@ -681,7 +687,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         { projectUserId: sortDirection },
       ],
       // +1 to detect whether a next page exists without a separate count.
-      take: query.limit ? query.limit + 1 : undefined,
+      take: query.limit == null ? maxUnlimitedListSize + 1 : query.limit + 1,
       // Cursor convention (matches teams/crud.tsx): the client sends the
       // id of the LAST row of the previous page; Prisma starts AT that id,
       // and `skip: 1` drops it so we don't re-emit it.
@@ -695,6 +701,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
       } : {},
     });
+
+    if (query.limit == null && db.length > maxUnlimitedListSize) {
+      throw new StatusError(StatusError.BadRequest, `Listing more than ${maxUnlimitedListSize} users requires a limit. Pass limit and paginate using cursor.`);
+    }
 
     const items = db.slice(0, query.limit).map((user) => userPrismaToCrud(user, auth.tenancy.config));
     const hasMore = query.limit != null && db.length > query.limit;
