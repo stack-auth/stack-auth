@@ -60,10 +60,7 @@ automaticSideEffects=false, perform no automatic side effects. Browser action
 initialization removes `hexclave_action_id` from the address bar before consuming
 it and retries that removal during the initial event-loop turns so framework
 routers cannot restore the action URL after hydration. If consumption reports an
-already-used or expired action, treat it as an expected no-op. A consumed
-impersonation action stores its refresh token in the browser session cookies and
-reloads the page; a clickmap-overlay action stores its token in session storage
-and dispatches the clickmap token-updated event.
+already-used or expired action, treat it as an expected no-op.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]

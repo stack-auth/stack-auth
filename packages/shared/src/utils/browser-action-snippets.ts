@@ -6,32 +6,6 @@ import {
 
 export const BROWSER_ACTION_QUERY_PARAM = "hexclave_action_id";
 
-export type BrowserActionConsumeResult =
-  | {
-    type: "impersonation",
-    refresh_token: string,
-    expires_at_millis: number,
-  }
-  | {
-    type: "clickmap-overlay",
-    token: string,
-  };
-
-export function isBrowserActionConsumeResult(value: unknown): value is BrowserActionConsumeResult {
-  if (typeof value !== "object" || value === null || !("type" in value)) {
-    return false;
-  }
-  if (value.type === "impersonation") {
-    return "refresh_token" in value
-      && typeof value.refresh_token === "string"
-      && "expires_at_millis" in value
-      && typeof value.expires_at_millis === "number";
-  }
-  return value.type === "clickmap-overlay"
-    && "token" in value
-    && typeof value.token === "string";
-}
-
 export function createClickmapOverlaySnippet(token: string): string {
   return [
     `sessionStorage.setItem(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,

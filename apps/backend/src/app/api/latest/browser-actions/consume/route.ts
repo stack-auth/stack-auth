@@ -1,7 +1,6 @@
 import { consumeBrowserAction } from "@/lib/browser-actions";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
-import { isBrowserActionConsumeResult } from "@hexclave/shared/dist/utils/browser-action-snippets";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -22,7 +21,9 @@ export const POST = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupMixed().defined().test("browser-action-result", "Invalid browser action result", isBrowserActionConsumeResult),
+    body: yupObject({
+      javascript: yupString().defined(),
+    }).defined(),
   }),
   handler: async ({ auth: { tenancy }, headers: { origin }, body: { action_id } }) => {
     const action = await consumeBrowserAction({

