@@ -10,12 +10,18 @@ import { DesignCard } from "@/components/design-components/card";
 import { Skeleton, Typography } from "@/components/ui";
 import { XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { getApiBaseUrl } from "../get-api-base-url";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
@@ -105,7 +111,13 @@ export default function PageClient({ code }: { code: string }) {
     if (!selectedPriceId || !data?.product?.prices) {
       return 0;
     }
-    return Math.round(Number(data.product.prices[selectedPriceId].USD) * 100);
+    const usd = data.product.prices[selectedPriceId].USD;
+    if (usd == null) {
+      return 0;
+    }
+    // Never `Number(USD) * 100` — e.g. 79.99 → 7998.999999999999, which Stripe
+    // Elements/API reject as parameter_invalid_integer.
+    return moneyAmountToStripeUnits(usd as MoneyAmount, USD_CURRENCY);
   }, [data, selectedPriceId]);
 
   const rawAmountCents = useMemo(() => {
