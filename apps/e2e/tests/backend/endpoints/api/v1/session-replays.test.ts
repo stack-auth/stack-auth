@@ -5,6 +5,15 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+/**
+ * Response bodies come back as `any` from the fetch helper; this narrows a list
+ * of them to something indexable so the tests can read fields without casts.
+ */
+function asObjects(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+}
+
 async function uploadBatch(options: {
   browserSessionId: string,
   batchId: string,
@@ -721,7 +730,7 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
 
 it("admin session replay endpoints expose the recording session's refresh token", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Project.updateConfig({ "apps.installed.analytics.enabled": true });
   await Auth.Otp.signIn();
 
   const upload = await uploadBatch({
@@ -745,12 +754,12 @@ it("admin session replay endpoints expose the recording session's refresh token"
     accessType: "client",
   });
   expect(sessions.status).toBe(200);
-  const currentSessionId = sessions.body?.items?.find((s: any) => s.is_current_session)?.id;
+  const currentSessionId = asObjects(sessions.body?.items).find(s => s.is_current_session === true)?.id;
   if (typeof currentSessionId !== "string") {
     throw new Error("Expected the signed-in session to be listed as the current session.");
   }
 
-  const single = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+  const single = await niceBackendFetch(`/api/v1/internal/session-replays/${encodeURIComponent(recordingId)}`, {
     method: "GET",
     accessType: "admin",
   });
@@ -759,9 +768,9 @@ it("admin session replay endpoints expose the recording session's refresh token"
 
   const list = await listReplaysWithRetry(
     {},
-    (res) => res.status === 200 && (res.body?.items ?? []).some((i: any) => i.id === recordingId),
+    (res) => res.status === 200 && asObjects(res.body?.items).some(i => i.id === recordingId),
   );
-  const listed = list.body?.items?.find((i: any) => i.id === recordingId);
+  const listed = asObjects(list.body?.items).find(i => i.id === recordingId);
   expect(listed?.refresh_token_id).toBe(currentSessionId);
 });
 
