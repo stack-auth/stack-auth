@@ -52,7 +52,7 @@ function ClickmapTokenDialog(props: {
             <Alert>Creating clickmap token...</Alert>
           ) : (
             <>
-              <CopyField type="textarea" value={snippet} monospace fixedSize height={124} initialCopied={props.autoCopied} />
+              <CopyField type="textarea" value={snippet} monospace fixedSize height={124} initialCopied={props.autoCopied} isSecret />
               <Typography type="p" variant="secondary" className="text-sm">
                 The site will use normal client authentication plus this website-specific clickmap token to fetch aggregate clickmap data.
               </Typography>

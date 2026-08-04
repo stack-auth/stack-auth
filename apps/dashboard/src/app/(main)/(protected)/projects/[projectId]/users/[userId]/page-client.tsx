@@ -311,7 +311,7 @@ function RestrictionDialog({
               disabled={isSaving}
             />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="hexclave-sensitive flex flex-col gap-2">
             <label className="text-sm font-medium">Private details (internal only, optional)</label>
             <Textarea
               value={privateDetails}
@@ -391,7 +391,7 @@ function RestrictionBanner({ user }: { user: ServerUser }) {
                 <p className="mt-1"><strong>Public reason:</strong> {user.restrictedByAdminReason}</p>
               )}
               {user.restrictedByAdminPrivateDetails && (
-                <p className="mt-1"><strong>Private details:</strong> {user.restrictedByAdminPrivateDetails}</p>
+                <p className="hexclave-sensitive mt-1"><strong>Private details:</strong> {user.restrictedByAdminPrivateDetails}</p>
               )}
             </div>
           )}

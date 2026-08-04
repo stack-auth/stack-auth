@@ -74,7 +74,7 @@ function EndpointDetails(props: { endpointId: string }) {
       icon: <KeyIcon className="h-3.5 w-3.5" />,
       name: "Verification Secret",
       children: (
-        <div className="-ml-2 flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-1">
+        <div className="hexclave-sensitive -ml-2 flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-1">
           <code className="min-w-0 truncate rounded-md bg-foreground/[0.04] px-2 py-0.5 text-sm">
             {secret.loaded ? secret.data.key : "Loading..."}
           </code>

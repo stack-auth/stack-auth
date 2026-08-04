@@ -156,7 +156,7 @@ export function ImpersonateUserDialog(props: {
             Copy console snippet instead
           </Button>
         ) : (
-          <CopyField type="textarea" monospace height={100} value={fallbackSnippet} />
+          <CopyField type="textarea" monospace height={100} value={fallbackSnippet} isSecret />
         )}
       </div>
     </ActionDialog>
