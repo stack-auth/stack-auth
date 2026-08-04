@@ -114,12 +114,11 @@ export async function queryClickHouseByStringIdChunks<Row>(
   options: {
     query: string,
     parameterName: string,
-    ids: readonly string[],
+    chunks: readonly (readonly string[])[],
     queryParams?: Record<string, unknown>,
   },
 ): Promise<Row[]> {
-  const chunks = chunkClickHouseStringIds(options.ids, options.parameterName);
-  const chunkRows = await mapWithConcurrency(chunks, CLICKHOUSE_STRING_ID_CHUNK_CONCURRENCY, async (ids) => {
+  const chunkRows = await mapWithConcurrency(options.chunks, CLICKHOUSE_STRING_ID_CHUNK_CONCURRENCY, async (ids) => {
     const result = await client.query({
       query: options.query,
       query_params: {

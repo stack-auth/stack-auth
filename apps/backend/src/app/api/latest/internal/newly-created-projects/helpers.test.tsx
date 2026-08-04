@@ -145,6 +145,34 @@ describe("newly-created-projects helpers", () => {
     `);
   });
 
+  it("rejects duplicate user and activity rows", () => {
+    expect(() => mergeProjectActivityMetricsRows(
+      [
+        { projectId: "project-a", nonAnon: 1, anon: 2 },
+        { projectId: "project-a", nonAnon: 3, anon: 4 },
+      ],
+      [],
+    )).toThrow("Duplicate ClickHouse user metrics row");
+    expect(() => mergeProjectActivityMetricsRows(
+      [],
+      [
+        { projectId: "project-a", lastActive: "2026-01-02 03:04:05" },
+        { projectId: "project-a", lastActive: "2026-01-03 04:05:06" },
+      ],
+    )).toThrow("Duplicate ClickHouse activity metrics row");
+  });
+
+  it("rejects non-numeric counts and unparsable activity timestamps", () => {
+    expect(() => mergeProjectActivityMetricsRows(
+      [{ projectId: "project-a", nonAnon: "not-a-number", anon: 1 }],
+      [],
+    )).toThrow("Invalid ClickHouse user metrics value");
+    expect(() => mergeProjectActivityMetricsRows(
+      [],
+      [{ projectId: "project-a", lastActive: "not-a-date" }],
+    )).toThrow("Invalid ClickHouse activity metrics timestamp");
+  });
+
   it("makes an empty ClickHouse cause actionable", () => {
     expect(getClickHouseMetricsErrorMessage(new Error(""), 50_000, 15))
       .toBe("ClickHouse rejected the metrics request for 50000 project IDs across 15 chunks");

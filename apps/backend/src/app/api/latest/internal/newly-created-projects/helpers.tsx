@@ -246,8 +246,17 @@ export function mergeProjectActivityMetricsRows(
     if (nonAnonByProjectId.has(row.projectId)) {
       throw new HexclaveAssertionError(`Duplicate ClickHouse user metrics row for project ${row.projectId}`);
     }
-    nonAnonByProjectId.set(row.projectId, Number(row.nonAnon) || 0);
-    anonByProjectId.set(row.projectId, Number(row.anon) || 0);
+    const nonAnon = Number(row.nonAnon);
+    const anon = Number(row.anon);
+    if (!Number.isFinite(nonAnon) || !Number.isFinite(anon)) {
+      throw new HexclaveAssertionError("Invalid ClickHouse user metrics value", {
+        projectId: row.projectId,
+        nonAnon: row.nonAnon,
+        anon: row.anon,
+      });
+    }
+    nonAnonByProjectId.set(row.projectId, nonAnon);
+    anonByProjectId.set(row.projectId, anon);
   }
   const lastActivityByProjectId = new Map<string, Date>();
   for (const row of activityRows) {
@@ -260,9 +269,13 @@ export function mergeProjectActivityMetricsRows(
       : row.lastActive.replace(" ", "T");
     const withZone = /[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`;
     const parsed = new Date(withZone);
-    if (!Number.isNaN(parsed.getTime())) {
-      lastActivityByProjectId.set(row.projectId, parsed);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new HexclaveAssertionError("Invalid ClickHouse activity metrics timestamp", {
+        projectId: row.projectId,
+        lastActive: row.lastActive,
+      });
     }
+    lastActivityByProjectId.set(row.projectId, parsed);
   }
   return { nonAnonByProjectId, anonByProjectId, lastActivityByProjectId };
 }
@@ -288,9 +301,11 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
 
   const clickhouse = getClickhouseAdminClientForMetrics();
   const branchId = DEFAULT_BRANCH_ID;
-  const projectIdChunkCount = chunkClickHouseStringIds(projectIds, "projectIds").length;
+  let projectIdChunkCount = 0;
 
   try {
+    const projectIdChunks = chunkClickHouseStringIds(projectIds, "projectIds");
+    projectIdChunkCount = projectIdChunks.length;
     const [userRowsResult, activityRowsResult] = await Promise.all([
       queryClickHouseByStringIdChunks<{ projectId: string, nonAnon: string | number, anon: string | number }>(
         clickhouse,
@@ -307,7 +322,7 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
             GROUP BY project_id
           `,
           parameterName: "projectIds",
-          ids: projectIds,
+          chunks: projectIdChunks,
           queryParams: { branchId },
         },
       ),
@@ -325,7 +340,7 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
             GROUP BY project_id
           `,
           parameterName: "projectIds",
-          ids: projectIds,
+          chunks: projectIdChunks,
         },
       ),
     ]);

@@ -42,9 +42,9 @@ describe("ClickHouse string ID chunking", () => {
     await expect(queryClickHouseByStringIdChunks<{ projectId: string }>(client, {
       query: "SELECT project_id AS projectId",
       parameterName: "projectIds",
-      ids,
+      chunks: chunkClickHouseStringIds(ids, "projectIds"),
     })).resolves.toHaveLength(ids.length);
     expect(queriedChunks.length).toBeGreaterThan(1);
-    expect(queriedChunks.flat()).toEqual(ids);
+    expect(queriedChunks.flat().sort()).toEqual([...ids].sort());
   });
 });
