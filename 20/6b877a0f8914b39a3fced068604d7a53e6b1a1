@@ -1,0 +1,19 @@
+apps/backend/src/lib/self-telemetry-log-exporter.test.ts
+  s_c6374bd6e28a90::t_796f5d0b3810a9 64-65,67-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "206b877a0f8914b39a3fced068604d7a53e6b1a1",
+  "prompts": {},
+  "sessions": {
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

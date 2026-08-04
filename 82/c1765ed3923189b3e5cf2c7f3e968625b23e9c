@@ -1,0 +1,45 @@
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_c6374bd6e28a90::t_70cd3383fdab73 3-19
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_c6374bd6e28a90::t_70cd3383fdab73 4,6,12-13,16,58-60,87-92,112-116,155,157-160,163,172-177,180-213,217,225-226,236-239,283-303,309-315,317-323
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-927
+apps/backend/CLAUDE.md
+  s_c6374bd6e28a90::t_70cd3383fdab73 1
+packages/shared/src/utils/telemetry-taxonomy.test.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-51
+apps/backend/src/lib/events.tsx
+  s_c6374bd6e28a90::t_70cd3383fdab73 3,287-290
+apps/backend/prisma/schema.prisma
+  s_c6374bd6e28a90::t_70cd3383fdab73 575-578,1667-1668
+apps/backend/scripts/clickhouse-migrations.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 1,3,21-44,48-49,64-67,72-152,157-190,195-197,211-213,235,238,258-604,606-755,758-790,792-794,796-798,800,803-835,963-1042,1044-1085,1087-1174,1177-1179,1181-1229,1233-1240,1242-1289,1291-1316,1318-1319,1321-1322,1324-1334,1336,1346-1446,1860,1862-1866,1869,1872,1875-1912,2051
+packages/shared/src/utils/analytics-wire.tsx
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-313
+apps/backend/AGENTS.md
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-7
+apps/backend/src/lib/spans.test.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 2,37-74,82,124-128,133-136,143-144,153-158,163-164,167-168,175-176,186-419
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 11-19,57,77,111,150,195,305-314,316-317,324,328-334,338,352,461,491,519,562,605,639,651,661-673,685,731
+apps/backend/src/lib/spans.tsx
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-4,27-51,86-92,115,120-121,123-124,127-140,170-174,182-186,191-412,417,436,440,442-444,455,457-458,466,468-469
+packages/shared/src/utils/analytics-wire.test.ts
+  s_c6374bd6e28a90::t_70cd3383fdab73 1-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "82c1765ed3923189b3e5cf2c7f3e968625b23e9c",
+  "prompts": {},
+  "sessions": {
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

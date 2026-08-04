@@ -1,0 +1,33 @@
+apps/backend/src/lib/spans.test.ts
+  s_c6374bd6e28a90::t_d509353e9d9a44 166
+apps/backend/prisma/seed.ts
+  s_c6374bd6e28a90::t_4d8959e955db6b 165,188,212,245
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_c6374bd6e28a90::t_329abfebbea8ec 82-84,88-90,139-151,175-177,210-213,216-232
+apps/backend/src/lib/plan-usage.ts
+  s_c6374bd6e28a90::t_83a1e94a656c36 43,354-386,393,426-432,476,480,498
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/usage/page-client.tsx
+  s_c6374bd6e28a90::t_d2833e3f39cf6b 38,79-83
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_c6374bd6e28a90::t_1863e7185901ef 774-855,1123-1124,1136-1137
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_c6374bd6e28a90::t_396c53a3d2e2e3 301,403
+packages/shared/src/plans.ts
+  s_c6374bd6e28a90::t_8e8b461493b15a 19-22,38,56-58,67,76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1c9c68aa37fb10c2f08908f1f8d0932f54096fe8",
+  "prompts": {},
+  "sessions": {
+    "s_c6374bd6e28a90": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faed7-5cbf-7dc3-b2b5-79df162c8cc8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
