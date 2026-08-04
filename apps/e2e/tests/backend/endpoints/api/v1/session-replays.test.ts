@@ -5,6 +5,15 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
+/**
+ * Response bodies come back as `any` from the fetch helper; this narrows a list
+ * of them to something indexable so the tests can read fields without casts.
+ */
+function asObjects(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+}
+
 async function uploadBatch(options: {
   browserSessionId: string,
   batchId: string,
@@ -711,11 +720,58 @@ it("admin can fetch a single session replay by id", async ({ expect }) => {
           "id": "<stripped UUID>",
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
         },
+        "refresh_token_id": <stripped field 'refresh_token_id'>,
         "started_at_millis": 1700000000100,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("admin session replay endpoints expose the recording session's refresh token", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ "apps.installed.analytics.enabled": true });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  // The session that uploaded the replay, straight from the sessions endpoint —
+  // asserting against this is what proves the field isn't just some other UUID
+  // (the replay's own id, say) that happens to survive snapshot anonymization.
+  const sessions = await niceBackendFetch("/api/v1/auth/sessions?user_id=me", {
+    method: "GET",
+    accessType: "client",
+  });
+  expect(sessions.status).toBe(200);
+  const currentSessionId = asObjects(sessions.body?.items).find(s => s.is_current_session === true)?.id;
+  if (typeof currentSessionId !== "string") {
+    throw new Error("Expected the signed-in session to be listed as the current session.");
+  }
+
+  const single = await niceBackendFetch(`/api/v1/internal/session-replays/${encodeURIComponent(recordingId)}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(single.status).toBe(200);
+  expect(single.body?.refresh_token_id).toBe(currentSessionId);
+
+  const list = await listReplaysWithRetry(
+    {},
+    (res) => res.status === 200 && asObjects(res.body?.items).some(i => i.id === recordingId),
+  );
+  const listed = asObjects(list.body?.items).find(i => i.id === recordingId);
+  expect(listed?.refresh_token_id).toBe(currentSessionId);
 });
 
 it("admin get session replay returns 404 for nonexistent id", async ({ expect }) => {

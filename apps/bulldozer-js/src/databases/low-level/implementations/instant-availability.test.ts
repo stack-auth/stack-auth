@@ -83,6 +83,95 @@ function createSlowSetDatabase() {
   };
 }
 
+function createReorderingSetDatabase() {
+  const committed = new Map<string, ArrayBuffer>();
+  const initialSeq = ["reordering", "initial"] as unknown as DatabaseSeq;
+  const seqToPromise = new Map<DatabaseSeq, Promise<void>>([[initialSeq, Promise.resolve()]]);
+  const callCountWaiters: Array<{ count: number, resolve: () => void }> = [];
+  const combineSeqArgs: DatabaseSeq[][] = [];
+  const setRequiresSeqs: Array<DatabaseSeq | undefined> = [];
+  const underlyingSeqs: DatabaseSeq[] = [];
+  let setCallCount = 0;
+  let firstSetStartedResolve: (() => void) | undefined;
+  let releaseFirstSet: (() => void) | undefined;
+  const firstSetStarted = new Promise<void>(resolve => {
+    firstSetStartedResolve = resolve;
+  });
+  const store: LowLevelKvStore = {
+    async get(key) {
+      return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
+    },
+    async setAll(entries, setOptions) {
+      setCallCount++;
+      setRequiresSeqs.push(setOptions?.requiresSeq);
+      for (const waiter of callCountWaiters) {
+        if (setCallCount >= waiter.count) waiter.resolve();
+      }
+      callCountWaiters.splice(0, callCountWaiters.length, ...callCountWaiters.filter(waiter => setCallCount < waiter.count));
+      const seq = ["reordering", crypto.randomUUID()] as unknown as DatabaseSeq;
+      underlyingSeqs.push(seq);
+      let resolveSet!: () => void;
+      const committedPromise = new Promise<void>(resolve => {
+        resolveSet = resolve;
+      });
+      seqToPromise.set(seq, committedPromise);
+      if (setCallCount === 1) {
+        firstSetStartedResolve!();
+        await new Promise<void>(resolve => {
+          releaseFirstSet = resolve;
+        });
+      }
+      for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
+      resolveSet();
+      return { seq };
+    },
+    async deleteAll() {
+      throw new Error("not implemented");
+    },
+    async compareAndSet() {
+      throw new Error("not implemented");
+    },
+  };
+  const db: LowLevelDatabase = {
+    getDebugInfo() {
+      return { backend: "reordering-test", committed, initialSeq };
+    },
+    declareKvStore: () => store,
+    declareKvDump: () => {
+      throw new Error("not implemented");
+    },
+    async waitUntilAvailable(seq) {
+      await seqToPromise.get(seq);
+    },
+    async waitUntilDurable(seq) {
+      await seqToPromise.get(seq);
+    },
+    async waitUntilReplicated(seq) {
+      await seqToPromise.get(seq);
+    },
+    combineSeqs(...seqs) {
+      combineSeqArgs.push(seqs);
+      return seqs[seqs.length - 1] ?? initialSeq;
+    },
+    async close() {},
+    initialSeq,
+  };
+  return {
+    db,
+    firstSetStarted,
+    releaseFirstSet() {
+      releaseFirstSet!();
+    },
+    waitForSetCallCount(count: number) {
+      if (setCallCount >= count) return Promise.resolve();
+      return new Promise<void>(resolve => callCountWaiters.push({ count, resolve }));
+    },
+    combineSeqArgs: () => combineSeqArgs.map(seqs => [...seqs]),
+    setRequiresSeqs: () => [...setRequiresSeqs],
+    underlyingSeqs: () => [...underlyingSeqs],
+  };
+}
+
 describe("instant-availability low-level database", () => {
   it("serves pending writes from memory before the wrapped database is available", async () => {
     const slow = createSlowSetDatabase();
@@ -179,5 +268,44 @@ describe("instant-availability low-level database", () => {
 
     // The stored value must reflect the single winner.
     expect(text((await store.get(buffer("key"))).buffer)).toBe(first.wasSet ? "a" : "b");
+  });
+
+  it("preserves instant-seq order when a prior underlying write is delayed", async () => {
+    const reordering = createReorderingSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(reordering.db, { dbId: "instant-reordering-test" });
+    const store = db.declareKvStore("store");
+
+    const dependency = await store.setAll([{ key: buffer("dependency"), value: buffer("dependency") }]);
+    await reordering.firstSetStarted;
+    const requiresSeq = dependency.seq;
+    const oldWritePromise = store.setAll([{ key: buffer("key"), value: buffer("old") }], { requiresSeq });
+    const newWritePromise = store.setAll([{ key: buffer("key"), value: buffer("new") }]);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    reordering.releaseFirstSet();
+    await reordering.waitForSetCallCount(2);
+    const [{ seq: oldSeq }, { seq: newSeq }] = await Promise.all([oldWritePromise, newWritePromise]);
+    await Promise.all([db.waitUntilAvailable(oldSeq), db.waitUntilAvailable(newSeq)]);
+    expect(text((await store.get(buffer("key"))).buffer)).toBe("new");
+  });
+
+  it("chains the prior underlying sequence into the next wrapped write", async () => {
+    const reordering = createReorderingSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(reordering.db, { dbId: "instant-reordering-chain-test" });
+    const store = db.declareKvStore("store");
+
+    const previous = await store.setAll([{ key: buffer("previous"), value: buffer("value") }]);
+    await reordering.firstSetStarted;
+    reordering.releaseFirstSet();
+    await db.waitUntilAvailable(previous.seq);
+
+    const next = await store.setAll([{ key: buffer("next"), value: buffer("value") }]);
+    await reordering.waitForSetCallCount(2);
+    await db.waitUntilAvailable(next.seq);
+
+    const combineSeqArgs = reordering.combineSeqArgs();
+    expect(combineSeqArgs).toHaveLength(1);
+    expect(combineSeqArgs[0]).toHaveLength(2);
+    expect(combineSeqArgs[0][1]).toBe(reordering.underlyingSeqs()[0]);
+    expect(reordering.setRequiresSeqs()[1]).toBe(combineSeqArgs[0][1]);
   });
 });

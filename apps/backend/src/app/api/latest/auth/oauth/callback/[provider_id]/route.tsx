@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
@@ -264,6 +265,20 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
+          // Only sign-in/sign-up flows are compliance sign-in attempts; a "link" flow is an
+          // already-signed-in user connecting another provider, so its failures must not inflate
+          // failed sign-in counts (matches the success and conflict-failure paths below).
+          if (type !== "link") {
+            logSignInAttemptInBackground(tenancy, {
+              outcome: "failed",
+              method: "oauth",
+              failureReason: KnownErrors.OAuthProviderAccessDenied.isInstance(error)
+                ? "provider_denied"
+                : "provider_unavailable",
+              oauthProvider: params.provider_id,
+              userId: projectUserId ?? null,
+            });
+          }
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
         }
         throw error;
@@ -335,6 +350,23 @@ const handler = createSmartRouteHandler({
 
       const oauthResponse = new OAuthResponse();
       const oauthServer = createOAuthServer({ apiUrl });
+      const logOAuthSuccess = (userId: string) => {
+        if (type !== "link") {
+          logSignInAttemptInBackground(tenancy, {
+            outcome: "success",
+            method: "oauth",
+            oauthProvider: provider.id,
+            email: userInfo.email ?? null,
+            userId,
+          });
+        }
+      };
+      // The sign-in isn't actually complete until oauthServer.authorize() finishes: it calls
+      // OAuthModel.saveToken() *after* authenticateHandler.handle() returns, and that's where TOTP
+      // MFA is enforced and refresh tokens are persisted. So we defer the success event until after
+      // authorize() resolves — otherwise an MFA challenge or a token-persistence failure would be
+      // recorded as a successful sign-in in the Compliance Center.
+      const successfulSignInUserIdRef: { current: string | null } = { current: null };
       try {
         await oauthServer.authorize(
           oauthRequest,
@@ -389,11 +421,17 @@ const handler = createSmartRouteHandler({
                   // Check if user already exists with this OAuth account
                   if (oldAccount) {
                     await storeTokens(oldAccount.id);
+                    if (oldAccount.projectUserId == null) {
+                      throw new HexclaveAssertionError("Existing OAuth account is missing its project user ID.");
+                    }
+                    successfulSignInUserIdRef.current = oldAccount.projectUserId;
 
                     return {
                       id: oldAccount.projectUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -415,10 +453,13 @@ const handler = createSmartRouteHandler({
                     });
 
                     await storeTokens(oauthAccountId);
+                    successfulSignInUserIdRef.current = linkedUserId;
                     return {
                       id: linkedUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -469,14 +510,33 @@ const handler = createSmartRouteHandler({
                   );
 
                   await storeTokens(oauthAccountId);
+                  successfulSignInUserIdRef.current = newUserId;
 
                   return {
                     id: newUserId,
                     newUser: true,
                     afterCallbackRedirectUrl,
+                    email: userInfo.email ?? null,
+                    oauthProvider: provider.id,
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
+                    if (type !== "link") {
+                      const failureReason = KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
+                        ? "contact_channel_already_used"
+                        : KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
+                          ? "already_connected_to_another_user"
+                          : null;
+                      if (failureReason != null) {
+                        logSignInAttemptInBackground(tenancy, {
+                          outcome: "failed",
+                          method: "oauth",
+                          failureReason,
+                          oauthProvider: params.provider_id,
+                          userId: projectUserId ?? null,
+                        });
+                      }
+                    }
                     redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
                   }
                   throw error;
@@ -503,6 +563,10 @@ const handler = createSmartRouteHandler({
           throw new StatusError(400, "Invalid scope requested. Please check the scopes you are requesting.");
         }
         throw error;
+      }
+
+      if (successfulSignInUserIdRef.current != null) {
+        logOAuthSuccess(successfulSignInUserIdRef.current);
       }
 
       return oauthResponseToSmartResponse(oauthResponse);

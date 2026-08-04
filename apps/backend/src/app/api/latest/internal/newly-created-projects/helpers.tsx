@@ -51,6 +51,8 @@ export type OwnerMember = {
   display_name: string | null,
   primary_email: string | null,
   profile_image_url: string | null,
+  created_at: string,
+  last_active_at: string,
 };
 
 export type ProjectOwner = {
@@ -63,6 +65,7 @@ export type ProjectOwner = {
 export type NewlyCreatedProjectRow = {
   id: string,
   display_name: string,
+  description: string,
   created_at: string,
   is_development_environment: boolean,
   onboarding_status: string,
@@ -259,15 +262,34 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
   try {
     const [userRowsResult, activityRowsResult] = await Promise.all([
       clickhouse.query({
+        // Deduplicate the ReplacingMergeTree rows to each user's latest version
+        // with an explicit argMax GROUP BY instead of `FINAL`. `FINAL` merges
+        // parts outside the aggregation pipeline, so it is NOT bounded by
+        // `max_bytes_before_external_group_by`; over this tool's candidate
+        // window (up to CANDIDATE_WINDOW_SIZE projects, unbounded in time) that
+        // merge blew past the per-query `max_memory_usage` cap and threw
+        // MEMORY_LIMIT_EXCEEDED (most visibly with `neon=exclude`, which skips
+        // the many near-empty Neon projects and fills the window with real,
+        // user-heavy projects). A manual argMax dedup spills to disk under the
+        // same memory setting. `(project_id, branch_id, id)` is the table's
+        // ORDER BY / dedup key, so grouping by it reproduces `FINAL` exactly.
+        // Re-seeded rows can share a version, so break ties by insertion time.
         query: `
           SELECT
             project_id AS projectId,
-            countIf(is_anonymous = 0) AS nonAnon,
-            countIf(is_anonymous = 1) AS anon
-          FROM analytics_internal.users FINAL
-          WHERE branch_id = {branchId:String}
-            AND sync_is_deleted = 0
-            AND project_id IN {projectIds:Array(String)}
+            countIf(isAnonymous = 0) AS nonAnon,
+            countIf(isAnonymous = 1) AS anon
+          FROM (
+            SELECT
+              project_id,
+              argMax(is_anonymous, (sync_sequence_id, sync_created_at)) AS isAnonymous,
+              argMax(sync_is_deleted, (sync_sequence_id, sync_created_at)) AS syncIsDeleted
+            FROM analytics_internal.users
+            WHERE branch_id = {branchId:String}
+              AND project_id IN {projectIds:Array(String)}
+            GROUP BY project_id, branch_id, id
+          )
+          WHERE syncIsDeleted = 0
           GROUP BY project_id
         `,
         query_params: { branchId, projectIds },
@@ -454,6 +476,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
             projectUserId: true,
             displayName: true,
             profileImageUrl: true,
+            createdAt: true,
+            lastActiveAt: true,
             contactChannels: {
               where: { type: "EMAIL", isPrimary: "TRUE" },
               select: { value: true },
@@ -473,6 +497,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
       display_name: member.displayName ?? member.projectUser.displayName,
       primary_email: member.projectUser.contactChannels[0]?.value ?? null,
       profile_image_url: member.profileImageUrl ?? member.projectUser.profileImageUrl,
+      created_at: member.projectUser.createdAt.toISOString(),
+      last_active_at: member.projectUser.lastActiveAt.toISOString(),
     });
     membersByTeamId.set(member.teamId, list);
   }
@@ -595,6 +621,7 @@ export async function buildNewlyCreatedProjectRows(
     rows.push({
       id: project.id,
       display_name: project.displayName,
+      description: project.description,
       created_at: project.createdAt.toISOString(),
       is_development_environment: project.isDevelopmentEnvironment,
       onboarding_status: project.onboardingStatus,

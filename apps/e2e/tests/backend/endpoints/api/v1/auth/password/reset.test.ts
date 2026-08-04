@@ -33,7 +33,7 @@ async function getResetCode() {
 
 
 it("should reset the password", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.signOut();
   const resetCode = await getResetCode();
   const response = await niceBackendFetch("/api/v1/auth/password/reset", {
@@ -81,7 +81,7 @@ it("should set a password if signed up with magic link", async ({ expect }) => {
 });
 
 it("should not reset the password if it's too weak", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.signOut();
   const resetCode = await getResetCode();
   const response = await niceBackendFetch("/api/v1/auth/password/reset", {
@@ -109,7 +109,7 @@ it("should not reset the password if it's too weak", async ({ expect }) => {
 });
 
 it("should be able to check the password reset code without using it", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.signOut();
   const resetCode = await getResetCode();
   const checkResponse1 = await niceBackendFetch("/api/v1/auth/password/reset/check-code", {
@@ -164,7 +164,7 @@ it("should be able to check the password reset code without using it", async ({ 
 });
 
 it("should return USER_NOT_FOUND if the user was deleted after the reset code was sent", async ({ expect }) => {
-  const { userId } = await Auth.Password.signUpWithEmail();
+  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.signOut();
   const resetCode = await getResetCode();
   const deleteResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {

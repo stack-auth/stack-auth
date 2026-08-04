@@ -80,7 +80,7 @@ it("each verification code that was already requested can be used exactly once",
 });
 
 it("should not allow verify a code that doesn't exist", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const response = await niceBackendFetch("/api/v1/contact-channels/verify", {
     method: "POST",
     accessType: "client",

@@ -535,7 +535,7 @@ it("should return 400 when trying to get access token for non-existent provider_
 
 it("should return empty list when user has no connected accounts", async ({ expect }) => {
   // Sign in without OAuth (using password)
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   const response = await niceBackendFetch("/api/v1/connected-accounts/me", {
     accessType: "client",
@@ -706,7 +706,7 @@ it("should forbid client access to other users' connected accounts", async ({ ex
 
   // User 2 signs in
   backendContext.set({ mailbox: createMailbox() });
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Try to access user 1's connected accounts as user 2
   const response = await niceBackendFetch(`/api/v1/connected-accounts/${user1Id}`, {
@@ -952,7 +952,7 @@ it("should allow server access to list any user's connected accounts", async ({ 
 
   // User 2 signs in
   backendContext.set({ mailbox: createMailbox() });
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Server can access user 1's connected accounts
   const response = await niceBackendFetch(`/api/v1/connected-accounts/${user1Id}`, {
