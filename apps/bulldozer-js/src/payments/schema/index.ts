@@ -519,14 +519,24 @@ function subscriptionReconcileStep(state: SubscriptionFoldState, currentMillis: 
   };
 }
 
-// When to stamp the reconciliation of a rewritten snapshot: the moment the writer made the change.
-// Floored past everything already granted (+1ms) so the reconciliation can never land on — and
-// therefore reuse the `igr:` transaction id of — a repeat boundary or an earlier reconciliation.
-const reconcileMillis = (state: SubscriptionFoldState, row: SubscriptionRow): number => Math.max(
-  row.updatedAtMillis ?? row.createdAtMillis,
-  processedThroughMillis(state.itemRepeatSchedule, row.createdAtMillis) + 1,
-  (state.lastReconcileMillis ?? row.createdAtMillis) + 1,
-);
+// When to stamp the reconciliation of a rewritten snapshot: the moment the writer made the change,
+// but strictly between the boundaries around it. A transaction's id is
+// `igr:<sourceId>:<effectiveAtMillis>` and the repeat step stamps its own at the boundary
+// millisecond, so a reconciliation may never share a millisecond with a repeat (or with an earlier
+// reconciliation of the same subscription). It also has to stay *before* a boundary that hasn't been
+// processed yet — the source row is folded in before pending timers fire, and that boundary's
+// expire-and-re-grant has to land on top of the reconciled grants, not under them. Null when no
+// millisecond is left in the gap; then the imminent boundary re-grants from the new snapshot anyway.
+const reconcileMillis = (state: SubscriptionFoldState, row: SubscriptionRow): number | null => {
+  const earliestMillis = Math.max(
+    processedThroughMillis(state.itemRepeatSchedule, row.createdAtMillis),
+    state.lastReconcileMillis ?? row.createdAtMillis,
+  ) + 1;
+  const millis = Math.max(row.updatedAtMillis ?? row.createdAtMillis, earliestMillis);
+  const pendingBoundaryMillis = soonestNextMillis(state, null);
+  if (pendingBoundaryMillis === null || millis < pendingBoundaryMillis) return millis;
+  return pendingBoundaryMillis - 1 < earliestMillis ? null : pendingBoundaryMillis - 1;
+};
 
 // Fold a rewritten subscription row into the existing fold state (Stripe webhooks re-upsert the
 // row on every subscription/invoice event, so this runs often, usually with no meaningful change).
@@ -891,7 +901,8 @@ export function createPaymentsSchema() {
         // now, not at the next reset (and never, for items that don't repeat) — see
         // `subscriptionReconcileStep`. Rewrites that leave the included items alone (the common
         // webhook re-upsert) reconcile to nothing and append no transaction.
-        const reconciled = subscriptionReconcileStep(updated, reconcileMillis(updated, sub));
+        const reconcileAtMillis = reconcileMillis(updated, sub);
+        const reconciled = reconcileAtMillis === null ? null : subscriptionReconcileStep(updated, reconcileAtMillis);
         if (reconciled !== null) {
           return { newState: toPiledriverObject(reconciled.state), nextTriggerTime: dateFromMillis(soonestNextMillis(reconciled.state, reconciled.state.endedAtMillis)), appendRowData: toPiledriverObject([reconciled.event]) };
         }

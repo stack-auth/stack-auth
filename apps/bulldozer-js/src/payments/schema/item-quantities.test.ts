@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./index.js";
 import type { IncludedItemConfig } from "./types.js";
-import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
+import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowDatas, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
 
 // Item-quantities parity suite: restores the ledger coverage from the retired bulldozer-server
 // payments tests, driven through the real payments schema.
@@ -681,6 +681,36 @@ describe("item quantities: full-pipeline integration", () => {
     snapshot = await set(snapshot, schema.subscriptions, "sub-regen", subRow({ seats: { ...seats, quantity: 9 }, emails: { ...emails, quantity: 300 } }, 6 * DAY_MS));
     expect(await balanceAt(snapshot, g, "storage", 6 * DAY_MS)).toBe(0);
     expect(await balanceAt(snapshot, g, "seats", 6 * DAY_MS)).toBe(9);
+  });
+
+  it("does not reuse a repeat boundary's transaction id when a rewrite lands exactly on that boundary", async () => {
+    /*
+     * Reconciliations share the repeat step's `igr:<subscriptionId>:<millis>` transaction ids, so a
+     * rewrite stamped exactly at a repeat boundary that hasn't been processed yet would emit a
+     * transaction whose id the boundary's own tick then emits a second time.
+     *   t=0                subscription grants 100 emails/month (first reset at 1970-02-01)
+     *   t=firstReset       snapshot rewritten to 300 emails/month (reconciled just past the boundary)
+     *   tick to firstReset the reset grants the new 300
+     * Expected: the reconciliation and the reset are two distinct transactions, 300 emails in total.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const firstResetMillis = Date.UTC(1970, 1, 1);
+    const subRow = (quantity: number, updatedAtMillis: number | null) => subscription("sub-boundary", {
+      customerId: "u-boundary",
+      productId: "prod-boundary",
+      product: product({ emails: { quantity, repeat: [1, "month"], expires: "when-repeated" } }),
+      currentPeriodEndMillis: 12 * MONTH_MS,
+      createdAtMillis: 0,
+      updatedAtMillis,
+    }) as unknown as PiledriverObject;
+    snapshot = await set(snapshot, schema.subscriptions, "sub-boundary", subRow(100, null));
+    snapshot = await set(snapshot, schema.subscriptions, "sub-boundary", subRow(300, firstResetMillis));
+    snapshot = (await snapshot.tick(new Date(firstResetMillis))).newSnapshot;
+    const group = customerGroup("u-boundary");
+    const txnIds = (await rowDatas(snapshot, schema.transactions, group)).map(txn => asRecord(txn).txnId);
+    expect(new Set(txnIds).size).toBe(txnIds.length);
+    expect(await balanceAt(snapshot, group, "emails", firstResetMillis)).toBe(300);
   });
 
   it("ranks a resetting (when-repeated) grant ahead of a later-expiring grant so a removal rides the reset", async () => {
