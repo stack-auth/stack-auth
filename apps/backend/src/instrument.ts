@@ -3,6 +3,7 @@ import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK } from "@opentelemetry/sdk-node";
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/node";
 import backendPackageJson from "../package.json";
@@ -16,7 +17,9 @@ globalThis.global = globalThis;
 process.env.NEXT_RUNTIME ??= "nodejs";
 
 let registered = false;
-let developmentTelemetrySdk: NodeSDK | undefined;
+// Whichever OpenTelemetry owner we started ourselves (the dev NodeSDK or the no-export fallback
+// provider), kept so closeBackendInstrumentation() can shut it down. Undefined when Sentry owns OTel.
+let ownedTelemetry: NodeSDK | NodeTracerProvider | undefined;
 
 export function registerBackendInstrumentation() {
   if (registered) {
@@ -36,7 +39,7 @@ export function registerBackendInstrumentation() {
   // own OpenTelemetry completely; mixing two SDK owners caused duplicate global
   // registrations and left Sentry without its sampler/propagator/processors.
   if (isDevelopment) {
-    developmentTelemetrySdk = new NodeSDK({
+    const developmentTelemetrySdk = new NodeSDK({
       serviceName: "stack-backend",
       instrumentations: [
         new PrismaInstrumentation(),
@@ -51,6 +54,20 @@ export function registerBackendInstrumentation() {
       }),
     });
     developmentTelemetrySdk.start();
+    ownedTelemetry = developmentTelemetrySdk;
+  } else if (!sentryEnabled) {
+    // When Sentry is disabled (CI, tests, self-hosters without a DSN, local prod builds), nothing
+    // else registers a global tracer provider — and, crucially, no global context manager. Under
+    // the default NoopContextManager, tracer.startActiveSpan() cannot propagate the active span,
+    // so trace.getActiveSpan() returns undefined inside request handlers and telemetry log() throws
+    // "No active span found" on every request. (The Next.js runtime used to paper over this because
+    // registerOTel always ran.) A processor-less NodeTracerProvider registers a real provider plus
+    // the AsyncLocalStorage context manager; spans propagate but are never exported. Don't use an
+    // exporter-less NodeSDK for this: sdk-node auto-configures a default OTLP exporter that would
+    // uselessly retry against localhost:4318.
+    const fallbackTracerProvider = new NodeTracerProvider();
+    fallbackTracerProvider.register();
+    ownedTelemetry = fallbackTracerProvider;
   }
 
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
@@ -80,7 +97,7 @@ export function registerBackendInstrumentation() {
 
 export async function closeBackendInstrumentation(timeoutMs = 2000): Promise<void> {
   const closeResults = await Promise.allSettled([
-    developmentTelemetrySdk?.shutdown(),
+    ownedTelemetry?.shutdown(),
     Sentry.close(timeoutMs),
   ].filter((promise) => promise != null));
   const failures = closeResults.filter((result) => result.status === "rejected");
