@@ -236,7 +236,7 @@ export function UserDialog(props: {
             </Accordion>
           )}
 
-          <Accordion type="single" collapsible>
+          <Accordion type="single" collapsible className="hexclave-sensitive">
             <AccordionItem value="item-1">
               <AccordionTrigger>Metadata</AccordionTrigger>
               <AccordionContent className="space-y-4">

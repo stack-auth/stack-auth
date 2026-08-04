@@ -276,7 +276,7 @@ describe("skill-site ask route", () => {
         location: "skill-site-ask-request-error",
         level: "error",
         error: expect.objectContaining({
-          message: "Hexclave AI ask endpoint request failed",
+          message: expect.stringContaining("Hexclave AI ask endpoint request failed"),
           name: "HexclaveAssertionError",
         }),
       });

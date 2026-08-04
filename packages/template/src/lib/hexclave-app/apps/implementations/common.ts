@@ -5,13 +5,14 @@ import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } fro
 import { createGlobal, getGlobal } from "@hexclave/shared/dist/utils/globals";
 import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
 import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { use } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../../generated/env";
+import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM next react
 import { HandlerUrlOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol } from "../../common";
 import { resolveHandlerUrls } from "../../url-targets";
 

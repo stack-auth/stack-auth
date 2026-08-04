@@ -2,8 +2,21 @@ import { KnownErrors } from "@hexclave/shared";
 import { useStackApp, useUser } from "@hexclave/react";
 import { useState } from "react";
 
-import { HostedAuthLoading, HostedAuthMessage } from "./supporting/layout";
+import { HostedAuthMessage } from "./supporting/layout";
 import { getSearchParams } from "./supporting/utils";
+
+type InvitationPageError = "invalid" | "expired" | "used" | "unknown";
+type InvitationTerminalOutcome =
+  | { status: "accepted", teamDisplayName: string }
+  | { status: "cancelled" }
+  | { status: "ignored" };
+
+function getInvitationPageError(error: unknown): InvitationPageError {
+  if (KnownErrors.VerificationCodeNotFound.isInstance(error)) return "invalid";
+  if (KnownErrors.VerificationCodeExpired.isInstance(error)) return "expired";
+  if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)) return "used";
+  return "unknown";
+}
 
 export function HostedTeamInvitation(props: {
   fullPage?: boolean,
@@ -13,58 +26,72 @@ export function HostedTeamInvitation(props: {
   const searchParams = getSearchParams();
   const code = searchParams.code;
 
-  const [accepted, setAccepted] = useState(false);
   const [details, setDetails] = useState<null | { teamDisplayName: string }>(null);
-  const [pageError, setPageError] = useState<null | "invalid" | "expired" | "used" | "unknown">(null);
-  const [verifying, setVerifying] = useState(false);
-  const [joining, setJoining] = useState(false);
+  const [pageError, setPageError] = useState<null | InvitationPageError>(null);
+  const [terminalOutcome, setTerminalOutcome] = useState<null | InvitationTerminalOutcome>(null);
 
   const invalidJsx = (
     <HostedAuthMessage
       title="Invalid Invitation Link"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      Please double check if you have the correct team invitation link.
+      Please double check if you have the correct team invitation link. You can close this tab.
     </HostedAuthMessage>
   );
 
   const expiredJsx = (
     <HostedAuthMessage
       title="Expired Invitation Link"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      Your team invitation link has expired. Please request a new team invitation link.
+      Your team invitation link has expired. Please request a new team invitation link. You can close this tab.
     </HostedAuthMessage>
   );
 
   const usedJsx = (
     <HostedAuthMessage
       title="Used Invitation Link"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      This team invitation link has already been used.
+      This team invitation link has already been used. You can close this tab.
     </HostedAuthMessage>
   );
 
   const unknownJsx = (
     <HostedAuthMessage
       title="Something went wrong"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      An unexpected error occurred. Please try again later.
+      An unexpected error occurred. Please try again later. You can close this tab.
     </HostedAuthMessage>
   );
 
   if (!code) {
     return invalidJsx;
+  }
+
+  if (terminalOutcome?.status === "cancelled") {
+    return (
+      <HostedAuthMessage title="Invitation cancelled" fullPage={props.fullPage}>
+        You did not continue with this team invitation. You can close this tab.
+      </HostedAuthMessage>
+    );
+  }
+
+  if (terminalOutcome?.status === "ignored") {
+    return (
+      <HostedAuthMessage title="Invitation ignored" fullPage={props.fullPage}>
+        You did not join the team. You can close this tab.
+      </HostedAuthMessage>
+    );
+  }
+
+  if (terminalOutcome?.status === "accepted") {
+    return (
+      <HostedAuthMessage title="Joined Team!" fullPage={props.fullPage}>
+        You have successfully joined <span className="font-semibold text-foreground">{terminalOutcome.teamDisplayName}</span>. You can close this tab.
+      </HostedAuthMessage>
+    );
   }
 
   if (!user) {
@@ -73,7 +100,7 @@ export function HostedTeamInvitation(props: {
         title="Team Invitation"
         primaryAction={() => app.redirectToSignIn()}
         primaryText="Sign in"
-        secondaryAction={() => app.redirectToHome()}
+        secondaryAction={() => setTerminalOutcome({ status: "cancelled" })}
         secondaryText="Cancel"
         fullPage={props.fullPage}
       >
@@ -88,7 +115,7 @@ export function HostedTeamInvitation(props: {
         title="Complete your account setup"
         primaryAction={() => app.redirectToOnboarding()}
         primaryText="Complete setup"
-        secondaryAction={() => app.redirectToHome()}
+        secondaryAction={() => setTerminalOutcome({ status: "cancelled" })}
         secondaryText="Cancel"
         fullPage={props.fullPage}
       >
@@ -102,56 +129,34 @@ export function HostedTeamInvitation(props: {
   if (pageError === "used") return usedJsx;
   if (pageError === "unknown") return unknownJsx;
 
-  if (verifying) {
-    return <HostedAuthLoading fullPage={props.fullPage} />;
-  }
-
   if (!details) {
     return (
       <HostedAuthMessage
         title="Team Invitation"
         primaryAction={async () => {
-          setVerifying(true);
           setPageError(null);
-          try {
-            if (code === "demo-code") {
-              await new Promise((resolve) => setTimeout(resolve, 600));
-              setDetails({ teamDisplayName: "Acme Corp" });
-              return;
-            }
-
-            const verification = await app.verifyTeamInvitationCode(code);
-            if (verification.status === "error") {
-              if (KnownErrors.VerificationCodeNotFound.isInstance(verification.error)) {
-                setPageError("invalid");
-                return;
-              }
-              if (KnownErrors.VerificationCodeExpired.isInstance(verification.error)) {
-                setPageError("expired");
-                return;
-              }
-              if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(verification.error)) {
-                setPageError("used");
-                return;
-              }
-              throw verification.error;
-            }
-
-            const invitationDetails = await app.getTeamInvitationDetails(code);
-            if (invitationDetails.status === "error") {
-              setPageError("unknown");
-              return;
-            }
-
-            setDetails(invitationDetails.data);
-          } catch (e) {
-            setPageError("unknown");
-          } finally {
-            setVerifying(false);
+          if (code === "demo-code") {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            setDetails({ teamDisplayName: "Acme Corp" });
+            return;
           }
+
+          const verification = await app.verifyTeamInvitationCode(code);
+          if (verification.status === "error") {
+            setPageError(getInvitationPageError(verification.error));
+            return;
+          }
+
+          const invitationDetails = await app.getTeamInvitationDetails(code);
+          if (invitationDetails.status === "error") {
+            setPageError(getInvitationPageError(invitationDetails.error));
+            return;
+          }
+
+          setDetails(invitationDetails.data);
         }}
         primaryText="Check invitation"
-        secondaryAction={() => app.redirectToHome()}
+        secondaryAction={() => setTerminalOutcome({ status: "cancelled" })}
         secondaryText="Cancel"
         fullPage={props.fullPage}
       >
@@ -160,45 +165,25 @@ export function HostedTeamInvitation(props: {
     );
   }
 
-  if (accepted) {
-    return (
-      <HostedAuthMessage
-        title="Joined Team!"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
-        fullPage={props.fullPage}
-      >
-        You have successfully joined <span className="font-semibold text-foreground">{details.teamDisplayName}</span>.
-      </HostedAuthMessage>
-    );
-  }
-
   return (
     <HostedAuthMessage
       title="Team Invitation"
       primaryAction={async () => {
-        setJoining(true);
-        try {
-          if (code === "demo-code") {
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            setAccepted(true);
-            return;
-          }
+        if (code === "demo-code") {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          setTerminalOutcome({ status: "accepted", teamDisplayName: details.teamDisplayName });
+          return;
+        }
 
-          const result = await app.acceptTeamInvitation(code);
-          if (result.status === "ok") {
-            setAccepted(true);
-          } else {
-            setPageError("unknown");
-          }
-        } catch (e) {
-          setPageError("unknown");
-        } finally {
-          setJoining(false);
+        const result = await app.acceptTeamInvitation(code);
+        if (result.status === "ok") {
+          setTerminalOutcome({ status: "accepted", teamDisplayName: details.teamDisplayName });
+        } else {
+          setPageError(getInvitationPageError(result.error));
         }
       }}
-      primaryText={joining ? "Joining..." : "Join"}
-      secondaryAction={() => app.redirectToHome()}
+      primaryText="Join"
+      secondaryAction={() => setTerminalOutcome({ status: "ignored" })}
       secondaryText="Ignore"
       fullPage={props.fullPage}
     >

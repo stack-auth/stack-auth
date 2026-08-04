@@ -1,40 +1,99 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
-import { globalPrismaClient } from "@/prisma-client";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { enqueueExternalDbSync, enqueueExternalDbSyncBatch } from "./external-db-sync-queue";
 
 const DEDUP_PREFIX = "sentinel-sync-key-";
 
-// Track every tenancy ID a test enqueues so we can delete the rows afterwards.
-// These tests run against the shared dev database, and leftover pending rows
-// would be picked up by the poller (which would then fail on the nonexistent
-// tenancies and pollute logs).
-const enqueuedTenancyIds: string[] = [];
+// Use a scratch schema because the real OutgoingRequest table is a live queue
+// consumed by the poller, which can claim or delete rows while these tests run.
+const scratchSchema = `external_db_sync_test_${randomUUID().replaceAll("-", "")}`;
+
+let scratchPool: Pool | undefined;
+let scratchClient: PrismaClient | undefined;
+
+function getScratchClient() {
+  return scratchClient ?? throwErr("Scratch Prisma client has not been initialized");
+}
 
 function freshTenancyIds(count: number): string[] {
-  const ids = Array.from({ length: count }, () => randomUUID());
-  enqueuedTenancyIds.push(...ids);
-  return ids;
+  return Array.from({ length: count }, () => randomUUID());
 }
 
 async function findRowsForTenancies(tenancyIds: string[]) {
-  return await globalPrismaClient.outgoingRequest.findMany({
+  return await getScratchClient().outgoingRequest.findMany({
     where: { deduplicationKey: { in: tenancyIds.map((id) => DEDUP_PREFIX + id) } },
     orderBy: { deduplicationKey: "asc" },
   });
 }
 
-afterEach(async () => {
-  await globalPrismaClient.outgoingRequest.deleteMany({
-    where: { deduplicationKey: { in: enqueuedTenancyIds.splice(0).map((id) => DEDUP_PREFIX + id) } },
+beforeAll(async () => {
+  const databaseConnectionString = getEnvVariable("STACK_DATABASE_CONNECTION_STRING", "") || throwErr("Missing database connection string for external DB sync queue tests");
+  await globalPrismaClient.$executeRaw`CREATE SCHEMA ${sqlQuoteIdent(scratchSchema)}`;
+  await globalPrismaClient.$executeRaw`
+    CREATE TABLE ${sqlQuoteIdent(scratchSchema)}."OutgoingRequest"
+    (LIKE ${sqlQuoteIdent(globalPrismaSchema)}."OutgoingRequest" INCLUDING ALL)
+  `;
+
+  const indexes = await globalPrismaClient.$queryRaw<{ indexname: string, indexdef: string }[]>`
+    SELECT indexname, indexdef
+    FROM pg_indexes
+    WHERE schemaname = ${scratchSchema}
+      AND tablename = 'OutgoingRequest'
+      AND indexdef ILIKE '%UNIQUE%'
+      AND indexdef ILIKE '%startedFulfillingAt%'
+  `;
+  expect(indexes).toHaveLength(1);
+
+  // Pool search_path covers the enqueue's unqualified raw SQL; PrismaPg's schema covers model API queries.
+  scratchPool = new Pool({
+    connectionString: databaseConnectionString,
+    max: 10,
+    options: `-c search_path=${scratchSchema}`,
+  });
+  scratchClient = new PrismaClient({
+    adapter: new PrismaPg(scratchPool, { schema: scratchSchema }),
+  });
+  await scratchClient.$connect();
+
+  const modelApiSentinel = `sentinel-sync-key-model-api-${randomUUID()}`;
+  const client = getScratchClient();
+  // Verify the model API uses the scratch table rather than the live public table.
+  await client.outgoingRequest.create({
+    data: {
+      qstashOptions: { modelApiSentinel },
+      deduplicationKey: modelApiSentinel,
+    },
+  });
+  const scratchRows = await client.outgoingRequest.findMany({
+    where: { deduplicationKey: modelApiSentinel },
+  });
+  const realRows = await globalPrismaClient.outgoingRequest.findMany({
+    where: { deduplicationKey: modelApiSentinel },
+  });
+  expect(scratchRows).toHaveLength(1);
+  expect(realRows).toHaveLength(0);
+  await client.outgoingRequest.deleteMany({
+    where: { deduplicationKey: modelApiSentinel },
   });
 });
 
-describe("enqueueExternalDbSyncBatch (real DB)", () => {
+afterAll(async () => {
+  await globalPrismaClient.$executeRaw`DROP SCHEMA IF EXISTS ${sqlQuoteIdent(scratchSchema)} CASCADE`;
+  if (scratchClient != null) await scratchClient.$disconnect();
+  if (scratchPool != null) await scratchPool.end();
+});
+
+describe("enqueueExternalDbSyncBatch (real DB, isolated schema)", () => {
   it("inserts one pending row per tenancy with the expected qstash options", async ({ expect }) => {
     const [tenancyId] = freshTenancyIds(1);
 
-    await enqueueExternalDbSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId, getScratchClient());
 
     const rows = await findRowsForTenancies([tenancyId]);
     expect(rows).toHaveLength(1);
@@ -52,7 +111,7 @@ describe("enqueueExternalDbSyncBatch (real DB)", () => {
     // Duplicates within one call must collapse to a single row per tenancy.
     const withDuplicates = [...shuffled, ...ids, ids[2]];
 
-    await enqueueExternalDbSyncBatch(withDuplicates);
+    await enqueueExternalDbSyncBatch(withDuplicates, getScratchClient());
 
     const rows = await findRowsForTenancies(ids);
     expect(rows).toHaveLength(ids.length);
@@ -62,8 +121,8 @@ describe("enqueueExternalDbSyncBatch (real DB)", () => {
   it("skips tenancies that already have a pending row, even when re-enqueued in a different order", async ({ expect }) => {
     const ids = freshTenancyIds(4);
 
-    await enqueueExternalDbSyncBatch(ids);
-    await enqueueExternalDbSyncBatch([...ids].reverse());
+    await enqueueExternalDbSyncBatch(ids, getScratchClient());
+    await enqueueExternalDbSyncBatch([...ids].reverse(), getScratchClient());
 
     const rows = await findRowsForTenancies(ids);
     expect(rows).toHaveLength(ids.length);
@@ -72,16 +131,16 @@ describe("enqueueExternalDbSyncBatch (real DB)", () => {
   it("enqueues a new pending row once the previous one has been claimed", async ({ expect }) => {
     const [tenancyId] = freshTenancyIds(1);
 
-    await enqueueExternalDbSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId, getScratchClient());
     // Simulate the poller claiming the row: the partial unique index only
     // covers rows WHERE startedFulfillingAt IS NULL, so a claimed row must not
     // block a fresh sync request for the same tenancy.
-    await globalPrismaClient.outgoingRequest.updateMany({
+    await getScratchClient().outgoingRequest.updateMany({
       where: { deduplicationKey: DEDUP_PREFIX + tenancyId },
       data: { startedFulfillingAt: new Date() },
     });
 
-    await enqueueExternalDbSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId, getScratchClient());
 
     const rows = await findRowsForTenancies([tenancyId]);
     expect(rows).toHaveLength(2);
@@ -89,8 +148,8 @@ describe("enqueueExternalDbSyncBatch (real DB)", () => {
   });
 
   it("rejects non-UUID tenancy IDs", async ({ expect }) => {
-    await expect(enqueueExternalDbSyncBatch(["not-a-uuid"])).rejects.toThrow("tenancyId must be a valid UUID");
-    await expect(enqueueExternalDbSyncBatch([randomUUID(), "'; DROP TABLE \"OutgoingRequest\"; --"])).rejects.toThrow("tenancyId must be a valid UUID");
+    await expect(enqueueExternalDbSyncBatch(["not-a-uuid"], getScratchClient())).rejects.toThrow("tenancyId must be a valid UUID");
+    await expect(enqueueExternalDbSyncBatch([randomUUID(), "'; DROP TABLE \"OutgoingRequest\"; --"], getScratchClient())).rejects.toThrow("tenancyId must be a valid UUID");
   });
 
   // Regression test for a production deadlock (SQLSTATE 40P01): two concurrent
@@ -107,8 +166,8 @@ describe("enqueueExternalDbSyncBatch (real DB)", () => {
     for (let i = 0; i < ITERATIONS; i++) {
       const ids = freshTenancyIds(BATCH_SIZE);
       await Promise.all([
-        enqueueExternalDbSyncBatch(ids),
-        enqueueExternalDbSyncBatch([...ids].reverse()),
+        enqueueExternalDbSyncBatch(ids, getScratchClient()),
+        enqueueExternalDbSyncBatch([...ids].reverse(), getScratchClient()),
       ]);
 
       const rows = await findRowsForTenancies(ids);

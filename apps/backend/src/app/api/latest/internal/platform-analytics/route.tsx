@@ -5,8 +5,13 @@ import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, moneyAmountSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 // Platform-wide analytics for the internal (platform team) dashboard. Aggregates
 // across EVERY customer project in a handful of grouped queries — never N per-project
@@ -71,11 +76,15 @@ function monthlyRecurringCents(product: unknown, priceId: string | null, quantit
   const intervalMonths = count * unitMonths;
   if (!(intervalMonths > 0)) return 0;
   // Amounts are decimal strings per currency (e.g. "9.99"); we sum USD only.
+  // Convert via moneyAmountToStripeUnits — never `Number(USD) * 100`, which
+  // yields non-integers for values like 79.99 (→ 7998.999999999999).
   const usd = (price as Record<string, unknown>).USD;
-  const amount = usd == null ? NaN : Number(usd);
-  if (!Number.isFinite(amount)) return 0;
+  if (typeof usd !== "string" || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(usd)) {
+    return 0;
+  }
+  const amountStripeUnits = moneyAmountToStripeUnits(usd as MoneyAmount, USD_CURRENCY);
   if (!Number.isFinite(quantity) || quantity < 0) return 0;
-  return Math.round((amount * 100 * quantity) / intervalMonths);
+  return Math.round((amountStripeUnits * quantity) / intervalMonths);
 }
 
 const KpiSchema = yupObject({
@@ -256,11 +265,20 @@ export const GET = createSmartRouteHandler({
       analyticsByProject: CountRow[],
     };
     try {
+      // FINAL normally merges every partition before evaluating the IN set;
+      // hashing the key is a deliberate accuracy-for-memory tradeoff: a
+      // 64-bit collision is negligible at these row counts for this internal
+      // KPI. Limiting FINAL read parallelism also avoids buffering one large
+      // block per reader on object-backed storage.
       const verifiedSubquery = `
-        (project_id, id) IN (
-          SELECT project_id, user_id FROM analytics_internal.contact_channels FINAL
-          WHERE branch_id = {branchId:String} AND sync_is_deleted = 0 AND type = 'EMAIL' AND is_verified = 1
+        cityHash64(project_id, id) IN (
+          SELECT cityHash64(project_id, user_id)
+          FROM analytics_internal.contact_channels FINAL
+          WHERE branch_id = {branchId:String} AND sync_is_deleted = 0
+            AND type = 'EMAIL' AND is_verified = 1
+          SETTINGS do_not_merge_across_partitions_select_final = 1
         )`;
+      const verifiedQuerySettings = "SETTINGS max_threads = 1, max_final_threads = 1, max_block_size = 1024";
       const [
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,
         totalsByProject, verifiedByProject, signupsByProject, activeByProject, sparkByProject,
@@ -316,6 +334,7 @@ export const GET = createSmartRouteHandler({
             countIf(is_anonymous = 1) AS anonymous
           FROM analytics_internal.users FINAL
           WHERE ${customerUserScope}
+          ${verifiedQuerySettings}
         `, { branchId, internalProjectId, mid: midParam }),
         // Users by country (for the globe) over the window.
         chQuery<{ country_code: string, c: string | number }>(`
@@ -379,6 +398,7 @@ export const GET = createSmartRouteHandler({
           SELECT project_id AS projectId, count() AS c
           FROM analytics_internal.users FINAL
           WHERE ${customerUserScope} AND is_anonymous = 0 AND ${verifiedSubquery} GROUP BY project_id
+          ${verifiedQuerySettings}
         `, baseParams),
         // Per-project signups, current vs prior window.
         chQuery<{ projectId: string, cur: string | number, prev: string | number }>(`

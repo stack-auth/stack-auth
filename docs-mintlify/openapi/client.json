@@ -4047,7 +4047,16 @@
                     "client_secret": {
                       "type": "string",
                       "example": "1234567890abcdef_secret_xyz123",
-                      "description": "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements."
+                      "description": "Stripe client secret used by the browser to confirm payment or setup via Stripe Elements. Omitted when no confirmation step is required from the customer."
+                    },
+                    "stripe_intent_type": {
+                      "type": "string",
+                      "enum": [
+                        "payment",
+                        "setup"
+                      ],
+                      "example": "payment",
+                      "description": "Whether client_secret is a PaymentIntent (immediate charge) or SetupIntent (e.g. free trial card collection). Omitted when client_secret is omitted."
                     }
                   }
                 }
@@ -4222,6 +4231,11 @@
                         ]
                       }
                     },
+                    "replaces_stripe_subscription": {
+                      "type": "boolean",
+                      "example": false,
+                      "description": "Whether this purchase will replace an existing Stripe-backed subscription in-place (free trials are not re-applied on that path)"
+                    },
                     "test_mode": {
                       "type": "boolean"
                     },
@@ -4236,6 +4250,7 @@
                     "project_id",
                     "already_bought_non_stackable",
                     "conflicting_products",
+                    "replaces_stripe_subscription",
                     "test_mode"
                   ]
                 }
