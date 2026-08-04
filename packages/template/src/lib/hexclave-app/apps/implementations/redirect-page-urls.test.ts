@@ -13,9 +13,7 @@ async function plan(options: {
     ...options,
     noRedirectBack: options.noRedirectBack === true,
     localOAuthCallbackUrl,
-    // Only consulted for redirect-back-aware handlers with noRedirectBack, which these
-    // continuation tests never hit; mirrors client-app-impl passing rawUrls.home.
-    rawHomeUrl: "/home",
+    rawHomeUrl: "/",
     getCrossDomainHandoffParams: async () => {
       throw new Error("Continuation-only redirects must not mint a new cross-domain handoff");
     },

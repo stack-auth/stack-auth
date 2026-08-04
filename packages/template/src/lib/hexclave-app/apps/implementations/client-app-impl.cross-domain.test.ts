@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
+import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
 import { planRedirectToHandler } from "./redirect-page-urls";
 
+// Every app in this file is constructed with `devTool: false`. The tests install a mock window and document, which makes
+// the SDK believe it is in a browser, and mounting the dev tool kicks off a background `getProject()` against a backend
+// that does not exist here. That fetch never settles, and because it runs inside the global store lock, it blocks every
+// later `withWriteLock` caller (`_signOut`, most visibly) for the rest of the test file.
 function createAccessTokenString(refreshTokenId: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -48,6 +53,28 @@ function createMockDocument(): Document {
     },
     createElement: () => ({}),
   } as any;
+}
+
+/**
+ * Installs a stand-in for `window` with only the parts the code under test touches. `globalThis.window` is typed as a
+ * full `Window`, which a hand-written stub can never be, so the assignment goes through `Reflect.set` — the stub's own
+ * shape stays checked, unlike with a cast on the object literal.
+ */
+function setMockWindow(mockWindow: {
+  location: { href: string, replace?: (url: string) => void },
+}): void {
+  Reflect.set(globalThis, "window", mockWindow);
+}
+
+/**
+ * Calls one of the app's `protected` methods, which are part of the flows under test but not of the public SDK surface.
+ */
+function callProtectedMethod(app: StackClientApp<true>, methodName: string, ...args: unknown[]): Promise<unknown> {
+  const method = Reflect.get(app, methodName);
+  if (typeof method !== "function") {
+    throw new Error(`Expected StackClientApp to have a ${methodName} method in tests.`);
+  }
+  return method.apply(app, args);
 }
 
 describe("StackClientApp cross-domain auth", () => {
@@ -141,6 +168,7 @@ describe("StackClientApp cross-domain auth", () => {
           signIn: "/handler/sign-in",
         },
         noAutomaticPrefetch: true,
+        devTool: false,
       });
 
       const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("signIn");
@@ -169,6 +197,7 @@ describe("StackClientApp cross-domain auth", () => {
       },
       redirectMethod: "none",
       noAutomaticPrefetch: true,
+      devTool: false,
     });
 
     const clientInterface = Reflect.get(clientApp, "_interface");
@@ -249,6 +278,7 @@ describe("StackClientApp cross-domain auth", () => {
         default: { type: "hosted" },
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const outerState = "outer-cross-domain-state";
     const outerCodeChallenge = "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~";
@@ -310,6 +340,7 @@ describe("StackClientApp cross-domain auth", () => {
         default: { type: "hosted" },
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const tokenStore = Reflect.get(clientApp, "_memoryTokenStore");
     if (!(tokenStore instanceof Store)) {
@@ -388,6 +419,7 @@ describe("StackClientApp cross-domain auth", () => {
       tokenStore: "cookie",
       redirectMethod: "none",
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const clientInterface = Reflect.get(clientApp, "_interface");
     const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
@@ -462,6 +494,7 @@ describe("StackClientApp cross-domain auth", () => {
       tokenStore: "memory",
       redirectMethod: "window",
       noAutomaticPrefetch: true,
+      devTool: false,
     });
 
     globalThis.document = createMockDocument();
@@ -489,6 +522,122 @@ describe("StackClientApp cross-domain auth", () => {
       // The live-URL guard must also stand down on its own when code+state are still present.
       (globalThis.window as any).location.href = urlAtConstructionTime.toString();
       await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).resolves.toBe(false);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+
+  it("reports malformed nested cross-domain auth URLs as setup errors", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000012";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    globalThis.document = createMockDocument();
+
+    // A URL the flow cannot even parse is as fatal as an untrusted one, so it has to reach the developer the same way
+    // instead of escaping as a bare TypeError from `new URL()`, which the overlay only shows during development.
+    // The two branches of the handler want opposite session states: on the provider side (a.com) a query-derived failure
+    // only becomes a setup error when the handoff belongs to the current session, while the requesting side (b.com) only
+    // bounces when the current session is *not* the one that was asked for.
+    const malformedCases = [
+      {
+        description: "redirect URI",
+        currentRefreshTokenId: "source-refresh-token-id",
+        params: { redirect_uri: "not-a-url", state: "nested-state", code_challenge: "nested-code-challenge" },
+      },
+      {
+        description: "after-callback redirect URL",
+        currentRefreshTokenId: "source-refresh-token-id",
+        params: {
+          redirect_uri: "https://source.example.test/handler/account-settings",
+          state: "nested-state",
+          code_challenge: "nested-code-challenge",
+          after_callback_redirect_url: "http://[",
+        },
+      },
+      {
+        description: "callback URL",
+        currentRefreshTokenId: null,
+        params: { stack_nested_cross_domain_auth_callback_url: "http://[" },
+      },
+    ];
+
+    try {
+      for (const malformedCase of malformedCases) {
+        const currentUrl = new URL("https://target.example.test/nested-provider");
+        currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "source-refresh-token-id");
+        for (const [key, value] of Object.entries(malformedCase.params)) {
+          currentUrl.searchParams.set(key, value);
+        }
+        // Each app is constructed with the mock window uninstalled: the constructor's automatic side effects expect a
+        // real window, and a construction-time nested-auth URL would also schedule a second, unawaited run of the
+        // handler that keeps failing in the background and leaks into whichever test runs next.
+        globalThis.window = previousWindow;
+        const clientApp = new StackClientApp({
+          baseUrl: "http://localhost:12345",
+          projectId,
+          publishableClientKey: "stack-pk-test",
+          tokenStore: "memory",
+          redirectMethod: "window",
+          noAutomaticPrefetch: true,
+          devTool: false,
+        });
+        setMockWindow({ location: { href: currentUrl.toString() } });
+        Reflect.set(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn", async () => malformedCase.currentRefreshTokenId);
+        Reflect.set(clientApp, "_isTrusted", async () => true);
+
+        const nestedAuthPromise = callProtectedMethod(clientApp, "_maybeHandleNestedCrossDomainAuth");
+        await expect(nestedAuthPromise).rejects.toThrowError(new RegExp(`${malformedCase.description} .* is not a valid absolute URL`));
+        await expect(nestedAuthPromise).rejects.toSatisfy((error: unknown) => HexclaveSetupError.isSetupError(error));
+      }
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+
+  it("keeps nested cross-domain auth failures off the page for a handoff that does not own the session", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000013";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    globalThis.document = createMockDocument();
+
+    // Setup errors are shown in production, so a link anybody can craft must not be able to put a card on a healthy
+    // app's page: with a refresh-token ID that is not the current session's, every failure below stays an ordinary error
+    // that only captureError sees, even though the same URL from the right session would render a card.
+    const craftedRedirectUris = [
+      "https://evil.example.test/handler/account-settings", // untrusted
+      "not-a-url", // malformed
+    ];
+
+    try {
+      for (const craftedRedirectUri of craftedRedirectUris) {
+        const currentUrl = new URL("https://target.example.test/nested-provider");
+        currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "attacker-chosen-refresh-token-id");
+        currentUrl.searchParams.set("redirect_uri", craftedRedirectUri);
+        currentUrl.searchParams.set("state", "nested-state");
+        currentUrl.searchParams.set("code_challenge", "nested-code-challenge");
+
+        globalThis.window = previousWindow;
+        const clientApp = new StackClientApp({
+          baseUrl: "http://localhost:12345",
+          projectId,
+          publishableClientKey: "stack-pk-test",
+          tokenStore: "memory",
+          redirectMethod: "window",
+          noAutomaticPrefetch: true,
+          devTool: false,
+        });
+        setMockWindow({ location: { href: currentUrl.toString() } });
+        Reflect.set(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn", async () => "this-apps-refresh-token-id");
+        Reflect.set(clientApp, "_isTrusted", async () => false);
+
+        const nestedAuthPromise = callProtectedMethod(clientApp, "_maybeHandleNestedCrossDomainAuth");
+        await expect(nestedAuthPromise).rejects.toThrowError(/does not match the requested refresh token ID/);
+        await expect(nestedAuthPromise).rejects.toSatisfy(
+          (error: unknown) => !HexclaveSetupError.isSetupError(error),
+        );
+      }
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -525,6 +674,7 @@ describe("StackClientApp cross-domain auth", () => {
         tokenStore: "memory",
         redirectMethod: "window",
         noAutomaticPrefetch: true,
+        devTool: false,
       });
 
       // Simulate consumeOAuthCallbackQueryParams stripping code+state before microtasks run.
@@ -593,6 +743,7 @@ describe("StackClientApp cross-domain auth", () => {
           default: { type: "hosted" },
         },
         noAutomaticPrefetch: true,
+        devTool: false,
       });
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -625,6 +776,7 @@ describe("StackClientApp cross-domain auth", () => {
         signOut: { type: "hosted" },
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const signOutSpy = vi.spyOn(clientApp, "signOut").mockRejectedValue(new Error("INTENTIONAL_TEST_ABORT"));
 
@@ -647,6 +799,7 @@ describe("StackClientApp cross-domain auth", () => {
         default: { type: "hosted" },
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
 
     expect(() => clientApp.urls.signIn).toThrowError(/app\.urls\.signIn cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignIn\(\) instead/s);
@@ -665,6 +818,7 @@ describe("StackClientApp cross-domain auth", () => {
         handler: "/custom-handler",
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
 
     expect(clientApp.urls.signIn).toBe("/custom-handler/sign-in");
@@ -681,6 +835,7 @@ describe("StackClientApp cross-domain auth", () => {
         default: { type: "hosted" },
       },
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const currentHref = "https://demo.stack-auth.com/settings?tab=profile";
 
@@ -750,6 +905,7 @@ describe("StackClientApp cross-domain auth", () => {
         tokenStore: "memory",
         redirectMethod: "window",
         noAutomaticPrefetch: true,
+        devTool: false,
       });
 
       // Intermediate hops (MFA, magic link, OAuth round-trips, ...) dropped the query params.
@@ -818,6 +974,7 @@ describe("StackClientApp cross-domain auth", () => {
         tokenStore: "memory",
         redirectMethod: "window",
         noAutomaticPrefetch: true,
+        devTool: false,
       });
       const crossDomainAuthorizeRedirect = "https://demo.example.test/handler/oauth-callback?code=minted-code&state=mirror-handoff-state";
       const createCrossDomainAuthRedirectUrlSpy = vi
@@ -854,6 +1011,7 @@ describe("StackClientApp cross-domain auth", () => {
       tokenStore: "memory",
       redirectMethod: "none",
       noAutomaticPrefetch: true,
+      devTool: false,
     });
     const oldAccessToken = createAccessTokenString("old-refresh-token-id");
     const refreshedOldAccessToken = createAccessTokenString("refreshed-old-refresh-token-id");
