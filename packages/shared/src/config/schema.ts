@@ -498,6 +498,9 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           }),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          appleTeamId: schemaFields.oauthAppleTeamIdSchema.optional(),
+          appleKeyId: schemaFields.oauthAppleKeyIdSchema.optional(),
+          applePrivateKey: schemaFields.oauthApplePrivateKeySchema.optional(),
           appleBundles: yupRecord(
             userSpecifiedIdSchema("appleBundleId"),
             yupObject({
@@ -510,7 +513,18 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           displayName: yupString().optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
-        }),
+        }).test(
+          "apple-key-credentials",
+          "Apple providers must specify clientSecret or all of appleTeamId, appleKeyId, and applePrivateKey",
+          (provider) => {
+            if (provider.isShared || provider.type !== "apple") return true;
+            const hasClientSecret = provider.clientSecret != null && provider.clientSecret !== "";
+            const keyFields = [provider.appleTeamId, provider.appleKeyId, provider.applePrivateKey];
+            const hasAnyKeyField = keyFields.some(field => field != null && field !== "");
+            const hasAllKeyFields = keyFields.every(field => field != null && field !== "");
+            return (hasClientSecret || hasAllKeyFields) && (!hasAnyKeyField || hasAllKeyFields);
+          },
+        ),
       ),
     })),
   })),
@@ -576,6 +590,30 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
+
+import.meta.vitest?.test("Apple OAuth key credentials are all-or-nothing", async ({ expect }) => {
+  const config = {
+    auth: {
+      oauth: {
+        providers: {
+          apple: { type: "apple", isShared: false, clientId: "com.example.web" },
+        },
+      },
+    },
+  };
+  await expect(environmentConfigSchema.validate(config)).rejects.toThrow("Apple providers must specify");
+  await expect(environmentConfigSchema.validate({
+    ...config,
+    auth: { oauth: { providers: { apple: { ...config.auth.oauth.providers.apple, appleTeamId: "TEAM" } } } },
+  })).rejects.toThrow("Apple providers must specify");
+  await expect(environmentConfigSchema.validate({
+    ...config,
+    auth: { oauth: { providers: { apple: { ...config.auth.oauth.providers.apple, appleTeamId: "TEAM", appleKeyId: "KEY", applePrivateKey: "PEM" } } } },
+  })).resolves.toBeDefined();
+  await expect(environmentConfigSchema.validate({
+    auth: { oauth: { providers: { apple: { type: "apple", isShared: true } } } },
+  })).resolves.toBeDefined();
+});
 
 
 // Migration functions
@@ -966,6 +1004,9 @@ const organizationConfigDefaults = {
         allowConnectedAccounts: false,
         clientId: undefined,
         clientSecret: undefined,
+        appleTeamId: undefined,
+        appleKeyId: undefined,
+        applePrivateKey: undefined,
         customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,

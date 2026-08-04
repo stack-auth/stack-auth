@@ -24,7 +24,7 @@ export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
   });
 
   return (
-    <div className={cn(codePanelShellClasses, "w-full flex flex-col")}>
+    <div className={cn(codePanelShellClasses, "hexclave-sensitive w-full flex flex-col")}>
       <div className={codePanelHeaderClasses}>
         <h5 className="font-medium flex items-center gap-2">
           <FileTextIcon className="w-4 h-4" />

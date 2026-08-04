@@ -6,6 +6,7 @@ import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
 import { getGlobalUiInstance, h, hasAppendChild, setGlobalUiInstance, setHtml, type UiGlobalInstance } from "../in-page-ui/dom";
+import { HEXCLAVE_LOGO_SVG } from "../in-page-ui/logo";
 import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
 import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
@@ -85,10 +86,6 @@ const DEFAULT_STATE: DevToolState = {
   panelHeight: 520,
 };
 
-// Hexclave mark — hexagon outline with three radial bars, monochrome via currentColor
-// so it inherits the trigger logo's color. Sourced from apps/dashboard/public/hexclave-icon.svg
-// (gradient + glow stripped; this is a tiny trigger glyph, not the full brand mark).
-const HEXCLAVE_LOGO_SVG = '<svg width="16" height="16" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter"><path d="M 24 4 L 41.32 14 L 41.32 34 L 24 44 L 6.68 34 L 6.68 14 Z"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(120 24 24)"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(240 24 24)"/></svg>';
 
 // ---------------------------------------------------------------------------
 // State management

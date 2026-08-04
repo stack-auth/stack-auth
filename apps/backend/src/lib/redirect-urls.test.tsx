@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getOAuthRedirectUrisForTenancy, validateRedirectHostname, isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
+import { getHostedHandlerTrustedDomains, getOAuthRedirectUrisForTenancy, validateRedirectHostname, isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
@@ -81,6 +81,8 @@ describe('validateRedirectUrl', () => {
 
         expect(validateRedirectUrl('http://12345678-1234-4234-8234-123456789abc.localhost:9209/anything', tenancy)).toBe(true);
         expect(validateRedirectUrl('http://other-project.localhost:9209/anything', tenancy)).toBe(false);
+        expect(validateRedirectUrl('https://12345678-1234-4234-8234-123456789abc.built-with-hexclave.com/anything', tenancy)).toBe(false);
+        expect(validateRedirectUrl('https://12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com/anything', tenancy)).toBe(false);
       });
     });
 
@@ -118,13 +120,14 @@ describe('validateRedirectUrl', () => {
         expect(getOAuthRedirectUrisForTenancy(tenancy)).toMatchInlineSnapshot(`
           [
             "https://example.com/handler",
+            "https://12345678-1234-4234-8234-123456789abc.built-with-hexclave.com/handler/oauth-callback",
             "https://12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com/handler/oauth-callback",
           ]
         `);
       });
     });
 
-    it('should validate Turnstile hostnames through the same trusted domains', () => {
+    it('should trust both current and legacy cloud hosted handler domains', () => {
       withHostedHandlerEnv({}, () => {
         const tenancy = createMockTenancy({
           domains: {
@@ -136,8 +139,22 @@ describe('validateRedirectUrl', () => {
         });
 
         expect(validateRedirectHostname('app.example.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('12345678-1234-4234-8234-123456789abc.built-with-hexclave.com', tenancy)).toBe(true);
         expect(validateRedirectHostname('12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('other-project.built-with-hexclave.com', tenancy)).toBe(false);
+        expect(validateRedirectHostname('other-project.built-with-stack-auth.com', tenancy)).toBe(false);
         expect(validateRedirectHostname('evil.example.test', tenancy)).toBe(false);
+      });
+    });
+
+    it('should trust both cloud domains while the legacy domain is still configured as canonical', () => {
+      withHostedHandlerEnv({
+        hostedHandlerDomainSuffix: ".built-with-stack-auth.com",
+      }, () => {
+        expect(getHostedHandlerTrustedDomains("12345678-1234-4234-8234-123456789abc")).toEqual([
+          "https://12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com",
+          "https://12345678-1234-4234-8234-123456789abc.built-with-hexclave.com",
+        ]);
       });
     });
 

@@ -238,6 +238,9 @@ export async function createOrUpdateProjectWithLegacyConfig(
           isShared: provider.type === "shared",
           clientId: provider.client_id,
           clientSecret: provider.client_secret,
+          appleTeamId: provider.apple_team_id,
+          appleKeyId: provider.apple_key_id,
+          applePrivateKey: provider.apple_private_key,
           // Injecting the hexclave-branded callback for new providers is the
           // dashboard's job; this legacy path leaves it unset so providers fall
           // back to the stack-auth callback.

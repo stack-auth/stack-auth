@@ -50,6 +50,7 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   oauthCallbackRedirectUrl?: string,
   errorRedirectUrl?: string,
+  afterCallbackRedirectUrl?: string,
 }) => {
   const targetRedirectUrl =
     options.oauthCallbackRedirectUrl && (validateRedirectUrl(options.oauthCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.oauthCallbackRedirectUrl))
@@ -67,6 +68,14 @@ const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   url.searchParams.set("errorCode", error.errorCode);
   url.searchParams.set("message", error.message);
   url.searchParams.set("details", error.details ? JSON.stringify(error.details) : JSON.stringify({}));
+  if (
+    options.afterCallbackRedirectUrl != null
+    && (validateRedirectUrl(options.afterCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.afterCallbackRedirectUrl))
+  ) {
+    // The callback page must consume the OAuth error before the browser can return to this
+    // continuation, so preserve it as metadata rather than redirecting there directly.
+    url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
+  }
   redirect(url.toString());
 };
 
@@ -79,6 +88,33 @@ function getFirstQueryString(value: unknown): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * Apple (the only provider we support that uses `response_mode=form_post`) delivers its
+ * authorization response as a cross-site POST of an HTML form instead of a top-level GET
+ * redirect. Returns the form fields for such a request, or `null` for every other request
+ * shape, so the callback can bounce them into a same-origin GET.
+ */
+function getFormPostCallbackParams(req: { method: string, body: unknown, headers: Record<string, string[] | undefined> }): [string, string][] | null {
+  if (req.method !== "POST") return null;
+  if (req.headers["content-type"]?.[0]?.split(";")[0].trim() !== "application/x-www-form-urlencoded") return null;
+  if (typeof req.body !== "object" || req.body === null) return null;
+  const entries = Object.entries(req.body).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  // Only the authorization response itself is worth bouncing; anything without a state has
+  // no chance of succeeding on the GET path either, and shouldn't cause an extra roundtrip.
+  if (!entries.some(([key]) => key === "state")) return null;
+  return entries;
+}
+
+import.meta.vitest?.test("getFormPostCallbackParams only picks up form-encoded authorization responses", ({ expect }) => {
+  const formHeaders = { "content-type": ["application/x-www-form-urlencoded"] };
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: formHeaders })).toEqual([["code", "c"], ["state", "s"]]);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: { "content-type": ["application/x-www-form-urlencoded; charset=UTF-8"] } })).toEqual([["code", "c"], ["state", "s"]]);
+  expect(getFormPostCallbackParams({ method: "GET", body: undefined, headers: {} })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: { "content-type": ["application/json"] } })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c" }, headers: formHeaders })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: "state=s", headers: formHeaders })).toBe(null);
+});
 
 const shouldRedirectOAuthCallbackKnownError = (error: KnownError) => (
   KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
@@ -106,6 +142,28 @@ const handler = createSmartRouteHandler({
   }),
   async handler({ params, query, body }, fullReq) {
     const apiUrl = getApiUrlForRequest(fullReq);
+
+    // Apple is the only provider that answers with `response_mode=form_post`: the
+    // browser lands here with a cross-site POST instead of the usual top-level GET.
+    // Browsers omit SameSite=Lax cookies on cross-site POSTs, so the inner CSRF
+    // cookie /authorize set would be missing — and because the single-use outer
+    // info is consumed below regardless, the retry that follows then failed with
+    // "Invalid OAuth state". Bounce the form parameters into a top-level GET on our
+    // own origin (which does receive Lax cookies) and handle it on the normal path.
+    const formPostParams = getFormPostCallbackParams(fullReq);
+    if (formPostParams) {
+      const target = new URL(fullReq.url);
+      target.search = new URLSearchParams([...target.searchParams, ...formPostParams]).toString();
+      return {
+        statusCode: 303,
+        bodyType: "json",
+        body: {},
+        headers: {
+          location: [target.pathname + target.search],
+        },
+      };
+    }
+
     const innerState = query.state ?? (body as any)?.state ?? "";
 
     let outerInfoDB;
@@ -206,7 +264,7 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
-          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
         }
         throw error;
       }
@@ -419,7 +477,7 @@ const handler = createSmartRouteHandler({
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
-                    redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+                    redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
                   }
                   throw error;
                 }
@@ -450,7 +508,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
       }
       throw error;
     }

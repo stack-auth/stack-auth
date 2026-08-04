@@ -3,9 +3,8 @@
 import type { StackClientApp } from "../lib/hexclave-app";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
+import { isLikelyDevelopmentEnvironment } from "../in-page-ui/dev-environment";
 import { canMountIntoDom } from "../in-page-ui/dom";
-import { envVars } from "../generated/env";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 // Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
@@ -35,19 +34,9 @@ function shouldShow(): boolean {
   // consuming app itself was built or hosted as production.
   if (activeProjectIsDevelopmentEnvironment) return true;
 
-  // "auto" behavior (the default):
-  const nodeEnv = envVars.NODE_ENV;
-  if (nodeEnv !== undefined) {
-    // NODE_ENV is available (bundler/process env exists) — only show in development
-    return nodeEnv === "development";
-  }
-
-  // NODE_ENV not found (no process.env/import.meta) — show on localhost or file: protocol
-  try {
-    const url = new URL(window.location.href);
-    if (url.protocol === "file:") return true;
-  } catch {}
-  return isLocalhost(window.location.href);
+  // "auto" behavior (the default): every in-page UI that is only appropriate while developing shares one heuristic, so
+  // the dev tool and the error cards can never disagree about whether this looks like a development environment.
+  return isLikelyDevelopmentEnvironment();
 }
 
 let activeCleanup: (() => void) | null = null;
