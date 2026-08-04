@@ -90,6 +90,7 @@ function createReorderingSetDatabase() {
   const callCountWaiters: Array<{ count: number, resolve: () => void }> = [];
   const combineSeqArgs: DatabaseSeq[][] = [];
   const setRequiresSeqs: Array<DatabaseSeq | undefined> = [];
+  const underlyingSeqs: DatabaseSeq[] = [];
   let setCallCount = 0;
   let firstSetStartedResolve: (() => void) | undefined;
   let releaseFirstSet: (() => void) | undefined;
@@ -108,6 +109,7 @@ function createReorderingSetDatabase() {
       }
       callCountWaiters.splice(0, callCountWaiters.length, ...callCountWaiters.filter(waiter => setCallCount < waiter.count));
       const seq = ["reordering", crypto.randomUUID()] as unknown as DatabaseSeq;
+      underlyingSeqs.push(seq);
       let resolveSet!: () => void;
       const committedPromise = new Promise<void>(resolve => {
         resolveSet = resolve;
@@ -166,6 +168,7 @@ function createReorderingSetDatabase() {
     },
     combineSeqArgs: () => combineSeqArgs.map(seqs => [...seqs]),
     setRequiresSeqs: () => [...setRequiresSeqs],
+    underlyingSeqs: () => [...underlyingSeqs],
   };
 }
 
@@ -302,6 +305,7 @@ describe("instant-availability low-level database", () => {
     const combineSeqArgs = reordering.combineSeqArgs();
     expect(combineSeqArgs).toHaveLength(1);
     expect(combineSeqArgs[0]).toHaveLength(2);
+    expect(combineSeqArgs[0][1]).toBe(reordering.underlyingSeqs()[0]);
     expect(reordering.setRequiresSeqs()[1]).toBe(combineSeqArgs[0][1]);
   });
 });
