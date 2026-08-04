@@ -61,6 +61,14 @@ type SubscriptionFoldState = {
   itemRepeatSchedule: RepeatSchedule,
   outstandingGrants: OutstandingGrant[],
   repeatCount: number,
+  /**
+   * Effective time of the last item-grant reconciliation emitted for a rewritten
+   * product snapshot, or null/absent if none was ever emitted (states persisted
+   * before this field existed read as `undefined`). Reconciliations reuse the
+   * `igr:<subscriptionId>:<millis>` transaction ids, so each one must be stamped
+   * strictly later than the previous one to keep those ids unique.
+   */
+  lastReconcileMillis?: number | null,
 };
 type OtpFoldState = {
   purchaseId: string,
@@ -418,6 +426,107 @@ function subscriptionRepeatStep(state: SubscriptionFoldState, currentMillis: num
     }),
   };
 }
+
+// The item grants the fold currently holds live for `itemId`, i.e. the ones a reconciliation has to
+// retire before re-granting at a new quantity.
+const liveGrantsByItem = (grants: OutstandingGrant[]): Map<string, OutstandingGrant[]> => {
+  const byItem = new Map<string, OutstandingGrant[]>();
+  for (const grant of grants) {
+    byItem.set(grant.itemId, [...byItem.get(grant.itemId) ?? [], grant]);
+  }
+  return byItem;
+};
+
+// Bring the customer's item grants in line with a rewritten product snapshot, at `currentMillis`.
+//
+// Emitted transactions are immutable facts, so we cannot rewrite the subscription-start grants when
+// the stored snapshot changes (a plan whose quotas were raised, or the internal regen script
+// pushing the latest product config onto existing subscriptions). Instead we emit one more
+// item-grant-repeat transaction that retires the grants whose configured quantity/expiry changed
+// and re-grants them at the new numbers — the same shape the periodic repeat step emits, so
+// everything downstream (ledger, subscription-end expiry, refunds) treats it identically.
+//
+// Without this, `mergeRepeatSchedule` only ever picked up a changed item at its *next* reset, and
+// items configured with `repeat: "never"` were never re-granted at all.
+function subscriptionReconcileStep(state: SubscriptionFoldState, currentMillis: number): { state: SubscriptionFoldState, event: PiledriverObject } | null {
+  const live = liveGrantsByItem(state.outstandingGrants);
+  const itemIds = [...new Set([...live.keys(), ...Object.keys(state.product.includedItems)])];
+  const previousGrantsToExpire: ReturnType<typeof grantRefsToExpire> = [];
+  const newGrants: ItemGrant[] = [];
+  const keptGrants: OutstandingGrant[] = [];
+  const txnId = `igr:${state.subscriptionId}:${currentMillis}`;
+  // Only called for items the (merged) schedule knows about, i.e. items present in the new snapshot.
+  const grantNow = (itemId: string, quantity: number, expiresWhen: ItemGrant["expiresWhen"]) => newGrants.push({
+    itemId,
+    quantity,
+    expiresWhen,
+    expiresAtMillis: grantExpiryMillis(
+      expiresWhen,
+      (itemId in state.itemRepeatSchedule ? state.itemRepeatSchedule[itemId] : throwErr(`Reconciling subscription ${state.subscriptionId} granted item ${itemId}, which is missing from the merged repeat schedule`)).nextRepeatMillis,
+      state.endedAtMillis,
+    ),
+  });
+  for (const itemId of itemIds) {
+    const liveGrants = live.get(itemId) ?? [];
+    // A grant with no expiry is compactable, and compacted changes can't be expired by id (see
+    // `payments-entries-item-quantity-change-compactable`), so those units can never be retracted —
+    // they also accumulate across repeats, so the customer's balance for such an item isn't a
+    // function of the snapshot at all. Leave them out of the reconciliation entirely: the new
+    // configuration applies to future repeats (via `mergeRepeatSchedule`) and to nothing else.
+    const retractableGrants = liveGrants.filter(grant => grant.expiresWhen !== null);
+    keptGrants.push(...liveGrants.filter(grant => grant.expiresWhen === null));
+    const item = itemId in state.product.includedItems ? state.product.includedItems[itemId] : undefined;
+    const targetQuantity = item === undefined ? 0 : item.quantity * state.quantity;
+    const targetExpiresWhen = item === undefined ? null : normalizedExpiresWhen(item);
+    // Nothing live to replace: either the item is new to the snapshot (grant it — the start
+    // transaction would have, had the snapshot said so at the time), or its units are permanent and
+    // handled above.
+    if (retractableGrants.length === 0) {
+      if (liveGrants.length === 0 && targetQuantity !== 0) grantNow(itemId, targetQuantity, targetExpiresWhen);
+      continue;
+    }
+    const liveQuantity = retractableGrants.reduce((sum, grant) => sum + grant.quantity, 0);
+    if (liveQuantity === targetQuantity && retractableGrants.every(grant => grant.expiresWhen === targetExpiresWhen)) {
+      keptGrants.push(...retractableGrants);
+      continue;
+    }
+    previousGrantsToExpire.push(...grantRefsToExpire(retractableGrants, "both"));
+    if (targetQuantity !== 0) grantNow(itemId, targetQuantity, targetExpiresWhen);
+  }
+  if (previousGrantsToExpire.length === 0 && newGrants.length === 0) return null;
+  return {
+    state: {
+      ...state,
+      lastReconcileMillis: currentMillis,
+      outstandingGrants: [
+        ...keptGrants,
+        ...newGrants.map((grant, index) => ({ txnId, entryIndex: previousGrantsToExpire.length + index, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })),
+      ],
+    },
+    event: toPiledriverObject({
+      type: "item-grant-repeat",
+      sourceType: "subscription",
+      sourceId: state.subscriptionId,
+      tenancyId: state.tenancyId,
+      customerId: state.customerId,
+      customerType: state.customerType,
+      itemGrants: newGrants,
+      previousGrantsToExpire,
+      paymentProvider: state.paymentProvider,
+      effectiveAtMillis: currentMillis,
+      createdAtMillis: currentMillis,
+    }),
+  };
+}
+
+// When to stamp the reconciliation of a rewritten snapshot: the moment the writer made the change.
+// Floored past everything already granted (+1ms) so the reconciliation can never land on — and
+// therefore reuse the `igr:` transaction id of — a repeat boundary or an earlier reconciliation.
+const reconcileMillis = (state: SubscriptionFoldState, row: SubscriptionRow): number => Math.max(
+  row.updatedAtMillis ?? row.createdAtMillis,
+  processedThroughMillis(state.itemRepeatSchedule, row.createdAtMillis) + 1,
+  (state.lastReconcileMillis ?? row.createdAtMillis) + 1,
+);
 
 // Fold a rewritten subscription row into the existing fold state (Stripe webhooks re-upsert the
 // row on every subscription/invoice event, so this runs often, usually with no meaningful change).
@@ -777,6 +886,14 @@ export function createPaymentsSchema() {
         const hasRepeat = Object.values(updated.itemRepeatSchedule).some(schedule => schedule.nextRepeatMillis !== null);
         if (updated.endedAtMillis !== null && !hasRepeat && updated.endedAtMillis < sub.currentPeriodEndMillis) {
           return { newState: toPiledriverObject(updated), nextTriggerTime: null, appendRowData: toPiledriverObject([subscriptionEndEvent(updated)]) };
+        }
+        // A rewrite that changes what the product includes has to reach the customer's balances
+        // now, not at the next reset (and never, for items that don't repeat) — see
+        // `subscriptionReconcileStep`. Rewrites that leave the included items alone (the common
+        // webhook re-upsert) reconcile to nothing and append no transaction.
+        const reconciled = subscriptionReconcileStep(updated, reconcileMillis(updated, sub));
+        if (reconciled !== null) {
+          return { newState: toPiledriverObject(reconciled.state), nextTriggerTime: dateFromMillis(soonestNextMillis(reconciled.state, reconciled.state.endedAtMillis)), appendRowData: toPiledriverObject([reconciled.event]) };
         }
         return { newState: toPiledriverObject(updated), nextTriggerTime: dateFromMillis(soonestNextMillis(updated, updated.endedAtMillis)) };
       },

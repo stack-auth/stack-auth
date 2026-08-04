@@ -63,6 +63,14 @@ export type SubscriptionRow = {
   productRevokedAtMillis: number | null,
   creationSource: PurchaseCreationSource,
   createdAtMillis: number,
+  /**
+   * When the writer last rewrote this row. Used as the effective time of the
+   * item-grant reconciliation a rewritten product snapshot triggers (see
+   * `subscriptionReconcileStep`), so the adjustment lands when the change was
+   * actually made instead of being backdated. Null for rows written before the
+   * field existed, in which case we fall back to `createdAtMillis`.
+   */
+  updatedAtMillis: number | null,
 };
 
 export type SubscriptionInvoiceRow = {

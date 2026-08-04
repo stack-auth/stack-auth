@@ -101,6 +101,12 @@ export type SubscriptionRow = {
   productRevokedAtMillis: number | null,
   creationSource: PurchaseCreationSource,
   createdAtMillis: number,
+  /**
+   * When the writer last rewrote this row. Bulldozer uses it as the effective
+   * time of the item-grant reconciliation that a rewritten product snapshot
+   * triggers. Null for rows written before the field existed.
+   */
+  updatedAtMillis: number | null,
 };
 
 export type SubscriptionInvoiceRow = {

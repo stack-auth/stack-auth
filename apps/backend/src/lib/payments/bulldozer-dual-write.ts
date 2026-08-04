@@ -38,6 +38,7 @@ export function subscriptionToStoredRow(sub: {
   productRevokedAt: Date | null,
   creationSource: string,
   createdAt: Date,
+  updatedAt: Date,
 }): Record<string, unknown> {
   return {
     id: sub.id,
@@ -59,6 +60,11 @@ export function subscriptionToStoredRow(sub: {
     productRevokedAtMillis: dateToMillis(sub.productRevokedAt),
     creationSource: sub.creationSource,
     createdAtMillis: dateToMillis(sub.createdAt),
+    // Bulldozer needs the rewrite time, not just the creation time: when a
+    // rewritten row carries a different product snapshot, the subscription fold
+    // reconciles the customer's item grants to it and stamps that adjustment at
+    // this instant.
+    updatedAtMillis: dateToMillis(sub.updatedAt),
   };
 }
 

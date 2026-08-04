@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./index.js";
+import type { IncludedItemConfig } from "./types.js";
 import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
 
 // Item-quantities parity suite: restores the ledger coverage from the retired bulldozer-server
@@ -632,6 +633,54 @@ describe("item quantities: full-pipeline integration", () => {
     }) as unknown as PiledriverObject);
     snapshot = (await snapshot.tick(new Date(11 * DAY_MS))).newSnapshot;
     expect(await balanceAt(snapshot, customerGroup("u-upgrade"), "emails", 11 * DAY_MS)).toBe(500);
+  });
+
+  it("reconciles item grants when a subscription's product snapshot is rewritten", async () => {
+    /*
+     * The stored product snapshot is frozen at purchase time, but it does get rewritten in place:
+     * quotas of an existing plan change, or a script pushes the latest config onto live
+     * subscriptions. Everything the (immutable) start transaction granted has to be brought in line
+     * with the new snapshot immediately, not at the next monthly reset — and items that don't repeat
+     * have no next reset at all.
+     *
+     * day 0 : subscribed to { seats: 5 (when-purchase-expires), emails: 100/month }
+     * day 3 : -20 emails
+     * day 5 : snapshot rewritten to { seats: 9, emails: 300/month, storage: 50 } — seats raised,
+     *         emails raised, storage added, all effective at the rewrite time
+     *
+     * Expected at day 5: seats 9, storage 50, emails 280 — a quota change is not a period reset, so
+     * the 20 emails already spent this period ride along onto the re-granted allowance instead of
+     * settling with the grant they were retired from.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const subRow = (includedItems: Parameters<typeof product>[0], updatedAtMillis: number | null) => subscription("sub-regen", {
+      customerId: "u-regen",
+      productId: "prod-regen",
+      product: product(includedItems),
+      currentPeriodEndMillis: MONTH_MS,
+      createdAtMillis: 0,
+      updatedAtMillis,
+    }) as unknown as PiledriverObject;
+    const seats: IncludedItemConfig = { quantity: 5, expires: "when-purchase-expires" };
+    const emails: IncludedItemConfig = { quantity: 100, repeat: [1, "month"], expires: "when-repeated" };
+    snapshot = await set(snapshot, schema.subscriptions, "sub-regen", subRow({ seats, emails }, null));
+    snapshot = await setManualChange(snapshot, manualChange("consume", "u-regen", "emails", -20, 3 * DAY_MS, null));
+    const g = customerGroup("u-regen");
+    expect(await balanceAt(snapshot, g, "emails", 3 * DAY_MS)).toBe(80);
+
+    snapshot = await set(snapshot, schema.subscriptions, "sub-regen", subRow({
+      seats: { ...seats, quantity: 9 },
+      emails: { ...emails, quantity: 300 },
+      storage: { quantity: 50, expires: "when-purchase-expires" },
+    }, 5 * DAY_MS));
+    expect(await balanceAt(snapshot, g, "seats", 5 * DAY_MS)).toBe(9);
+    expect(await balanceAt(snapshot, g, "emails", 5 * DAY_MS)).toBe(280);
+    expect(await balanceAt(snapshot, g, "storage", 5 * DAY_MS)).toBe(50);
+    // Dropping an item from the snapshot retires its grant the same way.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-regen", subRow({ seats: { ...seats, quantity: 9 }, emails: { ...emails, quantity: 300 } }, 6 * DAY_MS));
+    expect(await balanceAt(snapshot, g, "storage", 6 * DAY_MS)).toBe(0);
+    expect(await balanceAt(snapshot, g, "seats", 6 * DAY_MS)).toBe(9);
   });
 
   it("ranks a resetting (when-repeated) grant ahead of a later-expiring grant so a removal rides the reset", async () => {
