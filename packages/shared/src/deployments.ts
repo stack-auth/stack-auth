@@ -65,11 +65,10 @@ export type DeploymentEnvVarDefinition = {
 };
 
 export type DeploymentServiceDefinition = {
-  // Which platform runs the service. Only container services (built from a
-  // Dockerfile at the source root, run on the Fly-backed Marshal runtime)
-  // exist today, but the field is required so definitions stay unambiguous
-  // once more types are added (every write path must state what it's
-  // creating).
+  // Which platform runs the service. Only container services (run on the
+  // Fly-backed Marshal runtime) exist today, but the field is required so
+  // definitions stay unambiguous once more types are added (every write path
+  // must state what it's creating).
   type: "container",
   // The single HTTP port the container listens on. Readiness = the port
   // accepts connections.
@@ -83,6 +82,10 @@ export type DeploymentServiceDefinition = {
   // client-side (it decides what `hexclave deploy` packages), but stored so
   // the dashboard can display it.
   root_directory?: string | undefined,
+  // The Dockerfile to build from, relative to root_directory. When absent the
+  // service is NOT built from a Dockerfile — the remote builder auto-detects
+  // the build with Railpack (https://railpack.com) instead.
+  dockerfile_path?: string | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
 
@@ -142,13 +145,22 @@ export const deploymentServiceDefinitionSchema = yupObject({
       return effectiveMax >= minInstances;
     }),
   root_directory: yupString().optional(),
-  // The legacy Vercel-era build fields are rejected explicitly (not merely
-  // absent) for the same yupRecord reason dev_command is below: an out-of-date
-  // CLI or hand-written request should get a clear error, not silent dropping.
-  framework: yupString().oneOf([undefined], "deployment service definitions no longer support `framework` — container services build from the Dockerfile at the source root (upgrade your Hexclave CLI if this came from `hexclave deploy`)"),
-  install_command: yupString().oneOf([undefined], "deployment service definitions no longer support `install_command` — container services build from the Dockerfile at the source root"),
-  build_command: yupString().oneOf([undefined], "deployment service definitions no longer support `build_command` — container services build from the Dockerfile at the source root"),
-  output_directory: yupString().oneOf([undefined], "deployment service definitions no longer support `output_directory` — container services build from the Dockerfile at the source root"),
+  // Optional Dockerfile location relative to root_directory; absent = Railpack
+  // auto-detected build. Must stay inside the packaged source — it flows into
+  // the remote builder as a path within the source tarball. The rules here
+  // must be AT LEAST as strict as Marshal's validateServiceSpec: anything the
+  // runtime would reject must already fail at sync time, not after an upload
+  // has been consumed at deploy time.
+  dockerfile_path: yupString().optional().max(512)
+    .test("relative-path", 'dockerfile_path must be a normalized relative path inside the service\'s root directory (no leading "/", no "." or ".." segments, no backslashes or control characters)', (value) =>
+      value === undefined || (
+        value !== ""
+        && !value.startsWith("/")
+        && !value.includes("\\")
+        // eslint-disable-next-line no-control-regex
+        && !/[\x00-\x1f]/.test(value)
+        && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..")
+      )),
   // `devCommand` is a config-file-only field: `hexclave dev --service-id`
   // reads it straight out of the local config file, and the backend never acts
   // on it, so it is never sent and never stored. Rejected rather than simply
@@ -171,6 +183,7 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
     min_instances: 0,
     max_instances: 2,
     root_directory: "./",
+    dockerfile_path: "docker/Dockerfile.web",
     env: {
       MY_ENV_VAR: { value: "true" },
       DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
@@ -226,10 +239,20 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shap
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "container", port: 3000, max_instances: 6, env: {},
   }, { abortEarly: false })).rejects.toThrow(/max_instances/);
-  // The Vercel-era build fields are gone and must say so.
+  // dockerfile_path must be a normalized relative path inside the packaged
+  // source — mirror of Marshal's validateServiceSpec, checked here so invalid
+  // values fail at sync time instead of after an upload is consumed.
+  for (const invalidDockerfilePath of [
+    "../Dockerfile", "/etc/Dockerfile", ".", "./Dockerfile", "a//b",
+    "docker\\Dockerfile", "Dock\terfile", "x".repeat(513),
+  ]) {
+    await expect(deploymentServiceDefinitionSchema.validate({
+      type: "container", port: 3000, dockerfile_path: invalidDockerfilePath, env: {},
+    }, { abortEarly: false })).rejects.toThrow(/dockerfile_path/);
+  }
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "container", port: 3000, framework: "nextjs", env: {},
-  }, { abortEarly: false })).rejects.toThrow(/no longer support `framework`/);
+    type: "container", port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
 });
 
 import.meta.vitest?.test("a service's dev command is not part of its definition", async ({ expect }) => {

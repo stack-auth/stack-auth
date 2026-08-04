@@ -83,7 +83,9 @@ export type MarshalServiceSpec = {
     max_instances: number,
     port: number,
   },
-  source: { upload_id: string } | { image: string },
+  // dockerfile_path is relative to the tarball root; absent = the builder
+  // auto-detects the build with Railpack.
+  source: { upload_id: string, dockerfile_path?: string } | { image: string },
   env: Record<string, MarshalEnvValue>,
 };
 

@@ -57,7 +57,7 @@ describe("deploy command helpers", () => {
     const service = evaluateServicesFunction({
       configPath: path.join(dir, "hexclave.config.ts"),
       servicesExport: () => ({
-        web: { type: "container", port: 3000 },
+        web: { type: "container", port: 3000, dockerfilePath: "Dockerfile" },
       }),
       mode: "deploy",
     }).services.get("web");
@@ -122,6 +122,68 @@ describe("deploy command helpers", () => {
       error: null,
     });
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("fails before upload when the declared dockerfilePath is not in the packaged source", async () => {
+    const dir = makeTempDir();
+    fs.writeFileSync(path.join(dir, "index.html"), "<h1>no dockerfile</h1>");
+    const service = evaluateServicesFunction({
+      configPath: path.join(dir, "hexclave.config.ts"),
+      servicesExport: () => ({
+        web: { type: "container", port: 3000, dockerfilePath: "Dockerfile" },
+      }),
+      mode: "deploy",
+    }).services.get("web");
+    if (service == null) throw new Error("Test service was not evaluated");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(deployService({
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://dashboard.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      authHeaders: () => Promise.resolve({ authorization: "test" }),
+      service,
+      definitionSyncId: "00000000-0000-4000-8000-000000000003",
+      ignoreRootDirectory: dir,
+    })).rejects.toThrow("there is no such file");
+  });
+
+  it("notes an ignored Dockerfile when no dockerfilePath is set", async () => {
+    // A Dockerfile in the source is deliberately NOT picked up implicitly — but silently
+    // ignoring it would be a trap, so the deploy must say what it is doing instead.
+    const dir = makeTempDir();
+    fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM nginx:alpine\n");
+    const service = evaluateServicesFunction({
+      configPath: path.join(dir, "hexclave.config.ts"),
+      servicesExport: () => ({
+        web: { type: "container", port: 3000 },
+      }),
+      mode: "deploy",
+    }).services.get("web");
+    if (service == null) throw new Error("Test service was not evaluated");
+    const logged: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line) => logged.push(String(line)));
+    // Fail at the first network call — the note is logged during packaging, before it.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 503 })));
+
+    await expect(deployService({
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://dashboard.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      authHeaders: () => Promise.resolve({ authorization: "test" }),
+      service,
+      definitionSyncId: "00000000-0000-4000-8000-000000000003",
+      ignoreRootDirectory: dir,
+    })).rejects.toThrow();
+    expect(logged.some((line) => line.includes("Railpack auto-detection") && line.includes('dockerfilePath: "Dockerfile"'))).toBe(true);
   });
 });
 

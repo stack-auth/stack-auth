@@ -428,12 +428,13 @@ describe("Stack CLI", () => {
     expect(createdProjectId).toBeDefined();
     const deployDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-deploy-"));
     try {
+      // web builds from an explicit Dockerfile (dockerfilePath + pre-flight);
+      // db has none, covering the Railpack auto-detection default.
       fs.mkdirSync(path.join(deployDir, "web"));
       fs.writeFileSync(path.join(deployDir, "web", "index.html"), "<h1>web</h1>");
       fs.writeFileSync(path.join(deployDir, "web", "Dockerfile"), "FROM nginx:alpine\n");
       fs.mkdirSync(path.join(deployDir, "db"));
       fs.writeFileSync(path.join(deployDir, "db", "index.html"), "<h1>db</h1>");
-      fs.writeFileSync(path.join(deployDir, "db", "Dockerfile"), "FROM nginx:alpine\n");
       const writeConfigFile = (allowClientTeamCreation: boolean) => fs.writeFileSync(path.join(deployDir, "hexclave.config.ts"), [
         `export const config = { teams: { allowClientTeamCreation: ${allowClientTeamCreation} } };`,
         "export const services = ({ isDev, secret, service, hexclave }: any) => ({",
@@ -441,6 +442,7 @@ describe("Stack CLI", () => {
         '    type: "container",',
         "    port: 3000,",
         '    rootDirectory: "./web",',
+        '    dockerfilePath: "Dockerfile",',
         '    devCommand: "npm run dev",',
         "    env: {",
         '      DB_URL: service("db").internalUrl,',
@@ -485,7 +487,7 @@ describe("Stack CLI", () => {
       // else, so the default was never persisted.
       const execRes = await runCli([
         "exec", "--cloud-project-id", createdProjectId,
-        "const p = await hexclaveServerApp.getProject(); const svc = (await p.listDeploymentServices()).find(s => s.id === 'web'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI') });",
+        "const p = await hexclaveServerApp.getProject(); const services = await p.listDeploymentServices(); const svc = services.find(s => s.id === 'web'); return JSON.stringify({ hasDevCommand: 'dev_command' in svc, keys: svc.env.map(e => e.key).sort(), openai: svc.env.find(e => e.key === 'OPENAI'), webDockerfile: svc.dockerfile_path, dbDockerfile: services.find(s => s.id === 'db').dockerfile_path });",
       ]);
       if (execRes.exitCode !== 0) {
         throw new Error(`exec exited ${execRes.exitCode}. stderr: ${execRes.stderr}`);
@@ -494,6 +496,8 @@ describe("Stack CLI", () => {
         hasDevCommand: false,
         keys: ["DB_URL", "OPENAI", "PROJECT_ID"],
         openai: { key: "OPENAI", type: "secret", value: null, secret_key: "OPENAI_KEY" },
+        webDockerfile: "Dockerfile",
+        dbDockerfile: null,
       });
 
       // A secret with NO default and no stored value fails before anything is

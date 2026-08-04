@@ -1718,6 +1718,9 @@ model DeploymentService {
   minInstances  Int?
   maxInstances  Int?
   rootDirectory String?
+  // The Dockerfile to build from, relative to rootDirectory. Null = no
+  // Dockerfile: the remote builder auto-detects the build with Railpack.
+  dockerfilePath String?
   // Note there is deliberately no dev command here: `devCommand` in the config
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only

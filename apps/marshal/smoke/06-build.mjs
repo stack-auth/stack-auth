@@ -3,6 +3,11 @@
 // separate app and verify it serves through flycast. Also validates that logs survive
 // auto_destroy (load-bearing: the digest is scraped from logs here, and Marshal's
 // live build-log proxy reads the builder machine's logs).
+//
+// NOTE: the inline script below is a point-in-time copy predating the dockerfilePath /
+// Railpack harness (src/builds.ts buildHarnessScript) — it validates the Fly build
+// mechanics, not the shipped harness. Re-verify harness changes against real Fly
+// separately (or port this script to import buildHarnessScript).
 import { createApp, flyGraphql, flyLogs, flyMachines, FLY_TOKEN, log, machineExec, sleep, waitForMachineState } from "./lib.mjs";
 
 const BUILDER_APP = "hxc-smoke-builder";

@@ -18,6 +18,7 @@ describe("evaluateServicesFunction (deploy mode)", () => {
         maxInstances: 3,
         devCommand: "pnpm dev",
         rootDirectory: "./apps/web",
+        dockerfilePath: "./docker/Dockerfile.web",
         env: {
           DB_URL: (service("database") as any).url,
           DB_INTERNAL: (service("database") as any).internalUrl,
@@ -39,6 +40,8 @@ describe("evaluateServicesFunction (deploy mode)", () => {
       min_instances: 1,
       max_instances: 3,
       root_directory: "apps/web",
+      // Normalized to a root-directory-relative posix path.
+      dockerfile_path: "docker/Dockerfile.web",
       env: {
         DB_URL: { type: "connection", value: "database.url" },
         DB_INTERNAL: { type: "connection", value: "database.internalUrl" },
@@ -87,18 +90,6 @@ describe("evaluateServicesFunction (deploy mode)", () => {
 
   it("rejects an async services function with a clear message", () => {
     expect(() => evaluate(async () => ({ web: { type: "container", port: 3000 } }))).toThrow("must be synchronous");
-  });
-
-  it("wraps exceptions thrown by include/exclude predicates", () => {
-    const { services } = evaluate(() => ({
-      web: {
-        type: "container", port: 3000,
-        excludeFiles: () => {
-          throw new Error("boom");
-        },
-      },
-    }));
-    expect(() => services.get("web")?.excludeFiles?.("a.txt")).toThrow('services.web.excludeFiles threw while filtering "a.txt": boom');
   });
 
   it("rejects unknown outputs on the hexclave context object", () => {
@@ -170,17 +161,18 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     expect(() => evaluate(() => ({ web: { type: "container", port: 3000, rootDirectory: "../outside" } }))).toThrow("outside the directory containing the config file");
   });
 
-  it("wraps predicates so any truthy/falsy return works", () => {
-    const { services } = evaluate(() => ({
-      web: {
-        type: "container", port: 3000,
-        // Sloppy predicates returning non-booleans must still work.
-        includeFiles: (p: string) => p as unknown as boolean,
-        excludeFiles: () => 0 as unknown as boolean,
-      },
-    }));
-    expect(services.get("web")?.includeFiles?.("a.txt")).toBe(true);
-    expect(services.get("web")?.excludeFiles?.("a.txt")).toBe(false);
+  it("omits dockerfile_path when dockerfilePath is not set (Railpack auto-detection)", () => {
+    const { services } = evaluate(() => ({ web: { type: "container", port: 3000 } }));
+    expect(services.get("web")?.definition.dockerfile_path).toBeUndefined();
+  });
+
+  it("rejects dockerfilePath values escaping the root directory", () => {
+    expect(() => evaluate(() => ({
+      web: { type: "container", port: 3000, dockerfilePath: "../Dockerfile" },
+    }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
+    expect(() => evaluate(() => ({
+      web: { type: "container", port: 3000, dockerfilePath: "." },
+    }))).toThrow("services.web.dockerfilePath must point to a file inside the service's root directory");
   });
 });
 

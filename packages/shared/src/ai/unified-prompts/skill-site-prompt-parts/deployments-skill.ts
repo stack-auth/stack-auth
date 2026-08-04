@@ -7,7 +7,7 @@ import { deindent } from "../../../utils/strings";
 export const deploymentsSkillSection = deindent`
   # Hexclave Deployments
 
-  The Deployments app runs your services as containers. You provide your code with a Dockerfile per service; you can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default — they reach each other over an internal network, and only become publicly accessible when you attach a custom domain. Only the \`container\` service type exists for now.
+  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default — they reach each other over an internal network, and only become publicly accessible when you attach a custom domain. Only the \`container\` service type exists for now.
 
   Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`services\` export in \`hexclave.config.ts\`.
 
@@ -39,13 +39,13 @@ export const deploymentsSkillSection = deindent`
   });
   \`\`\`
 
-  It is a FUNCTION returning a record of services keyed by service id. \`port\` (required) is the single HTTP port the container listens on; \`rootDirectory\` (relative to the config file, default \`./\`) is where the code and its Dockerfile live; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next request; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs. Optional \`includeFiles\`/\`excludeFiles\` predicates (\`(relativePath) => boolean\`) narrow what gets packaged on top of \`.gitignore\`/\`.dockerignore\`.
+  It is a FUNCTION returning a record of services keyed by service id. \`port\` (required) is the single HTTP port the container listens on; \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next request; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
   Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` / \`.internalHost\` — the target's private-network address (the normal way services talk to each other; always available); \`service("<id>").url\` — the target's PUBLIC URL, which only exists once a custom domain verifies on it (until then the depending service is \`blocked\` and its deploy FAILS — verify the target's domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
 
-  ## The Dockerfile
+  ## How services are built
 
-  Each service is built remotely from the Dockerfile at the root of its \`rootDirectory\` — Docker is never required locally, and there is no framework detection: the Dockerfile is the whole build contract. It must produce an image whose default command starts a server listening on \`port\` on \`0.0.0.0\`. Keep it standard, e.g. for a Node app: a build stage (\`npm ci && npm run build\`) and a runtime stage that copies the output and sets \`CMD\`; frameworks with a standalone/server output (Next.js \`output: "standalone"\`, SvelteKit/Nuxt node adapters) work as-is, and pure-static builds should be served by something like nginx on the declared port. Before deploying, confirm \`docker build\` semantics locally only by reading the Dockerfile — the remote build's logs are available if it fails.
+  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on \`port\` on \`0.0.0.0\`. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source — Railpack env vars like \`RAILPACK_BUILD_CMD\` have no effect here. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
 
   ## Secrets
 
@@ -74,7 +74,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Deploying
 
-  Each service's root directory must contain a Dockerfile (the deploy fails up front if one is missing). From the directory containing your config file:
+  From the directory containing your config file:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest deploy

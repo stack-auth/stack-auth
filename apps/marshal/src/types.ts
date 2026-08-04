@@ -25,7 +25,9 @@ export type ContainerConfig = {
 export type ServiceSpec = {
   config: ContainerConfig,
   // { upload_id } is the INPUT form; the stored spec is rewritten to { image } on build success.
-  source: { upload_id: string } | { image: string },
+  // dockerfile_path (tarball-root-relative) selects the Dockerfile to build from; absent =
+  // the builder auto-detects the build with Railpack (https://railpack.com).
+  source: { upload_id: string, dockerfile_path?: string } | { image: string },
   env: Record<string, EnvValue>,
   // No `domains` field — hostnames attach via the domain routes.
 };

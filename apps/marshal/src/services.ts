@@ -58,6 +58,24 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   const hasImage = typeof source.image === "string" && source.image !== "";
   if (hasUploadId === hasImage) throw badRequest("source must be exactly one of { upload_id } or { image }");
   if (hasUploadId && !UPLOAD_ID_REGEX.test(source.upload_id as string)) throw badRequest("source.upload_id must be a UUID");
+  // Optional Dockerfile location within the tarball. It flows into the builder harness (as
+  // a quoted shell env var and a buildctl --opt), so reject anything that isn't a plain
+  // NORMALIZED relative path: absolute paths, traversal, "."/empty segments, backslashes,
+  // control chars. Normalization matters beyond safety: dockerfile_path is part of the
+  // revision hash, so "./Dockerfile" and "Dockerfile" would otherwise be two different
+  // revisions of an identical build.
+  let dockerfilePath: string | undefined;
+  if (hasUploadId && source.dockerfile_path !== undefined) {
+    const value = source.dockerfile_path;
+    if (typeof value !== "string" || value === "" || value.length > 512) throw badRequest("source.dockerfile_path must be a non-empty string of at most 512 characters");
+    // eslint-disable-next-line no-control-regex
+    if (value.startsWith("/") || value.includes("\\") || value.split("/").some((segment) => segment === "" || segment === "." || segment === "..") || /[\x00-\x1f]/.test(value)) {
+      throw badRequest("source.dockerfile_path must be a normalized relative path inside the source tarball (no leading \"/\", no \".\" or \"..\" segments, no backslashes or control characters)");
+    }
+    dockerfilePath = value;
+  } else if (source.dockerfile_path !== undefined) {
+    throw badRequest("source.dockerfile_path is only valid together with source.upload_id");
+  }
 
   const env = asRecord(record.env);
   if (env === null) throw badRequest("env is required (use {} for no env vars)");
@@ -75,7 +93,11 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
 
   return {
     config: { min_instances: minInstances, max_instances: maxInstances, port: port },
-    source: hasUploadId ? { upload_id: source.upload_id as string } : { image: source.image as string },
+    // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
+    // this object, so construction must stay canonical.
+    source: hasUploadId
+      ? { upload_id: source.upload_id as string, ...(dockerfilePath !== undefined ? { dockerfile_path: dockerfilePath } : {}) }
+      : { image: source.image as string },
     env: validatedEnv,
   };
 }
@@ -366,6 +388,7 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
         revision,
         appName: appNameForService(config.envId, ns, key),
         uploadId,
+        dockerfilePath: stored.spec.source.dockerfile_path ?? null,
       });
       if (started.builderApp !== null || started.builderMachineId !== null) {
         // Attach the builder coordinates (live-log proxy + stale-build backstop need

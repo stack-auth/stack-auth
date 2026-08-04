@@ -207,8 +207,6 @@ export type EvaluatedService = {
   // backend never acts on it, so there is no reason for it to leave the
   // machine or to be stored where it could drift from the config file.
   devCommand: string | undefined,
-  includeFiles: ((relativePath: string) => boolean) | undefined,
-  excludeFiles: ((relativePath: string) => boolean) | undefined,
 };
 
 export type EvaluatedServices = {
@@ -217,7 +215,7 @@ export type EvaluatedServices = {
 
 const KNOWN_SERVICE_FIELDS = new Set([
   "type", "port", "minInstances", "maxInstances",
-  "rootDirectory", "devCommand", "env", "includeFiles", "excludeFiles",
+  "rootDirectory", "dockerfilePath", "devCommand", "env",
 ]);
 
 function readOptionalIntegerField(record: Record<string, unknown>, serviceId: string, field: string): number | undefined {
@@ -236,26 +234,6 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
     throw new CliError(`services.${serviceId}.${field} must be a string.`);
   }
   return value;
-}
-
-function readOptionalFunctionField(record: Record<string, unknown>, serviceId: string, field: string): ((relativePath: string) => boolean) | undefined {
-  const value = record[field];
-  if (value === undefined) return undefined;
-  if (typeof value !== "function") {
-    throw new CliError(`services.${serviceId}.${field} must be a function of (relativePath: string) => boolean.`);
-  }
-  // The user's predicate can return anything (coerced to a boolean) and can
-  // throw; both are wrapped here so a buggy predicate surfaces as a clean
-  // error naming the service and field instead of a raw stack dump from deep
-  // inside the packaging walk.
-  return (relativePath: string) => {
-    try {
-      return Boolean((value as (p: string) => unknown)(relativePath));
-    } catch (error) {
-      if (error instanceof CliError) throw error;
-      throw new CliError(`services.${serviceId}.${field} threw while filtering ${JSON.stringify(relativePath)}: ${errorMessage(error)}`);
-    }
-  };
 }
 
 function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, EvaluatedEnvVarValue> {
@@ -381,6 +359,21 @@ export function evaluateServicesFunction(options: {
       throw new CliError(`services.${serviceId}.rootDirectory resolves to ${absoluteRootDirectory}, which is outside the directory containing the config file (${configDirectory}). Root directories must be inside it.`);
     }
 
+    // Optional Dockerfile location, relative to the root directory. When it is
+    // absent, the service is NOT built from a Dockerfile at all — the remote
+    // builder auto-detects the build with Railpack (https://railpack.com)
+    // instead, even if a file named "Dockerfile" happens to exist.
+    const dockerfilePathRaw = readOptionalStringField(record, serviceId, "dockerfilePath");
+    let dockerfilePath: string | undefined;
+    if (dockerfilePathRaw !== undefined) {
+      const absoluteDockerfilePath = path.resolve(absoluteRootDirectory, dockerfilePathRaw);
+      const relativeDockerfilePath = path.relative(absoluteRootDirectory, absoluteDockerfilePath);
+      if (relativeDockerfilePath === "" || relativeDockerfilePath === ".." || relativeDockerfilePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativeDockerfilePath)) {
+        throw new CliError(`services.${serviceId}.dockerfilePath must point to a file inside the service's root directory (got ${JSON.stringify(dockerfilePathRaw)}).`);
+      }
+      dockerfilePath = relativeDockerfilePath.split(path.sep).join("/");
+    }
+
     const port = readOptionalIntegerField(record, serviceId, "port");
     if (port === undefined) {
       throw new CliError(`services.${serviceId} has no \`port\`. Container services must declare the HTTP port the container listens on, e.g. \`port: 3000\`.`);
@@ -418,13 +411,13 @@ export function evaluateServicesFunction(options: {
         // the config directory itself) — an absolute local path would be
         // meaningless (and leak local filesystem layout) server-side.
         root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
+        // Root-directory-relative posix path; absent = Railpack auto-detection.
+        dockerfile_path: dockerfilePath,
         env: serializeEnvForWire(env),
       },
       env,
       absoluteRootDirectory,
       devCommand,
-      includeFiles: readOptionalFunctionField(record, serviceId, "includeFiles"),
-      excludeFiles: readOptionalFunctionField(record, serviceId, "excludeFiles"),
     });
   }
 

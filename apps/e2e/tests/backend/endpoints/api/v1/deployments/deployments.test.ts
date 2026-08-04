@@ -230,15 +230,22 @@ describe("definition sync", () => {
     expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api"]);
   });
 
-  it("rejects definitions with legacy Vercel-era build fields", async ({ expect }) => {
+  it("stores dockerfile_path and rejects one escaping the source root", async ({ expect }) => {
     await Project.createAndSwitch();
-    const response = await niceBackendFetch("/api/v1/deployments/services", {
+    const ok = await niceBackendFetch("/api/v1/deployments/services", {
       method: "PUT",
       accessType: "admin",
-      body: { services: { web: { type: "container", port: 3000, framework: "nextjs", env: {} } } },
+      body: { services: { web: { type: "container", port: 3000, dockerfile_path: "docker/Dockerfile.web", env: {} } } },
     });
-    expect(response.status).toBe(400);
-    expect(JSON.stringify(response.body)).toContain("no longer support `framework`");
+    expect(ok.status).toBe(200);
+    expect((ok.body as any).items.find((item: any) => item.id === "web").dockerfile_path).toBe("docker/Dockerfile.web");
+    const escaping = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "container", port: 3000, dockerfile_path: "../Dockerfile", env: {} } } },
+    });
+    expect(escaping.status).toBe(400);
+    expect(JSON.stringify(escaping.body)).toContain("dockerfile_path");
   });
 
   it("rejects definitions without a port and with a non-container type", async ({ expect }) => {
@@ -376,6 +383,10 @@ describe("deploys against the Marshal runtime", () => {
         port: 3000,
         min_instances: 0,
         max_instances: 2,
+        // Rides through the whole deploy into the Marshal spec — this covers the
+        // backend→Marshal dockerfile_path passthrough (Marshal validates it on the spec
+        // PUT; the mock builder then ignores it, as builds are not exercised here).
+        dockerfile_path: "docker/Dockerfile.web",
         env: {
           PLAIN_VAR: { value: "plain-value" },
           OPENAI_KEY: { type: "secret", key: "openai_api_key" },

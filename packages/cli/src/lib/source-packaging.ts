@@ -13,8 +13,9 @@
 // monorepo, a nested `.dockerignore` written for building that subdir as its own context can
 // therefore over-exclude here. Common flat ignore files behave identically; the full
 // docker-semantics parser is a tracked follow-up. Note also: unlike `docker build`, a
-// `.dockerignore` that lists `Dockerfile` DOES drop it (docker special-cases and sends it
-// anyway) — the deploy pre-flight verifies the Dockerfile survived packaging and errors early.
+// `.dockerignore` that lists the Dockerfile DOES drop it (docker special-cases and sends it
+// anyway) — for services with a `dockerfilePath`, the deploy pre-flight verifies the
+// Dockerfile survived packaging and errors early.
 
 import { createTar, type TarEntry } from "@hexclave/shared/dist/utils/tar";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -65,19 +66,8 @@ export type PackagedSource = {
   fileCount: number,
   totalBytes: number,
   // The packaged file paths (posix, relative to the root), so callers can assert on the
-  // ACTUAL contents (e.g. Dockerfile presence) after ignore rules + include/exclude filters.
+  // ACTUAL contents (e.g. Dockerfile presence) after the ignore rules.
   paths: string[],
-};
-
-export type SourceFileFilters = {
-  // Both predicates receive the file's path relative to the packaged root
-  // directory (posix separators) and apply AFTER the ignore rules — they can
-  // only narrow the packaged set, never re-add an ignored file (re-adding
-  // would make `includeFiles: () => true` silently package node_modules).
-  // A file is kept iff includeFiles (when given) returns true AND excludeFiles
-  // (when given) returns false. Files only; directories are not filtered.
-  includeFiles?: (relativePath: string) => boolean,
-  excludeFiles?: (relativePath: string) => boolean,
 };
 
 function readIgnoreScopes(directory: string): IgnoreScope[] {
@@ -97,7 +87,7 @@ function readIgnoreScopes(directory: string): IgnoreScope[] {
  * a monorepo subdirectory inherits the repository-level .gitignore and
  * .dockerignore rules.
  */
-export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory, filters: SourceFileFilters = {}): PackagedSource {
+export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory): PackagedSource {
   const absoluteRootDirectory = path.resolve(rootDirectory);
   const absoluteIgnoreRootDirectory = path.resolve(ignoreRootDirectory);
   const rootStat = fs.statSync(absoluteRootDirectory, { throwIfNoEntry: false });
@@ -131,8 +121,6 @@ export function packageSourceDirectory(rootDirectory: string, ignoreRootDirector
         walk(absolutePath, relativePath, scopes);
       } else if (dirent.isFile()) {
         if (isIgnored(scopes, absolutePath, false)) continue;
-        if (filters.includeFiles != null && !filters.includeFiles(relativePath)) continue;
-        if (filters.excludeFiles != null && filters.excludeFiles(relativePath)) continue;
         const data = fs.readFileSync(absolutePath);
         totalBytes += data.length;
         entries.push({ path: relativePath, data });

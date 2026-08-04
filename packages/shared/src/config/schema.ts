@@ -585,9 +585,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2026-07-28: deployment service definitions moved out of the config
   // entirely — they now come from the `services` export of hexclave.config.ts
   // and are stored in the backend database, synced by `hexclave deploy`. The
-  // stored config section is dropped (the `apps.installed.deployments-alpha`
-  // entry stays — the app itself still exists). This runs after the 2026-07-24
-  // rename above, so pre-rename `deployments` sections are covered too.
+  // stored config section is dropped, which in particular removes every
+  // config-era service: they were all `type: "vercel"`, a service type that no
+  // longer exists (containers on Marshal replaced it). The
+  // `apps.installed.deployments-alpha` entry stays — the app itself still
+  // exists. This runs after the 2026-07-24 rename above, so pre-rename
+  // `deployments` sections are covered too.
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "deployments-alpha");
   }
@@ -615,12 +618,24 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy deployments config sections", ({ expect }) => {
   // Post-rename section name, as an object and as dot-notation override keys.
+  // Every config-era service was `type: "vercel"` — a type that no longer
+  // exists — so this doubles as the guarantee that no vercel service survives
+  // migration.
   expect(migrateConfigOverride("branch", {
     "deployments-alpha": { services: { web: { type: "vercel" } } },
   })).toEqual({});
   expect(migrateConfigOverride("branch", {
     "deployments-alpha.services.web.type": "vercel",
     "deployments-alpha.services.web.env": { A: { value: "x" } },
+  })).toEqual({});
+  // Multiple vercel services, with the full vercel-era field set.
+  expect(migrateConfigOverride("branch", {
+    "deployments-alpha": {
+      services: {
+        web: { type: "vercel", framework: "nextjs", buildCommand: "pnpm build", outputDirectory: "dist" },
+        api: { type: "vercel", rootDirectory: "./api" },
+      },
+    },
   })).toEqual({});
   // Pre-rename name: the 2026-07-24 rename runs first, then the removal.
   expect(migrateConfigOverride("branch", {

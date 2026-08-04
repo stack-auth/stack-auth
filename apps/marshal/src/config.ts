@@ -127,7 +127,26 @@ export function resolveNamespaceOrg(_ns: string): { orgSlug: string, token: stri
 export const MAX_INSTANCES_CAP = 5;
 export const MACHINE_GUEST = { cpu_kind: "shared", cpus: 1, memory_mb: 512 };
 export const BUILDER_GUEST = { cpu_kind: "shared", cpus: 2, memory_mb: 2048 };
+// Railpack builds get a bigger machine: every builder is ephemeral (no image cache), the
+// railpack-builder base image is large, and the machine rootfs is an overlayfs — which
+// forces buildkit onto the slow native (full-copy) snapshotter unless /var/lib/buildkit is
+// backed by tmpfs (see buildHarnessScript). The RAM here is what backs that tmpfs; real-Fly
+// QA measured the default guest timing out at 15 minutes on base-image extraction alone.
+export const RAILPACK_BUILDER_GUEST = { cpu_kind: "performance", cpus: 2, memory_mb: 8192 };
+export const RAILPACK_BUILDKIT_TMPFS_SIZE = "6g";
 export const BUILDER_IMAGE = "moby/buildkit:v0.23.2";
+// Railpack (https://railpack.com) builds services that don't declare a Dockerfile: the CLI
+// analyzes the source and emits a build plan that its BuildKit frontend executes. CLI and
+// frontend are pinned to the same release by checksum/digest (not just tags), so neither a
+// re-pushed tag nor a tampered release asset can change what runs on the builder.
+// FUTURE: mirror the CLI tarball and frontend image into Marshal-owned storage (the S3
+// bucket / a Fly registry) so github.com/ghcr.io outages can't fail every Railpack build,
+// and so each build stops re-downloading them.
+export const RAILPACK_VERSION = "0.35.0";
+// The builder image is Alpine-based, hence the musl build.
+export const RAILPACK_CLI_URL = `https://github.com/railwayapp/railpack/releases/download/v${RAILPACK_VERSION}/railpack-v${RAILPACK_VERSION}-x86_64-unknown-linux-musl.tar.gz`;
+export const RAILPACK_CLI_SHA256 = "d039785dd926ba059031c9c463c51f1462f344c844f828ac872c1f6d46fed7f1";
+export const RAILPACK_FRONTEND_IMAGE = `ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION}@sha256:bc73534934e7929ab3dc41765fb7e25c8c69d9be98c43ef8792fea51f65317bd`;
 export const BUILD_TIMEOUT_SECONDS = 15 * 60;
 export const UPLOAD_EXPIRY_SECONDS = 15 * 60;
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;

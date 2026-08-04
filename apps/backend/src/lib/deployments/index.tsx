@@ -106,6 +106,7 @@ export function definitionFromServiceRow(row: {
   minInstances: number | null,
   maxInstances: number | null,
   rootDirectory: string | null,
+  dockerfilePath: string | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
   return {
@@ -119,6 +120,7 @@ export function definitionFromServiceRow(row: {
     min_instances: row.minInstances ?? undefined,
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
+    dockerfile_path: row.dockerfilePath ?? undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
 }
@@ -162,6 +164,7 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
+      dockerfilePath: definition.dockerfile_path ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable
@@ -557,7 +560,11 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       max_instances: definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
       port: definition.port,
     },
-    source,
+    // dockerfile_path only matters when there is something to build; absent =
+    // the builder auto-detects the build with Railpack.
+    source: "upload_id" in source
+      ? { ...source, ...(definition.dockerfile_path !== undefined ? { dockerfile_path: definition.dockerfile_path } : {}) }
+      : source,
     env: resolvedEnv,
   };
 }
@@ -814,6 +821,8 @@ export type DeploymentServiceApiShape = {
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
+  // Null = built with Railpack auto-detection rather than a Dockerfile.
+  dockerfile_path: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   // Whether any run ever reached READY; the dashboard keeps its "deploy your
@@ -983,6 +992,7 @@ export async function serviceToApiShape(options: {
     min_instances: row.minInstances,
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
+    dockerfile_path: row.dockerfilePath,
     provisioned: row.provisionedAt != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,

@@ -729,6 +729,9 @@ export function SettingsContent({ service, isHexclave }: {
 
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
     { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
+    // A missing dockerfile_path means "Railpack build" only once a definition was actually
+    // synced — before that (port is null too) it just means "not synced yet".
+    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: service.api?.port != null ? "None (Railpack auto-detected build)" : "Not synced yet" },
     { label: "Container port", value: service.api?.port?.toString(), fallback: "Not synced yet" },
     { label: "Min instances", value: service.api?.min_instances?.toString(), fallback: "0 (scale to zero)" },
     { label: "Max instances", value: service.api?.max_instances?.toString(), fallback: "1" },
@@ -741,7 +744,7 @@ export function SettingsContent({ service, isHexclave }: {
       <div className="space-y-3">
         <SectionLabel>Container</SectionLabel>
         <p className="text-[11px] text-muted-foreground">
-          Container settings are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the Dockerfile at the root of the service&apos;s source directory.
+          Container settings are defined in the <span className="font-mono">services</span> export of your <span className="font-mono">hexclave.config.ts</span> and synced when you run <span className="font-mono">hexclave deploy</span>. The image is built from the service&apos;s Dockerfile when <span className="font-mono">dockerfilePath</span> is set, and auto-detected with Railpack otherwise.
         </p>
         {fields.map((field) => (
           <div key={field.label} className="space-y-1.5">

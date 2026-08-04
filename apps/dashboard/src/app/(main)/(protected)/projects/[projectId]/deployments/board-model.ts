@@ -95,7 +95,7 @@ export const SERVICE_TYPE_META = new Map<ServiceType, ServiceTypeMeta>([
     label: "Container",
     icon: CubeIcon,
     accent: "cyan",
-    hint: "A container built from your Dockerfile, deployed with `hexclave deploy`.",
+    hint: "A container built from your source (Railpack auto-detected, or your Dockerfile), deployed with `hexclave deploy`.",
   }],
 ]);
 

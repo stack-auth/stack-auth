@@ -83,6 +83,8 @@ export type AdminDeploymentServiceJson = {
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
+  // Null = built with Railpack auto-detection rather than a Dockerfile.
+  dockerfile_path: string | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,

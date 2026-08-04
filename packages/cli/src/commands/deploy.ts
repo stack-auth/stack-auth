@@ -187,19 +187,23 @@ export async function deployService(options: {
   const serviceId = service.serviceId;
   const log = (message: string) => console.error(`[${serviceId}] ${message}`);
 
-  const packaged = packageSourceDirectory(service.absoluteRootDirectory, ignoreRootDirectory, {
-    includeFiles: service.includeFiles,
-    excludeFiles: service.excludeFiles,
-  });
-  // Container services build from a Dockerfile at the PACKAGED root — verify it against the
-  // actual tar contents (case-exact, and after .gitignore/.dockerignore + include/exclude
-  // filters), not just the filesystem, so a missing/ignored/case-mismatched Dockerfile fails
-  // before upload rather than minutes later in the remote builder. (Docker never runs locally.)
-  if (!packaged.paths.includes("Dockerfile")) {
-    const onDisk = fs.existsSync(path.join(service.absoluteRootDirectory, "Dockerfile"));
-    throw new CliError(onDisk
-      ? `services.${serviceId} has a Dockerfile at ${service.absoluteRootDirectory} but it isn't in the packaged source — check your .dockerignore/.gitignore and includeFiles/excludeFiles (and that the filename is exactly "Dockerfile").`
-      : `services.${serviceId} has no Dockerfile at ${service.absoluteRootDirectory}. Container services are built from the Dockerfile at the root of their source directory — add one (it will be built remotely; Docker is not required locally).`);
+  const packaged = packageSourceDirectory(service.absoluteRootDirectory, ignoreRootDirectory);
+  const dockerfilePath = service.definition.dockerfile_path;
+  if (dockerfilePath !== undefined) {
+    // The declared Dockerfile must be in the PACKAGED source — verify against the actual tar
+    // contents (case-exact, after .gitignore/.dockerignore), not just the filesystem, so a
+    // missing/ignored/case-mismatched Dockerfile fails before upload rather than minutes
+    // later in the remote builder. (Docker never runs locally.)
+    if (!packaged.paths.includes(dockerfilePath)) {
+      const onDisk = fs.existsSync(path.join(service.absoluteRootDirectory, dockerfilePath));
+      throw new CliError(onDisk
+        ? `services.${serviceId} declares dockerfilePath ${JSON.stringify(dockerfilePath)} but that file isn't in the packaged source — check your .dockerignore/.gitignore (and that the path matches the filename case-exactly).`
+        : `services.${serviceId} declares dockerfilePath ${JSON.stringify(dockerfilePath)}, but there is no such file under ${service.absoluteRootDirectory}.`);
+    }
+  } else if (packaged.paths.includes("Dockerfile")) {
+    // No dockerfilePath means Railpack auto-detection — an existing Dockerfile is deliberately
+    // NOT picked up implicitly, so say so instead of silently ignoring it.
+    log(`Note: the source contains a Dockerfile, but services.${serviceId} does not set dockerfilePath, so the image will be built with Railpack auto-detection (https://railpack.com) instead. Set dockerfilePath: "Dockerfile" to build from it.`);
   }
   log(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed) from ${service.absoluteRootDirectory}.`);
 
