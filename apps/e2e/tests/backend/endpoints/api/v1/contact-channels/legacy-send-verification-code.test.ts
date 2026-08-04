@@ -2,7 +2,7 @@ import { it } from "../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 it("doesn't send a verification code if logged out", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   backendContext.set({ userAuth: null });
   const response = await niceBackendFetch("/api/v1/contact-channels/send-verification-code", {
     method: "POST",

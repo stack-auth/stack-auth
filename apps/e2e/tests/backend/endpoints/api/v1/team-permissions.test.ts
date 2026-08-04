@@ -123,7 +123,7 @@ it("can create a new permission and grant it to a user on the server", async ({ 
 
   await InternalApiKey.createAndSetProjectKeys(adminAccessToken);
 
-  const { userId } = await Auth.Password.signUpWithEmail({ password: 'test1234' });
+  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: 'test1234' });
   const { teamId } = await Team.createWithCurrentAsCreator();
 
   // list current permissions
