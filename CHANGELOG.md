@@ -9,6 +9,7 @@
 - New `automaticSideEffects` constructor option in the JS SDK that makes app construction fully inert — no prefetching, query-parameter processing, storage access, or other automatic side effects until you explicitly call a method.
 - Emails for low-volume tenancies are now sent immediately via a bounded burst allowance, instead of waiting in the send queue.
 - Fixed a bug where free trials configured in Payments were not correctly synchronized to the payments layer.
+- Impersonating a user from the dashboard now works with a single click — no more copy-pasting a script into the browser console.
 
 ## 7/31/26
 
