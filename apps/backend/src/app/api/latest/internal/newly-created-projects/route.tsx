@@ -14,13 +14,15 @@ import {
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import {
   FEATURED_APP_IDS,
+  CANDIDATE_WINDOW_SIZE,
   INTERNAL_PROJECT_ID,
   LIST_RETURN_LIMIT,
   buildNewlyCreatedProjectRows,
   loadProjectActivityMetrics,
+  mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
-import { ProjectRowSchema } from "./schemas";
+import { NewlyCreatedProjectsFiltersSchema, ProjectRowSchema } from "./schemas";
 
 const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
 const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
@@ -63,12 +65,7 @@ export const GET = createSmartRouteHandler({
       generated_at: yupString().defined(),
       featured_app_ids: yupArray(yupString().oneOf([...FEATURED_APP_IDS]).defined()).defined(),
       projects: yupArray(ProjectRowSchema).defined(),
-      filters: yupObject({
-        min_users: yupNumber().integer().defined(),
-        rde: RdeFilterSchema.defined(),
-        onboarding: OnboardingFilterSchema.defined(),
-        activity_24h_after_creation: yupBoolean().defined(),
-      }).defined(),
+      filters: NewlyCreatedProjectsFiltersSchema,
     }).defined(),
   }),
   handler: async (req) => {
@@ -89,25 +86,35 @@ export const GET = createSmartRouteHandler({
       req.query.activity_24h_after_creation,
     );
 
-    const projects = await globalPrismaClient.$replica().project.findMany({
-      where: {
-        ...(rde === "rde" ? { isDevelopmentEnvironment: true } : {}),
-        ...(rde === "not_rde" ? { isDevelopmentEnvironment: false } : {}),
-        ...(onboarding === "completed" ? { onboardingStatus: "completed" } : {}),
-        ...(onboarding === "incomplete" ? { onboardingStatus: { not: "completed" } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        displayName: true,
-        createdAt: true,
-        isDevelopmentEnvironment: true,
-        onboardingStatus: true,
-        ownerTeamId: true,
-        stripeAccountId: true,
-        description: true,
-      },
-    });
+    const projectWhere = {
+      ...(rde === "rde" ? { isDevelopmentEnvironment: true } : {}),
+      ...(rde === "not_rde" ? { isDevelopmentEnvironment: false } : {}),
+      ...(onboarding === "completed" ? { onboardingStatus: "completed" as const } : {}),
+      ...(onboarding === "incomplete" ? { onboardingStatus: { not: "completed" as const } } : {}),
+    };
+    const projectSelect = {
+      id: true,
+      displayName: true,
+      createdAt: true,
+      isDevelopmentEnvironment: true,
+      onboardingStatus: true,
+      ownerTeamId: true,
+      stripeAccountId: true,
+      description: true,
+    } as const;
+    const [recentProjects, internalProject] = await Promise.all([
+      globalPrismaClient.$replica().project.findMany({
+        where: projectWhere,
+        orderBy: { createdAt: "desc" },
+        take: CANDIDATE_WINDOW_SIZE,
+        select: projectSelect,
+      }),
+      globalPrismaClient.$replica().project.findUnique({
+        where: { id: INTERNAL_PROJECT_ID, ...projectWhere },
+        select: projectSelect,
+      }),
+    ]);
+    const projects = mergeInternalProjectIntoCandidates(recentProjects, internalProject);
 
     // Activity-backed filters cannot run in Prisma because those metrics live
     // in ClickHouse. Filter and limit first, then render each selected project's
@@ -136,6 +143,8 @@ export const GET = createSmartRouteHandler({
           rde,
           onboarding,
           activity_24h_after_creation: activity24hAfterCreation,
+          candidate_window_size: CANDIDATE_WINDOW_SIZE,
+          candidate_window_saturated: recentProjects.length === CANDIDATE_WINDOW_SIZE,
         },
       },
     };

@@ -71,6 +71,10 @@ describe("internal newly-created projects", () => {
       { accessType: "client" },
     );
     expect(list.status).toBe(200);
+    expect(list.body.filters).toMatchObject({
+      candidate_window_size: expect.any(Number),
+      candidate_window_saturated: expect.any(Boolean),
+    });
     const row = list.body.projects.find((project: { id: string }) => project.id === projectId);
     expect(row).toMatchObject({
       id: projectId,

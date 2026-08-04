@@ -62,3 +62,12 @@ export const ProjectRowSchema = yupObject({
   featured_apps: FeaturedAppsSchema,
   other_enabled_apps: yupArray(yupString().oneOf(Object.keys(ALL_APPS)).defined()).defined(),
 }).defined();
+
+export const NewlyCreatedProjectsFiltersSchema = yupObject({
+  min_users: yupNumber().integer().defined(),
+  rde: yupString().oneOf(["both", "rde", "not_rde"]).defined(),
+  onboarding: yupString().oneOf(["both", "incomplete", "completed"]).defined(),
+  activity_24h_after_creation: yupBoolean().defined(),
+  candidate_window_size: yupNumber().integer().defined(),
+  candidate_window_saturated: yupBoolean().defined(),
+}).defined();

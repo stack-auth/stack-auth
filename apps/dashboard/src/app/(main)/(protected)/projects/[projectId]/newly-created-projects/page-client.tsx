@@ -137,6 +137,8 @@ type ListResponse = {
     rde: RdeFilter,
     onboarding: OnboardingFilter,
     activity_24h_after_creation: boolean,
+    candidate_window_size?: number,
+    candidate_window_saturated?: boolean,
   },
 };
 
@@ -708,10 +710,19 @@ function ProjectsTable(props: {
   if (props.state.status !== "ok") return null;
 
   const projects = props.state.data.projects;
+  const candidateWindowSize = props.state.data.filters.candidate_window_size;
 
   return (
     <div className="overflow-x-auto rounded-md border">
       <table className="w-full min-w-[1250px] text-left text-xs">
+        {candidateWindowSize != null ? (
+          <caption className="caption-top border-b px-3 py-2 text-left text-xs text-muted-foreground">
+            Searched the most recent {formatNumber(candidateWindowSize)} projects
+            {props.state.data.filters.candidate_window_saturated === true
+              ? "; older projects may match these filters."
+              : "."}
+          </caption>
+        ) : null}
         <thead className="bg-muted/40 text-muted-foreground">
           <tr className="border-b">
             <th className="px-2 py-2 font-medium whitespace-nowrap">Users</th>

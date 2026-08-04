@@ -28,6 +28,10 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export const INTERNAL_PROJECT_ID = "internal";
 export const LIST_RETURN_LIMIT = 200;
+// Search a wider recent-project window than the 200-row display limit so
+// activity and user filters can reject candidates without requiring a full
+// database scan across deployments with millions of projects.
+export const CANDIDATE_WINDOW_SIZE = 5_000;
 export const DETAIL_REPLAY_LIMIT = 50;
 const CONFIG_RENDER_CONCURRENCY = 12;
 const STRIPE_ACCOUNT_CONCURRENCY = 8;
@@ -174,6 +178,16 @@ export function selectProjectsWithInternalPinned<T extends { id: string }>(
     selectedProjects[selectedProjects.length - 1] = internalProject;
   }
   return selectedProjects;
+}
+
+export function mergeInternalProjectIntoCandidates<T extends { id: string }>(
+  candidates: T[],
+  internalProject: T | null | undefined,
+): T[] {
+  if (internalProject == null || candidates.some((project) => project.id === INTERNAL_PROJECT_ID)) {
+    return candidates;
+  }
+  return [...candidates, internalProject];
 }
 
 function computeFeaturedAppLevels(options: {
