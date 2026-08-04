@@ -38,7 +38,8 @@ export function getCrossDomainHandoffParamsFromCurrentUrl(currentUrl: URL): Cros
 }
 
 type RedirectBackAwareHandlerName = "signIn" | "signUp" | "onboarding" | "signOut";
-type HandlerRedirectPolicy = "none" | "redirect-back-aware" | "after-auth-return";
+type ContinuationAwareHandlerName = "forgotPassword" | "passwordReset";
+type HandlerRedirectPolicy = "none" | "redirect-back-aware" | "continuation-aware" | "after-auth-return";
 
 type CrossDomainHandoffParamsMaybeMissing = {
   state: string | null,
@@ -51,6 +52,10 @@ function isRedirectBackAwareHandlerName(handlerName: keyof HandlerUrls): handler
     || handlerName === "signUp"
     || handlerName === "onboarding"
     || handlerName === "signOut";
+}
+
+function isContinuationAwareHandlerName(handlerName: keyof HandlerUrls): handlerName is ContinuationAwareHandlerName {
+  return handlerName === "forgotPassword" || handlerName === "passwordReset";
 }
 
 function hasCrossDomainHandoffParams(url: URL): boolean {
@@ -94,14 +99,19 @@ function buildRedirectBackAwareHandlerUrl(options: {
   currentUrl: URL,
   crossDomainHandoffParams: CrossDomainHandoffParams | null,
   localOAuthCallbackUrl: string,
+  noRedirectBack: boolean,
+  afterCallbackRedirectUrlOverride: string | null,
 }): string {
   const nextUrl = new URL(options.rawHandlerUrl, options.currentUrl);
   // Preserve after_auth_return_to verbatim (not a rebranded param).
   const currentAfterAuthReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
-  if (currentAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
+  if (!options.noRedirectBack && currentAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
     nextUrl.searchParams.set("after_auth_return_to", currentAfterAuthReturnTo);
   }
   for (const preservedParam of ["state", "codeChallenge", "afterCallbackRedirectUrl"] as const) {
+    if (options.noRedirectBack && preservedParam === "afterCallbackRedirectUrl") {
+      continue;
+    }
     const currentValue = getCrossDomainParam(options.currentUrl.searchParams, preservedParam);
     if (currentValue != null && !hasCrossDomainParam(nextUrl.searchParams, preservedParam)) {
       setCrossDomainParam(nextUrl.searchParams, preservedParam, currentValue);
@@ -123,28 +133,55 @@ function buildRedirectBackAwareHandlerUrl(options: {
   if (isCrossDomainHandlerRedirect) {
     if (!hasCrossDomainHandoffParams(nextUrl)) {
       const inheritedAfterAuthReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
-      const afterCallbackRedirectUrl = inheritedAfterAuthReturnTo
-        ? new URL(inheritedAfterAuthReturnTo, options.currentUrl).toString()
-        : options.currentUrl.toString();
+      const afterCallbackRedirectUrl = options.afterCallbackRedirectUrlOverride ?? (
+        inheritedAfterAuthReturnTo
+          ? new URL(inheritedAfterAuthReturnTo, options.currentUrl).toString()
+          : options.currentUrl.toString()
+      );
+      const handoffParams = options.crossDomainHandoffParams
+        ?? getCrossDomainHandoffParamsFromCurrentUrl(options.currentUrl);
       const callbackUrl = buildCrossDomainAuthCallbackUrl({
         currentUrl: options.currentUrl,
         localOAuthCallbackUrl: options.localOAuthCallbackUrl,
-        state: options.crossDomainHandoffParams?.state,
-        codeChallenge: options.crossDomainHandoffParams?.codeChallenge,
+        state: handoffParams?.state,
+        codeChallenge: handoffParams?.codeChallenge,
         afterCallbackRedirectUrl,
       });
 
       nextUrl.searchParams.set("after_auth_return_to", callbackUrl.toString());
       setCrossDomainParam(nextUrl.searchParams, "afterCallbackRedirectUrl", afterCallbackRedirectUrl);
-      if (options.crossDomainHandoffParams != null) {
-        setCrossDomainParam(nextUrl.searchParams, "state", options.crossDomainHandoffParams.state);
-        setCrossDomainParam(nextUrl.searchParams, "codeChallenge", options.crossDomainHandoffParams.codeChallenge);
+      if (handoffParams != null) {
+        setCrossDomainParam(nextUrl.searchParams, "state", handoffParams.state);
+        setCrossDomainParam(nextUrl.searchParams, "codeChallenge", handoffParams.codeChallenge);
       }
     }
-  } else if (options.currentUrl.protocol === nextUrl.protocol && options.currentUrl.host === nextUrl.host && !nextUrl.searchParams.has("after_auth_return_to")) {
+  } else if (!options.noRedirectBack && options.currentUrl.protocol === nextUrl.protocol && options.currentUrl.host === nextUrl.host && !nextUrl.searchParams.has("after_auth_return_to")) {
     nextUrl.searchParams.set("after_auth_return_to", getRelativePart(options.currentUrl));
   }
 
+  return nextUrl.origin === options.currentUrl.origin ? getRelativePart(nextUrl) : nextUrl.toString();
+}
+
+/**
+ * Carries an auth flow's existing return state without ever making the current page the return
+ * target. This distinction is important for password flows: forgot-password and password-reset
+ * are continuation pages, not destinations customers should return to after signing in.
+ */
+function buildContinuationAwareHandlerUrl(options: {
+  rawHandlerUrl: string,
+  currentUrl: URL,
+}): string {
+  const nextUrl = new URL(options.rawHandlerUrl, options.currentUrl);
+  const inheritedAfterAuthReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
+  if (inheritedAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
+    nextUrl.searchParams.set("after_auth_return_to", inheritedAfterAuthReturnTo);
+  }
+  for (const preservedParam of ["state", "codeChallenge", "afterCallbackRedirectUrl"] as const) {
+    const currentValue = getCrossDomainParam(options.currentUrl.searchParams, preservedParam);
+    if (currentValue != null && !hasCrossDomainParam(nextUrl.searchParams, preservedParam)) {
+      setCrossDomainParam(nextUrl.searchParams, preservedParam, currentValue);
+    }
+  }
   return nextUrl.origin === options.currentUrl.origin ? getRelativePart(nextUrl) : nextUrl.toString();
 }
 
@@ -154,6 +191,9 @@ function getHandlerRedirectPolicy(handlerName: keyof HandlerUrls): HandlerRedire
   }
   if (isRedirectBackAwareHandlerName(handlerName)) {
     return "redirect-back-aware";
+  }
+  if (isContinuationAwareHandlerName(handlerName)) {
+    return "continuation-aware";
   }
   return "none";
 }
@@ -175,6 +215,8 @@ async function resolveRedirectBackAwareHandlerUrlForRedirect(options: {
   currentUrl: URL,
   localOAuthCallbackUrl: string,
   getCrossDomainHandoffParams: (currentUrl: URL) => Promise<CrossDomainHandoffParams>,
+  noRedirectBack: boolean,
+  afterCallbackRedirectUrlOverride: string | null,
 }): Promise<string> {
   const initial = buildRedirectBackAwareHandlerUrl({
     handlerName: options.handlerName,
@@ -182,6 +224,8 @@ async function resolveRedirectBackAwareHandlerUrlForRedirect(options: {
     currentUrl: options.currentUrl,
     crossDomainHandoffParams: null,
     localOAuthCallbackUrl: options.localOAuthCallbackUrl,
+    noRedirectBack: options.noRedirectBack,
+    afterCallbackRedirectUrlOverride: options.afterCallbackRedirectUrlOverride,
   });
   if (options.handlerName === "signOut") {
     return initial;
@@ -200,6 +244,8 @@ async function resolveRedirectBackAwareHandlerUrlForRedirect(options: {
     currentUrl: options.currentUrl,
     crossDomainHandoffParams,
     localOAuthCallbackUrl: options.localOAuthCallbackUrl,
+    noRedirectBack: options.noRedirectBack,
+    afterCallbackRedirectUrlOverride: options.afterCallbackRedirectUrlOverride,
   });
 }
 
@@ -209,18 +255,56 @@ export async function planRedirectToHandler(options: {
   noRedirectBack: boolean,
   currentUrl: URL | null,
   localOAuthCallbackUrl: string,
+  rawHomeUrl: string,
   getCrossDomainHandoffParams: (currentUrl: URL) => Promise<CrossDomainHandoffParams>,
 }): Promise<RedirectToHandlerPlan> {
-  if (options.noRedirectBack || options.currentUrl == null) {
+  if (options.currentUrl == null) {
     return { type: "redirect", url: options.rawHandlerUrl };
   }
 
   const policy = getHandlerRedirectPolicy(options.handlerName);
+  if (options.noRedirectBack) {
+    // Sign-in uses noRedirectBack from password-reset pages to avoid capturing the reset page.
+    // Same-domain sign-in must still carry an already-inherited continuation. Cross-domain
+    // sign-in falls through to the redirect-back-aware planner below because it needs to return
+    // through the source app's callback before continuing to home.
+    if (options.handlerName === "signIn") {
+      const signInTarget = new URL(options.rawHandlerUrl, options.currentUrl);
+      if (signInTarget.origin === options.currentUrl.origin) {
+        return {
+          type: "redirect",
+          url: buildContinuationAwareHandlerUrl({
+            rawHandlerUrl: options.rawHandlerUrl,
+            currentUrl: options.currentUrl,
+          }),
+        };
+      }
+    } else {
+      // Other handlers retain the historical noRedirectBack behavior, including
+      // afterSignIn/afterSignUp ignoring all return state.
+      return {
+        type: "redirect",
+        url: options.rawHandlerUrl,
+      };
+    }
+  }
   if (policy === "none") {
     return { type: "redirect", url: options.rawHandlerUrl };
   }
+  if (policy === "continuation-aware") {
+    return {
+      type: "redirect",
+      url: buildContinuationAwareHandlerUrl({
+        rawHandlerUrl: options.rawHandlerUrl,
+        currentUrl: options.currentUrl,
+      }),
+    };
+  }
 
   if (policy === "after-auth-return") {
+    if (options.noRedirectBack) {
+      return { type: "redirect", url: options.rawHandlerUrl };
+    }
     const redirectBackUrl = options.currentUrl.searchParams.get("after_auth_return_to");
     if (redirectBackUrl == null) {
       return { type: "redirect", url: options.rawHandlerUrl };
@@ -263,6 +347,12 @@ export async function planRedirectToHandler(options: {
     });
   }
 
+  // noRedirectBack suppresses the initiating deep link, not the return journey. Cross-domain auth
+  // still needs to return through the source app's callback, but its final destination is home.
+  const afterCallbackRedirectUrlOverride = options.noRedirectBack
+    ? new URL(options.rawHomeUrl, options.currentUrl).toString()
+    : null;
+
   return {
     type: "redirect",
     url: await resolveRedirectBackAwareHandlerUrlForRedirect({
@@ -271,6 +361,8 @@ export async function planRedirectToHandler(options: {
       currentUrl: options.currentUrl,
       localOAuthCallbackUrl: options.localOAuthCallbackUrl,
       getCrossDomainHandoffParams: options.getCrossDomainHandoffParams,
+      noRedirectBack: options.noRedirectBack,
+      afterCallbackRedirectUrlOverride,
     }),
   };
 }

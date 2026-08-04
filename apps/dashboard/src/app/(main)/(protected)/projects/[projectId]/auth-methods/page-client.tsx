@@ -456,7 +456,7 @@ function CustomOidcProviderDialog({
             control={form.control}
             name="clientSecret"
             render={({ field }) => (
-              <FormItem className="space-y-1.5">
+              <FormItem className="hexclave-sensitive space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
                 <FormControl>
                   <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
