@@ -126,6 +126,20 @@ async function deleteObject(key: string): Promise<void> {
   await withTransientRetry(async () => await s3().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key })));
 }
 
+async function deleteObjectConditionally(key: string, etag: string): Promise<boolean> {
+  try {
+    await withTransientRetry(async () => await s3().send(new DeleteObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      IfMatch: etag,
+    })));
+    return true;
+  } catch (error) {
+    if (isPreconditionFailed(error)) return false;
+    throw error;
+  }
+}
+
 async function listKeys(prefix: string): Promise<string[]> {
   const keys: string[] = [];
   let continuationToken: string | undefined = undefined;
@@ -328,7 +342,11 @@ function domainIndexKey(ns: string, key: string, hostname: string): string {
 }
 
 export async function readDomainClaim(hostname: string): Promise<DomainClaim | null> {
-  return await getJson<DomainClaim>(domainClaimKey(hostname));
+  return (await readDomainClaimVersioned(hostname))?.value ?? null;
+}
+
+export async function readDomainClaimVersioned(hostname: string): Promise<Versioned<DomainClaim> | null> {
+  return await getJsonVersioned<DomainClaim>(domainClaimKey(hostname));
 }
 
 // Atomic claim via conditional write (If-None-Match: "*" → 412 when the hostname is already
@@ -340,33 +358,27 @@ export async function claimDomain(claim: DomainClaim): Promise<boolean> {
   // leave a claim that deleteService (which enumerates via the index) can never release,
   // pinning the hostname globally forever.
   await putJson(domainIndexKey(claim.ns, claim.service_key, claim.hostname), {});
-  try {
-    await s3().send(new PutObjectCommand({
-      Bucket: bucket(),
-      Key: domainClaimKey(claim.hostname),
-      Body: JSON.stringify(claim),
-      ContentType: "application/json",
-      IfNoneMatch: "*",
-    }));
-  } catch (error) {
-    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
-    if (status === 412 || (error as { name?: string }).name === "PreconditionFailed") return false;
-    throw error;
-  }
+  return await putJsonConditionally(domainClaimKey(claim.hostname), claim, { ifNoneMatch: true }) !== null;
+}
+
+// Overwrite is only valid for repoints within the same namespace. The ETag fence prevents a
+// stale repoint from overwriting a newer owner that landed after the caller's read.
+export async function rewriteDomainClaim(previous: Versioned<DomainClaim>, next: DomainClaim): Promise<boolean> {
+  await putJson(domainIndexKey(next.ns, next.service_key, next.hostname), {});
+  const rewritten = await putJsonConditionally(domainClaimKey(next.hostname), next, { ifMatch: previous.etag });
+  if (rewritten === null) return false;
+  await deleteObject(domainIndexKey(previous.value.ns, previous.value.service_key, previous.value.hostname));
   return true;
 }
 
-// Overwrite is only valid for repoints within the same namespace — callers must have read
-// the existing claim first and verified ownership.
-export async function rewriteDomainClaim(previous: DomainClaim, next: DomainClaim): Promise<void> {
-  await putJson(domainClaimKey(next.hostname), next);
-  await deleteObject(domainIndexKey(previous.ns, previous.service_key, previous.hostname));
-  await putJson(domainIndexKey(next.ns, next.service_key, next.hostname), {});
-}
-
-export async function releaseDomainClaim(claim: DomainClaim): Promise<void> {
-  await deleteObject(domainClaimKey(claim.hostname));
-  await deleteObject(domainIndexKey(claim.ns, claim.service_key, claim.hostname));
+// Deleting by ETag is the ownership check and deletion in one S3 operation. A plain
+// read-then-delete has a TOCTOU window where a concurrent repoint can replace the object and
+// the stale delete then erases the new owner's claim.
+export async function releaseDomainClaim(claim: Versioned<DomainClaim>): Promise<boolean> {
+  const released = await deleteObjectConditionally(domainClaimKey(claim.value.hostname), claim.etag);
+  if (!released) return false;
+  await deleteObject(domainIndexKey(claim.value.ns, claim.value.service_key, claim.value.hostname));
+  return true;
 }
 
 export async function listDomainClaimsForService(ns: string, key: string): Promise<string[]> {

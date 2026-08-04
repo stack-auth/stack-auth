@@ -3,7 +3,7 @@ import { badRequest, conflict, notFound } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { appNameForService } from "./naming.js";
 import { dnsRecordsForCertificate } from "./services.js";
-import { claimDomain, readDomainClaim, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
+import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
 import type { DnsRecord } from "./types.js";
 
 // Fly does NOT enforce hostname uniqueness across apps (smoke-verified), so the bucket
@@ -34,24 +34,25 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
   }
 
-  const existingClaim = await readDomainClaim(hostname);
+  const existingClaim = await readDomainClaimVersioned(hostname);
   if (existingClaim === null) {
     const claimed = await claimDomain({ hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
     if (!claimed) throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
-  } else if (existingClaim.ns !== ns) {
+  } else if (existingClaim.value.ns !== ns) {
     // Never reveal which namespace holds it.
     throw conflict(`hostname ${JSON.stringify(hostname)} is already attached elsewhere`);
-  } else if (existingClaim.service_key !== serviceKey) {
+  } else if (existingClaim.value.service_key !== serviceKey) {
     // Re-PUT within the namespace repoints: certificate moves from the old service's app.
-    const previousApp = appNameForService(config.envId, ns, existingClaim.service_key);
+    const previousApp = appNameForService(config.envId, ns, existingClaim.value.service_key);
     await fly.deleteCertificate(previousApp, hostname);
-    await releasePublicIpsIfUnused(ns, existingClaim.service_key);
-    await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
+    await releasePublicIpsIfUnused(ns, existingClaim.value.service_key);
+    const rewritten = await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
+    if (!rewritten) throw conflict(`hostname ${JSON.stringify(hostname)} changed owners concurrently; retry the attach`);
   } else {
     // Idempotent re-attach on the same service: re-assert the index entry, which repairs the
     // case where a prior claim landed but its index write was lost (an orphaned claim that
     // deleteService could otherwise never release).
-    await claimDomain(existingClaim);
+    await claimDomain(existingClaim.value);
   }
 
   // Public exposure exists only while domains are attached: allocate the shared IPv4 +
@@ -128,20 +129,20 @@ export async function readDomain(ns: string, hostname: string): Promise<AttachDo
 export async function detachDomain(ns: string, hostname: string, expectedServiceKey?: string): Promise<void> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
-  const claim = await readDomainClaim(hostname);
-  if (claim === null || claim.ns !== ns) {
+  const claim = await readDomainClaimVersioned(hostname);
+  if (claim === null || claim.value.ns !== ns) {
     throw notFound(`hostname ${JSON.stringify(hostname)} is not attached in namespace ${JSON.stringify(ns)}`);
   }
-  if (expectedServiceKey !== undefined && claim.service_key !== expectedServiceKey) {
+  if (expectedServiceKey !== undefined && claim.value.service_key !== expectedServiceKey) {
     throw notFound(`hostname ${JSON.stringify(hostname)} is not attached to service ${JSON.stringify(expectedServiceKey)} in namespace ${JSON.stringify(ns)}`);
   }
-  const appName = appNameForService(config.envId, ns, claim.service_key);
+  const appName = appNameForService(config.envId, ns, claim.value.service_key);
   await fly.deleteCertificate(appName, hostname);
   // Release public IPs BEFORE the claim: a crash between the two must not leave a billable
   // dedicated IP allocated with no claim (and no code path that would ever revisit it). The
   // service stays running and internally reachable; only its public exposure goes away when
   // the last domain detaches.
-  await releasePublicIpsIfUnused(ns, claim.service_key);
+  await releasePublicIpsIfUnused(ns, claim.value.service_key);
   await releaseDomainClaim(claim);
 }
 

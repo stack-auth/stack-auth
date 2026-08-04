@@ -1,8 +1,8 @@
 /* eslint-disable no-restricted-syntax -- this test must manipulate process.env
    directly to exercise the env-var handling that getEnvVariable() wraps. */
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull } from "./marshal-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MarshalApiError, MarshalClient, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull } from "./marshal-client";
 
 // The env-var handling can't be covered by e2e tests (the dev backend always
 // has the mock credentials set), so the unconfigured-instance path is unit
@@ -67,5 +67,35 @@ describe("marshal deployments configuration", () => {
 
     process.env.HEXCLAVE_MARSHAL_URL = "http://localhost:9999";
     expect(getMarshalDeploymentsConfigOrNull()?.baseUrl).toBe("http://localhost:9999");
+  });
+});
+
+describe("MarshalClient", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("normalizes a timeout while consuming the response body", async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(new DOMException("The response body timed out", "TimeoutError"));
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { status: 200 }));
+    const client = new MarshalClient({ apiKey: "test-key", baseUrl: "https://marshal.example.com" });
+
+    let thrown: unknown;
+    try {
+      await client.getService("test-namespace", "test-service");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(MarshalApiError);
+    expect(thrown).toMatchObject({
+      status: 504,
+      code: "timeout",
+      endpoint: "GET /v1/namespaces/test-namespace/services/test-service",
+    });
   });
 });

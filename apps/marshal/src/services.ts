@@ -7,7 +7,7 @@ import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
 import { redactSecrets } from "./redact.js";
 import { computeRevision } from "./revision.js";
-import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaim, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec } from "./types.js";
 import { ulid } from "./ulid.js";
@@ -831,8 +831,8 @@ export async function deleteService(ns: string, key: string): Promise<void> {
   // Release hostname claims first — certs die with the app, but the bucket registry would
   // otherwise block the hostname forever.
   for (const hostname of await listDomainClaimsForService(ns, key)) {
-    const claim = await readDomainClaim(hostname);
-    if (claim !== null && claim.ns === ns && claim.service_key === key) {
+    const claim = await readDomainClaimVersioned(hostname);
+    if (claim !== null && claim.value.ns === ns && claim.value.service_key === key) {
       await releaseDomainClaim(claim);
     }
   }

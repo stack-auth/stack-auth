@@ -159,6 +159,7 @@ export class MarshalClient {
     const method = init?.method ?? "GET";
     const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let response: Response;
+    let text: string;
     try {
       response = await fetch(`${this.config.baseUrl}${path}`, {
         method,
@@ -170,6 +171,9 @@ export class MarshalClient {
         // Covers the body read below too — an abort tears down the whole exchange.
         signal: AbortSignal.timeout(timeoutMs),
       });
+      // Body consumption must stay inside the timeout catch: fetch resolves as soon as the
+      // headers arrive, while a stalled response body rejects here with the same abort.
+      text = await response.text();
     } catch (error) {
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
         // 504 is deliberately not a USER_INPUT_MARSHAL_STATUS: a stalled runtime is an
@@ -178,7 +182,6 @@ export class MarshalClient {
       }
       throw error;
     }
-    const text = await response.text();
     let json: unknown;
     try {
       json = JSON.parse(text);
