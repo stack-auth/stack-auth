@@ -22,10 +22,12 @@ import {
   mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
-import { NewlyCreatedProjectsFiltersSchema, ProjectRowSchema } from "./schemas";
-
-const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
-const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
+import {
+  NewlyCreatedProjectsFiltersSchema,
+  OnboardingFilterSchema,
+  ProjectRowSchema,
+  RdeFilterSchema,
+} from "./schemas";
 
 function parseNonNegativeInt(name: string, raw: string | undefined, fallback: number): number {
   if (raw == null || raw === "") return fallback;

@@ -7,6 +7,9 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 
+export const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
+export const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
+
 export const OwnerMemberSchema = yupObject({
   id: yupString().defined(),
   display_name: yupString().nullable().defined(),
@@ -65,8 +68,8 @@ export const ProjectRowSchema = yupObject({
 
 export const NewlyCreatedProjectsFiltersSchema = yupObject({
   min_users: yupNumber().integer().defined(),
-  rde: yupString().oneOf(["both", "rde", "not_rde"]).defined(),
-  onboarding: yupString().oneOf(["both", "incomplete", "completed"]).defined(),
+  rde: RdeFilterSchema.defined(),
+  onboarding: OnboardingFilterSchema.defined(),
   activity_24h_after_creation: yupBoolean().defined(),
   candidate_window_size: yupNumber().integer().defined(),
   candidate_window_saturated: yupBoolean().defined(),
