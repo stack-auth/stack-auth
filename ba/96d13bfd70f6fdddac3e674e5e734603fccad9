@@ -1,0 +1,19 @@
+apps/e2e/tests/backend/endpoints/api/v1/index.test.ts
+  s_f7f9288d967c40::t_38c8c4f97f421d 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "ba96d13bfd70f6fdddac3e674e5e734603fccad9",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
