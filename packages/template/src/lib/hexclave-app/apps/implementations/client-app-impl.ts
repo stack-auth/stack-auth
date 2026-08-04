@@ -845,6 +845,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
     this._analyticsOptions = resolvedOptions.analytics;
+    this._observabilityOptions = resolvedOptions.observability;
+    this._telemetryOptions = snapshotTelemetryOptions(resolvedOptions.telemetry);
+    // Resolve immutable telemetry state even for inert apps. Disabling automatic
+    // side effects must not leave explicit telemetry methods partially initialized.
+    this._telemetryResource = resolveTelemetryResource(this._telemetryOptions, this._telemetryTier());
+    this._networkCaptureConfig = normalizeNetworkCaptureOptions(this._observabilityOptions?.network);
+    this._traceSampleRate = normalizeTraceSampleRate(this._observabilityOptions);
 
     if (extraOptions?.uniqueIdentifier !== undefined) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -869,19 +876,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
-
-    this._analyticsOptions = resolvedOptions.analytics;
-    this._observabilityOptions = resolvedOptions.observability;
-    this._telemetryOptions = snapshotTelemetryOptions(resolvedOptions.telemetry);
-    // `_telemetryTier()` is a prototype method precisely so it can be called
-    // here, during the base constructor — the server subclass overrides it so an
-    // isomorphic app never collapses its two halves into one service identity.
-    this._telemetryResource = resolveTelemetryResource(this._telemetryOptions, this._telemetryTier());
-    // Validates capture filters plus the top-level trace sampling policy. The
-    // deprecated network.sampleRate field is resolved here only as an alias;
-    // network capture itself never makes an independent sampling draw.
-    this._networkCaptureConfig = normalizeNetworkCaptureOptions(this._observabilityOptions?.network);
-    this._traceSampleRate = normalizeTraceSampleRate(this._observabilityOptions);
 
     // Client analytics (events + replays) needs a refreshable client session.
     // Apps authenticated via projectOwnerSession use HexclaveAdminInterface, whose
