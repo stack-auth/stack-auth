@@ -1,0 +1,55 @@
+apps/backend/src/server/registry.ts
+  s_6120190cf003a8::t_6e17f3d3cd834a 4-7,17,23
+packages/template/src/lib/hexclave-app/apps/implementations/common.ts
+  s_6120190cf003a8::t_a4c63e05a0647b 46
+apps/backend/src/app/api/latest/internal/external-db-sync/status/route.ts
+  s_6120190cf003a8::t_f1440e20705710 19,21
+  s_6120190cf003a8::t_11515043a93378 880-883
+apps/backend/package.json
+  s_6120190cf003a8::t_c22ad5821ce277 17
+apps/backend/src/lib/external-db-sync.ts
+  s_6120190cf003a8::t_b3f300ae1d9533 1458-1461
+  s_6120190cf003a8::t_a7a5461a2621e0 14
+apps/backend/src/server/request-log.ts
+  s_6120190cf003a8::t_fe45000ed99c03 39
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_6120190cf003a8::t_644b90c51cfc92 80-130,132,134-137,139-140,142-143,145-175
+apps/backend/src/prisma-client.tsx
+  s_6120190cf003a8::t_7b581a79ee7d2f 51-59,61-68
+  s_6120190cf003a8::t_5602cde09dc8ec 80
+  s_6120190cf003a8::t_c46e2d7d2c9f8d 14
+apps/backend/src/lib/runtime/headers.tsx
+  s_6120190cf003a8::t_f76fc7ad4f412b 4,7,38-39,47-49,52
+apps/dashboard/src/components/walkthrough/walkthrough-overlay.tsx
+  s_6120190cf003a8::t_24f62fed3b0ed4 158
+  s_6120190cf003a8::t_eba34f75f6446d 375
+apps/backend/src/lib/runtime/navigation.tsx
+  s_6120190cf003a8::t_0f078bb898b540 13
+apps/backend/src/lib/runtime/request-context.tsx
+  s_6120190cf003a8::t_db4262a6ab954c 10
+apps/backend/src/server/app.ts
+  s_6120190cf003a8::t_750f5f1c1fb184 82
+apps/backend/src/app/api/latest/route.ts
+  s_6120190cf003a8::t_3b89ed3c331771 3
+  s_6120190cf003a8::t_8ce33eccea96bf 53-60
+apps/backend/vitest.config.ts
+  s_6120190cf003a8::t_fa205f3622b448 20
+pnpm-lock.yaml
+  s_6120190cf003a8::t_bb738664483330 1060,20608,20611-20614,20714,20756,20778,20820,20842,20844-20846,20944,20946,20948,20976,20978,20980,21008,21010-21011,21081,21083,21116,21118,33628,33630,34752-34760,37005-37032
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "1da32d0deb45f63448161f5248e4f5f54601808f",
+  "prompts": {},
+  "sessions": {
+    "s_6120190cf003a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de85029a-0295-4c9f-a13d-3de4bc7a2513",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
