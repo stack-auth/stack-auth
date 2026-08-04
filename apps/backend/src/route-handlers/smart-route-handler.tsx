@@ -1,7 +1,6 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
-import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
@@ -78,112 +77,102 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
     try {
       const requestId = generateSecureRandomString(80);
       const requestUrl = new URL(req.url);
-      return await Sentry.withIsolationScope(async (isolationScope) => {
-        // Request scopes must be isolated because Fluid Compute and Cloud Run
-        // handle concurrent requests in one process. Never send auth headers or
-        // query values to Sentry; both routinely contain credentials.
-        isolationScope.setContext("stack-request", {
-          requestId,
-          method: req.method,
-        });
+      return await traceSpan({
+        description: 'handling API request',
+        attributes: {
+          "stack.request.request-id": requestId,
+          "stack.request.method": req.method,
+          "stack.process.id": processId,
+          "stack.process.concurrent-requests": concurrentRequestsInProcess,
+        },
+      }, async (span) => {
+        // Production uses the normalized structured request log. Detailed
+        // request URLs and project identifiers are useful locally, but can
+        // contain customer data and must not enter hosted runtime logs.
+        const shouldLogExtendedRequestDetails = getNodeEnvironment() === "development";
 
-        return await traceSpan({
-          description: 'handling API request',
-          attributes: {
-            "stack.request.request-id": requestId,
-            "stack.request.method": req.method,
-            "stack.process.id": processId,
-            "stack.process.concurrent-requests": concurrentRequestsInProcess,
-          },
-        }, async (span) => {
-          // Production uses the normalized structured request log. Detailed
-          // request URLs and project identifiers are useful locally, but can
-          // contain customer data and must not enter hosted runtime logs.
-          const shouldLogExtendedRequestDetails = getNodeEnvironment() === "development";
-
-          let hasRequestFinished = false;
-          try {
-            // request duration warning
-            const allowedLongRequestPaths = [
-              "/api/latest/internal/email-queue-step",
-              "/api/latest/analytics/clickmap",
-              "/api/latest/analytics/query",
-              "/api/latest/internal/analytics/clickmap",
-              "/api/latest/ai/query/stream",
-              "/api/latest/ai/query/generate",
-              "/health/email",
-              "/api/latest/internal/metrics",
-              "/api/latest/internal/external-db-sync/poller",
-              "/api/latest/internal/external-db-sync/sequencer",
-              "/api/latest/internal/external-db-sync/sync-engine",
-              "/api/latest/internal/workflow-engine-step",
-            ];
-            // Prefix entries for routes with dynamic path segments (which exact
-            // matching can't express): deploys upload many files to Vercel and
-            // the run-log stream follows a build until it finishes.
-            const allowedLongRequestPathPrefixes = [
-              "/api/latest/deployments/",
-            ];
-            const allAllowedLongRequestPaths = [
-              ...allowedLongRequestPaths,
-              ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
-            ];
-            const allAllowedLongRequestPathPrefixes = [
-              ...allowedLongRequestPathPrefixes,
-              ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
-            ];
-            const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) || allAllowedLongRequestPathPrefixes.some(prefix => requestUrl.pathname.startsWith(prefix)) ? 240 : 12;
-            runAsynchronously(async () => {
-              // This diagnostic timer must not keep a drained server process alive.
-              await waitForTimeout(warnAfterSeconds * 1000, undefined, { ref: false });
-              if (!hasRequestFinished) {
-                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} using ${req.method} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-              }
-            });
-
-            if (shouldLogExtendedRequestDetails) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${requestUrl}`);
-            const timeStart = performance.now();
-            const res = await handler(req, options, requestId);
-            const time = (performance.now() - timeStart);
-
-            // Record request stats for dev-stats page
-            recordRequestStats(req.method, requestUrl.pathname, time);
-
-            if ([301, 302].includes(res.status)) {
-              throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
+        let hasRequestFinished = false;
+        try {
+          // request duration warning
+          const allowedLongRequestPaths = [
+            "/api/latest/internal/email-queue-step",
+            "/api/latest/analytics/clickmap",
+            "/api/latest/analytics/query",
+            "/api/latest/internal/analytics/clickmap",
+            "/api/latest/ai/query/stream",
+            "/api/latest/ai/query/generate",
+            "/health/email",
+            "/api/latest/internal/metrics",
+            "/api/latest/internal/external-db-sync/poller",
+            "/api/latest/internal/external-db-sync/sequencer",
+            "/api/latest/internal/external-db-sync/sync-engine",
+            "/api/latest/internal/workflow-engine-step",
+          ];
+          // Prefix entries for routes with dynamic path segments (which exact
+          // matching can't express): deploys upload many files to Vercel and
+          // the run-log stream follows a build until it finishes.
+          const allowedLongRequestPathPrefixes = [
+            "/api/latest/deployments/",
+          ];
+          const allAllowedLongRequestPaths = [
+            ...allowedLongRequestPaths,
+            ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+          ];
+          const allAllowedLongRequestPathPrefixes = [
+            ...allowedLongRequestPathPrefixes,
+            ...allowedLongRequestPathPrefixes.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+          ];
+          const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) || allAllowedLongRequestPathPrefixes.some(prefix => requestUrl.pathname.startsWith(prefix)) ? 240 : 12;
+          runAsynchronously(async () => {
+            // This diagnostic timer must not keep a drained server process alive.
+            await waitForTimeout(warnAfterSeconds * 1000, undefined, { ref: false });
+            if (!hasRequestFinished) {
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} using ${req.method} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
             }
-            if (shouldLogExtendedRequestDetails) console.log(`[    RES] [${requestId}] ${req.method} ${requestUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
-            return res;
-          } catch (e) {
-            let statusError: StatusError;
-            try {
-              statusError = catchError(e, requestId);
-            } catch (e) {
-              if (shouldLogExtendedRequestDetails) console.log(`[    EXC] [${requestId}] ${req.method} ${requestUrl.pathname}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${String(getErrorDigest(e))}`);
-              throw e;
-            }
+          });
 
-            if (shouldLogExtendedRequestDetails) console.log(`[    ERR] [${requestId}] ${req.method} ${requestUrl.pathname}: ${statusError.message}`);
+          if (shouldLogExtendedRequestDetails) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${requestUrl}`);
+          const timeStart = performance.now();
+          const res = await handler(req, options, requestId);
+          const time = (performance.now() - timeStart);
 
-            if (!isCommonError(statusError)) {
-              // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
-              // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
-              if (shouldLogExtendedRequestDetails) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
-            }
+          // Record request stats for dev-stats page
+          recordRequestStats(req.method, requestUrl.pathname, time);
 
-            const res = await createResponse(req, requestId, {
-              statusCode: statusError.statusCode,
-              bodyType: "binary",
-              body: statusError.getBody(),
-              headers: {
-                ...statusError.getHeaders(),
-              },
-            });
-            return res;
-          } finally {
-            hasRequestFinished = true;
+          if ([301, 302].includes(res.status)) {
+            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
           }
-        });
+          if (shouldLogExtendedRequestDetails) console.log(`[    RES] [${requestId}] ${req.method} ${requestUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
+          return res;
+        } catch (e) {
+          let statusError: StatusError;
+          try {
+            statusError = catchError(e, requestId);
+          } catch (e) {
+            if (shouldLogExtendedRequestDetails) console.log(`[    EXC] [${requestId}] ${req.method} ${requestUrl.pathname}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${String(getErrorDigest(e))}`);
+            throw e;
+          }
+
+          if (shouldLogExtendedRequestDetails) console.log(`[    ERR] [${requestId}] ${req.method} ${requestUrl.pathname}: ${statusError.message}`);
+
+          if (!isCommonError(statusError)) {
+            // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
+            // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+            if (shouldLogExtendedRequestDetails) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
+          }
+
+          const res = await createResponse(req, requestId, {
+            statusCode: statusError.statusCode,
+            bodyType: "binary",
+            body: statusError.getBody(),
+            headers: {
+              ...statusError.getHeaders(),
+            },
+          });
+          return res;
+        } finally {
+          hasRequestFinished = true;
+        }
       });
     } finally {
       concurrentRequestsInProcess--;

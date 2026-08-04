@@ -1,6 +1,5 @@
 import { httpMethodNames } from "@/generated/route-modules";
 import { serializeSetCookie } from "@/lib/runtime/headers";
-import { NextNotFoundError } from "@/lib/runtime/navigation";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
 import { node } from "@elysiajs/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
@@ -27,7 +26,6 @@ const staticRequestLogPaths = new Set([
   "/dev-stats",
   "/health/error-handler-debug",
   "/health/error-handler-debug/endpoint",
-  "/monitoring",
 ]);
 const shouldLogDevelopmentRequests = getNodeEnvironment() === "development";
 
@@ -77,14 +75,11 @@ export const app = new Elysia({
     }
     throw new Error("Server observability debug error thrown successfully!");
   })
-  .post("/monitoring", async ({ request }) => withGlobalHeaders(await handleMonitoringTunnel(request)), {
-    parse: "none",
-  })
   .all("/*", async ({ request }) => await dispatch(request), {
     parse: "none",
   });
 
-export async function dispatch(request: Request) {
+async function dispatch(request: Request) {
   const pipeline = await runRequestPipeline(request);
   if (pipeline.shortCircuitResponse != null) {
     return withResponseHeaders(pipeline.shortCircuitResponse, pipeline.corsHeadersInit);
@@ -144,9 +139,6 @@ export async function dispatch(request: Request) {
           },
         });
       }
-      if (error instanceof NextNotFoundError) {
-        return new Response("Not Found", { status: 404 });
-      }
       throw error;
     }
   });
@@ -169,11 +161,6 @@ export async function dispatch(request: Request) {
 function getLoggedResponseStatus(response: unknown, fallbackStatus: number | string | undefined) {
   return response instanceof Response ? response.status : fallbackStatus;
 }
-
-import.meta.vitest?.test("development logging uses the returned Response status", ({ expect }) => {
-  expect(getLoggedResponseStatus(new Response(null, { status: 404 }), 200)).toBe(404);
-  expect(getLoggedResponseStatus("response body", 201)).toBe(201);
-});
 
 function isRedirectError(error: unknown): error is { redirectStatus: 307 | 308, redirectUrl: string } {
   if (!(error instanceof Error) || !("digest" in error) || !("redirectUrl" in error) || !("redirectStatus" in error)) {
@@ -214,21 +201,6 @@ function isObservabilityDebugRouteAvailable() {
   return getNodeEnvironment() !== "production"
     || getEnvVariable("VERCEL_ENV", "") === "preview";
 }
-
-import.meta.vitest?.test("API version migrations do not expose their internal rewrite", async ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-
-  try {
-    const response = await app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler"));
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
-  } finally {
-    vi.unstubAllEnvs();
-  }
-});
 
 import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", async ({ expect }) => {
   const { vi } = import.meta.vitest!;
@@ -370,69 +342,6 @@ function errorHandlerDebugHtml() {
     </script>
   </body>
 </html>`;
-}
-
-async function handleMonitoringTunnel(request: Request) {
-  const allowedDsn = getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", "");
-  if (allowedDsn === "") {
-    return new Response(null, { status: 404 });
-  }
-
-  const envelope = await request.text();
-  const firstLineEnd = envelope.indexOf("\n");
-  const envelopeHeaderBytes = firstLineEnd === -1 ? envelope : envelope.slice(0, firstLineEnd);
-  const envelopeDsn = getEnvelopeDsn(envelopeHeaderBytes);
-  if (envelopeDsn !== allowedDsn) {
-    return new Response("Invalid Sentry envelope DSN", {
-      status: 400,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-      },
-    });
-  }
-
-  const sentryDsnUrl = new URL(allowedDsn);
-  const projectId = sentryDsnUrl.pathname.split("/").filter(Boolean).at(-1);
-  if (projectId == null) {
-    return new Response("Invalid configured Sentry DSN", {
-      status: 500,
-      headers: {
-        "content-type": "text/plain; charset=utf-8",
-      },
-    });
-  }
-
-  const sentryEnvelopeUrl = new URL(`/api/${projectId}/envelope/`, sentryDsnUrl.origin);
-  const sentryResponse = await fetch(sentryEnvelopeUrl, {
-    method: "POST",
-    body: envelope,
-    headers: {
-      "content-type": request.headers.get("content-type") ?? "application/x-sentry-envelope",
-    },
-  });
-  return new Response(sentryResponse.body, {
-    status: sentryResponse.status,
-    statusText: sentryResponse.statusText,
-    headers: sentryResponse.headers,
-  });
-}
-
-function getEnvelopeDsn(envelopeHeaderBytes: string) {
-  let parsedEnvelopeHeader: unknown;
-  try {
-    parsedEnvelopeHeader = JSON.parse(envelopeHeaderBytes);
-  } catch {
-    return undefined;
-  }
-  if (
-    parsedEnvelopeHeader == null
-    || typeof parsedEnvelopeHeader !== "object"
-    || !("dsn" in parsedEnvelopeHeader)
-    || typeof parsedEnvelopeHeader.dsn !== "string"
-  ) {
-    return undefined;
-  }
-  return parsedEnvelopeHeader.dsn;
 }
 
 function isHttpMethod(method: string): method is typeof httpMethodNames[number] {

@@ -1,10 +1,10 @@
 import { httpMethodNames, routeModules } from "@/generated/route-modules";
 import { SmartRouter } from "@/smart-router";
 
-export type HttpMethod = typeof httpMethodNames[number];
-export type RouteParams = Record<string, string | string[]>;
-export type RouteHandlerOptions = { params: Promise<RouteParams> };
-export type RouteHandler = (request: Request, options: RouteHandlerOptions) => Promise<Response> | Response;
+type HttpMethod = typeof httpMethodNames[number];
+type RouteParams = Record<string, string | string[]>;
+type RouteHandlerOptions = { params: Promise<RouteParams> };
+type RouteHandler = (request: Request, options: RouteHandlerOptions) => Promise<Response> | Response;
 export type UnknownRouteModule = Partial<Record<HttpMethod, unknown>>;
 type UnknownRouteFunction = (request: Request, options: RouteHandlerOptions) => unknown;
 
@@ -14,14 +14,13 @@ type RouteEntry = {
   specificity: number[],
 };
 
-export type RouteMatch = {
-  handler?: RouteHandler,
+type RouteMatch = {
   methods: Map<HttpMethod, RouteHandler>,
   normalizedPath: string,
   params: Record<string, string | string[]>,
 };
 
-export const routeRegistry = buildRouteRegistry();
+const routeRegistry = buildRouteRegistry();
 
 export function matchRoute(dispatchPath: string): RouteMatch | undefined {
   for (const entry of routeRegistry) {

@@ -1,44 +1,10 @@
 import { getRequestContext, ResponseCookieOptions } from "./request-context";
 
-type CookieSetObject = ResponseCookieOptions & {
-  name: string,
-  value: string,
-};
-
-type CookieDeleteObject = {
-  name: string,
-};
-
-function encodeCookieComponent(value: string) {
-  return encodeURIComponent(value);
-}
-
-function normalizeSameSite(sameSite: ResponseCookieOptions["sameSite"]) {
-  if (sameSite === true) {
-    return "Strict";
-  }
-  if (sameSite === "lax") {
-    return "Lax";
-  }
-  if (sameSite === "strict") {
-    return "Strict";
-  }
-  if (sameSite === "none") {
-    return "None";
-  }
-  return undefined;
-}
-
 export function serializeSetCookie(name: string, value: string, options: ResponseCookieOptions = {}) {
-  const parts = [`${encodeCookieComponent(name)}=${encodeCookieComponent(value)}`];
+  const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
 
-  if (options.domain != null) {
-    parts.push(`Domain=${options.domain}`);
-  }
   parts.push(`Path=${options.path ?? "/"}`);
-  const expires = options.expires != null
-    ? options.expires instanceof Date ? options.expires : new Date(options.expires)
-    : options.maxAge != null ? new Date(Date.now() + options.maxAge * 1000) : undefined;
+  const expires = options.expires ?? (options.maxAge != null ? new Date(Date.now() + options.maxAge * 1000) : undefined);
   if (expires != null) {
     parts.push(`Expires=${expires.toUTCString()}`);
   }
@@ -57,14 +23,6 @@ export function serializeSetCookie(name: string, value: string, options: Respons
     parts.push("HttpOnly");
   }
 
-  const sameSite = normalizeSameSite(options.sameSite);
-  if (sameSite != null) {
-    parts.push(`SameSite=${sameSite}`);
-  }
-  if (options.priority != null) {
-    parts.push(`Priority=${options.priority}`);
-  }
-
   return parts.join("; ");
 }
 
@@ -77,14 +35,8 @@ export async function cookies() {
 
   return {
     get(name: string) {
-      const pending = [...context.pendingSetCookies].reverse().find(cookie => cookie.name === name);
-      if (pending != null) {
-        return {
-          name,
-          value: pending.value,
-        };
-      }
-
+      // set()/delete() keep incomingCookies in sync, so it is the authoritative
+      // read-view even for cookies written during this request.
       const value = context.incomingCookies.get(name);
       return value == null ? undefined : {
         name,
@@ -92,25 +44,12 @@ export async function cookies() {
       };
     },
 
-    set(nameOrCookie: string | CookieSetObject, value?: string, options?: ResponseCookieOptions) {
-      const cookie = typeof nameOrCookie === "string"
-        ? {
-          name: nameOrCookie,
-          value: value ?? "",
-          options: options ?? {},
-        }
-        : {
-          name: nameOrCookie.name,
-          value: nameOrCookie.value,
-          options: nameOrCookie,
-        };
-
-      context.pendingSetCookies.push(cookie);
-      context.incomingCookies.set(cookie.name, cookie.value);
+    set(name: string, value: string, options: ResponseCookieOptions = {}) {
+      context.pendingSetCookies.push({ name, value, options });
+      context.incomingCookies.set(name, value);
     },
 
-    delete(nameOrCookie: string | CookieDeleteObject) {
-      const name = typeof nameOrCookie === "string" ? nameOrCookie : nameOrCookie.name;
+    delete(name: string) {
       const cookie = {
         name,
         value: "",

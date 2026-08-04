@@ -1,6 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { createObservedPostgresClient } from "@/lib/postgres-client";
 import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -17,8 +16,9 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { errorToNiceString, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, errorToNiceString, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { Client } from "pg";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;
 
@@ -877,10 +877,10 @@ async function fetchExternalDatabaseStatus(
     };
   }
 
-  const client = createObservedPostgresClient(
-    clientOptionsResult.data,
-    "external-db-status-client",
-  );
+  const client = new Client(clientOptionsResult.data);
+  // node-postgres treats an EventEmitter "error" without a listener as fatal to
+  // the whole process; report connection loss to the error sink instead.
+  client.on("error", (error) => captureError("external-db-status-client", error));
   const connectResult = await Result.fromPromise(client.connect());
   if (connectResult.status === "error") {
     await Result.fromPromise(client.end());

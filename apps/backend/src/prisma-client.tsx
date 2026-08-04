@@ -11,13 +11,12 @@ import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@he
 import { throwingProxy } from "@hexclave/shared/dist/utils/proxies";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
+import { attachDatabasePool } from "@vercel/functions";
 import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { registerPgPool } from "./lib/dev-perf-stats";
-import { createPrismaPgOptions } from "./lib/prisma-pg-options";
 import { Tenancy } from "./lib/tenancies";
-import { attachVercelPostgresPool } from "./lib/vercel-postgres-pool";
 import { ensurePolyfilled } from "./polyfills";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
@@ -49,10 +48,24 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
-    attachVercelPostgresPool(pool);
+    if (getEnvVariable("VERCEL", "") !== "") {
+      // Fluid Compute can suspend an instance while an application-owned pool still
+      // has idle clients. Registering the pool keeps the invocation alive until
+      // those clients reach the pool's idle timeout.
+      attachDatabasePool(pool);
+    }
+    registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
+    // Error-capture locations use a label instead of the connection string so
+    // credentials never enter the error sink.
     const safePoolLabel = poolLabel ?? "tenant";
-    registerPgPool(pool, safePoolLabel); // Register pool for dev performance stats
-    const adapter = new PrismaPg(pool, createPrismaPgOptions(schema, safePoolLabel));
+    const adapter = new PrismaPg(pool, {
+      schema,
+      // Prisma receives a Pool created by this application. Without this option,
+      // $disconnect removes Prisma's listener but deliberately leaves the pool open.
+      disposeExternalPool: true,
+      onPoolError: (error) => captureError(`pg-pool-${safePoolLabel}`, error),
+      onConnectionError: (error) => captureError(`pg-connection-${safePoolLabel}`, error),
+    });
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,
@@ -64,7 +77,7 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
 
 export async function disconnectPostgresPrismaClients(): Promise<void> {
   await Promise.all(
-    [...postgresPrismaClientsStore.values()].map(async ({ client }) => await client.$disconnect()),
+    [...postgresPrismaClientsStore.values()].map(({ client }) => client.$disconnect()),
   );
 }
 

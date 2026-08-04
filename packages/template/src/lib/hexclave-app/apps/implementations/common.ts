@@ -43,7 +43,7 @@ const showMissingConfigAlertInBrowser = (message: string) => {
 const throwMissingProjectIdError = (): never => {
   const message = deindent`
     Welcome to Hexclave!
-
+    
     It seems that you haven't provided a project ID.
 
     ${envVars.NODE_ENV?.includes("dev") ? deindent`

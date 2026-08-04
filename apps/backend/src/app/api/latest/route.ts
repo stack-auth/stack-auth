@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, projectIdSchema, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
-import { typedCapitalize } from "@hexclave/shared/dist/utils/strings";
+import { deindent, typedCapitalize } from "@hexclave/shared/dist/utils/strings";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -47,22 +47,17 @@ export const GET = createSmartRouteHandler({
     body: yupString().defined().meta({ openapiField: { exampleValue: "Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com/\n\nAuthentication: None" } }),
   }),
   handler: async (req) => {
-    const authenticationLines = req.auth == null
-      ? ["Authentication: None"]
-      : [
-          `Authentication: ${typedCapitalize(req.auth.type)}`,
-          `  Project: ${req.auth.project.id}`,
-          `  User: ${req.auth.user ? req.auth.user.primary_email ?? req.auth.user.id : "None"}`,
-      ];
-
     return {
       statusCode: 200,
       bodyType: "text",
-      body: [
-        "Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.",
-        "",
-        ...authenticationLines,
-      ].join("\n"),
+      body: deindent`
+        Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+
+        Authentication: ${!req.auth ? "None" : typedCapitalize(req.auth.type) + "\n" + deindent`
+        ${"  "}Project: ${req.auth.project.id}
+        ${"  "}User: ${req.auth.user ? req.auth.user.primary_email ?? req.auth.user.id : "None"}
+        `}
+      `,
     };
   },
 });

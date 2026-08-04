@@ -10,35 +10,6 @@ export class NextRedirectError extends Error {
   }
 }
 
-export class NextNotFoundError extends Error {
-  digest = "NEXT_NOT_FOUND";
-
-  constructor() {
-    super("NEXT_NOT_FOUND");
-  }
-}
-
-export const RedirectType = {
-  push: "push",
-  replace: "replace",
-} as const;
-
-export function redirect(url: string, _type?: typeof RedirectType[keyof typeof RedirectType]): never {
+export function redirect(url: string): never {
   throw new NextRedirectError(url, 307);
-}
-
-export function permanentRedirect(url: string): never {
-  throw new NextRedirectError(url, 308);
-}
-
-export function notFound(): never {
-  throw new NextNotFoundError();
-}
-
-export function usePathname(): never {
-  throw new Error("next/navigation usePathname() was called in the backend runtime");
-}
-
-export function useSearchParams(): never {
-  throw new Error("next/navigation useSearchParams() was called in the backend runtime");
 }

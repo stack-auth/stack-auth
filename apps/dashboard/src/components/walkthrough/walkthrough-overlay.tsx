@@ -155,6 +155,7 @@ export function WalkthroughOverlay({
     document.body
   );
 }
+
 function TourProgressCard({
   stepIndex,
   totalSteps,
@@ -371,3 +372,4 @@ function SpotlightTooltip({
     </div>
   );
 }
+
