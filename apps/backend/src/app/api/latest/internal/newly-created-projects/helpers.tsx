@@ -267,6 +267,17 @@ export function mergeProjectActivityMetricsRows(
   return { nonAnonByProjectId, anonByProjectId, lastActivityByProjectId };
 }
 
+export function getClickHouseMetricsErrorMessage(
+  cause: unknown,
+  projectIdCount: number,
+  projectIdChunkCount: number,
+): string {
+  const causeMessage = cause instanceof Error ? cause.message : String(cause);
+  return causeMessage.trim() === ""
+    ? `ClickHouse rejected the metrics request for ${projectIdCount} project IDs across ${projectIdChunkCount} chunks`
+    : causeMessage;
+}
+
 export async function loadProjectActivityMetrics(projectIds: string[]): Promise<ProjectActivityMetrics> {
   const empty = {
     nonAnonByProjectId: new Map<string, number>(),
@@ -321,13 +332,12 @@ export async function loadProjectActivityMetrics(projectIds: string[]): Promise<
 
     return mergeProjectActivityMetricsRows(userRowsResult, activityRowsResult);
   } catch (cause) {
-    const causeMessage = cause instanceof Error ? cause.message : String(cause);
     throw new HexclaveAssertionError(
-      `Failed to load newly-created-projects user metrics from ClickHouse: ${
-        causeMessage.trim() === ""
-          ? `ClickHouse rejected the metrics request for ${projectIds.length} project IDs across ${projectIdChunkCount} chunks`
-          : causeMessage
-      }`,
+      `Failed to load newly-created-projects user metrics from ClickHouse: ${getClickHouseMetricsErrorMessage(
+        cause,
+        projectIds.length,
+        projectIdChunkCount,
+      )}`,
       { cause, projectIdCount: projectIds.length, projectIdChunkCount },
     );
   }

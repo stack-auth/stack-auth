@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getEmailSetup,
   getEnabledAppIds,
+  getClickHouseMetricsErrorMessage,
   getTrustedDomainBaseUrls,
   isStripeAccountSetupComplete,
   mergeProjectActivityMetricsRows,
@@ -142,5 +143,12 @@ describe("newly-created-projects helpers", () => {
         ],
       }
     `);
+  });
+
+  it("makes an empty ClickHouse cause actionable", () => {
+    expect(getClickHouseMetricsErrorMessage(new Error(""), 50_000, 15))
+      .toBe("ClickHouse rejected the metrics request for 50000 project IDs across 15 chunks");
+    expect(getClickHouseMetricsErrorMessage(new Error("query failed"), 1, 1))
+      .toBe("query failed");
   });
 });
