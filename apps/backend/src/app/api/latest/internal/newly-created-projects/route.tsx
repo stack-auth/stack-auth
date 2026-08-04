@@ -26,6 +26,8 @@ import { ProjectRowSchema } from "./schemas";
 
 const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
 const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
+const NeonFilterSchema = yupString().oneOf(["include", "exclude"]).default("include");
+const NEON_PROJECT_DESCRIPTION = "Created with Neon";
 
 function parseNonNegativeInt(name: string, raw: string | undefined, fallback: number): number {
   if (raw == null || raw === "") return fallback;
@@ -55,6 +57,7 @@ export const GET = createSmartRouteHandler({
       min_users: yupString().optional(),
       rde: RdeFilterSchema.optional(),
       onboarding: OnboardingFilterSchema.optional(),
+      neon: NeonFilterSchema.optional(),
       activity_24h_after_creation: yupString().optional(),
     }).default({}),
   }),
@@ -69,6 +72,7 @@ export const GET = createSmartRouteHandler({
         min_users: yupNumber().integer().defined(),
         rde: RdeFilterSchema.defined(),
         onboarding: OnboardingFilterSchema.defined(),
+        neon: NeonFilterSchema.defined(),
         activity_24h_after_creation: yupBoolean().defined(),
       }).defined(),
     }).defined(),
@@ -86,6 +90,7 @@ export const GET = createSmartRouteHandler({
     // Schemas carry .default("both"), so validate(undefined) resolves to "both".
     const rde = await RdeFilterSchema.validate(req.query.rde);
     const onboarding = await OnboardingFilterSchema.validate(req.query.onboarding);
+    const neon = await NeonFilterSchema.validate(req.query.neon);
     const activity24hAfterCreation = parseBooleanQuery(
       "activity_24h_after_creation",
       req.query.activity_24h_after_creation,
@@ -96,6 +101,7 @@ export const GET = createSmartRouteHandler({
       ...(rde === "not_rde" ? { isDevelopmentEnvironment: false } : {}),
       ...(onboarding === "completed" ? { onboardingStatus: "completed" as const } : {}),
       ...(onboarding === "incomplete" ? { onboardingStatus: { not: "completed" as const } } : {}),
+      ...(neon === "exclude" ? { description: { not: NEON_PROJECT_DESCRIPTION } } : {}),
     };
     const projectSelect = {
       id: true,
@@ -147,6 +153,7 @@ export const GET = createSmartRouteHandler({
           min_users: minUsers,
           rde,
           onboarding,
+          neon,
           activity_24h_after_creation: activity24hAfterCreation,
         },
       },
