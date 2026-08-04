@@ -3,7 +3,9 @@ import "@/polyfills";
 import { disconnectPostgresPrismaClients } from "@/prisma-client";
 import { drainInFlightPromises } from "@/utils/background-tasks";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import type { Server as ElysiaServer } from "elysia/universal";
 import { app } from "./app";
 import "./env-expand";
 import { shutdownBackend } from "./shutdown";
@@ -12,9 +14,16 @@ const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));
 const hostname = getEnvVariable("HOSTNAME", "0.0.0.0");
 
+// The @elysiajs/node adapter never assigns `app.server`, so `app.stop()` falls through to the
+// web-standard adapter's stop and throws "Elysia isn't running" even while the server is serving
+// traffic. The adapter instead hands a working server handle (whose stop() closes the underlying
+// Node http.Server) to the listen callback, so capture that and use it for graceful shutdown.
+let boundServer: ElysiaServer | undefined;
 app.listen({
   hostname,
   port,
+}, (server) => {
+  boundServer = server;
 });
 
 console.log(`Hexclave backend listening on http://${hostname}:${port}`);
@@ -41,7 +50,9 @@ function handleShutdownSignal(signal: NodeJS.Signals) {
   hardExitTimeout.unref();
 
   shutdownPromise = shutdownBackend(signal, {
-    stopAcceptingRequests: async () => await app.stop(false),
+    // stop(false) mirrors the previous app.stop(false) intent: stop accepting new connections but
+    // let in-flight requests finish (the drain steps below and the 15s hard-exit cover the rest).
+    stopAcceptingRequests: async () => (boundServer ?? throwErr("HTTP server handle missing — the listen callback should have run at startup")).stop(false),
     drainBackgroundTasks: async () => await drainInFlightPromises(8000),
     disconnectDatabases: disconnectPostgresPrismaClients,
     closeInstrumentation: closeBackendInstrumentation,
