@@ -82,9 +82,7 @@ export async function checkEmailWithEmailable(
     const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
     const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
 
-    // example.com and its subdomains are reserved for documentation and can never receive email, so avoid spending an
-    // Emailable request on them in every environment. This also covers EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN.
-    if (isReservedExampleDomain(emailDomain)) {
+    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
       const testResponse = buildTestUndeliverableResponse(email);
       return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
@@ -99,6 +97,12 @@ export async function checkEmailWithEmailable(
     const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
     if (!apiKey) {
       return { status: "deliverable", emailableScore: null };
+    }
+
+    // Avoid spending Emailable requests on reserved example domains without overriding the no-key dev/test behavior.
+    if (isReservedExampleDomain(emailDomain)) {
+      const testResponse = buildTestUndeliverableResponse(email);
+      return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
 
     const clientFactory = options?._clientFactory ?? createEmailableClient;
@@ -152,6 +156,16 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
       .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
+  });
+
+  test.each([
+    "user@example.com",
+    "user@stack-generated.example.com",
+  ])("treats reserved example address %s as deliverable without an API key", async (email) => {
+    vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+    vi.stubEnv("NODE_ENV", "test");
+    const result = await checkEmailWithEmailable(email);
+    expect(result).toEqual({ status: "deliverable", emailableScore: null });
   });
 
   test.each([
