@@ -1,0 +1,19 @@
+packages/template/src/lib/hexclave-app/apps/implementations/redirect-page-urls.test.ts
+  s_f7f9288d967c40::t_a69743e06ba9df 16-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6edad24c81ad9175eaf0a8b093a0968a735c1bcc",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
