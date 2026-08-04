@@ -27,7 +27,7 @@ import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
-import { suspend, suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { suspend, use } from "@hexclave/shared/dist/utils/react";
 import { getTrustedParentDomain, validateRedirectUrl } from "@hexclave/shared/dist/utils/redirect-urls";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { Store } from "@hexclave/shared/dist/utils/stores";
@@ -45,6 +45,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
+import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM next react
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
