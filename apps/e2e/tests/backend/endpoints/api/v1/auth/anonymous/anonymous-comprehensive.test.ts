@@ -39,7 +39,7 @@ it("anonymous JWT has different kid and role", async ({ expect }) => {
   expect(header.kid).toBeTruthy();
 
   // The kid should be different from regular users
-  const regularSignUp = await Auth.Password.signUpWithEmail();
+  const regularSignUp = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const regularToken = regularSignUp.signUpResponse.body.access_token;
   const [regularHeader] = regularToken.split('.').slice(0, 1).map((part: string) =>
     JSON.parse(Buffer.from(part, 'base64url').toString())
@@ -259,7 +259,7 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
 
   // Create a regular user
   await Auth.signOut();
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Search for users with query matching anonymous user
   const searchRes = await niceBackendFetch("/api/v1/users?query=Unique", {

@@ -68,7 +68,7 @@ it("should not be able to sign in with OTP anymore after signing in with passwor
     }
   });
 
-  await Auth.Password.signUpWithEmail({ password: "some-password" });
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "some-password" });
 
   const response2 = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
     method: "POST",
@@ -125,7 +125,7 @@ it("signs in with password first, then signs in with oauth should give an accoun
   await InternalApiKey.createAndSetProjectKeys(proj.adminAccessToken);
 
 
-  await Auth.Password.signUpWithEmail({ password: "some-password" });
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "some-password" });
   const cc = await ContactChannels.getTheOnlyContactChannel();
   expect(cc.is_verified).toBe(false);
   expect(cc.used_for_auth).toBe(true);

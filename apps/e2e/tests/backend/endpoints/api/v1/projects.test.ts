@@ -1614,7 +1614,7 @@ it("should increment and decrement userCount when a user is added to a project",
 
 
   // Create a new user in the project
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // The metrics endpoint reads from ClickHouse (eventual consistency).
   // Poll until the new user is visible.
