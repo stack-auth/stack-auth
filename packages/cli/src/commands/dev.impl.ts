@@ -8,6 +8,7 @@ import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifestCached, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
+import { dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, killLocalDashboard, logConfigSyncEvents, shouldRestartDashboard, DEV_DASHBOARD_COMMAND_ENV_VAR, type HeartbeatResponse } from "../lib/dev-dashboard-utils.js";
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 import { startProgress } from "../lib/progress.js";
@@ -21,35 +22,11 @@ type DevOptions = {
   configFile?: string,
 };
 
-type ConfigSyncEventBase = {
-  config_file_path: string,
-  created_at_millis: number,
-};
-
-type ConfigSyncEvent = ConfigSyncEventBase & ({
-  status: "syncing",
-} | {
-  status: "success",
-} | {
-  status: "error",
-  error_message: string,
-});
-
-type HeartbeatResponse = {
-  ok: true,
-  browser_secret_confirmation_code?: string,
-  browser_secret_confirmation_code_expires_at_millis?: number,
-  config_sync_events?: ConfigSyncEvent[],
-};
-
 const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
-const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
-const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
-const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
 const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
 const RDE_DASHBOARD_LOG_PATH_ENV_VAR = "HEXCLAVE_RDE_DASHBOARD_LOG_PATH";
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -71,13 +48,6 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   DASHBOARD_PORT_ENV_VAR,
 ]);
 
-export function dashboardEnvWithStatePath(env: NodeJS.ProcessEnv, statePath: string): NodeJS.ProcessEnv {
-  return {
-    ...env,
-    STACK_DEV_ENVS_PATH: env.STACK_DEV_ENVS_PATH ?? statePath,
-  };
-}
-
 type DashboardSessionState = {
   session: DashboardSessionResponse,
   dashboardReachableSinceMs: number,
@@ -93,11 +63,6 @@ function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   }
   const command = commandArgs[0];
   return { command, args: commandArgs.slice(1) };
-}
-
-export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
-  const command = env[DEV_DASHBOARD_COMMAND_ENV_VAR]?.trim();
-  return command == null || command.length === 0 ? undefined : command;
 }
 
 function normalizeApiBaseUrl(apiBaseUrl: string): string {
@@ -139,19 +104,6 @@ function createDevTimer(): DevTimer {
       lastAt = now;
     },
   };
-}
-
-function stderrSupportsAnsiColor(): boolean {
-  return process.stderr.isTTY && process.env.NO_COLOR == null && process.env.TERM !== "dumb";
-}
-
-export function configErrorLogPrefix(supportsColor = stderrSupportsAnsiColor()): string {
-  const label = supportsColor ? "\x1b[41;37;1m[CONFIG ERROR]\x1b[0m" : "[CONFIG ERROR]";
-  return `${LOG_PREFIX}${label} `;
-}
-
-function logDevConfigError(message: string): void {
-  console.warn(`${configErrorLogPrefix()}${message}`);
 }
 
 function openUrlInBrowser(url: string): boolean {
@@ -278,61 +230,6 @@ async function isDashboardReachable(url: string, secret?: string): Promise<boole
   }
 }
 
-type ParsedVersion = {
-  core: [number, number, number],
-  hasPrerelease: boolean,
-};
-
-function parseVersionCore(version: string): ParsedVersion | null {
-  const trimmed = version.trim();
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(trimmed);
-  if (!match) return null;
-  return {
-    core: [Number(match[1]), Number(match[2]), Number(match[3])],
-    // A `-` immediately after the core marks a semver prerelease (e.g.
-    // 2.8.109-beta.1). `.test()` returns a plain boolean, sidestepping the
-    // optional-capture-group typing.
-    hasPrerelease: /^v?\d+\.\d+\.\d+-/.test(trimmed),
-  };
-}
-
-// Returns true only when `candidate` is strictly newer than `current`. Unknown
-// or unparseable versions return false so we never act on a version we can't
-// reason about (and never downgrade). Prerelease identifiers beyond the
-// "release beats same-core prerelease" rule are intentionally not ordered. Used
-// by the dashboard restart check below. Exported for unit testing.
-export function isVersionNewer(candidate: string, current: string): boolean {
-  const a = parseVersionCore(candidate);
-  const b = parseVersionCore(current);
-  if (a == null || b == null) return false;
-  for (let i = 0; i < 3; i++) {
-    if (a.core[i] !== b.core[i]) {
-      return a.core[i] > b.core[i];
-    }
-  }
-  // Same x.y.z: a final release outranks a prerelease of the same core.
-  return !a.hasPrerelease && b.hasPrerelease;
-}
-
-// Restart the running dashboard only when the latest published release is
-// strictly newer than the one serving the port. Equal/older/unknown versions (a
-// pre-feature CLI's record, or an unreachable manifest) are reused as-is.
-// Exported for unit testing.
-export function shouldRestartDashboard(latestVersion: string | undefined, runningVersion: string | undefined): boolean {
-  return latestVersion != null && runningVersion != null && isVersionNewer(latestVersion, runningVersion);
-}
-
-// Whether `pid` refers to a live process. EPERM means it exists but is owned by
-// another user — i.e. the pid was recycled onto something that isn't ours.
-export function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 function signalDashboardProcess(pid: number, signal: NodeJS.Signals): void {
   if (process.platform !== "win32") {
     try {
@@ -376,51 +273,6 @@ function startDashboardProcess(options: {
     stdio: ["ignore", options.logFd, options.logFd],
     env: options.dashboardEnv,
   });
-}
-
-// Terminate the background dashboard recorded for `port` in dev-env state and
-// wait until the port stops answering, so a fresh (newer) dashboard can rebind
-// without EADDRINUSE.
-export async function killLocalDashboard(url: string, port: number): Promise<void> {
-  const pid = readDevEnvState().localDashboardsByPort?.[String(port)]?.pid;
-  if (pid == null || pid <= 0) return;
-  if (!processExists(pid)) return;
-
-  try {
-    signalDashboardProcess(pid, "SIGTERM");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    // ESRCH: already gone. EPERM: the pid was recycled onto a process we don't
-    // own, so it isn't our dashboard — don't wait on it or escalate to SIGKILL.
-    if (code === "ESRCH" || code === "EPERM") return;
-    throw error;
-  }
-
-  // Wait for the port to be released — that's the property that actually lets
-  // the replacement bind. Don't gate on the pid: once the dashboard exits its
-  // pid can be recycled onto an unrelated same-user process, which a pid probe
-  // would misreport as "still alive" (spinning the full timeout and then
-  // mis-targeting the SIGKILL below). isDashboardReachable only succeeds while
-  // the listener is up, so an unreachable port reliably means it's gone.
-  const startedAt = performance.now();
-  while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
-    if (!(await isDashboardReachable(url))) return;
-    await wait(200);
-  }
-
-  // Still listening after the grace period — the process is genuinely hung and
-  // still holding the port, so the recorded pid is necessarily still valid;
-  // force it down, then wait for the socket to be released.
-  try {
-    signalDashboardProcess(pid, "SIGKILL");
-  } catch {
-    // best-effort
-  }
-  const killDeadline = performance.now() + DASHBOARD_FORCE_STOP_TIMEOUT_MS;
-  while (performance.now() < killDeadline) {
-    if (!(await isDashboardReachable(url))) return;
-    await wait(200);
-  }
 }
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number, timer?: DevTimer }): Promise<void> {
@@ -570,53 +422,6 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
-  if (
-    !isRecord(value) ||
-    !("config_file_path" in value) ||
-    typeof value.config_file_path !== "string" ||
-    !("status" in value) ||
-    !("created_at_millis" in value) ||
-    typeof value.created_at_millis !== "number"
-  ) {
-    return false;
-  }
-  if (value.status === "syncing" || value.status === "success") {
-    return true;
-  }
-  return (
-    value.status === "error" &&
-    "error_message" in value &&
-    typeof value.error_message === "string"
-  );
-}
-
-export function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "ok" in value &&
-    value.ok === true &&
-    (
-      !("browser_secret_confirmation_code" in value) ||
-      typeof value.browser_secret_confirmation_code === "string"
-    ) &&
-    (
-      !("browser_secret_confirmation_code_expires_at_millis" in value) ||
-      typeof value.browser_secret_confirmation_code_expires_at_millis === "number"
-    ) &&
-    (
-      !("config_sync_events" in value) ||
-      (Array.isArray(value.config_sync_events) && value.config_sync_events.every(isConfigSyncEvent))
-    )
-  );
-}
-
 function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
   if (response.browser_secret_confirmation_code == null) return;
   const expiresAtMillis = response.browser_secret_confirmation_code_expires_at_millis;
@@ -626,18 +431,6 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
   logDev(expiresInSeconds == null
     ? `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code}`
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
-}
-
-export function logConfigSyncEvents(response: HeartbeatResponse): void {
-  for (const event of response.config_sync_events ?? []) {
-    if (event.status === "syncing") {
-      logDev(`Detected change to config file at ${event.config_file_path}. Syncing...`);
-    } else if (event.status === "success") {
-      logDev("Updated config sync successful!");
-    } else {
-      logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
-    }
-  }
 }
 
 function pendingBrowserSecretConfirmationCodeFromState(port: number): HeartbeatResponse | null {
@@ -855,6 +648,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
     } catch (error) {
       lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
       if (options.shouldStop()) return;
+      logDev(`Development environment heartbeat request failed; restarting dashboard: ${errorMessage(error)}`);
       sessionState.session = await restartDashboardForHeartbeat({
         apiBaseUrl: options.apiBaseUrl,
         configFilePath: options.configFilePath,

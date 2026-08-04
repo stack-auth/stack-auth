@@ -83,15 +83,19 @@ export function initSentry(): void {
 }
 
 export async function captureFatalError(location: string, error: unknown, timeoutMs = 2000): Promise<void> {
-  try {
-    // Registration is asynchronous to keep startup fast, so fatal reporting must wait for the sink.
-    await registrationPromise;
-    const { captureError } = await import("@hexclave/shared/dist/utils/errors");
-    captureError(location, error);
-    await flushSentry(timeoutMs);
-  } catch {
-    // Preserve the original fatal error path if optional Sentry reporting fails.
-  }
+  // The fatal path must exit promptly even if an optional telemetry import stalls.
+  const report = (async () => {
+    try {
+      // Registration is asynchronous to keep startup fast, so fatal reporting must wait for the sink.
+      await registrationPromise;
+      const { captureError } = await import("@hexclave/shared/dist/utils/errors");
+      captureError(location, error);
+      await flushSentry(timeoutMs);
+    } catch {
+      // Preserve the original fatal error path if optional Sentry reporting fails.
+    }
+  })();
+  await Promise.race([report, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
 }
 
 export async function flushSentry(timeoutMs = 2000): Promise<void> {

@@ -38,6 +38,7 @@ function useTempStateFile() {
 afterEach(() => {
   delete process.env.STACK_DEV_ENVS_PATH;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   if (tempDir != null) {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -302,6 +303,7 @@ describe("fetchDashboardManifestCached", () => {
       .resolves.toEqual(otherManifest);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(readDevEnvState().dashboardManifestsByUrl?.[otherManifestUrl]?.manifest).toEqual(otherManifest);
+    expect(readDevEnvState().dashboardManifestsByUrl?.[MANIFEST_URL]?.manifest).toEqual(VALID_MANIFEST);
   });
 
   it("ignores malformed persisted entries and replaces them after a successful fetch", async () => {
