@@ -24,11 +24,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
-# DATA_STRUCTURES_DIR is repo-relative (used for diffing/overlaying). HARNESS_REL is relative to the
-# bulldozer-js package, since the harness is run via `pnpm -C apps/bulldozer-js exec tsx`.
+# *_DIR vars are repo-relative (used for diffing/overlaying). *_HARNESS_REL vars are relative to the
+# bulldozer-js package, since the harnesses are run via `pnpm -C apps/bulldozer-js exec tsx`.
+#   - the tree harness proves a single AugmentedTreeMap round-trips across code versions
+#   - the db harness proves an *entire* Bulldozer database (all derived tables) round-trips
 env:
   DATA_STRUCTURES_DIR: apps/bulldozer-js/src/databases/piledriver/data-structures
   HARNESS_REL: src/databases/piledriver/data-structures/__fixtures__/serialization-cross-version.ts
+  BULLDOZER_FIXTURES_DIR: apps/bulldozer-js/src/databases/bulldozer/__fixtures__
+  DB_HARNESS_REL: src/databases/bulldozer/__fixtures__/bulldozer-db-cross-version.ts
 
 jobs:
   check-changed:
@@ -58,8 +62,9 @@ jobs:
           git fetch origin "$BASE_BRANCH"
           MERGE_BASE=$(git merge-base HEAD "origin/$BASE_BRANCH")
 
-          # Any change under the piledriver data-structures dir could touch the persisted node format.
-          if git diff --quiet "$MERGE_BASE" HEAD -- "$DATA_STRUCTURES_DIR"; then
+          # Any change under the piledriver data-structures dir (persisted node format) or the
+          # bulldozer whole-database fixtures (schema/read-model harness) could affect what is persisted.
+          if git diff --quiet "$MERGE_BASE" HEAD -- "$DATA_STRUCTURES_DIR" "$BULLDOZER_FIXTURES_DIR"; then
             echo "No serialization-relevant changes"
             echo "changed=false" >> $GITHUB_OUTPUT
           else
@@ -92,10 +97,12 @@ jobs:
       # The harness + its utils are new, so the base checkout doesn't have them. Overlay the current
       # branch's copy onto the base tree; the harness only uses the long-stable AugmentedTreeMap /
       # piledriver public API, so it compiles and runs against the base branch's implementation.
-      - name: Overlay harness onto base checkout
+      - name: Overlay harnesses onto base checkout
         run: |
           rm -rf "base/$DATA_STRUCTURES_DIR/__fixtures__"
           cp -r "current/$DATA_STRUCTURES_DIR/__fixtures__" "base/$DATA_STRUCTURES_DIR/__fixtures__"
+          rm -rf "base/$BULLDOZER_FIXTURES_DIR"
+          cp -r "current/$BULLDOZER_FIXTURES_DIR" "base/$BULLDOZER_FIXTURES_DIR"
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -121,13 +128,17 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm exec turbo run build --filter=@hexclave/shared
 
-      - name: Emit dump with base code
+      - name: Emit dumps with base code
         working-directory: base
-        run: pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" emit "$GITHUB_WORKSPACE/old.json"
+        run: |
+          pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" emit "$GITHUB_WORKSPACE/old-tree.json"
+          pnpm -C apps/bulldozer-js exec tsx "$DB_HARNESS_REL" emit "$GITHUB_WORKSPACE/old-db.json"
 
-      - name: Current code reads base-written dump
+      - name: Current code reads base-written dumps
         working-directory: current
-        run: pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" verify "$GITHUB_WORKSPACE/old.json"
+        run: |
+          pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" verify "$GITHUB_WORKSPACE/old-tree.json"
+          pnpm -C apps/bulldozer-js exec tsx "$DB_HARNESS_REL" verify "$GITHUB_WORKSPACE/old-db.json"
 
   # Forward compatibility (production ROLLBACK): the old code must read data the new code wrote.
   # This can legitimately fail when a change makes the new format unreadable by older builds (e.g. a
@@ -152,11 +163,13 @@ jobs:
           ref: ${{ needs.check-changed.outputs.base_branch }}
           path: base
 
-      # See the backward-compat job: the harness is new, so overlay it onto the base checkout.
-      - name: Overlay harness onto base checkout
+      # See the backward-compat job: the harnesses are new, so overlay them onto the base checkout.
+      - name: Overlay harnesses onto base checkout
         run: |
           rm -rf "base/$DATA_STRUCTURES_DIR/__fixtures__"
           cp -r "current/$DATA_STRUCTURES_DIR/__fixtures__" "base/$DATA_STRUCTURES_DIR/__fixtures__"
+          rm -rf "base/$BULLDOZER_FIXTURES_DIR"
+          cp -r "current/$BULLDOZER_FIXTURES_DIR" "base/$BULLDOZER_FIXTURES_DIR"
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -182,13 +195,17 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm exec turbo run build --filter=@hexclave/shared
 
-      - name: Emit dump with current code
+      - name: Emit dumps with current code
         working-directory: current
-        run: pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" emit "$GITHUB_WORKSPACE/new.json"
+        run: |
+          pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" emit "$GITHUB_WORKSPACE/new-tree.json"
+          pnpm -C apps/bulldozer-js exec tsx "$DB_HARNESS_REL" emit "$GITHUB_WORKSPACE/new-db.json"
 
-      - name: Base code reads current-written dump
+      - name: Base code reads current-written dumps
         working-directory: base
-        run: pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" verify "$GITHUB_WORKSPACE/new.json"
+        run: |
+          pnpm -C apps/bulldozer-js exec tsx "$HARNESS_REL" verify "$GITHUB_WORKSPACE/new-tree.json"
+          pnpm -C apps/bulldozer-js exec tsx "$DB_HARNESS_REL" verify "$GITHUB_WORKSPACE/new-db.json"
 
   # Keeps the workflow (and the aggregate `all-good` check) green when serialization wasn't touched.
   skip-unchanged:
