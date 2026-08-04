@@ -144,6 +144,8 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         branchId: tenancy.branchId,
         userId: user.id,
         isNewUser,
+        method: "otp",
+        email,
       });
     }
 

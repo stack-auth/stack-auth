@@ -1,7 +1,8 @@
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { generateTOTP } from "@oslojs/otp";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 describe("Compliance Center security events", () => {
   it("records failed and successful password sign-in attempts", async ({ expect }) => {
@@ -63,6 +64,70 @@ describe("Compliance Center security events", () => {
     expect(response?.body.summary.sign_in_attempt).toBeGreaterThanOrEqual(
       response?.body.summary["sign_in_attempt.failed"] + response?.body.summary["sign_in_attempt.success"],
     );
+  });
+
+  it("records successful password sign-ins completed through MFA", async ({ expect }) => {
+    await Project.createAndSwitch({ config: {} });
+    const { email, password } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { totpSecret } = await Auth.Mfa.setupTotpMfa();
+    await Auth.signOut();
+
+    const signInResponse = await niceBackendFetch("/api/v1/auth/password/sign-in", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email,
+        password,
+      },
+    });
+    expect(signInResponse.status).toBe(400);
+    expect(signInResponse.body.code).toBe("MULTI_FACTOR_AUTHENTICATION_REQUIRED");
+
+    const mfaResponse = await niceBackendFetch("/api/v1/auth/mfa/sign-in", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        code: signInResponse.body.details.attempt_code,
+        type: "totp",
+        totp: generateTOTP(totpSecret, 30, 6),
+      },
+    });
+    expect(mfaResponse.status).toBe(200);
+
+    let response;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      response = await niceBackendFetch("/api/v1/internal/compliance/security-events", {
+        accessType: "admin",
+        query: {
+          from: new Date(Date.now() - 60_000).toISOString(),
+          to: new Date(Date.now() + 60_000).toISOString(),
+        },
+      });
+      const matching = response.status === 200
+        ? response.body.events.filter((event: { email: string | null }) => event.email === email)
+        : [];
+      if (matching.some((event: { outcome: string | null, method: string | null }) =>
+        event.outcome === "success" && event.method === "password"
+      )) {
+        break;
+      }
+      await wait(500);
+    }
+
+    expect(response?.status).toBe(200);
+    expect(response?.body.events.filter((event: { email: string | null }) => event.email === email)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "sign_in_attempt",
+          outcome: "success",
+          method: "password",
+          email,
+        }),
+      ]),
+    );
+  }, {
+    // The TOTP code may expire right as we try to use it.
+    retry: 1,
   });
 
   it("returns the security posture and access review shapes", async ({ expect }) => {

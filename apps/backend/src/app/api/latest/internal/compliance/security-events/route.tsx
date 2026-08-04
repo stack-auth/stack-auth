@@ -24,6 +24,7 @@ type RawEventRow = {
   country_code: string | null,
   region_code: string | null,
   city_name: string | null,
+  ip_is_trusted: boolean | null,
   user_id: string | null,
 };
 
@@ -45,6 +46,7 @@ const eventSchema = yupObject({
   country_code: yupString().nullable().defined(),
   region_code: yupString().nullable().defined(),
   city_name: yupString().nullable().defined(),
+  ip_is_trusted: yupBoolean().nullable().defined(),
   user_id: yupString().nullable().defined(),
 }).defined();
 
@@ -141,6 +143,7 @@ export const GET = createSmartRouteHandler({
             NULLIF(CAST(data.ip_info.country_code, 'Nullable(String)'), '') AS country_code,
             NULLIF(CAST(data.ip_info.region_code, 'Nullable(String)'), '') AS region_code,
             NULLIF(CAST(data.ip_info.city_name, 'Nullable(String)'), '') AS city_name,
+            CAST(data.ip_info.is_trusted, 'Nullable(Bool)') AS ip_is_trusted,
             NULLIF(user_id, '') AS user_id
           FROM analytics_internal.events
           ${sharedWhere}
@@ -336,6 +339,7 @@ export const GET = createSmartRouteHandler({
           country_code: row.country_code,
           region_code: row.region_code,
           city_name: row.city_name,
+          ip_is_trusted: row.ip_is_trusted,
           user_id: row.user_id,
         };
       });

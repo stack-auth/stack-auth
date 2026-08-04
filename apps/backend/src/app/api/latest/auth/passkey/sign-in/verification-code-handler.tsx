@@ -134,6 +134,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
         branchId: tenancy.branchId,
         isNewUser: false,
         userId: user.projectUserId,
+        method: "passkey",
       });
     }
 

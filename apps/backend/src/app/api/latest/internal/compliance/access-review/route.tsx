@@ -1,4 +1,5 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { listPermissions } from "@/lib/permissions";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -36,7 +37,7 @@ export const GET = createSmartRouteHandler({
       const prisma = await getPrismaClientForTenancy(tenancy);
       const limit = 1000;
       const users = await prisma.projectUser.findMany({
-        where: { tenancyId: tenancy.id },
+        where: { tenancyId: tenancy.id, isAnonymous: false },
         include: {
           contactChannels: {
             where: { type: "EMAIL" as const, isPrimary: "TRUE" as const },
@@ -44,16 +45,43 @@ export const GET = createSmartRouteHandler({
           teamMembers: {
             include: {
               team: true,
-              teamMemberDirectPermissions: true,
             },
           },
-          directPermissions: true,
         },
         orderBy: { signedUpAt: "desc" },
         take: limit + 1,
       });
       const capped = users.length > limit;
       const rows = users.slice(0, limit);
+      const [projectPermissions, teamPermissions] = await Promise.all([
+        listPermissions(prisma, {
+          tenancy,
+          scope: "project",
+          recursive: true,
+        }),
+        listPermissions(prisma, {
+          tenancy,
+          scope: "team",
+          recursive: true,
+        }),
+      ]);
+      const effectivePermissionsByUser = new Map<string, Set<string>>();
+      for (const permission of projectPermissions) {
+        const permissions = effectivePermissionsByUser.get(permission.user_id) ?? new Set<string>();
+        permissions.add(permission.id);
+        effectivePermissionsByUser.set(permission.user_id, permissions);
+      }
+      for (const permission of teamPermissions) {
+        const permissions = effectivePermissionsByUser.get(permission.user_id) ?? new Set<string>();
+        permissions.add(permission.id);
+        effectivePermissionsByUser.set(permission.user_id, permissions);
+      }
+      const effectiveTeamPermissionsByUser = new Map<string, Set<string>>();
+      for (const permission of teamPermissions) {
+        const permissions = effectiveTeamPermissionsByUser.get(permission.user_id) ?? new Set<string>();
+        permissions.add(permission.id);
+        effectiveTeamPermissionsByUser.set(permission.user_id, permissions);
+      }
       const lastSignInByUser = new Map<string, string>();
       if (rows.length > 0) {
         try {
@@ -105,17 +133,9 @@ export const GET = createSmartRouteHandler({
             id: user.projectUserId,
             primary_email: user.contactChannels[0]?.value ?? null,
             display_name: user.displayName,
-            is_admin: [
-              ...user.directPermissions.map((permission) => permission.permissionId),
-              ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
-            ].includes("team_admin"),
+            is_admin: effectiveTeamPermissionsByUser.get(user.projectUserId)?.has("team_admin") ?? false,
             teams: user.teamMembers.map((member) => member.team.displayName),
-            permissions: [
-              ...new Set([
-                ...user.directPermissions.map((permission) => permission.permissionId),
-                ...user.teamMembers.flatMap((member) => member.teamMemberDirectPermissions.map((permission) => permission.permissionId)),
-              ]),
-            ],
+            permissions: [...(effectivePermissionsByUser.get(user.projectUserId) ?? new Set<string>())].sort(),
             // This only reflects sign-ins since $sign-in-attempt logging began.
             last_sign_in_at: lastSignInByUser.get(user.projectUserId) ?? null,
             signed_up_at: user.signedUpAt.toISOString(),

@@ -381,6 +381,8 @@ const handler = createSmartRouteHandler({
                       id: oldAccount.projectUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -407,6 +409,8 @@ const handler = createSmartRouteHandler({
                       id: linkedUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -463,6 +467,8 @@ const handler = createSmartRouteHandler({
                     id: newUserId,
                     newUser: true,
                     afterCallbackRedirectUrl,
+                    email: userInfo.email ?? null,
+                    oauthProvider: provider.id,
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {

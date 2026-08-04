@@ -1,4 +1,5 @@
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { logEvent, getEndUserIpInfoForEvent, SystemEventTypes } from "./events";
 import { Tenancy } from "./tenancies";
@@ -53,7 +54,8 @@ async function logSignInAttempt(tenancy: Tenancy, options: SignInAttemptOptions)
         oauthProvider: options.oauthProvider ?? null,
         ipInfo,
       }, {
-        billingTeamId: null,
+        // Meter public failed sign-ins to bound compliance-event write amplification.
+        billingTeamId: getBillingTeamId(tenancy.project),
       });
     },
   );
@@ -75,7 +77,8 @@ async function logPermissionDenied(tenancy: Tenancy, options: PermissionDeniedOp
         scope: options.scope,
         ipInfo,
       }, {
-        billingTeamId: null,
+        // Meter permission denials to bound compliance-event write amplification.
+        billingTeamId: getBillingTeamId(tenancy.project),
       });
     },
   );
@@ -94,7 +97,8 @@ async function logUserRestricted(tenancy: Tenancy, options: UserRestrictedOption
         restrictedReason: options.restrictedReason,
         ipInfo,
       }, {
-        billingTeamId: null,
+        // Meter restricted-user events to bound compliance-event write amplification.
+        billingTeamId: getBillingTeamId(tenancy.project),
       });
     },
   );

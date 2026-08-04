@@ -73,6 +73,8 @@ export const POST = createSmartRouteHandler({
         branchId: tenancy.branchId,
         isNewUser: false,
         userId: contactChannel.projectUser.projectUserId,
+        method: "password",
+        email,
       });
     }
 
