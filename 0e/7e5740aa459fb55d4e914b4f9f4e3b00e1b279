@@ -1,0 +1,19 @@
+apps/backend/tsdown.config.ts
+  s_f7f9288d967c40::t_772c7326ec146a 9-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "0e7e5740aa459fb55d4e914b4f9f4e3b00e1b279",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
