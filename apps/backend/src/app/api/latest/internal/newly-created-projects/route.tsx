@@ -22,12 +22,10 @@ import {
   mergeInternalProjectIntoCandidates,
   selectProjectsWithInternalPinned,
 } from "./helpers";
-import {
-  NewlyCreatedProjectsFiltersSchema,
-  OnboardingFilterSchema,
-  ProjectRowSchema,
-  RdeFilterSchema,
-} from "./schemas";
+import { ProjectRowSchema } from "./schemas";
+
+const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
+const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
 
 function parseNonNegativeInt(name: string, raw: string | undefined, fallback: number): number {
   if (raw == null || raw === "") return fallback;
@@ -67,7 +65,12 @@ export const GET = createSmartRouteHandler({
       generated_at: yupString().defined(),
       featured_app_ids: yupArray(yupString().oneOf([...FEATURED_APP_IDS]).defined()).defined(),
       projects: yupArray(ProjectRowSchema).defined(),
-      filters: NewlyCreatedProjectsFiltersSchema,
+      filters: yupObject({
+        min_users: yupNumber().integer().defined(),
+        rde: RdeFilterSchema.defined(),
+        onboarding: OnboardingFilterSchema.defined(),
+        activity_24h_after_creation: yupBoolean().defined(),
+      }).defined(),
     }).defined(),
   }),
   handler: async (req) => {
@@ -145,8 +148,6 @@ export const GET = createSmartRouteHandler({
           rde,
           onboarding,
           activity_24h_after_creation: activity24hAfterCreation,
-          candidate_window_size: CANDIDATE_WINDOW_SIZE,
-          candidate_window_saturated: recentProjects.length === CANDIDATE_WINDOW_SIZE,
         },
       },
     };
