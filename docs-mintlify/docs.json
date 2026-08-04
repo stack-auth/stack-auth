@@ -118,7 +118,7 @@
               },
               "guides/apps/emails/overview",
               "guides/apps/payments/overview",
-              {"group": "Analytics", "icon": "/images/app-icons/analytics.svg", "pages": ["guides/apps/analytics/overview", "guides/apps/analytics/custom-events-and-spans", {"group": "Observability", "pages": ["guides/apps/analytics/errors-and-logs", "guides/apps/analytics/cross-tier-tracing", "guides/apps/analytics/framework-adapters"]}]},
+              {"group": "Analytics", "icon": "/images/app-icons/analytics.svg", "pages": ["guides/apps/analytics/overview", "guides/apps/analytics/custom-events-and-spans", {"group": "Observability", "pages": ["guides/apps/analytics/errors-and-logs", "guides/apps/observability/overview", "guides/apps/observability/grouping", "guides/apps/observability/issues", "guides/apps/observability/querying-errors", "guides/apps/observability/webhooks", "guides/apps/analytics/cross-tier-tracing", "guides/apps/analytics/framework-adapters"]}]},
               {
                 "group": "Teams",
                 "icon": "/images/app-icons/teams.svg",

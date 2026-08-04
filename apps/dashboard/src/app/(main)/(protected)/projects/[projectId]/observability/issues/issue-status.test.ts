@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyOptimisticStatus,
+  clearOptimisticStatus,
+  issueStatusBadge,
+  NO_ISSUE_STATUS_OVERRIDES,
+  nextStatusForAction,
+  primaryIssueStatusAction,
+  reconcileIssueStatusOverrides,
+  resolveIssueRowStatus,
+} from "./issue-status";
+import type { IssueListItem } from "./issues-data";
+
+function issue(overrides: Partial<IssueListItem> = {}): IssueListItem {
+  return {
+    id: "issue-1",
+    short_id: "1",
+    type: "TypeError",
+    value: "boom",
+    culprit: "app/x.ts",
+    level: "error",
+    status: "unresolved",
+    substatus: "ongoing",
+    first_seen_at_millis: 1_000,
+    last_seen_at_millis: 2_000,
+    times_seen: "5",
+    window_occurrences: 5,
+    window_users: 2,
+    service_name: null,
+    environment: null,
+    release: null,
+    handled: true,
+    synthetic: false,
+    counters_truncated_at_millis: null,
+    updated_at_millis: 2_000,
+    issue_hashes: ["hash-1"],
+    ...overrides,
+  };
+}
+
+describe("nextStatusForAction", () => {
+  it("maps every action", () => {
+    expect(nextStatusForAction("resolve")).toBe("resolved");
+    expect(nextStatusForAction("unresolve")).toBe("unresolved");
+    expect(nextStatusForAction("ignore")).toBe("ignored");
+  });
+});
+
+describe("issueStatusBadge", () => {
+  it("returns null for a plain unresolved issue so the column isn't noise", () => {
+    expect(issueStatusBadge({ status: "unresolved", substatus: "ongoing" })).toBeNull();
+  });
+
+  it("badges the states that change how you triage", () => {
+    expect(issueStatusBadge({ status: "unresolved", substatus: "regressed" }))
+      .toEqual({ label: "Regressed", color: "orange" });
+    expect(issueStatusBadge({ status: "unresolved", substatus: "new" }))
+      .toEqual({ label: "New", color: "blue" });
+    expect(issueStatusBadge({ status: "resolved", substatus: "ongoing" }))
+      .toEqual({ label: "Resolved", color: "green" });
+    expect(issueStatusBadge({ status: "ignored", substatus: "ongoing" }))
+      .toEqual({ label: "Ignored", color: "zinc" });
+  });
+});
+
+describe("optimistic overrides", () => {
+  it("shows the override while the server row is still at the recorded version", () => {
+    const row = issue({ updated_at_millis: 2_000 });
+    const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, row.id, "resolved", row.updated_at_millis);
+    expect(resolveIssueRowStatus(row, overrides)).toEqual({ status: "resolved", isOptimistic: true });
+  });
+
+  it("is DROPPED once the server returns a newer row, so a later regression is not masked", () => {
+    const clicked = issue({ updated_at_millis: 2_000 });
+    const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, clicked.id, "resolved", 2_000);
+
+    // The issue recurred: the server reopened it and bumped updated_at.
+    const regressed = issue({ status: "unresolved", substatus: "regressed", updated_at_millis: 5_000 });
+    const reconciled = reconcileIssueStatusOverrides(overrides, [regressed]);
+
+    expect(reconciled.size).toBe(0);
+    expect(resolveIssueRowStatus(regressed, reconciled)).toEqual({ status: "unresolved", isOptimistic: false });
+  });
+
+  it("survives a refetch that returns the same version", () => {
+    const row = issue({ updated_at_millis: 2_000 });
+    const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, row.id, "resolved", 2_000);
+    const reconciled = reconcileIssueStatusOverrides(overrides, [row]);
+    expect(reconciled).toBe(overrides);
+    expect(resolveIssueRowStatus(row, reconciled).status).toBe("resolved");
+  });
+
+  it("returns the same map reference when nothing changed", () => {
+    const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "issue-1", "resolved", 2_000);
+    expect(reconcileIssueStatusOverrides(overrides, [])).toBe(overrides);
+    expect(reconcileIssueStatusOverrides(NO_ISSUE_STATUS_OVERRIDES, [issue()])).toBe(NO_ISSUE_STATUS_OVERRIDES);
+  });
+
+  it("clears a single override without touching the others", () => {
+    const a = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, "a", "resolved", 1);
+    const both = applyOptimisticStatus(a, "b", "ignored", 1);
+    const cleared = clearOptimisticStatus(both, "a");
+    expect(cleared.has("a")).toBe(false);
+    expect(cleared.get("b")?.status).toBe("ignored");
+    // Immutability: the caller's map is never mutated in place.
+    expect(both.has("a")).toBe(true);
+  });
+
+  it("does not report an override as optimistic when it agrees with the server", () => {
+    const row = issue({ status: "resolved" });
+    const overrides = applyOptimisticStatus(NO_ISSUE_STATUS_OVERRIDES, row.id, "resolved", row.updated_at_millis);
+    expect(resolveIssueRowStatus(row, overrides)).toEqual({ status: "resolved", isOptimistic: false });
+  });
+});
+
+describe("primaryIssueStatusAction", () => {
+  it("offers the way back from every terminal state", () => {
+    expect(primaryIssueStatusAction("unresolved")).toBe("resolve");
+    expect(primaryIssueStatusAction("resolved")).toBe("unresolve");
+    expect(primaryIssueStatusAction("ignored")).toBe("unresolve");
+  });
+});

@@ -22,6 +22,16 @@ Two halves, both automatic once set up:
 A request that arrives **without** a `traceparent` is a root activity in its own right: the SDK mints a fresh `trace_id` and gives the request's span a `NULL` `parent_span_id`. So a server that nobody traced into still produces complete, well-formed traces.
 </Info>
 
+<Info>
+When the receiving service records telemetry in a **different project** from the
+caller, it keeps its own trace tree and records the verified client request as a
+span link instead of adopting it as a parent. This is how Hexclave's own service
+telemetry can remain rooted in the internal project while still linking back to
+the customer's `$http-client` span. Only the authenticated server boundary may
+create that cross-project link; public ingestion cannot choose another project's
+scope.
+</Info>
+
 ## The Client Side
 
 Nothing to do beyond having analytics enabled with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the headers are attached automatically, for both `fetch` and XHR-based HTTP clients (like axios' default browser adapter), to requests going to:

@@ -150,10 +150,11 @@ await hexclaveClientApp.withSpan("checkout", async (span) => {
 
 ### Explicit control
 
-All tracking calls accept the same three parenting options:
+Events accept `parent` and `root`; spans additionally accept `links`:
 
 ```tsx
-hexclaveClientApp.trackEvent("audit-log", { action: "delete" }, {
+hexclaveClientApp.startSpan("audit-log", {
+  data: { action: "delete" },
   parent: importSpan,          // this item's ONE parent; overrides ambient context
   // root: true,               // instead: start a brand-new trace
   // links: [uploadSpan],      // related work that is NOT the parent
@@ -162,7 +163,7 @@ hexclaveClientApp.trackEvent("audit-log", { action: "delete" }, {
 
 - **`parent`** — a `Span` handle or a `spanContext()` object (`{ traceId, spanId }`). It is singular and it *replaces* the ambient parent rather than adding to it: a span has one parent, so there is nothing to merge. The new span joins `parent`'s trace.
 - **`root: true`** — drops the ambient parent, so this item becomes a trace root: a genuinely fresh `trace_id` with `parent_span_id` set to `NULL`. Use it for work that isn't caused by the surrounding code (a background poller started inside a request handler, say). Session and page correlation is identity, not parenting, so it is always kept.
-- **`links`** — see below.
+- **`links`** — span-only; see below. Events are instants and cannot own OTel links.
 
 An explicit `parent` wins over `root`, and both win over ambient context.
 
@@ -184,6 +185,12 @@ await hexclaveServerApp.withSpan("flush-queue", {
 ```
 
 Each link is a `Span` handle or a `spanContext()` object, and may point into a *different* trace — that's the point. The SDK also creates links for you: when several ambient spans from different traces are in scope, the innermost becomes the parent and the rest become links, so no relationship is silently dropped and none is silently invented.
+
+Links do not force either trace to be sampled. The span that owns the link is
+retained or dropped by its own trace's sampling decision; the linked trace is
+sampled independently. Supply links when creating a span whenever possible so
+OpenTelemetry-compatible samplers can consider them. The hidden server OTel
+bridge also retains valid creation-time and late `addLink`/`addLinks` calls.
 
 Since a span has one parent, there is no ancestor chain to keep, no depth cap, and no path to reconcile: a span's position in its trace is fully described by `parent_span_id`.
 
@@ -228,7 +235,7 @@ export const hexclaveServerApp = new HexclaveServerApp({
 |---|---|
 | Event/span type names | Start with a letter; then letters, digits, `_`, `.`, `:`, `-`; at most 64 characters. `$`-prefixed names are reserved for system telemetry. |
 | `data` payloads | Plain JSON-serializable object, at most 64,000 bytes serialized (for spans, the limit applies to the accumulated merged data) |
-| `parent` / `links` entries | `Span` handles or `spanContext()` objects — never a bare id string |
+| `parent` entries; span-only `links` entries | `Span` handles or `spanContext()` objects — never a bare id string; at most 32 deduplicated links per span |
 | Trace and span ids | W3C shapes: `trace_id` is 32 hex characters, `span_id` and `parent_span_id` are 16; never all-zero, and a span is never its own parent |
 | `userId` and correlation ids | UUIDs (`user_id`, `refresh_token_id`, `session_replay_id`, `session_replay_segment_id`) |
 | Browser flush | Every 10 seconds, or at 50 buffered items / ~64 KB, plus on tab hide |
@@ -238,7 +245,7 @@ Invalid `trackEvent` input rejects its returned promise. Invalid `startSpan`/`wi
 
 ## Querying Your Telemetry
 
-Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, events in `events`. `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex W3C ids; `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs. Nothing is prefixed.
+Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, span links in `span_links`, and events in `events`. `trace_id`, `span_id`, `parent_span_id`, and `page_view_span_id` are hex W3C ids; `user_id`, `refresh_token_id`, `session_replay_id`, and `session_replay_segment_id` are UUIDs. Nothing is prefixed.
 
 Duration stats per custom span type:
 

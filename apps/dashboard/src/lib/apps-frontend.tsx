@@ -417,7 +417,6 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
-      { displayName: "Funnels", href: "./funnels" },
       { displayName: "Retention", href: "./retention" },
       { displayName: "Paths", href: "./paths" },
       { displayName: "Replays", href: "../session-replays" },

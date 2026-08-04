@@ -7,8 +7,14 @@
  * "400µs" in the other — the same span could show two different durations
  * depending on which page you were looking at.
  *
- * Only genuinely cross-page helpers belong here. Count/percent/timestamp
- * formatting is still services-local because nothing else renders those yet.
+ * Only genuinely cross-page helpers belong here. Count/percent formatting is
+ * still services-local because nothing else renders those yet.
+ *
+ * The time formatters take epoch milliseconds rather than a ClickHouse
+ * timestamp string: Issues gets its timestamps from a REST payload (`*_millis`
+ * numbers) while Services reads them out of ClickHouse rows, and milliseconds
+ * is the only representation both already have. `services-format.ts` keeps the
+ * string-shaped wrappers its call sites use.
  */
 
 /**
@@ -43,6 +49,61 @@ export function formatDuration(ms: number | null): string {
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
   return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
+}
+
+const RELATIVE_TIME_UNITS: readonly { limitMs: number, divisorMs: number, unit: Intl.RelativeTimeFormatUnit }[] = [
+  { limitMs: 60_000, divisorMs: 1_000, unit: "second" },
+  { limitMs: 3_600_000, divisorMs: 60_000, unit: "minute" },
+  { limitMs: 86_400_000, divisorMs: 3_600_000, unit: "hour" },
+  { limitMs: 2_592_000_000, divisorMs: 86_400_000, unit: "day" },
+];
+
+/**
+ * "2m ago" / "3h ago". Recency is the primary thing a reader scans an
+ * Observability table for, and an absolute timestamp forces them to do the
+ * subtraction themselves.
+ *
+ * `nowMs` is passed in rather than read from the clock so a table full of these
+ * renders one consistent "now" — and so tests are deterministic.
+ */
+export function formatRelativeTimeFromMillis(millis: number, nowMs: number): string {
+  if (!Number.isFinite(millis)) throw new Error(`Cannot format a non-finite timestamp: ${millis}`);
+  const elapsedMs = nowMs - millis;
+  // Clock skew between the browser and the server can make a fresh row look
+  // like it arrived in the future; "just now" is truthful for both cases.
+  if (elapsedMs < 45_000) return "just now";
+
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "narrow" });
+  for (const { limitMs, divisorMs, unit } of RELATIVE_TIME_UNITS) {
+    if (elapsedMs < limitMs) {
+      return formatter.format(-Math.round(elapsedMs / divisorMs), unit);
+    }
+  }
+  return formatter.format(-Math.round(elapsedMs / 2_592_000_000), "month");
+}
+
+/** "12 Mar, 14:05" — the tooltip/secondary companion to the relative form. */
+export function formatAbsoluteTimeFromMillis(millis: number): string {
+  if (!Number.isFinite(millis)) throw new Error(`Cannot format a non-finite timestamp: ${millis}`);
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(millis));
+}
+
+/**
+ * Date only, no clock. Used where the time of day would be noise — e.g. the
+ * "counters are only complete since <date>" note an unmerged issue carries.
+ */
+export function formatDateFromMillis(millis: number): string {
+  if (!Number.isFinite(millis)) throw new Error(`Cannot format a non-finite timestamp: ${millis}`);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(millis));
 }
 
 /**

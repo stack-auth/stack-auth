@@ -144,7 +144,13 @@ export function CellValue({ value, truncate = true }: { value: unknown, truncate
   return <span>{str}</span>;
 }
 
-function RowDetailField({ column, value }: { column: string, value: unknown }) {
+/**
+ * One labelled field in a detail view: uppercase label, monospaced value, JSON
+ * pretty-printed. Exported because the Issues detail page renders the same
+ * shape outside a dialog (in the tags / data card) and a second copy of these
+ * classes would drift from `RowDetailDialog`'s.
+ */
+export function RowDetailField({ column, value }: { column: string, value: unknown }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } 
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { ArrowClockwiseIcon, ChartLineIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ChartLineIcon, LinkSimpleIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -243,7 +243,7 @@ LIMIT ${PAGE_VIEW_CHILDREN_CAP}
 // caused share a `trace_id` (the SDK propagates it as `traceparent`), so there
 // is nothing left to bridge across id namespaces at read time — which is the
 // point of the W3C model.
-export function getSelectedTraceSpanQuery(traceId: string): {
+export function getSelectedTraceSpanQuery(traceId: string, focusSpanId: string | null = null): {
   query: string,
   params: Record<string, string | number>,
 } {
@@ -251,11 +251,35 @@ export function getSelectedTraceSpanQuery(traceId: string): {
     query: `
 ${TRACE_SPAN_STRUCTURE_SELECT_SQL}
 WHERE s.trace_id = {traceId:String}
--- Oldest-first so that if a pathological trace exceeds the LIMIT, what survives
--- is the beginning of the trace including its root, rather than an arbitrary
--- slice that would render as a waterfall with no root.
-ORDER BY s.started_at ASC
+-- Oldest-first keeps the root and beginning of a pathological trace. When a
+-- span-link navigation names a target, rank that exact span first so the
+-- 10,000-row safety cap cannot turn a retained target into a false "missing"
+-- result. The remaining 9,999 rows still begin at the physical trace root.
+ORDER BY ${focusSpanId === null ? "s.started_at ASC" : "s.span_id = {focusSpanId:String} DESC, s.started_at ASC"}
 LIMIT 10000
+`,
+    params: { traceId, ...focusSpanId === null ? {} : { focusSpanId } },
+  };
+}
+
+export function getSelectedTraceLinksQuery(traceId: string): {
+  query: string,
+  params: Record<string, string>,
+} {
+  return {
+    query: `
+SELECT
+  trace_id,
+  owner_span_id,
+  linked_trace_id,
+  linked_span_id,
+  linked_project_id,
+  linked_branch_id,
+  linked_project_id = project_id AND linked_branch_id = branch_id AS target_is_same_scope
+FROM default.span_links
+WHERE trace_id = {traceId:String}
+ORDER BY owner_span_id ASC, linked_trace_id ASC, linked_span_id ASC
+LIMIT 1000
 `,
     params: { traceId },
   };
@@ -349,18 +373,32 @@ export function getSelectedTraceEventQuery(traceId: string, hours: number): {
   params: Record<string, string | number>,
 } {
   return {
+    // Each branch lists its columns EXPLICITLY rather than using `SELECT *`.
+    // ClickHouse matches UNION ALL branches positionally and by count, and
+    // `default.errors` exposes the server-side grouping columns that the other
+    // three views do not — so `SELECT *` makes the branches different widths
+    // and the query fails with "UNION different number of columns".
     query: `
+WITH correlated AS (
+  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+         refresh_token_id, session_replay_id, session_replay_segment_id
+  FROM default.events
+  UNION ALL
+  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+         refresh_token_id, session_replay_id, session_replay_segment_id
+  FROM default.logs
+  UNION ALL
+  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+         refresh_token_id, session_replay_id, session_replay_segment_id
+  FROM default.errors
+  UNION ALL
+  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+         refresh_token_id, session_replay_id, session_replay_segment_id
+  FROM default.span_events
+)
 SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
        refresh_token_id, session_replay_id, session_replay_segment_id
-FROM (
-  SELECT * FROM default.events
-  UNION ALL
-  SELECT * FROM default.logs
-  UNION ALL
-  SELECT * FROM default.errors
-  UNION ALL
-  SELECT * FROM default.span_events
-)
+FROM correlated
 WHERE trace_id = {traceId:String}
   AND event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
 ORDER BY event_at ASC
@@ -432,6 +470,33 @@ export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[
   return [...spansByTraceAndId.values()];
 }
 
+export type TraceLink = {
+  ownerSpanId: string,
+  linkedTraceId: string,
+  linkedSpanId: string,
+  linkedProjectId: string,
+  linkedBranchId: string,
+  targetIsSameScope: boolean,
+};
+
+export function parseTraceLinkRow(row: Record<string, unknown>): TraceLink | null {
+  if (
+    typeof row.owner_span_id !== "string"
+    || typeof row.linked_trace_id !== "string"
+    || typeof row.linked_span_id !== "string"
+    || typeof row.linked_project_id !== "string"
+    || typeof row.linked_branch_id !== "string"
+  ) return null;
+  return {
+    ownerSpanId: row.owner_span_id,
+    linkedTraceId: row.linked_trace_id,
+    linkedSpanId: row.linked_span_id,
+    linkedProjectId: row.linked_project_id,
+    linkedBranchId: row.linked_branch_id,
+    targetIsSameScope: row.target_is_same_scope === 1 || row.target_is_same_scope === true,
+  };
+}
+
 type TraceRootSpan = SpanInput & {
   activityMs: number,
 };
@@ -481,8 +546,27 @@ export default function PageClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch] = useDebounce(search.trim(), SEARCH_DEBOUNCE_MS);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
+  const [linkedSelection, setLinkedSelection] = useState<{ traceId: string, spanId: string | null } | null>(null);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Set when `?trace=` named a trace that isn't in the loaded window, so the
+  // page can say so instead of silently selecting an unrelated trace.
+  const [seedTraceMiss, setSeedTraceMiss] = useState<string | null>(null);
+
+  // `?trace=<id>` seeds the selection once, so the Issues detail page (and any
+  // other correlation rail) can deep-link straight at a trace.
+  //
+  // Read from `window.location` rather than `useSearchParams()`: this page is
+  // statically rendered, and `useSearchParams` would force a Suspense boundary
+  // around the whole client tree for a value we only ever want on first paint.
+  // Same approach `useDataGridUrlState` takes. `undefined` means "not read
+  // yet", `null` means "read, nothing there or already consumed".
+  const seedTraceIdRef = useRef<string | null | undefined>(undefined);
+  if (seedTraceIdRef.current === undefined) {
+    seedTraceIdRef.current = typeof window === "undefined"
+      ? null
+      : (new URLSearchParams(window.location.search).get("trace") || null);
+  }
 
   const [rootSpans, setRootSpans] = useState<TraceRootSpan[]>([]);
   // Page-view expansion. Children are fetched once per page view and kept, so
@@ -493,6 +577,7 @@ export default function PageClient() {
   const [loadingPageViewIds, setLoadingPageViewIds] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedSpans, setSelectedSpans] = useState<SpanInput[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<EventInput[]>([]);
+  const [selectedLinks, setSelectedLinks] = useState<TraceLink[]>([]);
   // "Now" reference for the waterfall/list: fixed at load time so a span that is
   // still open (no ended_at) renders as ongoing up to a stable edge instead of
   // growing on every re-render.
@@ -545,10 +630,22 @@ export default function PageClient() {
       const lastRoot = nextRoots.at(-1);
       setRootCursor(lastRoot == null ? null : { activityMs: lastRoot.activityMs, id: lastRoot.id });
       setHasMoreRoots(recentRootRows.length === ROOT_PAGE_SIZE);
+      // Resolved outside the state updater: React may invoke an updater more
+      // than once, and consuming the seed inside it would drop the selection
+      // on the second call.
+      const seedTraceId = seedTraceIdRef.current;
+      const seededRootId = seedTraceId == null
+        ? null
+        : (nextRoots.find((span) => span.traceId === seedTraceId)?.id ?? null);
+      if (seedTraceId != null) {
+        seedTraceIdRef.current = null;
+        setSeedTraceMiss(seededRootId == null ? seedTraceId : null);
+      }
       setSelectedRootId((currentRootId) => (
-        currentRootId != null && nextRoots.some((span) => span.id === currentRootId)
+        seededRootId
+        ?? (currentRootId != null && nextRoots.some((span) => span.id === currentRootId)
           ? currentRootId
-          : (nextRoots[0]?.id ?? null)
+          : (nextRoots[0]?.id ?? null))
       ));
       setNowMs(Date.now());
     } catch (e) {
@@ -614,14 +711,15 @@ export default function PageClient() {
     runAsynchronouslyWithAlert(loadMoreRoots);
   }, [loadMoreRoots]);
 
-  const loadSelectedTrace = useCallback(async (traceId: string) => {
+  const loadSelectedTrace = useCallback(async (traceId: string, focusSpanId: string | null = null) => {
     const seq = ++traceRequestSeqRef.current;
     setTraceLoading(true);
     setTraceError(null);
     try {
-      const spanQuery = getSelectedTraceSpanQuery(traceId);
+      const spanQuery = getSelectedTraceSpanQuery(traceId, focusSpanId);
       const eventQuery = getSelectedTraceEventQuery(traceId, hours);
-      const [spansResponse, eventsResponse] = await Promise.all([
+      const linksQuery = getSelectedTraceLinksQuery(traceId);
+      const [spansResponse, eventsResponse, linksResponse] = await Promise.all([
         queryObservability(adminApp, {
           query: spanQuery.query,
           params: spanQuery.params,
@@ -630,12 +728,16 @@ export default function PageClient() {
           query: eventQuery.query,
           params: eventQuery.params,
         }),
+        queryObservability(adminApp, linksQuery),
       ]);
       if (seq !== traceRequestSeqRef.current) return;
       setSelectedSpans(parseUniqueSpanRows(spansResponse.result));
       setSelectedEvents(eventsResponse.result
         .map(parseEventRow)
         .filter((event): event is EventInput => event != null));
+      setSelectedLinks(linksResponse.result
+        .map(parseTraceLinkRow)
+        .filter((link): link is TraceLink => link != null));
       setTraceResultWasCapped(spansResponse.result.length >= 10000);
       setNowMs(Date.now());
     } catch (e) {
@@ -676,6 +778,7 @@ export default function PageClient() {
       ? null
       : (rootSpans.find((span) => span.id === selectedRootId)?.traceId ?? null)
   ), [rootSpans, selectedRootId]);
+  const selectedTraceId = linkedSelection?.traceId ?? selectedRootTraceId;
   const selectedTraceServices = useMemo(() => {
     if (selectedRootId == null) return [];
     const selectedRoot = rootSpans.find((span) => span.id === selectedRootId);
@@ -683,13 +786,14 @@ export default function PageClient() {
   }, [rootSpans, selectedRootId]);
 
   useEffect(() => {
-    if (selectedRootId == null || selectedRootTraceId == null) {
+    if (selectedTraceId == null) {
       setSelectedSpans([]);
       setSelectedEvents([]);
+      setSelectedLinks([]);
       return;
     }
-    runAsynchronouslyWithAlert(loadSelectedTrace(selectedRootTraceId));
-  }, [loadSelectedTrace, selectedRootId, selectedRootTraceId]);
+    runAsynchronouslyWithAlert(loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? null));
+  }, [linkedSelection?.spanId, loadSelectedTrace, selectedTraceId]);
 
   const { traces: rootTraces } = useMemo(() => buildTraces(rootSpans, []), [rootSpans]);
 
@@ -726,17 +830,19 @@ export default function PageClient() {
   const searchNeedle = search.trim().toLowerCase();
 
   const { selectedTrace, unattachedEventCount } = useMemo<{ selectedTrace: Trace | null, unattachedEventCount: number }>(() => {
-    if (selectedRootId == null) return { selectedTrace: null, unattachedEventCount: 0 };
+    if (selectedTraceId == null) return { selectedTrace: null, unattachedEventCount: 0 };
     // Every tier of the request already shares one trace id, so the client
     // page-view → $http-client → backend request → db chain builds into a single
     // connected waterfall with no read-time reparenting.
     const { traces, unattachedEvents } = buildTraces(selectedSpans, selectedEvents);
     return {
-      selectedTrace: traces.find((trace) => traceContainsSpanId(trace, selectedRootId)) ?? null,
+      selectedTrace: linkedSelection?.spanId == null
+        ? traces.find((trace) => trace.root.span.traceId === selectedTraceId) ?? null
+        : traces.find((trace) => traceContainsSpanId(trace, linkedSelection.spanId ?? "")) ?? null,
       // Counted, not discarded — see TraceWaterfall's unattachedEventCount.
       unattachedEventCount: unattachedEvents.length,
     };
-  }, [selectedEvents, selectedRootId, selectedSpans]);
+  }, [linkedSelection, selectedEvents, selectedSpans, selectedTraceId]);
 
   const openEventDetail = useCallback((raw: Record<string, unknown>) => {
     detailRequestSeqRef.current += 1;
@@ -773,11 +879,11 @@ export default function PageClient() {
     await Promise.all([
       loadRoots(),
       loadTraceVolume(),
-      selectedRootId == null || selectedRootTraceId == null
+      selectedTraceId == null
         ? Promise.resolve()
-        : loadSelectedTrace(selectedRootTraceId),
+        : loadSelectedTrace(selectedTraceId, linkedSelection?.spanId ?? null),
     ]);
-  }, [loadRoots, loadSelectedTrace, loadTraceVolume, selectedRootId, selectedRootTraceId]);
+  }, [linkedSelection?.spanId, loadRoots, loadSelectedTrace, loadTraceVolume, selectedTraceId]);
 
   const headerActions = (
     <TooltipProvider>
@@ -799,6 +905,12 @@ export default function PageClient() {
           <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} ${rootTraces.length === 1 ? "trace" : "traces"}`} />
           <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
           <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
+          {/* Unlike the trace/span/event counts, this one is conditional: span links are rare, and the
+              waterfall already renders each one as its own row under the owning span. A permanent "0
+              links" stat (or a whole empty rail) would spend space on the common case of having none. */}
+          {selectedLinks.length > 0 && (
+            <HeaderCountStat icon={<LinkSimpleIcon className="h-3.5 w-3.5" />} value={selectedLinks.length} label={`${selectedLinks.length.toLocaleString()} non-hierarchical span ${selectedLinks.length === 1 ? "link" : "links"} in the selected trace`} />
+          )}
         </div>
         <span className="h-5 w-px shrink-0 bg-border/60" aria-hidden />
         <DesignPillToggle
@@ -836,6 +948,20 @@ export default function PageClient() {
         <div className="empty:hidden">
           <AnalyticsEventLimitBanner />
         </div>
+
+        {seedTraceMiss != null && (
+          <DesignAlert
+            variant="info"
+            title="That trace isn't in this window"
+            description={
+              <>
+                Nothing in the last {hours}h matches trace{" "}
+                <code className="font-mono">{seedTraceMiss}</code>. Widen the time range, or clear
+                the service filter, to look for it.
+              </>
+            }
+          />
+        )}
 
         {traceResultWasCapped && !traceLoading && traceError == null && (
           <DesignAlert
@@ -902,7 +1028,10 @@ export default function PageClient() {
                     traces={rootTraces}
                     nowMs={nowMs}
                     activeSpanId={selectedRootId}
-                    onSelectSpan={(rootId) => setSelectedRootId(rootId)}
+                    onSelectSpan={(rootId) => {
+                      setLinkedSelection(null);
+                      setSelectedRootId(rootId);
+                    }}
                     expandedPageViewIds={expandedPageViewIds}
                     childrenByPageViewId={childrenByPageViewId}
                     loadingPageViewIds={loadingPageViewIds}
@@ -922,25 +1051,53 @@ export default function PageClient() {
             aria-label="Selected trace waterfall"
             className={cn(CARD_CLASSES, "flex min-h-[420px] min-w-0 self-start flex-col overflow-hidden")}
           >
+            {linkedSelection !== null && (
+              <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-foreground/[0.03] px-3 py-2">
+                <div className="min-w-0 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Following span link</span>{" "}
+                  <span className="font-mono">{selectedRootTraceId?.slice(0, 8) ?? "trace"}</span>{" → "}
+                  <span className="font-mono">{linkedSelection.traceId.slice(0, 8)}/{linkedSelection.spanId?.slice(0, 6) ?? "root"}</span>
+                </div>
+                <DesignButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setLinkedSelection(null)}
+                >
+                  Back to originating trace
+                </DesignButton>
+              </div>
+            )}
             {traceLoading && (
               <div className="flex flex-1 items-center justify-center py-24">
                 <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             )}
-            {!traceLoading && traceError == null && selectedTrace == null && (
+            {!traceLoading && traceError == null && selectedTrace == null && linkedSelection === null && (
               <div className="flex flex-1 items-center justify-center">
                 <EmptyState title="Select a trace to see its waterfall." />
+              </div>
+            )}
+            {!traceLoading && traceError == null && selectedTrace == null && linkedSelection !== null && (
+              <div className="p-4">
+                <DesignAlert
+                  variant="warning"
+                  title="Linked span is unavailable"
+                  description="The link was retained, but its same-project target was not found. The linked trace may have been sampled out independently, expired, or not arrived yet."
+                />
               </div>
             )}
             {!traceLoading && traceError == null && selectedTrace != null && (
               <TraceWaterfall
                 trace={selectedTrace}
-                services={selectedTraceServices}
+                services={linkedSelection === null ? selectedTraceServices : []}
                 nowMs={nowMs}
                 needle={searchNeedle}
                 unattachedEventCount={unattachedEventCount}
+                links={selectedLinks}
                 onSelectSpan={(span) => runAsynchronouslyWithAlert(openSpanDetail(span))}
                 onSelectEvent={(event) => openEventDetail(event.raw)}
+                onOpenLink={(link) => setLinkedSelection({ traceId: link.linkedTraceId, spanId: link.linkedSpanId })}
               />
             )}
             {!traceLoading && traceError != null && (
@@ -948,9 +1105,9 @@ export default function PageClient() {
                 <ErrorDisplay
                   error={traceError}
                   onRetry={() => (
-                    selectedRootId == null || selectedRootTraceId == null
+                    selectedTraceId == null
                       ? Promise.resolve()
-                      : loadSelectedTrace(selectedRootTraceId)
+                      : loadSelectedTrace(selectedTraceId)
                   )}
                 />
               </div>
