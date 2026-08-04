@@ -1,5 +1,7 @@
 export type AdminSessionReplay = {
   id: string,
+  /** The session the replay was recorded in; analytics events of the same session carry it too. */
+  refreshTokenId: string,
   projectUser: {
     id: string,
     displayName: string | null,
