@@ -77,9 +77,11 @@ type BrowserSecretGlobals = {
   rateLimitTimestamps: number[],
 };
 
-const browserSecretGlobals = globalThis as typeof globalThis & {
-  __stackRemoteDevelopmentEnvironmentBrowserSecret?: BrowserSecretGlobals,
-};
+declare global {
+  var __stackRemoteDevelopmentEnvironmentBrowserSecret: BrowserSecretGlobals | undefined;
+}
+
+const browserSecretGlobals = globalThis;
 
 function getGlobals(): BrowserSecretGlobals {
   browserSecretGlobals.__stackRemoteDevelopmentEnvironmentBrowserSecret ??= {

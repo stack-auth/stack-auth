@@ -157,7 +157,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             ? ""
             : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]`;
           return {
-            content: [{ type: "text", text: `${result.text}${continuation}` }],
+            content: [{ type: "text", text: `${result.text}${continuation}\n\n---\n\n${remindersPrompt}` }],
           };
         },
       );

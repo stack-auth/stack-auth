@@ -18,7 +18,6 @@ type DocContent = {
 type DocType = 'dashboard' | 'docs' | 'api';
 
 const PROD_DOCS_ORIGIN = 'https://docs.hexclave.com';
-const LOCAL_DOCS_ORIGIN = 'http://localhost:8104';
 
 const isLocalHostname = (hostname: string): boolean => {
   return hostname === 'localhost' || hostname === '127.0.0.1';
@@ -48,7 +47,9 @@ const isLocalEnvironment = (): boolean => {
 
 // Get the docs base URL from environment variable with fallback
 const getDocsBaseUrl = (): string => {
-  const fallbackOrigin = isLocalEnvironment() ? LOCAL_DOCS_ORIGIN : PROD_DOCS_ORIGIN;
+  const fallbackOrigin = isLocalEnvironment()
+    ? `http://localhost:${getPublicEnvVar('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX') ?? '81'}04`
+    : PROD_DOCS_ORIGIN;
 
   // Use centralized environment variable system
   const docsBaseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL');

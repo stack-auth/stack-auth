@@ -7,16 +7,12 @@ import { Spinner, cn } from "@hexclave/ui";
 import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
-import { StyledLink } from "../components/link";
 import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
-import { useTranslation } from "../lib/translations";
 import { ErrorPage } from "./error-page";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
-  const { t } = useTranslation();
   const app = useStackApp();
   const called = useRef(false);
-  const [showRedirectLink, setShowRedirectLink] = useState(false);
   const [errorSearchParams, setErrorSearchParams] = useState<Record<string, string> | null>(null);
 
   useEffect(() => runAsynchronously(async () => {
@@ -46,10 +42,6 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
     }
   }), [app]);
 
-  useEffect(() => {
-    setTimeout(() => setShowRedirectLink(true), 3000);
-  }, []);
-
   if (errorSearchParams != null) {
     return <ErrorPage searchParams={errorSearchParams} fullPage={fullPage} />;
   }
@@ -68,14 +60,6 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         <div className="flex flex-col justify-center items-center gap-4">
           <Spinner size={20} />
         </div>
-        {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink
-          className="whitespace-nowrap"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            runAsynchronously(app.redirectToHome());
-          }}
-        >{t("click here")}</StyledLink></p> : null}
       </div>
     </MaybeFullPage>
   );

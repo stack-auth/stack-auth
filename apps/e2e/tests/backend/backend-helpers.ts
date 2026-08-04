@@ -792,6 +792,7 @@ export namespace Auth {
     export async function authorize(options: TurnstileTestOptions & {
       redirectUrl?: string,
       errorRedirectUrl?: string,
+      afterCallbackRedirectUrl?: string,
       forceBranchId?: string,
       includeClientSecret?: boolean,
     } = {}) {
@@ -802,6 +803,7 @@ export namespace Auth {
           ...filterUndefined({
             redirect_uri: options.redirectUrl ?? undefined,
             error_redirect_uri: options.errorRedirectUrl ?? undefined,
+            after_callback_redirect_url: options.afterCallbackRedirectUrl ?? undefined,
           }),
         },
       });

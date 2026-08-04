@@ -1,4 +1,4 @@
-import { useStackApp, useUser } from "@hexclave/react";
+import { hexclaveAppInternalsSymbol, useStackApp, useUser } from "@hexclave/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 
@@ -33,7 +33,11 @@ export function HostedForgotPassword(props: {
 
     setLoading(true);
     try {
-      await app.sendForgotPasswordEmail(email);
+      // The email is commonly opened in a new tab, where the hosted origin's sessionStorage is
+      // unavailable. Put the complete inherited continuation on the callback URL itself so the
+      // reset page and subsequent sign-in can return to the original customer page.
+      const callbackUrl = await app[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("passwordReset");
+      await app.sendForgotPasswordEmail(email, { callbackUrl });
       setSentEmail(email);
     } finally {
       setLoading(false);
@@ -44,8 +48,8 @@ export function HostedForgotPassword(props: {
     return (
       <HostedAuthMessage
         title="You're already signed in"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={() => app.redirectToAfterSignIn()}
+        primaryText="Continue"
         secondaryAction={() => app.redirectToSignOut()}
         secondaryText="Sign out"
         fullPage={props.fullPage}

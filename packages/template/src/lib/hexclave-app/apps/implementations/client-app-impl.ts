@@ -57,8 +57,9 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
-import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { augmentUrlWithPersistedRedirectBackState, getRawAfterAuthReturnTo, saveRedirectBackStateFromUrl } from "./redirect-back-state";
 import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
+import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -89,6 +90,7 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
+const oauthAfterCallbackRedirectUrlQueryParam = "after_callback_redirect_url";
 
 const nestedCrossDomainAuthQueryParams = {
   refreshTokenId: "stack_nested_cross_domain_auth_refresh_token_id",
@@ -97,7 +99,7 @@ const nestedCrossDomainAuthQueryParams = {
   state: "state",
   codeChallenge: "code_challenge",
   codeChallengeMethod: "code_challenge_method",
-  afterCallbackRedirectUrl: "after_callback_redirect_url",
+  afterCallbackRedirectUrl: oauthAfterCallbackRedirectUrlQueryParam,
 } as const;
 
 function getRedirectHelperInstruction(handlerName: string): string {
@@ -697,17 +699,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._analyticsOptions = resolvedOptions.analytics;
+
+    if (extraOptions?.uniqueIdentifier !== undefined) {
+      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    }
+
+    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, analytics, and
+    // development overlays cannot affect the containing page. Explicit SDK calls remain functional and retain their
+    // documented side effects.
+    if (resolvedOptions.automaticSideEffects === false) {
+      return;
+    }
+
+    this._initializeAutomaticSideEffects(resolvedOptions);
+  }
+
+  private _initializeAutomaticSideEffects(resolvedOptions: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>) {
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();
     }
 
-    if (extraOptions && extraOptions.uniqueIdentifier) {
-      this._uniqueIdentifier = extraOptions.uniqueIdentifier;
+    if (this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
-
-    this._analyticsOptions = resolvedOptions.analytics;
 
     const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
@@ -918,9 +934,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected async _redirectToOAuthCallbackError(error: KnownError): Promise<void> {
     const errorUrl = new URL(this._getUrls().error, window.location.href);
+    const callbackUrl = augmentUrlWithPersistedRedirectBackState({
+      currentUrl: new URL(window.location.href),
+      projectId: this.projectId,
+    });
     errorUrl.searchParams.set("errorCode", error.errorCode);
     errorUrl.searchParams.set("message", error.message);
     errorUrl.searchParams.set("details", JSON.stringify(error.details ?? {}));
+    for (const paramName of [
+      "after_auth_return_to",
+      crossDomainAuthQueryParams.state,
+      crossDomainAuthQueryParams.codeChallenge,
+      crossDomainAuthQueryParams.afterCallbackRedirectUrl,
+    ]) {
+      const value = callbackUrl.searchParams.get(paramName);
+      if (value != null) {
+        errorUrl.searchParams.set(paramName, value);
+      }
+    }
+    const afterCallbackRedirectUrl = callbackUrl.searchParams.get(oauthAfterCallbackRedirectUrlQueryParam);
+    if (afterCallbackRedirectUrl != null) {
+      // Account-link callbacks need to finish consuming the OAuth response before returning to
+      // their invoking page. Carry the already server-validated continuation through the
+      // configured error handler, which validates it again before navigation.
+      errorUrl.searchParams.set(oauthAfterCallbackRedirectUrlQueryParam, afterCallbackRedirectUrl);
+    }
     await this._redirectIfTrusted(errorUrl.toString(), { replace: true });
   }
 
@@ -1842,6 +1880,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const result = Result.orThrow(await app._teamMemberProfilesCache.getOrWait([session, crud.id], "write-only"));
         return result.map((crud) => app._clientTeamUserFromCrud(crud));
       },
+      async removeUser(userId: string) {
+        await app._interface.removeUserFromTeam(crud.id, userId, session);
+        await app._teamMemberProfilesCache.refresh([session, crud.id]);
+        await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
+      },
       // IF_PLATFORM react-like
       useUsers() {
         const result = useAsyncCache(app._teamMemberProfilesCache, [session, crud.id] as const, "team.useUsers()");
@@ -2335,7 +2379,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       async leaveTeam(team: Team) {
         await app._interface.leaveTeam(team.id, session);
-        // TODO: refresh cache
+        await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
@@ -2531,12 +2576,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
-        }
-
-        options_json.rp.id = hostname;
+        // Passkeys intentionally stay scoped to the hostname where they were
+        // registered. In particular, passkeys created on the legacy hosted
+        // components domain continue to work there but are not carried over to
+        // a replacement hosted domain.
+        scopePasskeyRegistrationToHostname(options_json, hostname);
 
         let attResp;
         try {
@@ -2774,6 +2818,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
+        automaticSideEffects: false,
       }));
     }
     return this._ownedAdminApps.get([session, forProjectId])!;
@@ -3129,16 +3174,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
-    if (
-      currentUrl != null
-      && options?.noRedirectBack !== true
-      && (handlerName === "afterSignIn" || handlerName === "afterSignUp")
-    ) {
+    const shouldRestorePersistedRedirectBackState = (
+      (options?.noRedirectBack !== true && (handlerName === "afterSignIn" || handlerName === "afterSignUp"))
+      || handlerName === "forgotPassword"
+      || handlerName === "passwordReset"
+      || (handlerName === "signIn" && options?.noRedirectBack === true)
+    );
+    if (currentUrl != null && shouldRestorePersistedRedirectBackState) {
       // If intermediate hops dropped the redirect-back query params, restore them from the
-      // sessionStorage mirror so the user still returns to where they came from instead of
-      // stranding on the default post-auth page (on hosted components, that would be the hosted
-      // welcome page). The restored URL goes through the same _isTrusted / cross-domain-authorize
-      // validation below as one read from query params.
+      // sessionStorage mirror. Password-flow continuation pages only carry this inherited state;
+      // redirect planning never turns forgot/reset pages themselves into return targets. The
+      // restored URL still goes through the same _isTrusted / cross-domain-authorize validation
+      // below as one read from query params.
       currentUrl = augmentUrlWithPersistedRedirectBackState({ currentUrl, projectId: this.projectId });
     }
     const plan = await planRedirectToHandler({
@@ -3147,6 +3194,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       noRedirectBack: options?.noRedirectBack === true,
       currentUrl,
       localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      rawHomeUrl: rawUrls.home,
       getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
     });
 
@@ -3900,11 +3948,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         const { options_json, code } = initiationResult.data;
 
-        // HACK: Override the rpID to be the actual domain
-        if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
-        }
-        options_json.rpId = window.location.hostname;
+        // Keep authentication scoped to the current hostname. This deliberately
+        // does not add cross-domain compatibility for passkeys created on a
+        // previous hosted components domain.
+        scopePasskeyAuthenticationToHostname(options_json, window.location.hostname);
 
         const authentication_response = await startAuthentication({ optionsJSON: options_json });
         return await this._interface.signInWithPasskey({ authentication_response, code }, session);
@@ -4192,13 +4239,19 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
 
         const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
-        return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
+        const app = new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
         });
+        // Inert construction does not register itself, so register only after it has completed to preserve stable
+        // identity across repeated client-side deserialization.
+        if (json.automaticSideEffects === false) {
+          app._initUniqueIdentifier();
+        }
+        return app;
       }
     };
   }
@@ -4225,6 +4278,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           devTool: this._options.devTool,
+          automaticSideEffects: this._options.automaticSideEffects,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
@@ -4260,6 +4314,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
         await this._redirectToHandler(handlerName, options);
+      },
+      getRawAfterAuthReturnTo: () => {
+        if (isReactServer || typeof window === "undefined") {
+          return null;
+        }
+        return getRawAfterAuthReturnTo({
+          currentUrl: new URL(window.location.href),
+          projectId: this.projectId,
+        });
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
