@@ -1,0 +1,26 @@
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_f7f9288d967c40::t_914d9627253a98 4
+  s_f7f9288d967c40::t_d20bcaafbfb049 81-89
+apps/backend/src/server/request-log.ts
+  s_f7f9288d967c40::t_8f59aec3beede2 39-40
+apps/backend/src/server/error-handler.ts
+  s_f7f9288d967c40::t_02e5427820e910 16-31
+apps/backend/src/server/app.ts
+  s_f7f9288d967c40::t_a1bb2be5e0e470 165-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "f2523494195954fccb86c04ab61366c04e80e27a",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
