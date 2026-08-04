@@ -95,13 +95,17 @@ const ACTIVITY_COUNTS_QUERY = `
 `;
 
 // Geo is only ever attached to `$token-refresh` events (it's derived from the
-// request IP, which replay events don't carry), so we take the latest refresh of
+// request IP, which replay events don't carry), so we read it off a refresh of
 // the session the replay belongs to. Matching on the refresh token rather than
 // the user is what keeps a user's other concurrent sessions — a phone on mobile
-// data, say — from lending their location to this replay. The time window is
-// only a guard against a long-lived token that travelled since: refreshes after
-// the replay ended may already come from somewhere else, so the window stops at
-// the session's last event.
+// data, say — from lending their location to this replay.
+//
+// Every refresh of that token belongs to this one session, so rather than cutting
+// the search off at the replay's boundaries we take the refresh closest to when
+// the replay started: a session that travelled mid-flight still reports where it
+// began, and no valid row is discarded just because the replay's boundaries come
+// from the visitor's clock (they're rrweb event timestamps) while `event_at` comes
+// from ours.
 const SESSION_GEO_QUERY = `
   SELECT
     CAST(data.ip_info.country_code, 'Nullable(String)') AS country_code,
@@ -111,13 +115,9 @@ const SESSION_GEO_QUERY = `
   FROM default.events
   WHERE refresh_token_id = {refreshTokenId:String}
     AND event_type = '$token-refresh'
-    AND event_at >= fromUnixTimestamp64Milli({sinceMillis:Int64})
-    AND event_at <= fromUnixTimestamp64Milli({untilMillis:Int64})
-  ORDER BY event_at DESC
+  ORDER BY abs(dateDiff('millisecond', event_at, fromUnixTimestamp64Milli({startedAtMillis:Int64}))) ASC
   LIMIT 1
 `;
-
-const GEO_LOOKBEHIND_MS = 24 * 60 * 60 * 1000;
 
 function toStringOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -147,7 +147,6 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
   const replayId = replay.id;
   const refreshTokenId = replay.refreshTokenId;
   const startedAtMs = replay.startedAt.getTime();
-  const lastEventAtMs = replay.lastEventAt.getTime();
 
   useEffect(() => {
     let cancelled = false;
@@ -178,8 +177,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
             query: SESSION_GEO_QUERY,
             params: {
               refreshTokenId,
-              sinceMillis: startedAtMs - GEO_LOOKBEHIND_MS,
-              untilMillis: lastEventAtMs,
+              startedAtMillis: startedAtMs,
             },
             include_all_branches: false,
             timeout_ms: 15_000,
@@ -240,7 +238,7 @@ function useReplaySessionContext(replay: ReplayUserOverviewReplay): SessionConte
     return () => {
       cancelled = true;
     };
-  }, [lastEventAtMs, refreshTokenId, replayId, serverApp, startedAtMs]);
+  }, [refreshTokenId, replayId, serverApp, startedAtMs]);
 
   return state;
 }
