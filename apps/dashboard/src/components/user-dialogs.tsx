@@ -164,7 +164,9 @@ export function ImpersonateUserDialog(props: {
                     </SelectContent>
                   </Select>
                   <Button
-                    onClick={openBrowserAction}
+                    onClick={async () => {
+                      await openBrowserAction();
+                    }}
                     disabled={selectedOrigin === "" && customOrigin.trim() === ""}
                   >
                     Impersonate
@@ -182,7 +184,9 @@ export function ImpersonateUserDialog(props: {
                 />
                 {origins.length === 0 && (
                   <Button
-                    onClick={openBrowserAction}
+                    onClick={async () => {
+                      await openBrowserAction();
+                    }}
                     disabled={selectedOrigin === "" && customOrigin.trim() === ""}
                   >
                     Impersonate
