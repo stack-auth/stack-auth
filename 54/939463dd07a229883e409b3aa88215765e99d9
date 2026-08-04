@@ -1,0 +1,117 @@
+apps/backend/src/lib/vercel-postgres-pool.ts
+  s_45a7cda26a409b::t_3e6b9a8986c24c 1-21
+apps/backend/src/server/shutdown.test.ts
+  s_45a7cda26a409b::t_3146a9a0d8bc68 38
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-37,39-62
+apps/e2e/tests/backend/endpoints/api/v1/index.test.ts
+  s_45a7cda26a409b::t_dbd8760a828479 33
+docker/server/Dockerfile
+  s_45a7cda26a409b::t_e3fd9920ee8e5a 109
+  s_45a7cda26a409b::t_99d0b62f8852af 108,110
+apps/backend/src/sentry-scrubbing.ts
+  s_45a7cda26a409b::t_08660a6092dbc8 48-50
+  s_45a7cda26a409b::t_db6330b72a56e6 21-26,29-32,47,62-70
+  s_45a7cda26a409b::t_1d3fd3951eb6aa 1-20,27-28,33-46,51-61,71-73
+apps/backend/src/lib/postgres-client.test.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-13
+apps/backend/src/server/server.ts
+  s_45a7cda26a409b::t_c61942a49ebf6d 1,3-4,9,22-57,61-77
+  s_45a7cda26a409b::t_17be68a2482855 58-60
+apps/backend/tsdown.config.ts
+  s_45a7cda26a409b::t_898fde8930a859 80-86
+  s_45a7cda26a409b::t_4440455a852153 9,62-65
+apps/backend/src/lib/postgres-client.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-18
+apps/backend/src/server/app.ts
+  s_45a7cda26a409b::t_7706908636db11 24-31,39-40,56,110
+  s_45a7cda26a409b::t_8950b90765367c 11,23,38,43-47,51-55,57-64
+  s_45a7cda26a409b::t_210173ab522260 68-70
+  s_45a7cda26a409b::t_78d4d9fe8d7c84 71-79,213-215
+  s_45a7cda26a409b::t_f55ff01bfcd9da 216-217
+apps/backend/src/lib/vercel-postgres-pool.test.ts
+  s_45a7cda26a409b::t_3e6b9a8986c24c 1-21
+apps/backend/src/app/api/latest/route.ts
+  s_45a7cda26a409b::t_dbd8760a828479 3,50-55,57,61-65
+  s_45a7cda26a409b::t_59475c663e71c2 56
+apps/backend/src/sentry-release.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-8,12-16
+  s_45a7cda26a409b::t_49dceaf8cb5df8 9-11
+apps/backend/src/utils/background-tasks.tsx
+  s_45a7cda26a409b::t_a09722b8188586 2,5-6,10-18,70,72-86,115
+  s_45a7cda26a409b::t_3146a9a0d8bc68 43-69,87-114
+apps/backend/src/app/api/latest/internal/external-db-sync/status/route.ts
+  s_45a7cda26a409b::t_0e96bbc6d00aae 3,880-883,886
+docker/server/entrypoint.sh
+  s_45a7cda26a409b::t_99d0b62f8852af 208,212,214-231
+apps/backend/package.json
+  s_45a7cda26a409b::t_7a1ffda83b92df 7-9
+  s_45a7cda26a409b::t_882e8743336821 97
+apps/backend/src/server/shutdown.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-21,23-82
+  s_45a7cda26a409b::t_3146a9a0d8bc68 22
+apps/backend/src/sentry-release.test.ts
+  s_45a7cda26a409b::t_7706908636db11 22-38
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-19,21,39
+  s_45a7cda26a409b::t_e795644491a4ea 20
+apps/bulldozer-js/src/index.ts
+  s_45a7cda26a409b::t_fee4f20fe56873 429-430,493
+apps/backend/src/server/request-log.test.ts
+  s_45a7cda26a409b::t_7706908636db11 9,21,27,34,41
+  s_45a7cda26a409b::t_17be68a2482855 1,5-8
+  s_45a7cda26a409b::t_b0b42533f1d8c5 2-4,10-20,22-26,28-33,35-40,42-44
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_45a7cda26a409b::t_08660a6092dbc8 99-102,129,133,144,151,155,160
+  s_45a7cda26a409b::t_17be68a2482855 126
+  s_45a7cda26a409b::t_24bc3ad39fd60d 10,12,127
+  s_45a7cda26a409b::t_2e40a49911484d 80-86,90-98,103-125,128,130-132,134-142,145-150,152,157-159,161,163-173,175
+  s_45a7cda26a409b::t_b7dbb889eaca9b 43,57-63
+  s_45a7cda26a409b::t_1d3fd3951eb6aa 252,299
+apps/backend/src/lib/prisma-pg-options.test.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-21
+docker/backend/Dockerfile
+  s_45a7cda26a409b::t_99d0b62f8852af 92,94
+  s_45a7cda26a409b::t_e3fd9920ee8e5a 93
+apps/backend/src/polyfills.tsx
+  s_45a7cda26a409b::t_4b169868faadfa 20
+apps/backend/src/server/request-log.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-21,23-32,34-42
+  s_45a7cda26a409b::t_7706908636db11 22,33
+apps/backend/src/sentry-scrubbing.test.ts
+  s_45a7cda26a409b::t_db6330b72a56e6 20-22,27-41,74-84,96,102
+  s_45a7cda26a409b::t_08660a6092dbc8 23,103
+  s_45a7cda26a409b::t_1d3fd3951eb6aa 1-19,24-26,42-73,85-95,97-101,104-110
+apps/backend/src/lib/external-db-sync.ts
+  s_45a7cda26a409b::t_0e96bbc6d00aae 6,1459-1462
+  s_45a7cda26a409b::t_66884f3c7a7365 15
+apps/backend/src/prisma-client.tsx
+  s_45a7cda26a409b::t_3e6b9a8986c24c 20,52
+  s_45a7cda26a409b::t_5573c8b8f90dbd 10
+  s_45a7cda26a409b::t_2e9bcb2dd16b54 18,53-55,65-68
+apps/backend/src/lib/prisma-pg-options.ts
+  s_45a7cda26a409b::t_b0b42533f1d8c5 1-20
+apps/backend/src/instrument.ts
+  s_45a7cda26a409b::t_17be68a2482855 28-29,31,70
+  s_45a7cda26a409b::t_1d3fd3951eb6aa 68-69,75,77
+  s_45a7cda26a409b::t_9b23d9c37c930c 8,10,19,30,32-33,35-48,52-54,60-67,71-74,81-88,90-92
+  s_45a7cda26a409b::t_db6330b72a56e6 11,76
+  s_45a7cda26a409b::t_d83ee4a5a7f34c 89
+  s_45a7cda26a409b::t_76907bcbd9a429 93-94
+pnpm-lock.yaml
+  s_45a7cda26a409b::t_4f53c822b202ff 208-209,801,816,840,877,895,898,1600,9392-9393,9396-9397,9400-9401,9403-9404,9407-9408,9416-9417,9420-9421,10254-10260,10270-10281,10296-10299,13731-13733,18378-18380,24140,24148,28023,28027,28031,28033,28037,28039,28042,28044,28047,28052,28054-28058,28326,28333,28338,28503,28520,28639,28647,28659-28660,28996,29000,29372-29380,29385-29391,29401-29406,33906-33907,35178,35182,35493,35511,39173,39175,39654,39686,40046-40047
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "54939463dd07a229883e409b3aa88215765e99d9",
+  "prompts": {},
+  "sessions": {
+    "s_45a7cda26a409b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8c4e-9572-7480-9976-011f5a80880d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
