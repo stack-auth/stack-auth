@@ -51,6 +51,8 @@ export type OwnerMember = {
   display_name: string | null,
   primary_email: string | null,
   profile_image_url: string | null,
+  created_at: string,
+  last_active_at: string,
 };
 
 export type ProjectOwner = {
@@ -63,6 +65,7 @@ export type ProjectOwner = {
 export type NewlyCreatedProjectRow = {
   id: string,
   display_name: string,
+  description: string,
   created_at: string,
   is_development_environment: boolean,
   onboarding_status: string,
@@ -454,6 +457,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
             projectUserId: true,
             displayName: true,
             profileImageUrl: true,
+            createdAt: true,
+            lastActiveAt: true,
             contactChannels: {
               where: { type: "EMAIL", isPrimary: "TRUE" },
               select: { value: true },
@@ -473,6 +478,8 @@ async function loadOwnersByTeamId(ownerTeamIds: string[]): Promise<Map<string, {
       display_name: member.displayName ?? member.projectUser.displayName,
       primary_email: member.projectUser.contactChannels[0]?.value ?? null,
       profile_image_url: member.profileImageUrl ?? member.projectUser.profileImageUrl,
+      created_at: member.projectUser.createdAt.toISOString(),
+      last_active_at: member.projectUser.lastActiveAt.toISOString(),
     });
     membersByTeamId.set(member.teamId, list);
   }
@@ -595,6 +602,7 @@ export async function buildNewlyCreatedProjectRows(
     rows.push({
       id: project.id,
       display_name: project.displayName,
+      description: project.description,
       created_at: project.createdAt.toISOString(),
       is_development_environment: project.isDevelopmentEnvironment,
       onboarding_status: project.onboardingStatus,
