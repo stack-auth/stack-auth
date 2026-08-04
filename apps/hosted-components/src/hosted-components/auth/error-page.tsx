@@ -1,5 +1,5 @@
 import { KnownError, KnownErrors } from "@hexclave/shared";
-import { useStackApp } from "@hexclave/react";
+import { hexclaveAppInternalsSymbol, useStackApp } from "@hexclave/react";
 
 import { Typography } from "~/components/ui";
 
@@ -14,15 +14,25 @@ export function HostedError(props: {
   const errorCode = searchParams.errorCode;
   const message = searchParams.message;
   const details = searchParams.details;
+  const afterCallbackRedirectUrl = searchParams.after_callback_redirect_url;
+
+  const returnToOAuthCaller = async () => {
+    if (afterCallbackRedirectUrl == null) {
+      window.history.back();
+      return;
+    }
+    if (!await app[hexclaveAppInternalsSymbol].isTrustedRedirectUrl(afterCallbackRedirectUrl)) {
+      throw new Error("The OAuth return URL is not trusted.");
+    }
+    await app[hexclaveAppInternalsSymbol].redirectToUrl(afterCallbackRedirectUrl);
+  };
 
   const unknownErrorCard = (
     <HostedAuthMessage
       title="An unknown error occurred"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      Something went wrong. Please try again or contact support.
+      Something went wrong. Please try again or contact support. You can close this tab.
     </HostedAuthMessage>
   );
 
@@ -42,8 +52,8 @@ export function HostedError(props: {
     return (
       <HostedAuthMessage
         title="Failed to connect account"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={returnToOAuthCaller}
+        primaryText="Go back"
         fullPage={props.fullPage}
       >
         This account is already connected to another user. Please connect a different account.
@@ -55,8 +65,8 @@ export function HostedError(props: {
     return (
       <HostedAuthMessage
         title="Failed to connect account"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={returnToOAuthCaller}
+        primaryText="Go back"
         fullPage={props.fullPage}
       >
         The user is already connected to another OAuth account. Did you maybe select the wrong account on the OAuth provider page?
@@ -70,8 +80,6 @@ export function HostedError(props: {
         title="OAuth provider access denied"
         primaryAction={() => app.redirectToSignIn()}
         primaryText="Sign in again"
-        secondaryAction={() => app.redirectToHome()}
-        secondaryText="Go home"
         fullPage={props.fullPage}
       >
         The sign-in operation has been cancelled or denied. Please try again.
@@ -85,8 +93,6 @@ export function HostedError(props: {
         title="OAuth provider is temporarily unavailable"
         primaryAction={() => app.redirectToSignIn()}
         primaryText="Try again"
-        secondaryAction={() => app.redirectToHome()}
-        secondaryText="Go home"
         fullPage={props.fullPage}
       >
         The OAuth provider could not complete sign-in right now. Please try again in a moment.
@@ -97,13 +103,11 @@ export function HostedError(props: {
   return (
     <HostedAuthMessage
       title="An error occurred"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
       <div className="flex flex-col gap-1 text-center">
         <Typography className="text-sm text-muted-foreground">Error Code: {error.errorCode}</Typography>
-        <Typography className="text-sm text-muted-foreground">Please try again or contact support if the problem continues.</Typography>
+        <Typography className="text-sm text-muted-foreground">Please try again or contact support if the problem continues. You can close this tab.</Typography>
       </div>
     </HostedAuthMessage>
   );

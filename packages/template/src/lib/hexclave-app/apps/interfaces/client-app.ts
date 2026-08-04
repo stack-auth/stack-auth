@@ -1,8 +1,8 @@
 import { KnownErrors } from "@hexclave/shared";
+import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol, TokenStoreInit } from "../../common";
-import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
+import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, hexclaveAppInternalsSymbol, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, TokenStoreInit } from "../../common";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
@@ -37,6 +37,14 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
+
+  /**
+   * Whether the constructor starts browser integrations and other automatic side effects. Defaults to `true`.
+   *
+   * Set this to `false` when the app is instantiated inside a custom dashboard. Explicit method calls remain
+   * available and can still perform their documented side effects.
+   */
+  automaticSideEffects?: boolean,
 
   /**
    * Options for analytics and session recording. Replays are enabled by default;
@@ -205,6 +213,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
       getRedirectToHandlerUrl(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<string>,
       redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
+      /** Raw flow metadata only. Never navigate to this value without normal redirect validation. */
+      getRawAfterAuthReturnTo(): string | null,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
       awaitPendingAuthResolutions(): Promise<void>,
       isTrustedRedirectUrl(url: string): Promise<boolean>,

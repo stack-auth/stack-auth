@@ -1,7 +1,6 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button } from "~/components/ui";
 
 import { useState } from "react";
-import { useStackApp, useUser } from "@hexclave/react";
 import {
   getButtonRadiusClassName,
   getOutlineButtonClassName,
@@ -10,30 +9,26 @@ import {
 import { Section } from "../section";
 import { cn } from "~/components/ui";
 
-export function DeleteAccountSection(props?: { mockMode?: boolean }) {
+export function DeleteAccountSection(props: {
+  mockMode?: boolean,
+  show: boolean,
+  onDeleteAccount: () => Promise<void>,
+}) {
   const design = useDesign();
-  const user = useUser({ or: props?.mockMode ? 'return-null' : 'redirect' });
-  const app = useStackApp();
-  const project = app.useProject();
   const [deleting, setDeleting] = useState(false);
 
-  const showDeleteSection = props?.mockMode || project.config.clientUserDeletionEnabled;
-
-  if (!showDeleteSection) {
+  if (!props.show) {
     return null;
   }
 
   const handleDeleteAccount = async () => {
-    if (props?.mockMode) {
+    if (props.mockMode) {
       alert("Mock mode: Account deletion clicked");
       setDeleting(false);
       return;
     }
 
-    if (user) {
-      await user.delete();
-      await app.redirectToHome();
-    }
+    await props.onDeleteAccount();
   };
 
   return (

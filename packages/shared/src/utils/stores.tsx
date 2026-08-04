@@ -1,4 +1,3 @@
-import { ReadWriteLock } from "./locks";
 import { ReactPromise, pending, rejected, resolved } from "./promises";
 import { AsyncResult, Result } from "./results";
 import { generateUuid } from "./uuids";
@@ -62,9 +61,6 @@ export class Store<T> implements ReadonlyStore<T> {
     return { unsubscribe };
   }
 }
-
-export const storeLock = new ReadWriteLock();
-
 
 export class AsyncStore<T> implements ReadonlyAsyncStore<T> {
   private _isAvailable: boolean;
@@ -175,48 +171,9 @@ export class AsyncStore<T> implements ReadonlyAsyncStore<T> {
   }
 
   async setAsync(promise: Promise<T>): Promise<boolean> {
-    // setAsync coordinates with write-locked mutations on `storeLock` (currently only the SDK's
-    // sign-out flow, which revokes the session server-side, clears the token store, and redirects
-    // under the write lock). The invariant we must uphold: a value that was fetched against
-    // pre-mutation state (eg. user data fetched with a session that has since been signed out)
-    // must NEVER be committed to the store after the mutation ran, and no store commit (which
-    // synchronously fires onStateChange callbacks, potentially re-rendering UI) may interleave
-    // with the write-locked critical section itself.
-    //
-    // Historically (PR #374, "sign out lock") this was implemented by holding the READ lock for
-    // the entire duration of the awaited promise. That upheld the invariant, but it also meant a
-    // slow fetch (a network call with retries) starved any writer: sign-out could be blocked for
-    // tens of seconds by unrelated background cache fetches. Note that holding the lock across
-    // the await never prevented fetches from *starting* during a mutation anyway — callers (see
-    // AsyncValueCache._refetch) create the fetch promise before calling setAsync — so the lock
-    // was only ever about ordering commits, not about preventing concurrent I/O.
-    //
-    // Instead, we now await the promise WITHOUT holding any lock, and only take the read lock for
-    // the commit itself (which does no I/O). To uphold the invariant, we snapshot the lock's
-    // write generation before awaiting: if a writer acquired the lock while we were waiting, the
-    // fetched value is based on pre-mutation state, so we discard it instead of committing.
-    // Discarding is safe for callers awaiting the fetched value itself, because they get it from
-    // the original promise (again, see AsyncValueCache._refetch), not from the store; only the
-    // cached/observable state update is skipped. A setAsync that starts while the writer is
-    // already active snapshots the writer's own generation and is therefore still allowed to
-    // commit afterwards — this intentionally preserves the pre-existing behavior where refreshes
-    // triggered from within the mutation (eg. cache invalidation during sign-out committing the
-    // signed-out state) still go through.
-    //
-    // The update counter is taken at call time (not at commit time) so that a synchronous set()
-    // that happens while the fetch is in flight wins over the older fetch result via the
-    // _setIfLatest counter check, matching the pre-lock semantics of this method.
     const curCounter = ++this._updateCounter;
-    const writeGenerationAtStart = storeLock.getWriteGeneration();
     const result = await Result.fromPromise(promise);
-    return await storeLock.withReadLock(async () => {
-      // Comparing generations under the read lock is reliable: no writer can be active while we
-      // hold it, so the generation cannot change between this check and the commit below.
-      if (storeLock.getWriteGeneration() !== writeGenerationAtStart) {
-        return false;
-      }
-      return this._setIfLatest(result, curCounter);
-    });
+    return this._setIfLatest(result, curCounter);
   }
 
   setUnavailable(): void {
