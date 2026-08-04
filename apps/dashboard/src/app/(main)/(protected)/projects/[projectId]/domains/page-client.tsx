@@ -211,8 +211,14 @@ function EditDialog(props: {
       const domainLabel = domain === '' ? 'this domain' : domain;
       const scopeOptions = [
         { value: 'only', label: `Only ${domainLabel}` },
-        ...(canAddSubdomains(domain) ? [{ value: 'subdomains', label: `${domainLabel} and all subdomains` }] : []),
-        ...(canAddWww(domain) ? [{ value: 'www', label: `${domainLabel} and www.${domainLabel}` }] : []),
+        ...(canAddSubdomains(domain) ? [{
+          value: 'subdomains',
+          label: domain === '' ? 'This domain and all subdomains' : `${domain} and all subdomains`,
+        }] : []),
+        ...(canAddWww(domain) ? [{
+          value: 'www',
+          label: domain === '' ? 'This domain and its www subdomain' : `${domain} and www.${domain}`,
+        }] : []),
       ];
 
       return (
