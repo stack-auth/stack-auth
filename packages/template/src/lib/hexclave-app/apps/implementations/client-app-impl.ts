@@ -45,7 +45,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
-import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM next react
+import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM react-like
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
