@@ -216,15 +216,20 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
-          logSignInAttemptInBackground(tenancy, {
-            outcome: "failed",
-            method: "oauth",
-            failureReason: KnownErrors.OAuthProviderAccessDenied.isInstance(error)
-              ? "provider_denied"
-              : "provider_unavailable",
-            oauthProvider: params.provider_id,
-            userId: projectUserId ?? null,
-          });
+          // Only sign-in/sign-up flows are compliance sign-in attempts; a "link" flow is an
+          // already-signed-in user connecting another provider, so its failures must not inflate
+          // failed sign-in counts (matches the success and conflict-failure paths below).
+          if (type !== "link") {
+            logSignInAttemptInBackground(tenancy, {
+              outcome: "failed",
+              method: "oauth",
+              failureReason: KnownErrors.OAuthProviderAccessDenied.isInstance(error)
+                ? "provider_denied"
+                : "provider_unavailable",
+              oauthProvider: params.provider_id,
+              userId: projectUserId ?? null,
+            });
+          }
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
         }
         throw error;
