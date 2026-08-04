@@ -33,6 +33,7 @@ export const hexclaveClientApp = new StackClientApp({
     replays: {
       captureKeystrokes: !isPreview && !isRemoteDevelopmentEnvironment,
       maskAllInputs: false,
+      blockClass: "hexclave-sensitive",
       enabled: !isPreview && !isRemoteDevelopmentEnvironment,
     },
   },

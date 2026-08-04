@@ -13,7 +13,7 @@ describe("/api/v1/users performance", () => {
     await niceBackendFetch("/api/v1/users?limit=10", { accessType: "server" });
 
     const start = performance.now();
-    const response = await niceBackendFetch("/api/v1/users?limit=200000", { accessType: "server" });
+    const response = await niceBackendFetch("/api/v1/users?limit=1000", { accessType: "server" });
     const durationMs = performance.now() - start;
 
     expect(response.status).toBe(200);

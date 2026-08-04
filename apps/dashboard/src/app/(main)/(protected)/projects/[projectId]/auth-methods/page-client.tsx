@@ -126,6 +126,9 @@ function adminProviderToConfigProvider(
         customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
+        appleTeamId: undefined,
+        appleKeyId: undefined,
+        applePrivateKey: undefined,
         appleBundles: undefined,
         allowSignIn: true,
         allowConnectedAccounts: true,
@@ -146,6 +149,9 @@ function adminProviderToConfigProvider(
         customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
         facebookConfigId: provider.facebookConfigId,
         microsoftTenantId: provider.microsoftTenantId,
+        appleTeamId: provider.appleTeamId,
+        appleKeyId: provider.appleKeyId,
+        applePrivateKey: provider.applePrivateKey,
         appleBundles: provider.appleBundleIds?.length
           ? typedFromEntries(provider.appleBundleIds.map((bundleId: string) => [generateUuid(), { bundleId }] as const))
           : undefined,
@@ -165,6 +171,9 @@ function adminProviderToConfigProvider(
         customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
+        appleTeamId: undefined,
+        appleKeyId: undefined,
+        applePrivateKey: undefined,
         appleBundles: undefined,
         issuerUrl: provider.issuerUrl,
         scope: provider.scope,
@@ -335,6 +344,9 @@ function CustomOidcProviderDialog({
       customCallbackUrl: (isEditing && existing.customCallbackUrl) ? existing.customCallbackUrl : getNewProviderCallbackUrl(providerId),
       facebookConfigId: undefined,
       microsoftTenantId: undefined,
+      appleTeamId: undefined,
+      appleKeyId: undefined,
+      applePrivateKey: undefined,
       appleBundles: undefined,
       issuerUrl: values.issuerUrl,
       scope: values.scope || undefined,
@@ -444,7 +456,7 @@ function CustomOidcProviderDialog({
             control={form.control}
             name="clientSecret"
             render={({ field }) => (
-              <FormItem className="space-y-1.5">
+              <FormItem className="hexclave-sensitive space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
                 <FormControl>
                   <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />

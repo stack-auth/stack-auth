@@ -128,7 +128,288 @@ it("should properly create subscription", async ({ expect }) => {
     },
   });
   expect(response.status).toBe(200);
-  expect(response.body).toEqual({ client_secret: expect.any(String) });
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
+});
+
+it("should create a subscription for float-sensitive USD amounts like 79.99", async ({ expect }) => {
+  // Regression: Number("79.99") * 100 === 7998.999999999999, which Stripe
+  // rejects with parameter_invalid_integer. Purchase-session must send integer
+  // stripe units (7999) via moneyAmountToStripeUnits.
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "79.99",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
+});
+
+it("should return a setup client secret for a free-trial subscription", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "trial-product": {
+          displayName: "Trial Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "19.00",
+              interval: [1, "month"],
+              freeTrial: [14, "day"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "trial-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response.status).toBe(200);
+  // Free trials must return a SetupIntent secret (confirmSetup), not a PaymentIntent.
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "setup",
+  });
+});
+
+it("should prefer price-level freeTrial over product-level freeTrial", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "trial-product": {
+          displayName: "Trial Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          freeTrial: [30, "day"],
+          prices: {
+            "monthly": {
+              USD: "19.00",
+              interval: [1, "month"],
+              freeTrial: [7, "day"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "trial-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response.status).toBe(200);
+  // Price-level [7, day] wins over product-level [30, day]; both still produce a SetupIntent.
+  // Day-count precedence itself is covered by getEffectiveFreeTrial / getStripeTrialPeriodDays unit tests.
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "setup",
+  });
+});
+
+it("should reject freeTrial on a one-time price", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "bad-trial-otp": {
+          displayName: "Bad Trial OTP",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "once": {
+              USD: "19.00",
+              freeTrial: [7, "day"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "bad-trial-otp",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "once",
+      quantity: 1,
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Free trials are only supported on recurring prices",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should reject freeTrial combined with a $0 price", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "bad-trial-free": {
+          displayName: "Bad Trial Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "0.00",
+              interval: [1, "month"],
+              freeTrial: [7, "day"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "bad-trial-free",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Free trials cannot be combined with a $0 price",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should return client secret for one-time price (no interval)", async ({ expect }) => {
@@ -177,7 +458,10 @@ it("should return client secret for one-time price (no interval)", async ({ expe
     },
   });
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ client_secret: expect.any(String) });
+  expect(res.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
 });
 
 it("should error on one-time price quantity > 1 when product is not stackable", async ({ expect }) => {
@@ -307,7 +591,10 @@ it("should return client secret for one-time price even if a conflicting group s
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "pi_1PgafyB7WZ01zgkWSjxsAJo3_secret_Dm43xiq1k0ywrRRjDoi8y1gkM" },
+      "body": {
+        "client_secret": "pi_1PgafyB7WZ01zgkWSjxsAJo3_secret_Dm43xiq1k0ywrRRjDoi8y1gkM",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -419,7 +706,10 @@ it("should create purchase URL with inline product, validate code, and create pu
   expect(purchaseSessionResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -826,7 +1116,10 @@ it("should update existing stripe subscription when switching products within a 
   expect(purchaseA).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -857,7 +1150,10 @@ it("should update existing stripe subscription when switching products within a 
   expect(purchaseB).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -961,7 +1257,10 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   expect(purchaseB).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "client_secret": "" },
+      "body": {
+        "client_secret": "",
+        "stripe_intent_type": "payment",
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

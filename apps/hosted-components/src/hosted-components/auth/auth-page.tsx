@@ -1,4 +1,5 @@
 import { useStackApp, useUser } from "@hexclave/react";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { Suspense, useEffect, useState } from "react";
 
@@ -56,6 +57,7 @@ function AutomaticRedirect(props: {
         );
         setResult({ status: "success" });
       } catch (error) {
+        captureError("Hosted automatic post-auth redirect", error);
         setResult({ status: "error" });
       }
     })());
@@ -65,8 +67,16 @@ function AutomaticRedirect(props: {
     return (
       <HostedAuthMessage
         title="Unable to redirect"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={() => (
+          props.isRestricted
+            ? app.redirectToOnboarding({ replace: true })
+            : props.type === "sign-in"
+              ? app.redirectToAfterSignIn({ replace: true })
+              : app.redirectToAfterSignUp({ replace: true })
+        )}
+        primaryText="Try again"
+        secondaryAction={() => window.history.back()}
+        secondaryText="Go back"
         fullPage={props.fullPage}
       >
         We could not continue automatically. Please try again.
@@ -110,8 +120,8 @@ function HostedAuthPageInner(props: {
     return (
       <HostedAuthMessage
         title="You're already signed in"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+        primaryAction={() => app.redirectToAfterSignIn()}
+        primaryText="Continue"
         secondaryAction={() => app.redirectToSignOut()}
         secondaryText="Sign out"
         fullPage={props.fullPage}

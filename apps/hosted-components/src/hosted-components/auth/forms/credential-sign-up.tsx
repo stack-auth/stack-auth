@@ -1,9 +1,11 @@
 import { getPasswordError } from "@hexclave/shared/dist/helpers/password";
-import { useStackApp } from "@hexclave/react";
+import { hexclaveAppInternalsSymbol, useStackApp } from "@hexclave/react";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 
 import { Button, Input, Label, PasswordInput } from "~/components/ui";
+import { createAuthFlowEmailVerificationUrl } from "~/routes/handler/after-auth-return-policy";
 
 import { FormWarningText } from "../supporting/form-elements";
 import { isValidEmail } from "../supporting/utils";
@@ -47,7 +49,18 @@ export function CredentialSignUp(props: {
 
     setLoading(true);
     try {
-      const result = await app.signUpWithCredential({ email, password });
+      const appInternals = app[hexclaveAppInternalsSymbol];
+      const rawAfterAuthReturnTo = appInternals.getRawAfterAuthReturnTo()
+        ?? throwErr("Hosted credential sign-up requires an after-auth return URL.");
+      const result = await app.signUpWithCredential({
+        email,
+        password,
+        verificationCallbackUrl: createAuthFlowEmailVerificationUrl({
+          emailVerificationUrl: appInternals.getUrls().emailVerification,
+          currentUrl: new URL(window.location.href),
+          rawAfterAuthReturnTo,
+        }),
+      });
       if (result.status === "error") {
         setEmailError(result.error.message);
       }
