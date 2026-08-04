@@ -3,6 +3,7 @@ import { describe } from "vitest";
 import { test } from "../../../../helpers";
 import { POSTGRES_HOST, POSTGRES_PASSWORD, POSTGRES_USER } from "./external-db-sync-utils";
 import { InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { waitUntilReplicasHaveCaughtUp } from "../../../helpers/replication";
 
 const batchSize = 5000;
 
@@ -73,6 +74,9 @@ async function seedUsers(projectId: string, userCount: number, prefix: string): 
       `, [tenancyId, projectId, offset + 1, count, prefix]);
     }
 
+    // The users endpoint reads from a read replica, and these inserts don't go through the Prisma extension that
+    // normally waits for replication, so without this the request below can see an empty tenancy.
+    await waitUntilReplicasHaveCaughtUp(client);
   } finally {
     await client.end();
   }
