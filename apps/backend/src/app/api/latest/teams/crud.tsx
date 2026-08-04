@@ -13,7 +13,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { teamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { validateBase64Image } from "@hexclave/shared/dist/utils/base64";
-import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -142,8 +142,14 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       // subscription row that is durable in Prisma. Bulldozer's initial
       // subscription grant cascades synchronously through its materialized item
       // quantities, so awaiting this write makes billing-gated endpoints ready
-      // when team creation returns.
-      await bulldozerWriteSubscription(freePlanSubscription);
+      // when team creation returns. A failed write must not fail team creation:
+      // the committed subscription row is reconciled by the next sync or webhook,
+      // and the failure is captured in Sentry.
+      try {
+        await bulldozerWriteSubscription(freePlanSubscription);
+      } catch (error) {
+        captureError("bulldozer-free-plan-subscription-write", error);
+      }
     }
 
     const result = teamPrismaToCrud(db);
