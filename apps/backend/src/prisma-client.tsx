@@ -7,7 +7,7 @@ import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@hexclave/shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@hexclave/shared/dist/utils/promises";
 import { throwingProxy } from "@hexclave/shared/dist/utils/proxies";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
@@ -15,9 +15,10 @@ import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { registerPgPool } from "./lib/dev-perf-stats";
+import { createPrismaPgOptions } from "./lib/prisma-pg-options";
 import { Tenancy } from "./lib/tenancies";
+import { attachVercelPostgresPool } from "./lib/vercel-postgres-pool";
 import { ensurePolyfilled } from "./polyfills";
-import { drainInFlightPromises } from "./utils/background-tasks";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -48,10 +49,10 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
-    // pg Pool emits 'error' on idle clients (e.g. TCP reset); unhandled = process crash
-    pool.on('error', (err) => captureError("pg-pool-error", err));
-    registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
-    const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
+    attachVercelPostgresPool(pool);
+    const safePoolLabel = poolLabel ?? "tenant";
+    registerPgPool(pool, safePoolLabel); // Register pool for dev performance stats
+    const adapter = new PrismaPg(pool, createPrismaPgOptions(schema, safePoolLabel));
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,
@@ -61,22 +62,10 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   return postgresPrismaClient;
 }
 
-// Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
-if (!getEnvVariable("VERCEL", "") && !globalVar.__hexclave_prisma_sigterm_registered) {
-  globalVar.__hexclave_prisma_sigterm_registered = true;
-  process.on("SIGTERM", () => {
-    const keepAlive = setTimeout(() => {}, 10_000);
-    runAsynchronously(async () => {
-      try {
-        await drainInFlightPromises(8000);
-        for (const [, entry] of postgresPrismaClientsStore) {
-          await entry.client.$disconnect();
-        }
-      } finally {
-        clearTimeout(keepAlive);
-      }
-    });
-  });
+export async function disconnectPostgresPrismaClients(): Promise<void> {
+  await Promise.all(
+    [...postgresPrismaClientsStore.values()].map(async ({ client }) => await client.$disconnect()),
+  );
 }
 
 async function tcpPing(host: string, port: number, timeout = 2000) {

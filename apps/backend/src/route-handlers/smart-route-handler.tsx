@@ -7,8 +7,9 @@ import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
+import { setTimeout as waitForTimeout } from "node:timers/promises";
 import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
@@ -39,7 +40,7 @@ function isCommonError(error: unknown): boolean {
 function catchError(error: unknown, requestId: string): StatusError {
   // catch some Next.js non-errors and rethrow them
   if (error instanceof Error) {
-    const digest = (error as any)?.digest;
+    const digest = getErrorDigest(error);
     if (typeof digest === "string") {
       if (["NEXT_REDIRECT", "DYNAMIC_SERVER_USAGE", "NEXT_NOT_FOUND"].some(m => digest.startsWith(m))) {
         throw error;
@@ -51,6 +52,13 @@ function catchError(error: unknown, requestId: string): StatusError {
 
   captureError(`route-handler`, error);
   return new InternalServerError(error, requestId);
+}
+
+function getErrorDigest(error: unknown): unknown {
+  if (error == null || typeof error !== "object" || !("digest" in error)) {
+    return undefined;
+  }
+  return error.digest;
 }
 
 /**
@@ -69,108 +77,102 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
     concurrentRequestsInProcess++;
     try {
       const requestId = generateSecureRandomString(80);
-      return await traceSpan({
-        description: 'handling API request',
-        attributes: {
-          "stack.request.request-id": requestId,
-          "stack.request.method": req.method,
-          "stack.request.url": req.url,
-          "stack.process.id": processId,
-          "stack.process.concurrent-requests": concurrentRequestsInProcess,
-        },
-      }, async (span) => {
-        const requestUrl = new URL(req.url);
-        // Set Sentry scope to include request details
-        Sentry.setContext("stack-request", {
-          requestId: requestId,
+      const requestUrl = new URL(req.url);
+      return await Sentry.withIsolationScope(async (isolationScope) => {
+        // Request scopes must be isolated because Fluid Compute and Cloud Run
+        // handle concurrent requests in one process. Never send auth headers or
+        // query values to Sentry; both routinely contain credentials.
+        isolationScope.setContext("stack-request", {
+          requestId,
           method: req.method,
-          url: req.url,
-          query: Object.fromEntries(requestUrl.searchParams),
-          headers: Object.fromEntries(req.headers),
         });
 
-        // During development, don't trash the console with logs
-        const disableExtendedLogging = getNodeEnvironment().includes('dev');
+        return await traceSpan({
+          description: 'handling API request',
+          attributes: {
+            "stack.request.request-id": requestId,
+            "stack.request.method": req.method,
+            "stack.process.id": processId,
+            "stack.process.concurrent-requests": concurrentRequestsInProcess,
+          },
+        }, async (span) => {
+          // Production uses the normalized structured request log. Detailed
+          // request URLs and project identifiers are useful locally, but can
+          // contain customer data and must not enter hosted runtime logs.
+          const shouldLogExtendedRequestDetails = getNodeEnvironment() === "development";
 
-        let hasRequestFinished = false;
-        try {
-          // censor long query parameters because they might contain sensitive data
-          const censoredUrl = new URL(req.url);
-          for (const [key, value] of censoredUrl.searchParams.entries()) {
-            if (value.length <= 8) {
-              continue;
-            }
-            censoredUrl.searchParams.set(key, value.slice(0, 4) + "--REDACTED--" + value.slice(-4));
-          }
-
-          // request duration warning
-          const allowedLongRequestPaths = [
-            "/api/latest/internal/email-queue-step",
-            "/api/latest/analytics/clickmap",
-            "/api/latest/analytics/query",
-            "/api/latest/internal/analytics/clickmap",
-            "/api/latest/ai/query/stream",
-            "/api/latest/ai/query/generate",
-            "/health/email",
-            "/api/latest/internal/metrics",
-            "/api/latest/internal/external-db-sync/poller",
-            "/api/latest/internal/external-db-sync/sequencer",
-            "/api/latest/internal/external-db-sync/sync-engine",
-          ];
-          const allAllowedLongRequestPaths = [
-            ...allowedLongRequestPaths,
-            ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
-          ];
-          const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) ? 240 : 12;
-          runAsynchronously(async () => {
-            await wait(warnAfterSeconds * 1000);
-            if (!hasRequestFinished) {
-              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${requestUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-            }
-          });
-
-          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${censoredUrl}`);
-          const timeStart = performance.now();
-          const res = await handler(req, options, requestId);
-          const time = (performance.now() - timeStart);
-
-          // Record request stats for dev-stats page
-          recordRequestStats(req.method, requestUrl.pathname, time);
-
-          if ([301, 302].includes(res.status)) {
-            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
-          }
-          if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
-          return res;
-        } catch (e) {
-          let statusError: StatusError;
+          let hasRequestFinished = false;
           try {
-            statusError = catchError(e, requestId);
+            // request duration warning
+            const allowedLongRequestPaths = [
+              "/api/latest/internal/email-queue-step",
+              "/api/latest/analytics/clickmap",
+              "/api/latest/analytics/query",
+              "/api/latest/internal/analytics/clickmap",
+              "/api/latest/ai/query/stream",
+              "/api/latest/ai/query/generate",
+              "/health/email",
+              "/api/latest/internal/metrics",
+              "/api/latest/internal/external-db-sync/poller",
+              "/api/latest/internal/external-db-sync/sequencer",
+              "/api/latest/internal/external-db-sync/sync-engine",
+            ];
+            const allAllowedLongRequestPaths = [
+              ...allowedLongRequestPaths,
+              ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+            ];
+            const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) ? 240 : 12;
+            runAsynchronously(async () => {
+              // This diagnostic timer must not keep a drained server process alive.
+              await waitForTimeout(warnAfterSeconds * 1000, undefined, { ref: false });
+              if (!hasRequestFinished) {
+                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} using ${req.method} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+              }
+            });
+
+            if (shouldLogExtendedRequestDetails) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${requestUrl}`);
+            const timeStart = performance.now();
+            const res = await handler(req, options, requestId);
+            const time = (performance.now() - timeStart);
+
+            // Record request stats for dev-stats page
+            recordRequestStats(req.method, requestUrl.pathname, time);
+
+            if ([301, 302].includes(res.status)) {
+              throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
+            }
+            if (shouldLogExtendedRequestDetails) console.log(`[    RES] [${requestId}] ${req.method} ${requestUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
+            return res;
           } catch (e) {
-            if (!disableExtendedLogging) console.log(`[    EXC] [${requestId}] ${req.method} ${req.url}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${(e as any)?.digest}`);
-            throw e;
+            let statusError: StatusError;
+            try {
+              statusError = catchError(e, requestId);
+            } catch (e) {
+              if (shouldLogExtendedRequestDetails) console.log(`[    EXC] [${requestId}] ${req.method} ${requestUrl.pathname}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${String(getErrorDigest(e))}`);
+              throw e;
+            }
+
+            if (shouldLogExtendedRequestDetails) console.log(`[    ERR] [${requestId}] ${req.method} ${requestUrl.pathname}: ${statusError.message}`);
+
+            if (!isCommonError(statusError)) {
+              // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
+              // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+              if (shouldLogExtendedRequestDetails) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
+            }
+
+            const res = await createResponse(req, requestId, {
+              statusCode: statusError.statusCode,
+              bodyType: "binary",
+              body: statusError.getBody(),
+              headers: {
+                ...statusError.getHeaders(),
+              },
+            });
+            return res;
+          } finally {
+            hasRequestFinished = true;
           }
-
-          if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${req.url}: ${statusError.message}`);
-
-          if (!isCommonError(statusError)) {
-            // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
-            // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
-            if (!disableExtendedLogging) console.debug(`For the error above with request ID ${requestId}, the full error is:`, errorToNiceString(statusError));
-          }
-
-          const res = await createResponse(req, requestId, {
-            statusCode: statusError.statusCode,
-            bodyType: "binary",
-            body: statusError.getBody(),
-            headers: {
-              ...statusError.getHeaders(),
-            },
-          });
-          return res;
-        } finally {
-          hasRequestFinished = true;
-        }
+        });
       });
     } finally {
       concurrentRequestsInProcess--;
@@ -247,7 +249,7 @@ export function createSmartRouteHandler<
     throw new HexclaveAssertionError("Duplicate overload parameters");
   }
 
-  const invoke = async (nextRequest: Request | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
+  const invoke = async (nextRequest: Request | null, requestId: string, smartRequest: SmartRequest) => {
     const reqsParsed: [[Req, SmartRequest], SmartRouteHandlerOverload<Req, Res>][] = [];
     const reqsErrors: unknown[] = [];
     for (const [overloadParam, overload] of overloads.entries()) {
@@ -273,19 +275,9 @@ export function createSmartRouteHandler<
     const fullReq = reqsParsed[0][0][1];
     const handler = reqsParsed[0][1];
 
-    if (shouldSetContext) {
-      Sentry.setContext("stack-parsed-smart-request", smartReq as any);
-    }
-
     let smartRes = await traceSpan({
       description: 'calling smart route handler callback',
       attributes: {
-        "user.id": fullReq.auth?.user?.id ?? "<none>",
-        "stack.smart-request.project.id": fullReq.auth?.project.id ?? "<none>",
-        "stack.smart-request.project.display_name": fullReq.auth?.project.display_name ?? "<none>",
-        "stack.smart-request.user.id": fullReq.auth?.user?.id ?? "<none>",
-        "stack.smart-request.user.display-name": fullReq.auth?.user?.display_name ?? "<none>",
-        "stack.smart-request.user.primary-email": fullReq.auth?.user?.primary_email ?? "<none>",
         "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
         "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
         "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",
@@ -304,9 +296,7 @@ export function createSmartRouteHandler<
     const bodyBuffer = await req.arrayBuffer();
     const smartRequest = await createSmartRequest(req, bodyBuffer, options);
 
-    Sentry.setContext("stack-full-smart-request", smartRequest);
-
-    const smartRes = await invoke(req, requestId, smartRequest, true);
+    const smartRes = await invoke(req, requestId, smartRequest);
 
     return await createResponse(req, requestId, smartRes);
   }), {

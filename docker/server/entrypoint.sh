@@ -205,9 +205,27 @@ fi
 echo "Starting backend on port $BACKEND_PORT..."
 cd "$WORK_DIR"
 PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/dist/server.mjs &
+backend_pid=$!
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."
 PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
+dashboard_pid=$!
 
-# Wait for both to finish
-wait -n
+terminate_children() {
+  trap - SIGTERM SIGINT
+  kill -TERM "$backend_pid" "$dashboard_pid" 2>/dev/null || true
+}
+
+trap terminate_children SIGTERM SIGINT
+
+# If either service exits, terminate and reap its sibling. Otherwise PID 1 can
+# leave a failed backend behind a healthy dashboard (or vice versa).
+set +e
+wait -n "$backend_pid" "$dashboard_pid"
+child_exit_code=$?
+set -e
+
+terminate_children
+wait "$backend_pid" 2>/dev/null || true
+wait "$dashboard_pid" 2>/dev/null || true
+exit "$child_exit_code"

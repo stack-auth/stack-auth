@@ -1,12 +1,14 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
-import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/node";
+import backendPackageJson from "../package.json";
 import { initPerfStats } from "./lib/dev-perf-stats";
+import { getSentryRelease } from "./sentry-release";
+import { sanitizeBackendSentryEvent, sanitizeBackendSentrySpan } from "./sentry-scrubbing";
 
 globalThis.global = globalThis;
 // The Elysia process is the Node runtime; set the marker before shared helpers that still ask for Next runtime metadata.
@@ -14,6 +16,7 @@ globalThis.global = globalThis;
 process.env.NEXT_RUNTIME ??= "nodejs";
 
 let registered = false;
+let developmentTelemetrySdk: NodeSDK | undefined;
 
 export function registerBackendInstrumentation() {
   if (registered) {
@@ -22,61 +25,71 @@ export function registerBackendInstrumentation() {
   registered = true;
 
   const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
-  const isDevelopment = getNodeEnvironment() === "development";
+  const nodeEnvironment = getNodeEnvironment();
+  const isDevelopment = nodeEnvironment === "development";
+  const sentryDsn = getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", "");
+  const sentryEnabled = nodeEnvironment === "production"
+    && getEnvVariable("CI", "") === ""
+    && sentryDsn !== "";
 
-  const sdk = new NodeSDK({
-    serviceName: "stack-backend",
-    instrumentations: [
-      new PrismaInstrumentation(),
-      ...getNodeAutoInstrumentations({
-        "@opentelemetry/instrumentation-http": {
-          enabled: false,
-        },
-      }),
-    ],
-    ...isDevelopment ? {
+  // Development exports traces to the local collector. Production lets Sentry
+  // own OpenTelemetry completely; mixing two SDK owners caused duplicate global
+  // registrations and left Sentry without its sampler/propagator/processors.
+  if (isDevelopment) {
+    developmentTelemetrySdk = new NodeSDK({
+      serviceName: "stack-backend",
+      instrumentations: [
+        new PrismaInstrumentation(),
+        ...getNodeAutoInstrumentations({
+          "@opentelemetry/instrumentation-http": {
+            enabled: false,
+          },
+        }),
+      ],
       traceExporter: new OTLPTraceExporter({
         url: `http://localhost:${portPrefix}31/v1/traces`,
       }),
-    } : {},
-  });
-  sdk.start();
+    });
+    developmentTelemetrySdk.start();
+  }
 
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
   initPerfStats();
 
   Sentry.init({
-    ...sentryBaseConfig,
-    // We run our own OpenTelemetry NodeSDK above (for Prisma + the dev OTLP exporter), which already
-    // registers the global trace/context/propagation APIs. Without this flag, @sentry/node (v10 is
-    // OpenTelemetry-native) tries to register them again, logging "Attempted duplicate registration
-    // of API: trace/propagation/context". Skipping Sentry's OTel setup lets the NodeSDK own it while
-    // error capture continues to work normally. (Letting Sentry own OTel instead would require migrating
-    // our OpenTelemetry deps from v1 to v2 to match @sentry/node v10.)
-    skipOpenTelemetrySetup: true,
-    dsn: getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", ""),
-    enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
-    beforeSend(event, hint) {
-      const error = hint.originalException;
-      let nicified;
-      try {
-        nicified = nicify(error, { maxDepth: 8 });
-      } catch (e) {
-        nicified = `Error occurred during nicification: ${e}`;
-      }
-      if (error instanceof Error) {
-        event.extra = {
-          ...event.extra,
-          cause: error.cause,
-          errorProps: {
-            ...error,
-          },
-          nicifiedError: nicified,
-        };
-      }
-      return event;
-    },
+    ignoreErrors: sentryBaseConfig.ignoreErrors,
+    normalizeDepth: sentryBaseConfig.normalizeDepth,
+    maxValueLength: sentryBaseConfig.maxValueLength,
+    debug: sentryBaseConfig.debug,
+    tracesSampleRate: sentryEnabled ? sentryBaseConfig.tracesSampleRate : 0,
+    skipOpenTelemetrySetup: !sentryEnabled,
+    dsn: sentryDsn,
+    enabled: sentryEnabled,
+    sendDefaultPii: false,
+    includeLocalVariables: false,
+    environment: getEnvVariable("VERCEL_ENV", nodeEnvironment),
+    release: getSentryRelease({
+      packageName: backendPackageJson.name,
+      packageVersion: backendPackageJson.version,
+    }),
+    beforeSend: sanitizeBackendSentryEvent,
+    beforeSendSpan: sanitizeBackendSentrySpan,
+    beforeSendTransaction: sanitizeBackendSentryEvent,
   });
+}
+
+export async function closeBackendInstrumentation(timeoutMs = 2000): Promise<void> {
+  const closeResults = await Promise.allSettled([
+    developmentTelemetrySdk?.shutdown(),
+    Sentry.close(timeoutMs),
+  ].filter((promise) => promise != null));
+  const failures = closeResults.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((failure) => failure.reason),
+      "Failed to close backend instrumentation",
+    );
+  }
 }
 
 registerBackendInstrumentation();

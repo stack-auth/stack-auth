@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { createObservedPostgresClient } from "@/lib/postgres-client";
 import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -18,7 +19,6 @@ import {
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { errorToNiceString, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { Client } from "pg";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;
 
@@ -877,9 +877,13 @@ async function fetchExternalDatabaseStatus(
     };
   }
 
-  const client = new Client(clientOptionsResult.data);
+  const client = createObservedPostgresClient(
+    clientOptionsResult.data,
+    "external-db-status-client",
+  );
   const connectResult = await Result.fromPromise(client.connect());
   if (connectResult.status === "error") {
+    await Result.fromPromise(client.end());
     return {
       id: dbId,
       type: dbConfig.type,

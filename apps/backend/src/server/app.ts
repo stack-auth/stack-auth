@@ -8,6 +8,7 @@ import { Elysia } from "elysia";
 import { createBackendRequest } from "./backend-request";
 import { handleUncaughtBackendError } from "./error-handler";
 import { getCorsHeadersInit, runRequestPipeline } from "./middleware";
+import { createRequestCompletionLog } from "./request-log";
 import { MalformedRouteParamError, matchRoute } from "./registry";
 
 const globalSecurityHeaders = {
@@ -19,31 +20,63 @@ const globalSecurityHeaders = {
   "Content-Security-Policy": "",
 };
 const knownHttpMethods = new Set<string>(httpMethodNames);
-const developmentRequestStartTimes = new WeakMap<Request, number>();
+const requestStartTimes = new WeakMap<Request, number>();
+const requestLogPaths = new WeakMap<Request, string>();
+const staticRequestLogPaths = new Set([
+  "/",
+  "/dev-stats",
+  "/health/error-handler-debug",
+  "/health/error-handler-debug/endpoint",
+  "/monitoring",
+]);
 const shouldLogDevelopmentRequests = getNodeEnvironment() === "development";
 
 export const app = new Elysia({
   adapter: node(),
 })
   .onRequest(({ request }) => {
-    if (shouldLogDevelopmentRequests) {
-      developmentRequestStartTimes.set(request, performance.now());
-    }
+    requestStartTimes.set(request, performance.now());
+    const pathname = new URL(request.url).pathname;
+    requestLogPaths.set(request, staticRequestLogPaths.has(pathname) ? pathname : "<unmatched>");
   })
   .onAfterResponse(({ request, response, set }) => {
-    if (!shouldLogDevelopmentRequests) {
+    const startedAt = requestStartTimes.get(request);
+    if (shouldLogDevelopmentRequests) {
+      const elapsedMilliseconds = startedAt == null ? "unknown" : (performance.now() - startedAt).toFixed(1);
+      const pathname = new URL(request.url).pathname;
+      console.log(`[Elysia] ${request.method} ${pathname} ${getLoggedResponseStatus(response, set.status)} ${elapsedMilliseconds}ms`);
       return;
     }
 
-    const startTime = developmentRequestStartTimes.get(request);
-    const elapsedMilliseconds = startTime == null ? "unknown" : (performance.now() - startTime).toFixed(1);
-    const pathname = new URL(request.url).pathname;
-    console.log(`[Elysia] ${request.method} ${pathname} ${getLoggedResponseStatus(response, set.status)} ${elapsedMilliseconds}ms`);
+    const event = createRequestCompletionLog({
+      request,
+      response,
+      fallbackStatus: set.status,
+      startedAt,
+      normalizedPath: requestLogPaths.get(request) ?? "<unknown>",
+    });
+    const serializedEvent = JSON.stringify(event);
+    const status = typeof event.status === "number" ? event.status : Number(event.status);
+    if (Number.isFinite(status) && status >= 500) {
+      console.error(serializedEvent);
+    } else {
+      console.log(serializedEvent);
+    }
   })
   .onError(({ error, request }) => withResponseHeaders(handleUncaughtBackendError(error), getCorsHeadersInit(request)))
   .get("/", () => htmlResponse(homeHtml()))
-  .get("/dev-stats", () => htmlResponse(devStatsHtml()))
-  .get("/health/error-handler-debug", () => htmlResponse(errorHandlerDebugHtml()))
+  .get("/dev-stats", () => getNodeEnvironment() === "development"
+    ? htmlResponse(devStatsHtml())
+    : htmlResponse("<div>404 Not Found</div>", 404))
+  .get("/health/error-handler-debug", () => isObservabilityDebugRouteAvailable()
+    ? htmlResponse(errorHandlerDebugHtml())
+    : htmlResponse("<div>404 Not Found</div>", 404))
+  .get("/health/error-handler-debug/endpoint", () => {
+    if (!isObservabilityDebugRouteAvailable()) {
+      return htmlResponse("<div>404 Not Found</div>", 404);
+    }
+    throw new Error("Server observability debug error thrown successfully!");
+  })
   .post("/monitoring", async ({ request }) => withGlobalHeaders(await handleMonitoringTunnel(request)), {
     parse: "none",
   })
@@ -74,6 +107,7 @@ export async function dispatch(request: Request) {
       },
     }), pipeline.corsHeadersInit);
   }
+  requestLogPaths.set(request, match.normalizedPath);
 
   const method = request.method.toUpperCase();
   if (!isHttpMethod(method)) {
@@ -174,6 +208,11 @@ function htmlResponse(body: string, status = 200) {
       "content-type": "text/html; charset=utf-8",
     },
   }));
+}
+
+function isObservabilityDebugRouteAvailable() {
+  return getNodeEnvironment() !== "production"
+    || getEnvVariable("VERCEL_ENV", "") === "preview";
 }
 
 import.meta.vitest?.test("API version migrations do not expose their internal rewrite", async ({ expect }) => {

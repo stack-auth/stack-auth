@@ -4,6 +4,9 @@
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "clean": "rimraf src/generated && rimraf dist && rimraf node_modules",
     "typecheck": "tsc --noEmit",
@@ -91,7 +94,7 @@
     "@simplewebauthn/server": "^13.3.0",
     "@sinclair/typebox": "^0.34.49",
     "@upstash/qstash": "^2.8.2",
-    "@vercel/functions": "^2.0.0",
+    "@vercel/functions": "^3.7.5",
     "@vercel/sandbox": "^1.2.0",
     "ai": "^6.0.0",
     "cel-js": "^0.8.2",

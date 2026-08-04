@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Rolldown, type UserConfig } from "tsdown";
 // @ts-expect-error - this is a workspace tsdown helper imported from source.
 import { createBasePlugin } from "../../configs/tsdown/plugins.ts";
+import { getSentryRelease } from "./src/sentry-release";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -58,8 +59,10 @@ function shouldBundleDependency(specifier: string) {
 }
 
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
-// Sentry release names may not contain slashes/whitespace, so sanitize the scoped package name.
-const sentryRelease = process.env.SENTRY_RELEASE ?? `${packageJson.name}@${packageJson.version}`.replace(/[/\s]/g, "-");
+const sentryRelease = getSentryRelease({
+  packageName: packageJson.name,
+  packageVersion: packageJson.version,
+});
 const shouldUploadSourcemaps = process.env.SENTRY_ORG != null
   && process.env.SENTRY_PROJECT != null
   && process.env.SENTRY_AUTH_TOKEN != null;
@@ -74,7 +77,13 @@ const plugins = [
         name: sentryRelease,
       },
       sourcemaps: {
-        assets: resolve(backendDir, "dist/**/*.map"),
+        // Debug ID upload needs each deployed JavaScript artifact together
+        // with its source map. Supplying only maps produces "Didn't find any
+        // matching sources" even though tsdown generated the maps correctly.
+        assets: [
+          resolve(backendDir, "dist/**/*.mjs"),
+          resolve(backendDir, "dist/**/*.mjs.map"),
+        ],
       },
     }),
   ] : []),

@@ -3,6 +3,7 @@ import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { createObservedPostgresClient } from "@/lib/postgres-client";
 import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@hexclave/shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
@@ -11,7 +12,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { omit } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import type { ClickHouseClient } from "@clickhouse/client";
-import { Client } from 'pg';
+import type { Client } from "pg";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BATCHES_PER_MAPPING_ENV = "STACK_EXTERNAL_DB_SYNC_MAX_BATCHES_PER_MAPPING";
@@ -1455,7 +1456,10 @@ async function syncDatabase(
     assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
     const externalClientOptions = await getSafeExternalPostgresClientOptions(dbConfig.connectionString);
 
-    const externalClient = new Client(externalClientOptions);
+    const externalClient = createObservedPostgresClient(
+      externalClientOptions,
+      "external-db-sync-client",
+    );
 
     let needsResync = false;
     const syncResult = await Result.fromPromise((async () => {

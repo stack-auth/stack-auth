@@ -17,7 +17,7 @@ const sentryErrorSink = (location: string, error: unknown, level: "error" | "war
     return;
   }
   Sentry.captureException(error, { extra: { location }, level });
-  runAsynchronouslyAndWaitUntil(Sentry.flush());
+  runAsynchronouslyAndWaitUntil(Sentry.flush(2000));
 };
 
 export function ensurePolyfilled() {
