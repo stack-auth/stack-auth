@@ -307,6 +307,12 @@ const handler = createSmartRouteHandler({
           });
         }
       };
+      // The sign-in isn't actually complete until oauthServer.authorize() finishes: it calls
+      // OAuthModel.saveToken() *after* authenticateHandler.handle() returns, and that's where TOTP
+      // MFA is enforced and refresh tokens are persisted. So we defer the success event until after
+      // authorize() resolves — otherwise an MFA challenge or a token-persistence failure would be
+      // recorded as a successful sign-in in the compliance evidence.
+      const successfulSignInUserIdRef: { current: string | null } = { current: null };
       try {
         await oauthServer.authorize(
           oauthRequest,
@@ -364,7 +370,7 @@ const handler = createSmartRouteHandler({
                     if (oldAccount.projectUserId == null) {
                       throw new HexclaveAssertionError("Existing OAuth account is missing its project user ID.");
                     }
-                    logOAuthSuccess(oldAccount.projectUserId);
+                    successfulSignInUserIdRef.current = oldAccount.projectUserId;
 
                     return {
                       id: oldAccount.projectUserId,
@@ -391,7 +397,7 @@ const handler = createSmartRouteHandler({
                     });
 
                     await storeTokens(oauthAccountId);
-                    logOAuthSuccess(linkedUserId);
+                    successfulSignInUserIdRef.current = linkedUserId;
                     return {
                       id: linkedUserId,
                       newUser: false,
@@ -446,7 +452,7 @@ const handler = createSmartRouteHandler({
                   );
 
                   await storeTokens(oauthAccountId);
-                  logOAuthSuccess(newUserId);
+                  successfulSignInUserIdRef.current = newUserId;
 
                   return {
                     id: newUserId,
@@ -497,6 +503,10 @@ const handler = createSmartRouteHandler({
           throw new StatusError(400, "Invalid scope requested. Please check the scopes you are requesting.");
         }
         throw error;
+      }
+
+      if (successfulSignInUserIdRef.current != null) {
+        logOAuthSuccess(successfulSignInUserIdRef.current);
       }
 
       return oauthResponseToSmartResponse(oauthResponse);
