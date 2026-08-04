@@ -112,6 +112,35 @@ function logDev(message: string): void {
   console.warn(`${LOG_PREFIX}${message}`);
 }
 
+// Opt-in per-phase startup timing for `hexclave dev`, enabled with
+// HEXCLAVE_DEV_TIMING=1 (or true/yes). It attributes boot latency to concrete
+// phases — dashboard reuse/startup vs. remote-session creation vs. handing off
+// to the user's own command — so a slow `hexclave dev` can be diagnosed instead
+// of guessed at. Disabled runs pay nothing and print nothing.
+type DevTimer = {
+  mark: (label: string) => void,
+};
+
+const NOOP_DEV_TIMER: DevTimer = { mark: () => {} };
+
+function devTimingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.HEXCLAVE_DEV_TIMING?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function createDevTimer(): DevTimer {
+  if (!devTimingEnabled()) return NOOP_DEV_TIMER;
+  const startedAt = performance.now();
+  let lastAt = startedAt;
+  return {
+    mark: (label: string) => {
+      const now = performance.now();
+      logDev(`timing: ${label} +${(now - lastAt).toFixed(0)}ms (total ${(now - startedAt).toFixed(0)}ms)`);
+      lastAt = now;
+    },
+  };
+}
+
 function stderrSupportsAnsiColor(): boolean {
   return process.stderr.isTTY && process.env.NO_COLOR == null && process.env.TERM !== "dumb";
 }
@@ -394,7 +423,8 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   }
 }
 
-async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
+async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number, timer?: DevTimer }): Promise<void> {
+  const timer = options.timer ?? NOOP_DEV_TIMER;
   const url = dashboardUrl(options.port);
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
 
@@ -411,6 +441,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     skipReleaseLookup ? null : fetchDashboardManifestCached(),
     isDashboardReachable(url, options.secret),
   ]);
+  timer.mark("manifest + reachability probe");
   const latestVersion = manifest?.version;
 
   if (dashboardReachable) {
@@ -435,6 +466,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
       if (runningDashboard?.logPath != null) {
         logDev(`Dashboard logs: ${runningDashboard.logPath}`);
       }
+      timer.mark("reused existing dashboard");
       return;
     }
   }
@@ -442,6 +474,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   // Download (or reuse a cached copy of) the dashboard build to launch. Not
   // needed when a custom dev dashboard command runs the dashboard itself.
   const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest, onProgress: (message) => logDev(`${message}...`) }) : null;
+  timer.mark("dashboard runtime resolved");
 
   const progress = startProgress(`Hexclave dashboard not found on port ${options.port}. Starting now`, { prefix: LOG_PREFIX });
   const dashboardEnv = {
@@ -510,6 +543,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
         recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, release?.version);
         logDev(`Dashboard logs: ${logPath}`);
         child.unref();
+        timer.mark("dashboard process spawned");
       } finally {
         try {
           unlinkSync(lockPath);
@@ -522,6 +556,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
       if (await isDashboardReachable(url, options.secret)) {
+        timer.mark("dashboard reachable");
         progress.stop(`Started Hexclave dashboard`);
         return;
       }
@@ -886,11 +921,11 @@ async function closeSession(sessionId: string, secret: string, port: number): Pr
 
 
 export async function run(commandArgs: string[], opts: DevOptions) {
-
   if (opts.configFile == null) {
     throw new CliError("--config-file is required.");
   }
 
+  const timer = createDevTimer();
   const childCommand = splitDevCommandArgs(commandArgs);
   const port = dashboardPort();
   const localDashboardUrl = dashboardUrl(port);
@@ -898,42 +933,46 @@ export async function run(commandArgs: string[], opts: DevOptions) {
   const config = resolveLoginConfig();
   const apiBaseUrl = normalizeApiBaseUrl(config.apiUrl || DEFAULT_API_URL);
   const configFilePath = resolveConfigFilePathOption(opts.configFile, { mustExist: false });
-  await startDashboardIfNeeded({ apiBaseUrl, secret, port });
+  timer.mark("config resolved");
+  await startDashboardIfNeeded({ apiBaseUrl, secret, port, timer });
+  timer.mark("dashboard ready");
+  const session = await createRemoteDevelopmentEnvironmentSession({
+    apiBaseUrl,
+    configFilePath,
+    port,
+    secret,
+  });
+  timer.mark("remote session created");
   const sessionState: DashboardSessionState = {
-    session: await createRemoteDevelopmentEnvironmentSession({
-      apiBaseUrl,
-      configFilePath,
-      port,
-      secret,
-    }),
+    session,
     dashboardReachableSinceMs: performance.now(),
   };
-      logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
-      maybeOpenOnboardingPage(sessionState.session, port);
+  logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
+  maybeOpenOnboardingPage(sessionState.session, port);
 
-      let stopped = false;
-      const heartbeat = heartbeatUntilStopped(sessionState, {
-        apiBaseUrl,
-        configFilePath,
-        port,
-        secret,
-        shouldStop: () => stopped,
-      });
-      const browserSecretCodePolling = logPendingBrowserSecretConfirmationCodesUntilStopped({
-        port,
-        shouldStop: () => stopped,
-      });
-      let exitCode = 1;
-      try {
-        exitCode = await runChildProcess(childCommand, {
-          ...process.env,
-          ...sessionState.session.env,
-        });
-      } finally {
-        stopped = true;
-        await Promise.all([heartbeat, browserSecretCodePolling]);
-        await closeSession(sessionState.session.session_id, secret, port);
-      }
-      process.exit(exitCode);
-
+  let stopped = false;
+  const heartbeat = heartbeatUntilStopped(sessionState, {
+    apiBaseUrl,
+    configFilePath,
+    port,
+    secret,
+    shouldStop: () => stopped,
+  });
+  const browserSecretCodePolling = logPendingBrowserSecretConfirmationCodesUntilStopped({
+    port,
+    shouldStop: () => stopped,
+  });
+  let exitCode = 1;
+  try {
+    timer.mark("starting app command");
+    exitCode = await runChildProcess(childCommand, {
+      ...process.env,
+      ...sessionState.session.env,
+    });
+  } finally {
+    stopped = true;
+    await Promise.all([heartbeat, browserSecretCodePolling]);
+    await closeSession(sessionState.session.session_id, secret, port);
+  }
+  process.exit(exitCode);
 }
