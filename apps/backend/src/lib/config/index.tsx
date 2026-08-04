@@ -1506,6 +1506,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
         client_secret: oauthProvider.clientSecret,
         facebook_config_id: oauthProvider.facebookConfigId,
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
+        apple_team_id: oauthProvider.appleTeamId,
+        apple_key_id: oauthProvider.appleKeyId,
+        apple_private_key: oauthProvider.applePrivateKey,
         apple_bundle_ids: oauthProvider.appleBundles ? Object.values(oauthProvider.appleBundles).filter(isTruthy).map(b => b.bundleId).filter(isTruthy) : undefined,
       } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
     })

@@ -1,5 +1,5 @@
 import { getApiUrlForRequest } from "@/lib/request-api-url";
-import { createAuthTokens } from "@/lib/tokens";
+import { createImpersonationAuthTokens, createAuthTokens, MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -19,7 +19,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       user_id: userIdOrMeSchema.defined(),
-      expires_in_millis: yupNumber().max(1000 * 60 * 60 * 24 * 367).default(1000 * 60 * 60 * 24 * 365),
+      expires_in_millis: yupNumber().max(MAX_AUTH_SESSION_EXPIRATION_MS).default(1000 * 60 * 60 * 24 * 365),
       is_impersonation: yupBoolean().optional(),
     }).defined(),
   }),
@@ -48,13 +48,20 @@ export const POST = createSmartRouteHandler({
       throw e;
     }
 
-    const { refreshToken, accessToken } = await createAuthTokens({
-      tenancy,
-      projectUserId: user.id,
-      expiresAt: new Date(Date.now() + expiresInMillis),
-      isImpersonation: isImpersonation,
-      apiUrl: getApiUrlForRequest(fullReq),
-    });
+    const { refreshToken, accessToken } = isImpersonation
+      ? await createImpersonationAuthTokens({
+        tenancy,
+        projectUserId: user.id,
+        expiresInMillis,
+        apiUrl: getApiUrlForRequest(fullReq),
+      })
+      : await createAuthTokens({
+        tenancy,
+        projectUserId: user.id,
+        expiresAt: new Date(Date.now() + expiresInMillis),
+        isImpersonation: false,
+        apiUrl: getApiUrlForRequest(fullReq),
+      });
 
     return {
       statusCode: 200,

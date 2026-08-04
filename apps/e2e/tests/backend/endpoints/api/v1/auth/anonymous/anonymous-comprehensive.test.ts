@@ -149,7 +149,8 @@ it("list users excludes anonymous users by default", async ({ expect }) => {
   await Auth.Anonymous.signUp();
 
   // Create a regular user
-  await Auth.Password.signUpWithEmail();
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // List users without include_anonymous
   const listRes = await niceBackendFetch("/api/v1/users", {
@@ -172,7 +173,8 @@ it("list users includes anonymous users when requested", async ({ expect }) => {
 
   // Create a regular user
   await bumpEmailAddress();
-  await Auth.Password.signUpWithEmail();
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // List users with include_anonymous=true
   const listRes = await niceBackendFetch("/api/v1/users?include_anonymous=true", {

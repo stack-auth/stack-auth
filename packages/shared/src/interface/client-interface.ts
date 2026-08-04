@@ -868,6 +868,36 @@ export class HexclaveClientInterface {
     throw new HexclaveAssertionError(await res.text());
   }
 
+  public async consumeBrowserAction(
+    actionId: string,
+    session: InternalSession | null = null,
+  ): Promise<{ javascript: string }> {
+    const response = await this.sendClientRequest(
+      "/browser-actions/consume",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action_id: actionId,
+        }),
+      },
+      session,
+      "client",
+    );
+    const body: unknown = await response.json();
+    if (
+      typeof body !== "object"
+      || body === null
+      || !("javascript" in body)
+      || typeof body.javascript !== "string"
+    ) {
+      throw new HexclaveAssertionError("Browser action endpoint returned an invalid response");
+    }
+    return { javascript: body.javascript };
+  }
+
   async sendForgotPasswordEmail(
     email: string,
     callbackUrl: string,
