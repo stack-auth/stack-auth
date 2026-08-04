@@ -138,9 +138,12 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     });
 
     if (freePlanSubscription != null) {
-      // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
-      // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(freePlanSubscription));
+      // Keep the write after the transaction commits so Bulldozer only receives a
+      // subscription row that is durable in Prisma. Bulldozer's initial
+      // subscription grant cascades synchronously through its materialized item
+      // quantities, so awaiting this write makes billing-gated endpoints ready
+      // when team creation returns.
+      await bulldozerWriteSubscription(freePlanSubscription);
     }
 
     const result = teamPrismaToCrud(db);
