@@ -28,7 +28,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { use } from "@hexclave/shared/dist/utils/react";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useProjectId } from "../use-admin-app";
 
@@ -176,7 +176,16 @@ const DEFAULT_FILTERS: ListFilters = {
   activity24h: "no",
 };
 
-const initialListStatePromises = new WeakMap<object, Promise<ListState>>();
+const sessionComponentKeys = new WeakMap<object, number>();
+let nextSessionComponentKey = 0;
+
+function getSessionComponentKey(session: object): number {
+  const existing = sessionComponentKeys.get(session);
+  if (existing != null) return existing;
+  const created = nextSessionComponentKey++;
+  sessionComponentKeys.set(session, created);
+  return created;
+}
 
 function isListResponse(value: unknown): value is LegacyCompatibleListResponse {
   return value != null
@@ -241,12 +250,10 @@ async function fetchListState(app: object, filters: ListFilters): Promise<ListSt
   }
 }
 
-function getInitialListStatePromise(app: object): Promise<ListState> {
-  const existing = initialListStatePromises.get(app);
-  if (existing != null) return existing;
-  const created = fetchListState(app, DEFAULT_FILTERS);
-  initialListStatePromises.set(app, created);
-  return created;
+function fetchInitialListState(app: object, _session: object): Promise<ListState> {
+  // The session argument deliberately scopes the memoized promise in AuthenticatedPage,
+  // even though sendInternalUserRequest reads that session through the app.
+  return fetchListState(app, DEFAULT_FILTERS);
 }
 
 async function fetchProjectDetailState(
@@ -524,7 +531,7 @@ function DomainsCell(props: { domains: string[] }) {
 
 function JsonBlock(props: { value: unknown }) {
   return (
-    <pre className="max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 text-[11px] leading-relaxed">
+    <pre className="hexclave-sensitive max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 text-[11px] leading-relaxed">
       {JSON.stringify(props.value, null, 2)}
     </pre>
   );
@@ -540,7 +547,12 @@ export default function PageClient() {
 
 function AuthenticatedPage() {
   const projectId = useProjectId();
-  useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const app = useStackApp();
+  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const initialListStatePromise = useMemo(
+    () => fetchInitialListState(app, user._internalSession),
+    [app, user._internalSession],
+  );
 
   if (projectId !== "internal") {
     return null;
@@ -551,14 +563,22 @@ function AuthenticatedPage() {
       title="Newly Created Projects"
       description="Newest customer projects with owners, app adoption, and activity. Internal only."
     >
-      <NewlyCreatedProjectsContent />
+      <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
+        <NewlyCreatedProjectsContent
+          key={getSessionComponentKey(user._internalSession)}
+          app={app}
+          initialListStatePromise={initialListStatePromise}
+        />
+      </Suspense>
     </PageLayout>
   );
 }
 
-function NewlyCreatedProjectsContent() {
-  const app = useStackApp();
-  const initialListState = use(getInitialListStatePromise(app));
+function NewlyCreatedProjectsContent(props: {
+  app: object,
+  initialListStatePromise: Promise<ListState>,
+}) {
+  const initialListState = use(props.initialListStatePromise);
   const [minUsers, setMinUsers] = useState("0");
   const [rde, setRde] = useState<RdeFilter>("not_rde");
   const [onboarding, setOnboarding] = useState<OnboardingFilter>("both");
@@ -571,21 +591,21 @@ function NewlyCreatedProjectsContent() {
     setListState({ status: "loading" });
     setSelectedProjectId(null);
     setDetailState({ status: "idle" });
-    setListState(await fetchListState(app, filters));
+    setListState(await fetchListState(props.app, filters));
   };
 
   const loadDetail = (targetProjectId: string) => {
     setSelectedProjectId(targetProjectId);
     setDetailState({ status: "loading" });
     runAsynchronously(async () => {
-      setDetailState(await fetchProjectDetailState(app, targetProjectId));
+      setDetailState(await fetchProjectDetailState(props.app, targetProjectId));
     });
   };
 
   const loadMoreReplays = async (detail: ProjectDetail) => {
     const cursor = detail.replay_next_cursor
       ?? throwErr("Cannot load more session replays without a cursor");
-    const nextState = await fetchProjectDetailState(app, detail.id, cursor);
+    const nextState = await fetchProjectDetailState(props.app, detail.id, cursor);
     if (nextState.status !== "ok") {
       setDetailState(nextState);
       return;

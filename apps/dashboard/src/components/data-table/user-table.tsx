@@ -44,7 +44,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
-import { DeleteUserDialog, generateImpersonateSnippet, ImpersonateUserDialog } from "../user-dialogs";
+import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -619,7 +619,7 @@ function UserActions(props: {
   const router = useRouter();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const [impersonateOpen, setImpersonateOpen] = useState(false);
   const profileUrl = `/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
 
   return (
@@ -630,7 +630,7 @@ function UserActions(props: {
       onDoubleClick={(event) => event.stopPropagation()}
     >
       <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} profileHref={profileUrl} onDeleted={onUserMutated} />
-      <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
+      <ImpersonateUserDialog user={user} adminApp={hexclaveAdminApp} open={impersonateOpen} onClose={() => setImpersonateOpen(false)} />
       <CreateCheckoutDialog
         open={isCheckoutOpen}
         onOpenChange={setIsCheckoutOpen}
@@ -649,19 +649,7 @@ function UserActions(props: {
             View details
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() =>
-              runAsynchronouslyWithAlert(async () => {
-                const expiresInMillis = 1000 * 60 * 60 * 2;
-                const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                const session = await user.createSession({ expiresInMillis, isImpersonation: true });
-                const tokens = await session.getTokens();
-                setImpersonateSnippet(generateImpersonateSnippet(
-                  hexclaveAdminApp.projectId,
-                  tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
-                  expiresAtDate,
-                ));
-              })
-            }
+            onClick={() => setImpersonateOpen(true)}
           >
             Impersonate
           </DropdownMenuItem>

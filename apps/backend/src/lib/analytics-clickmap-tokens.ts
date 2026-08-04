@@ -1,5 +1,5 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { normalizeTrustedOrigin, validateTrustedOrigin } from "@/lib/trusted-origins";
 import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { signJWT, verifyJWT } from "@hexclave/shared/dist/utils/jwt";
@@ -29,34 +29,11 @@ export type AnalyticsClickmapTokenPayload = {
   origin: string,
 };
 
-export function normalizeAnalyticsClickmapOrigin(origin: string): string {
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    throw new StatusError(StatusError.BadRequest, "Invalid clickmap origin");
-  }
-
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new StatusError(StatusError.BadRequest, "Clickmap origin must be an HTTP(S) origin");
-  }
-
-  return url.origin;
-}
-
-export function validateAnalyticsClickmapOrigin(tenancy: Tenancy, origin: string): string {
-  const normalizedOrigin = normalizeAnalyticsClickmapOrigin(origin);
-  if (!validateRedirectUrl(`${normalizedOrigin}/`, tenancy)) {
-    throw new StatusError(StatusError.Forbidden, "Clickmap origin is not a trusted domain for this project");
-  }
-  return normalizedOrigin;
-}
-
 export async function createAnalyticsClickmapToken(options: {
   tenancy: Tenancy,
   origin: string,
 }): Promise<{ token: string, origin: string, expiresAtMillis: number }> {
-  const origin = validateAnalyticsClickmapOrigin(options.tenancy, options.origin);
+  const origin = validateTrustedOrigin(options.tenancy, options.origin);
   const expiresAtMillis = Date.now() + CLICKMAP_TOKEN_TTL_MS;
   const token = await signJWT({
     issuer: CLICKMAP_TOKEN_ISSUER,
@@ -77,7 +54,7 @@ export async function verifyAnalyticsClickmapToken(options: {
   token: string,
   origin: string,
 }): Promise<AnalyticsClickmapTokenPayload> {
-  const origin = normalizeAnalyticsClickmapOrigin(options.origin);
+  const origin = normalizeTrustedOrigin(options.origin);
   let payload: AnalyticsClickmapTokenPayload;
   try {
     const verified = await verifyJWT({ allowedIssuers: [CLICKMAP_TOKEN_ISSUER], jwt: options.token });

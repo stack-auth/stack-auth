@@ -134,6 +134,62 @@ it("should properly create subscription", async ({ expect }) => {
   });
 });
 
+it("should create a subscription for float-sensitive USD amounts like 79.99", async ({ expect }) => {
+  // Regression: Number("79.99") * 100 === 7998.999999999999, which Stripe
+  // rejects with parameter_invalid_integer. Purchase-session must send integer
+  // stripe units (7999) via moneyAmountToStripeUnits.
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "79.99",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({
+    client_secret: expect.any(String),
+    stripe_intent_type: "payment",
+  });
+});
+
 it("should return a setup client secret for a free-trial subscription", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();

@@ -1,10 +1,11 @@
 'use client';
 
-import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
 import { Button, Typography, cn } from '@hexclave/ui';
+import { useLocation } from '@tanstack/react-router'; // THIS_LINE_PLATFORM tanstack-start
 import { XIcon } from 'lucide-react';
 import React, { ReactNode } from 'react';
 import { useStackApp } from '../..';
+import { suspendIfSsr } from '../../utils/react';
 
 export type SidebarItem = {
   title: React.ReactNode,
@@ -14,6 +15,25 @@ export type SidebarItem = {
   icon?: React.ReactNode,
   content?: React.ReactNode,
   contentTitle?: React.ReactNode,
+}
+
+function normalizeHash(hash: string) {
+  return hash.startsWith("#") ? hash.slice(1) : hash;
+}
+
+function useHash() {
+  // IF_PLATFORM tanstack-start
+  return useLocation({ select: (location) => normalizeHash(location.hash) });
+  // ELSE_PLATFORM
+  suspendIfSsr();
+  return React.useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener("hashchange", onStoreChange);
+      return () => window.removeEventListener("hashchange", onStoreChange);
+    },
+    () => normalizeHash(window.location.hash),
+  );
+  // END_PLATFORM
 }
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {

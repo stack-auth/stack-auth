@@ -48,14 +48,19 @@ Optional:
     Default: true
     If false, construction must not start any automatic side effects. This includes
     prefetching, processing authentication or redirect query parameters, reading
-    or writing browser storage or cookies, recording analytics or session replays,
-    installing browser listeners, starting timers, or mounting development UI.
+    or writing browser storage or cookies, consuming `hexclave_action_id` browser
+    actions, recording analytics or session replays, installing browser listeners,
+    starting timers, or mounting development UI.
     Explicit method calls retain their normal behavior and side effects. This
     option makes construction inert.
 
 On construct: when automaticSideEffects=true, prefetch project info
 (GET /projects/current) unless noAutomaticPrefetch=true. When
-automaticSideEffects=false, perform no automatic side effects.
+automaticSideEffects=false, perform no automatic side effects. Browser action
+initialization removes `hexclave_action_id` from the address bar before consuming
+it and retries that removal during the initial event-loop turns so framework
+routers cannot restore the action URL after hydration. If consumption reports an
+already-used or expired action, treat it as an expected no-op.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]
