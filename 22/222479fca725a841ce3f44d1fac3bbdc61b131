@@ -1,0 +1,24 @@
+apps/backend/src/instrument.ts
+  s_f7f9288d967c40::t_d0113c89393b35 42
+  s_f7f9288d967c40::t_f32cbbe8c9fae1 58-63
+  s_f7f9288d967c40::t_adad8884d14b17 6
+  s_f7f9288d967c40::t_dc311265fad365 100
+  s_f7f9288d967c40::t_55bf698d7ed98f 57,64-70
+  s_f7f9288d967c40::t_61923a896ba01e 20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "22222479fca725a841ce3f44d1fac3bbdc61b131",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
