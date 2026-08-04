@@ -1,0 +1,24 @@
+apps/backend/src/app/api/latest/internal/flush-background-tasks/route.tsx
+  s_f7f9288d967c40::t_8dce1f9ac34e81 37-40
+  s_f7f9288d967c40::t_747023f82a1325 2
+apps/backend/src/utils/background-tasks.tsx
+  s_f7f9288d967c40::t_eb891036ba7416 38-62,71-73,75,79-96
+  s_f7f9288d967c40::t_1751cb8245d953 141-179
+  s_f7f9288d967c40::t_6b2ad1f4030e00 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "1df9316da022c6caf59d4ade9d0f222837d199e7",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
