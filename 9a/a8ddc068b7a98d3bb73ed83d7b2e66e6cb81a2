@@ -1,0 +1,20 @@
+apps/backend/src/server/server.ts
+  s_f7f9288d967c40::t_056acb56335179 6,8,17-21,25-26
+  s_f7f9288d967c40::t_ea3bb5e29f5c9e 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "9aa8ddc068b7a98d3bb73ed83d7b2e66e6cb81a2",
+  "prompts": {},
+  "sessions": {
+    "s_f7f9288d967c40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fabf909-c81b-4d9b-afd8-9aae012da1f6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
