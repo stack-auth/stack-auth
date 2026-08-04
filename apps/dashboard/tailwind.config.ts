@@ -12,6 +12,7 @@ const config = {
   theme: {
     fontFamily: {
       mono: ["var(--font-geist-mono)"],
+      serif: ["Georgia", "Cambria", '"Times New Roman"', "Times", "serif"],
     },
     container: {
       center: true,

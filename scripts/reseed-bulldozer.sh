@@ -18,6 +18,7 @@ BULLDOZER_DIR="$REPO_ROOT/apps/bulldozer-js"
 DATA_DIR="$BULLDOZER_DIR/.data"
 TEMP_DATA_DIR=""
 BACKUP_DATA_DIR="$BULLDOZER_DIR/.data-backup.untracked.$$"
+BULLDOZER_SECRET="$(node -e 'console.log(require("node:crypto").randomUUID())')"
 BULLDOZER_PID=""
 
 port_is_open() {
@@ -46,6 +47,23 @@ stop_bulldozer() {
   kill "$BULLDOZER_PID" 2>/dev/null || true
   wait "$BULLDOZER_PID" 2>/dev/null || true
   BULLDOZER_PID=""
+}
+
+stop_bulldozer_cleanly() {
+  if [[ -z "$BULLDOZER_PID" ]]; then
+    echo "Temporary bulldozer-js is not running; refusing to install its store." >&2
+    return 1
+  fi
+  local pid="$BULLDOZER_PID"
+  echo "Gracefully shutting down temporary bulldozer-js (pid $pid) ..."
+  kill "$pid" 2>/dev/null || true
+  local process_status=0
+  wait "$pid" || process_status=$?
+  BULLDOZER_PID=""
+  if [[ "$process_status" -ne 0 ]]; then
+    echo "Temporary bulldozer-js did not shut down cleanly (status $process_status); keeping the existing store." >&2
+    return 1
+  fi
 }
 
 cleanup() {
@@ -78,6 +96,8 @@ echo "Starting temporary bulldozer-js on port $BULLDOZER_PORT ..."
 (
   cd "$BULLDOZER_DIR" && \
     NODE_ENV=development \
+    BULLDOZER_JS_PORT="$BULLDOZER_PORT" \
+    HEXCLAVE_BULLDOZER_SERVER_SECRET="$BULLDOZER_SECRET" \
     HEXCLAVE_BULLDOZER_JS_LMDB_PATH="$TEMP_LMDB_PATH" \
     exec node --import tsx --expose-gc src/index.ts
 ) &
@@ -105,9 +125,22 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 
 echo "Running Postgres->bulldozer backfill ..."
-pnpm run db:backfill-bulldozer-from-prisma
+HEXCLAVE_BULLDOZER_SERVER_SECRET="$BULLDOZER_SECRET" \
+  HEXCLAVE_BULLDOZER_SERVER_URL="http://127.0.0.1:$BULLDOZER_PORT" \
+  pnpm run db:backfill-bulldozer-from-prisma
 
-stop_bulldozer
+echo "Waiting for the replacement store to become durable ..."
+curl --silent --show-error --fail-with-body \
+  --retry 3 \
+  --retry-all-errors \
+  --connect-timeout 10 \
+  --max-time 300 \
+  --request POST \
+  --header "Authorization: Bearer $BULLDOZER_SECRET" \
+  "http://127.0.0.1:$BULLDOZER_PORT/internal/wait-until-durable" \
+  --output /dev/null
+
+stop_bulldozer_cleanly
 
 echo "Replacing bulldozer-js LMDB store at $DATA_DIR ..."
 if [[ -e "$DATA_DIR" ]]; then

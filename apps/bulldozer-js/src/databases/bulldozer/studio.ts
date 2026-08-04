@@ -15,8 +15,8 @@ type ElkInstance = {
   layout(graph: unknown): Promise<ElkLayoutResult>,
 };
 type ElkConstructor = new () => ElkInstance;
-const DEFAULT_PORT = 8140;
 const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_PORT_SUFFIX = "40";
 const GRAPH_NODE_WIDTH = 260;
 const GRAPH_NODE_HEIGHT = 126;
 const GRAPH_LEVEL_GAP_Y = 230;
@@ -26,6 +26,14 @@ const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 const htmlHeaders = { "content-type": "text/html; charset=utf-8" };
 const Elk = ((ELKModule as { default?: unknown }).default ?? ELKModule) as ElkConstructor;
 const elk = new Elk();
+
+// Every dev service derives its port from NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX so that several dev
+// environments can run side by side (the dev launchpad lists Bulldozer Studio at suffix 40).
+// Read it lazily: the env files are only loaded by the entrypoint, which may run after this
+// module is evaluated.
+function defaultPort() {
+  return Number(`${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}${DEFAULT_PORT_SUFFIX}`);
+}
 
 async function collect<T>(iterable: AsyncIterable<T>) {
   const result: T[] = [];
@@ -436,7 +444,7 @@ const page = String.raw`<!DOCTYPE html>
 export async function runBulldozerStudio(options: { host?: string, port?: number } = {}) {
   let runtime = await createRuntime();
   const host = options.host ?? DEFAULT_HOST;
-  const port = options.port ?? DEFAULT_PORT;
+  const port = options.port ?? defaultPort();
   const server = http.createServer((request, response) => {
     const handleRequest = async () => {
       const url = new URL(request.url ?? "/", `http://${host}:${port}`);

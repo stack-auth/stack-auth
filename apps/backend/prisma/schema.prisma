@@ -48,8 +48,111 @@ model Project {
   environmentConfigOverrides EnvironmentConfigOverride[]
   configAgentRuns            ConfigAgentRun[]
   aiConversations            AiConversation[]
+  gtmInsights                GtmInsight[]
+  gtmActions                 GtmAction[]
+  gtmNotes                   GtmNote[]
+  gtmOnboardings             GtmOnboarding[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
+}
+
+// Manually curated records for the internal GTM dashboard. These are inert
+// dashboard content; they do not run an agent or perform external actions.
+model GtmInsight {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain      String
+  title       String
+  body        String @db.Text
+  impactScore Int    @default(0)
+  timesSeen   Int    @default(1)
+  lastSeenAt DateTime @default(now())
+
+  // A curated, ordered list of free-text timeline entries that replaces the timeline the dashboard otherwise
+  // generates from the fields above. NULL means "nobody has curated this one", which keeps every pre-existing
+  // suggestion rendering exactly as before. Stored as JSON rather than rows because entries are only ever read
+  // and written as a whole ordered list together with their suggestion, and are never queried on their own.
+  timelineEntries Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model GtmAction {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain            String
+  type              String
+  status            String @default("proposed")
+  title             String
+  summary           String @db.Text
+  verdict           String?
+  retrospectiveText String? @db.Text
+  expiresAt         DateTime
+  executedAt        DateTime?
+
+  // See GtmInsight.timelineEntries — same curated-timeline override, same NULL-means-generated semantics.
+  timelineEntries Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model GtmNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domain          String
+  category        String
+  title           String? @db.VarChar(120)
+  body            String @db.VarChar(500)
+  source          String @default("user")
+  lastConfirmedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+// A single intake is kept for each GTM project branch. It is deliberately
+// separate from editorial notes because it contains contact information that
+// the GTM team uses to start the engagement.
+model GtmOnboarding {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  domain String? @db.VarChar(253)
+  phone  String @db.VarChar(50)
+  notes  String @default("")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId])
 }
 
 model Tenancy {
@@ -73,6 +176,13 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  deploymentServices  DeploymentService[]
+  deploymentSourceUploads DeploymentSourceUpload[]
+  workflowDefinitions WorkflowDefinition[]
+  workflowVersions WorkflowVersion[]
+  workflowRuns WorkflowRun[]
+  workflowEvents WorkflowEvent[]
+  workflowScheduleCursors WorkflowScheduleCursor[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -736,6 +846,7 @@ enum VerificationCodeType {
   PASSKEY_AUTHENTICATION_CHALLENGE
   INTEGRATION_PROJECT_TRANSFER
   PURCHASE_URL
+  BROWSER_ACTION
 }
 
 //#region API keys
@@ -1527,4 +1638,461 @@ model DeletedRow {
   // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
   @@index([tenancyId, tableName, sequenceId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
+}
+
+// ================== Deployments ==================
+// Operational state for the Deployments app. The service DEFINITIONS
+// (type, framework, build config, env vars) live in the environment config
+// under `deployments.services.<serviceId>` so they follow the project's config
+// source (dashboard / config file / GitHub); these tables only hold what the
+// config cannot: the lazily-provisioned Vercel project id, custom domains and
+// their verification state as reported by Vercel, and the deployment runs
+// themselves. Note that env vars are NOT stored here: their definitions live
+// in the config, and secret values only ever pass through at deploy time.
+
+model DeploymentService {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The user-facing service id — the key under `deployments.services` in the
+  // environment config (e.g. "api").
+  serviceId String
+
+  // Set when the Vercel project is lazily provisioned on first deploy.
+  vercelProjectId String?
+
+  // Build configuration as last sent to Vercel (operational cache — the
+  // authoritative definition lives in the environment config).
+  framework       String?
+  installCommand  String?
+  buildCommand    String?
+  outputDirectory String?
+  rootDirectory   String?
+
+  tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  domains DeploymentServiceDomain[]
+  runs    DeploymentRun[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, serviceId])
+}
+
+model DeploymentServiceDomain {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  hostname  String
+  isPrimary Boolean @default(false)
+  // Vercel-reported verification state, refreshed whenever the domain is read.
+  verified Boolean @default(false)
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deploymentServiceId, hostname])
+}
+
+enum DeploymentRunStatus {
+  QUEUED
+  BUILDING
+  READY
+  ERROR
+  CANCELED
+}
+
+model DeploymentRun {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  vercelDeploymentId  String?
+  vercelDeploymentUrl String?
+
+  status DeploymentRunStatus @default(QUEUED)
+  // "production" | "preview" (kept a string to match Vercel's target values)
+  target String
+  // Free-form descriptor of what triggered the run (e.g. "cli").
+  triggeredBy String
+
+  error      String?
+  finishedAt DateTime?
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
+}
+
+// Short-lived private-object references for `hexclave deploy`: the CLI
+// requests a presigned S3/R2 PUT URL, uploads directly to object storage, then
+// references this row in the deploy request. Rows and successfully-consumed
+// objects are deleted after use; a bucket lifecycle rule cleans up abandoned
+// objects whose clients never finish the deploy flow.
+model DeploymentSourceUpload {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  objectKey String
+  expiresAt DateTime
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([expiresAt])
+}
+
+// ─── Workflows ──────────────────────────────────────────────────────────────
+//
+// Durable, event-triggered workflows (Hexclave Workflows v1). All tables are
+// fully multi-tenant and available to every project: the alpha-stage
+// `workflows-alpha` app controls dashboard visibility only, and — as with every
+// other app — the API is not gated on it being installed.
+//
+// The engine is tick-driven like the email queue: a cron route claims due
+// work with FOR UPDATE SKIP LOCKED, invokes sandboxes (js-execution), and
+// records step results. See apps/backend/src/lib/workflows/.
+
+model WorkflowDefinition {
+  tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  // User-chosen slug (e.g. "welcome-drip"). Deliberately not a uuid: it is
+  // the stable business identity of the workflow across versions, and the
+  // handle used by the management API (cancelRuns({ workflow: ... })).
+  workflowId String
+
+  displayName String
+
+  // Denormalized copy of the highest WorkflowVersion.version. The sync route
+  // is the only writer of versions, and it updates this in the same
+  // transaction that inserts the version row.
+  latestVersion Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, workflowId])
+}
+
+model WorkflowVersion {
+  tenancyId  String @db.Uuid
+  tenancy    Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  workflowId String
+  // Platform-assigned, monotonically increasing per workflow per tenancy
+  // (v1, v2, ...). Never author-declared.
+  version Int
+
+  // The raw source string as authored in the dashboard editor. The version
+  // hash is over (source, runtimeEnvVersion): a version is minted whenever
+  // either changes.
+  source     String
+  sourceHash String
+
+  // esbuild output of (runtime shim + user source), bundled at sync time and
+  // stored per version so that pinned runs execute byte-identical code
+  // forever. Only the pinned stdlib (date-fns) stays an external import,
+  // installed into the sandbox via nodeModules at the exact version recorded
+  // in runtimeEnvVersion's pin table.
+  compiledBundle String
+
+  // Version tag of the platform-provided runtime environment (runtime shim +
+  // stdlib pins) this version was synced against. Pinned runs execute
+  // against their recorded env; env upgrades apply to new versions only.
+  // See WORKFLOWS_RUNTIME_ENVS in apps/backend/src/lib/workflows/runtime-env.tsx.
+  runtimeEnvVersion String
+
+  // WorkflowManifest (packages/shared/src/interface/workflows.ts), extracted
+  // by executing the compiled bundle in manifest mode at sync time: triggers,
+  // hasRunKey, onConflict, usesStdlib. This is what event dispatch matches
+  // against, so trigger declarations are data here, never re-evaluated code.
+  manifest Json
+
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, workflowId, version])
+}
+
+enum WorkflowRunState {
+  QUEUED
+  RUNNING
+  SLEEPING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+// Which error channel a failure belongs to. USER failures (handler/step code
+// threw) surface in run history with their message; PLATFORM failures
+// (sandbox provisioning, engine bugs) are reported to our monitoring and
+// surface to users only as a generic platform error.
+enum WorkflowRunFailureKind {
+  USER
+  PLATFORM
+}
+
+model WorkflowRun {
+  tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  // Platform UUID for history: runKeys recur over time, UUIDs never.
+  id String @default(uuid()) @db.Uuid
+
+  workflowId String
+  // The version this run is pinned to. Set at creation to the then-latest
+  // version; changed only by an explicit upgradeRuns action.
+  version Int
+
+  // Business key derived from the trigger event at run creation (before any
+  // execution). Unique per workflow among ACTIVE runs — see the isActive
+  // generated column below. Null for keyless runs. Capped at 512 chars at
+  // creation time to keep the unique index well below btree limits.
+  runKey String?
+
+  state WorkflowRunState @default(QUEUED)
+
+  // Generated column (see migration): TRUE while state is one of
+  // QUEUED/RUNNING/SLEEPING, NULL otherwise. Exists solely so the
+  // active-run-per-runKey uniqueness below can be an ordinary unique index
+  // (NULLs never collide), the same trick as Tenancy.hasNoOrganization.
+  // NOTE: Prisma only applies dbgenerated() as a DEFAULT; the migration
+  // hand-writes the actual GENERATED ALWAYS AS ... STORED column, and this
+  // declaration must be kept in sync with it. The string below must be the
+  // expression as Postgres *renders it back*, not as the migration writes it:
+  // Postgres parses the expression and re-deparses it, so `IN (...)` becomes
+  // `= ANY (ARRAY[...])`, literals gain explicit casts, and it is pretty-printed
+  // with a leading newline. `prisma migrate diff` (the check in CI) compares
+  // these strings literally, so the source form drifts forever. Get the exact
+  // text with:
+  //   SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+  //     JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+  //     WHERE d.adrelid = '"WorkflowRun"'::regclass AND a.attname = 'isActive';
+  // Dropping the dbgenerated() entirely does not work either — diff then reports
+  // the default changing to None. Same deal as the EmailOutbox generated columns.
+  isActive Boolean? @default(dbgenerated("\nCASE\n    WHEN (state = ANY (ARRAY['QUEUED'::\"WorkflowRunState\", 'RUNNING'::\"WorkflowRunState\", 'SLEEPING'::\"WorkflowRunState\"])) THEN true\n    ELSE NULL::boolean\nEND"))
+
+  // The id of the WorkflowEvent that triggered this run. Not a foreign key
+  // on purpose: events are retention-pruned independently of runs, and the
+  // id must survive as a value (it identifies the trigger event).
+  // triggerType/triggerPayload are denormalized snapshots because the
+  // handler replays against them on every invocation.
+  triggerEventId String? @db.Uuid
+  triggerType    String
+  // Envelope { ts_millis: number, data: <event payload> } — ts_millis is the
+  // trigger event's scheduledAt, which becomes event.ts in the handler.
+  triggerPayload Json
+
+  // The step the run is currently parked on: the sleep step while SLEEPING,
+  // the step being retried while QUEUED with attempts > 0, the last known
+  // executing step while RUNNING. Null at creation and after each recorded
+  // step. Used by upgrade divergence decisions (a sleeping run can only
+  // transfer to code that reaches the same sleep) and the dashboard.
+  currentStepKey String?
+
+  // When the run next needs engine attention: QUEUED = ready (or waiting out
+  // a retry backoff), SLEEPING = durable timer. Null while RUNNING (leased).
+  wakeAt DateTime?
+  // Lease for crash recovery: a RUNNING run whose lease expired is re-claimed
+  // by a later tick. Re-claiming re-executes from the last committed step, so
+  // step execution is at-least-once (a crashed worker may re-run a step).
+  leaseUntil DateTime?
+  // Fencing token, rotated on every claim: post-invocation transitions
+  // require the claimant's token, so a stale worker that lost its lease
+  // (paused mid-await past expiry) can no longer clobber the new claimant's
+  // state. Cancel/upgrade/retry deliberately do NOT check it — they act on
+  // state, and the engine's guarded transitions observe the result.
+  leaseToken String? @db.Uuid
+
+  // Attempt counter for the step currently being executed; reset to 0
+  // whenever a step result is recorded. 4 attempts max (1 + 3 retries).
+  currentStepAttempt Int @default(0)
+
+  // How many times an operator has manually retried this run from its failed
+  // step. Manual retry grants a fresh attempt budget (currentStepAttempt goes
+  // back to 0), so without this the re-executed attempts would reuse attempt
+  // numbers that already exist for the same step and collide with the
+  // WorkflowStepAttempt primary key — silently discarding the new history via
+  // its skipDuplicates insert. Bumping the epoch keeps every execution's
+  // attempts as distinct rows, so a retried run shows what actually happened
+  // rather than only its original failure.
+  retryEpoch Int @default(0)
+
+  // Running total of recorded step result sizes, to enforce the 4 MiB
+  // total-memoized-state-per-run limit without summing on every step.
+  memoTotalBytes Int @default(0)
+
+  failureKind  WorkflowRunFailureKind?
+  errorSummary String?
+
+  // Machine-readable diagnostic from the most recent skipped upgradeRuns
+  // attempt (expected vs found step graph). Cleared on successful upgrade.
+  lastUpgradeDivergence Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  stepResults  WorkflowStepResult[]
+  stepAttempts WorkflowStepAttempt[]
+
+  @@id([tenancyId, id])
+  // runKey/onConflict enforcement: at most one ACTIVE run per (workflow,
+  // runKey). isActive is NULL for terminal runs and runKey is NULL for
+  // keyless runs, so neither ever conflicts.
+  @@unique([tenancyId, workflowId, runKey, isActive], map: "WorkflowRun_active_run_key")
+  // Run-list queries (dashboard/API): filter by workflow + state, newest first.
+  @@index([tenancyId, workflowId, state, createdAt(sort: Desc)], map: "WorkflowRun_list_idx")
+  // Engine due-work scan (cross-tenancy): QUEUED/SLEEPING by wakeAt, plus
+  // expired-lease recovery on RUNNING by leaseUntil.
+  @@index([state, wakeAt], map: "WorkflowRun_due_idx")
+  @@index([state, leaseUntil], map: "WorkflowRun_lease_idx")
+  // Version fan-out ("214 runs on v7, 3 on v8") per workflow.
+  @@index([tenancyId, workflowId, version, state], map: "WorkflowRun_version_idx")
+}
+
+enum WorkflowStepKind {
+  RUN
+  SLEEP
+}
+
+model WorkflowStepResult {
+  tenancyId String @db.Uuid
+  runId     String @db.Uuid
+
+  // The memoization key: the user-written step id, suffixed with "#<n>" by
+  // the runtime when the same id executes more than once (loop counter).
+  // CONTRACT: a step key names a recorded fact; matching is by key only,
+  // order-independent.
+  stepKey String
+
+  // The user-written step id without the loop counter suffix (for display).
+  stepId String
+  kind   WorkflowStepKind
+
+  // RUN: the JSON return value of the step callback (<= 1 MiB, enforced with
+  // an explicit error). SLEEP: { until: <ISO timestamp> }.
+  result          Json?
+  resultSizeBytes Int
+
+  // How many attempts it took to record this fact (1 = first try).
+  attempts Int
+  // Which workflow version's code executed this step (observability; differs
+  // from the run's current version after an upgrade).
+  executedAtVersion Int
+  elapsedMs         Int?
+
+  createdAt DateTime @default(now())
+
+  run WorkflowRun @relation(fields: [tenancyId, runId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, runId, stepKey])
+}
+
+enum WorkflowStepAttemptOutcome {
+  SUCCEEDED
+  FAILED
+}
+
+// One row per sandbox invocation attempt of a step, for observability
+// (sandbox logs + error history per attempt). Kept separate from
+// WorkflowStepResult because failed attempts are history, not facts.
+model WorkflowStepAttempt {
+  tenancyId String @db.Uuid
+  runId     String @db.Uuid
+  stepKey   String
+  // WorkflowRun.retryEpoch at the time of this attempt. Part of the key
+  // because a manual retry restarts attempt numbering at 1 for the same step.
+  retryEpoch Int @default(0)
+  attempt    Int
+
+  stepId  String
+  outcome WorkflowStepAttemptOutcome
+  // { name, message, stack } of the user-code error if FAILED with
+  // failureKind USER; a generic marker for PLATFORM failures.
+  error       Json?
+  failureKind WorkflowRunFailureKind?
+  // console output captured inside the sandbox by the runtime shim, capped
+  // at 64 KiB per attempt.
+  logs String?
+
+  startedAt  DateTime
+  finishedAt DateTime
+  createdAt  DateTime @default(now())
+
+  run WorkflowRun @relation(fields: [tenancyId, runId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, runId, stepKey, retryEpoch, attempt])
+}
+
+// The workflow event outbox. Platform events are inserted transactionally
+// with the entity mutation at the webhook call sites (at-least-once from our
+// own tables); custom events via workflows.send(); schedule occurrences are
+// materialized by the engine; lifecycle events (workflow.run.*) are inserted
+// on run state transitions.
+model WorkflowEvent {
+  tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  id        String @default(uuid()) @db.Uuid
+
+  // Wire type: platform events are unprefixed ("user.created"), custom
+  // events are always "custom.*", lifecycle events are "workflow.run.*",
+  // schedule occurrences are "schedule".
+  type    String
+  payload Json
+
+  // For schedule occurrences: the cron tick's nominal time (may be in the
+  // past when catching up after downtime). Everything else: creation time.
+  // The outbox processes events in ascending scheduledAt order, which is
+  // what guarantees delayed-never-skipped schedule catch-up.
+  scheduledAt DateTime  @default(now())
+  processedAt DateTime?
+  // Failed dispatches back off so one poison event cannot monopolize the
+  // oldest outbox batch and starve unrelated tenants forever.
+  processingAttempts Int      @default(0)
+  retryAt            DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, id])
+  // Outbox scan: unprocessed events in scheduledAt order. processedAt is the
+  // leading column so the scan stays cheap as processed events accumulate
+  // (IS NULL rows are contiguous in the index).
+  @@index([processedAt, retryAt, scheduledAt], map: "WorkflowEvent_outbox_idx")
+  // Retention pruning + per-tenancy event views.
+  @@index([tenancyId, createdAt], map: "WorkflowEvent_tenancy_created_idx")
+}
+
+// Cursor for schedule() trigger materialization. One row per schedule
+// trigger per workflow; scheduleKey is "<cron>|<timezone>" so editing a
+// schedule starts a fresh cursor (no retroactive catch-up of the new
+// expression).
+model WorkflowScheduleCursor {
+  tenancyId   String @db.Uuid
+  tenancy     Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  workflowId  String
+  scheduleKey String
+
+  lastMaterializedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, workflowId, scheduleKey])
 }

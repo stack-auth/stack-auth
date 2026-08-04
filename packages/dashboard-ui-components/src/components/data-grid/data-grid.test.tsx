@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
+  DATA_GRID_DEFAULT_STRINGS,
   DataGrid,
+  DataGridToolbar,
   isDataGridInteractiveRowClickTarget,
   useDataSource,
   type DataGridColumnDef,
@@ -48,6 +50,41 @@ const wideColumns: DataGridColumnDef<Row>[] = [
     type: "string",
   },
 ];
+
+describe("DataGridToolbar action divider", () => {
+  const ctx = {
+    state: createDefaultDataGridState(columns),
+    onChange: vi.fn(),
+    columns,
+    visibleColumns: columns,
+    totalRowCount: 1,
+    selectedRowCount: 0,
+    strings: DATA_GRID_DEFAULT_STRINGS,
+    exportCsv: vi.fn(),
+  };
+
+  afterEach(cleanup);
+
+  it("does not render a divider for an empty React node", () => {
+    const { container } = render(
+      <DataGridToolbar ctx={ctx} extraActions={false} />,
+    );
+
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).toBeNull();
+  });
+
+  it("renders the divider when an action is visible", () => {
+    const { container, getByRole } = render(
+      <DataGridToolbar
+        ctx={ctx}
+        extraActions={<button type="button">Refresh</button>}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Refresh" })).not.toBeNull();
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).not.toBeNull();
+  });
+});
 
 type ObserverRecord = {
   options?: IntersectionObserverInit,
@@ -204,7 +241,9 @@ function InteractiveDataGridHarness(props: {
   );
 }
 
-function WideDataGridHarness() {
+function WideDataGridHarness(props: {
+  horizontalScrollbarPosition?: "top" | "bottom",
+} = {}) {
   const [state, setState] = useState(() => createDefaultDataGridState(wideColumns));
 
   return (
@@ -215,6 +254,7 @@ function WideDataGridHarness() {
         getRowId={(row) => row.id}
         state={state}
         onChange={setState}
+        horizontalScrollbarPosition={props.horizontalScrollbarPosition}
       />
     </div>
   );
@@ -577,5 +617,91 @@ describe("DataGrid horizontal scrolling", () => {
     expect(stickyChrome).toBeInstanceOf(HTMLElement);
     expect((stickyChrome as HTMLElement).className).toContain("overflow-visible");
     expect(container.textContent).toContain("Email");
+  });
+
+  it("puts the horizontal scrollbar under the column headers when position is top", () => {
+    const { container } = render(<WideDataGridHarness horizontalScrollbarPosition="top" />);
+
+    const stickyChrome = container.querySelector('[role="grid"]')?.firstElementChild;
+    expect(stickyChrome).toBeInstanceOf(HTMLElement);
+    const headerScroll = stickyChrome?.querySelector(".overflow-x-auto");
+    expect(headerScroll).toBeInstanceOf(HTMLElement);
+
+    const bodyScroll = container.querySelector('[role="grid"]')?.children.item(1);
+    expect(bodyScroll).toBeInstanceOf(HTMLElement);
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-x-hidden");
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-y-auto");
+
+    Object.defineProperty(headerScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+    Object.defineProperty(bodyScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    (headerScroll as HTMLElement).scrollLeft = 120;
+    fireEvent.scroll(headerScroll as HTMLElement);
+    expect((bodyScroll as HTMLElement).scrollLeft).toBe(120);
+  });
+});
+
+describe("DataGrid loading skeleton", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a full-width shimmer when loading before any columns are known", () => {
+    function SchemaPendingHarness() {
+      const [state, setState] = useState(() => createDefaultDataGridState([]));
+      return (
+        <DataGrid<Row>
+          columns={[]}
+          rows={[]}
+          getRowId={(row) => row.id}
+          state={state}
+          onChange={setState}
+          isLoading
+        />
+      );
+    }
+
+    const { container } = render(<SchemaPendingHarness />);
+
+    const skeleton = container.querySelector("[data-data-grid-schema-pending-skeleton]");
+    expect(skeleton).toBeInstanceOf(HTMLElement);
+    // Five placeholder columns × 10 rows → visible shimmer cells, not an empty pane.
+    expect(skeleton?.querySelectorAll("[role='row']").length).toBe(10);
+  });
+
+  it("uses per-column skeleton rows once the schema is known", () => {
+    function KnownSchemaHarness() {
+      const [state, setState] = useState(() => createDefaultDataGridState(columns));
+      return (
+        <DataGrid<Row>
+          columns={columns}
+          rows={[]}
+          getRowId={(row) => row.id}
+          state={state}
+          onChange={setState}
+          isLoading
+        />
+      );
+    }
+
+    const { container } = render(<KnownSchemaHarness />);
+
+    expect(container.querySelector("[data-data-grid-schema-pending-skeleton]")).toBeNull();
+    const rowsClip = container.querySelector("[data-data-grid-rows-clip]");
+    expect(rowsClip?.querySelectorAll("[role='row']").length).toBe(8);
   });
 });

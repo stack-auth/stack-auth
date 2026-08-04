@@ -1,10 +1,9 @@
 'use client';
 
-import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { X } from '@phosphor-icons/react';
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useSyncExternalStore } from 'react';
 import { useStackApp } from '@hexclave/next';
 
 export type SidebarItem = {
@@ -15,6 +14,17 @@ export type SidebarItem = {
   icon?: React.ReactNode,
   content?: React.ReactNode,
   contentTitle?: React.ReactNode,
+}
+
+function useHash() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener("hashchange", onStoreChange);
+      return () => window.removeEventListener("hashchange", onStoreChange);
+    },
+    () => window.location.hash.slice(1),
+    () => "",
+  );
 }
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {

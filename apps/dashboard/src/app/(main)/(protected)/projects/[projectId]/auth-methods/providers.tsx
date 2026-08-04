@@ -6,11 +6,12 @@ import { ActionDialog, BrandIcons, FormControl, FormField, FormItem, FormLabel, 
 import {
   DesignAlert,
   DesignBadge,
+  DesignCategoryTabs,
   DesignCardTint,
   DesignInput,
   DesignPillToggle,
 } from "@hexclave/dashboard-ui-components";
-import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, EyeIcon, EyeSlashIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@hexclave/next";
 import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
@@ -60,24 +61,60 @@ function toTitle(id: string) {
   }[id];
 }
 
-export const providerFormSchema = yupObject({
-  shared: yupBoolean().defined(),
-  clientId: yupString()
-    .when('shared', {
-      is: false,
-      then: (schema) => schema.defined().nonEmpty(),
-      otherwise: (schema) => schema.optional()
-    }),
-  clientSecret: yupString()
-    .when('shared', {
-      is: false,
-      then: (schema) => schema.defined().nonEmpty(),
-      otherwise: (schema) => schema.optional()
-    }),
-  facebookConfigId: yupString().optional(),
-  microsoftTenantId: yupString().optional(),
-  appleBundleIds: yup.array(yupString().defined()).optional(),
-});
+export function createProviderFormSchema(providerId: string) {
+  return yupObject({
+    shared: yupBoolean().defined(),
+    clientId: yupString()
+      .when('shared', {
+        is: false,
+        then: (schema) => schema.defined().nonEmpty(),
+        otherwise: (schema) => schema.optional()
+      }),
+    clientSecret: yupString()
+      .when('shared', {
+        is: false,
+        then: (schema) => providerId === "apple" ? schema.optional() : schema.defined().nonEmpty(),
+        otherwise: (schema) => schema.optional()
+      }),
+    appleTeamId: yupString().optional(),
+    appleKeyId: yupString().optional(),
+    applePrivateKey: yupString().optional(),
+    appleCredentialMode: yupString().oneOf(["private-key", "client-secret"]).defined().default("private-key"),
+    facebookConfigId: yupString().optional(),
+    microsoftTenantId: yupString().optional(),
+    appleBundleIds: yup.array(yupString().defined()).optional(),
+  }).test(
+    "apple-credentials",
+    function (values) {
+      if (providerId !== "apple" || values.shared) return true;
+      if (values.appleCredentialMode === "client-secret") {
+        return values.clientSecret != null && values.clientSecret !== ""
+          || this.createError({
+            path: "clientSecret",
+            message: "Client secret is required when using the legacy client secret.",
+          });
+      }
+
+      const keyCredentials = [
+        ["appleTeamId", values.appleTeamId],
+        ["appleKeyId", values.appleKeyId],
+        ["applePrivateKey", values.applePrivateKey],
+      ] as const;
+      const missingKeyField = keyCredentials.find(([_, value]) => {
+        return value == null || value === "";
+      })?.[0];
+      if (missingKeyField == null) return true;
+      const messages = {
+        appleTeamId: "Apple Team ID is required.",
+        appleKeyId: "Apple Key ID is required.",
+        applePrivateKey: "Apple private key is required.",
+      } as const;
+      return this.createError({ path: missingKeyField, message: messages[missingKeyField] });
+    },
+  );
+}
+
+export const providerFormSchema = createProviderFormSchema("unknown");
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
@@ -150,6 +187,9 @@ function RedirectInline({ providerId }: { providerId: string }) {
 }
 
 function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFormValues>, providerId: string }) {
+  const [showApplePrivateKey, setShowApplePrivateKey] = useState(false);
+  const appleCredentialMode = useWatch({ control: form.control, name: "appleCredentialMode" });
+
   const clientIdLabel = providerId === 'apple' ? "Service ID (Client ID)" : "Client ID";
   return (
     <>
@@ -166,19 +206,21 @@ function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFo
           </FormItem>
         )}
       />
-      <FormField
-        control={form.control}
-        name="clientSecret"
-        render={({ field }) => (
-          <FormItem className="space-y-1.5">
-            <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
-            <FormControl>
-              <DesignInput {...field} value={field.value ?? ""} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      {providerId !== "apple" && (
+        <FormField
+          control={form.control}
+          name="clientSecret"
+          render={({ field }) => (
+            <FormItem className="space-y-1.5">
+              <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
+              <FormControl>
+                <DesignInput {...field} value={field.value ?? ""} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      )}
       {providerId === 'facebook' && (
         <FormField
           control={form.control}
@@ -210,13 +252,106 @@ function CredentialFields({ form, providerId }: { form: UseFormReturn<ProviderFo
         />
       )}
       {providerId === 'apple' && (
-        <ChipsInputField
-          control={form.control}
-          name="appleBundleIds"
-          label="Bundle IDs"
-          placeholder="com.example.myiosapp"
-          helperText="Optional native app bundle IDs. Press Enter or comma to add multiple."
-        />
+        <>
+          <DesignCategoryTabs
+            categories={[
+              { id: "private-key", label: "Automatic (Recommended)" },
+              { id: "client-secret", label: "Client secret (Legacy)" },
+            ]}
+            selectedCategory={appleCredentialMode}
+            onSelect={(id) => form.setValue(
+              "appleCredentialMode",
+              id === "client-secret" ? "client-secret" : "private-key",
+              { shouldDirty: true, shouldValidate: form.formState.isSubmitted },
+            )}
+            showBadge={false}
+            size="sm"
+            glassmorphic
+            gradient="default"
+          />
+          <NoteInline>
+            {appleCredentialMode === "client-secret"
+              ? "Static client secrets expire within 6 months and must be rotated manually."
+              : "Hexclave mints short-lived client secrets from your private key, so no manual rotation is needed."}
+          </NoteInline>
+          {appleCredentialMode === "client-secret" ? (
+            <FormField
+              control={form.control}
+              name="clientSecret"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value ?? ""} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : (
+            <>
+              <FormField
+                control={form.control}
+                name="appleTeamId"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Apple Team ID</FormLabel>
+                    <FormControl><DesignInput {...field} value={field.value ?? ""} placeholder="Team ID" size="sm" autoComplete="off" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="appleKeyId"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Apple Key ID</FormLabel>
+                    <FormControl><DesignInput {...field} value={field.value ?? ""} placeholder="Key ID" size="sm" autoComplete="off" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="applePrivateKey"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Apple private key (.p8)</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <textarea
+                          {...field}
+                          value={field.value ?? ""}
+                          placeholder="-----BEGIN PRIVATE KEY-----"
+                          autoComplete="off"
+                          rows={6}
+                          className={`w-full rounded-md border border-input bg-background px-3 py-2 pr-10 font-mono text-xs ${showApplePrivateKey ? "" : "[-webkit-text-security:disc]"}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApplePrivateKey(value => !value)}
+                          aria-label={showApplePrivateKey ? "Hide Apple private key" : "Show Apple private key"}
+                          className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          {showApplePrivateKey ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
+          <ChipsInputField
+            control={form.control}
+            name="appleBundleIds"
+            label="Bundle IDs"
+            placeholder="com.example.myiosapp"
+            helperText="Optional native app bundle IDs. Press Enter or comma to add multiple."
+          />
+        </>
       )}
     </>
   );
@@ -276,7 +411,7 @@ function OAuthProviderSettingsForm(props: {
       {!shared && (
         <>
           <RedirectInline providerId={props.providerId} />
-          <div className="flex flex-col gap-3">
+          <div className="hexclave-sensitive flex flex-col gap-3">
             <CredentialFields form={props.form} providerId={props.providerId} />
           </div>
           {props.providerId === 'github' && <GithubNoteInline />}
@@ -293,11 +428,25 @@ function OAuthProviderSettingsForm(props: {
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
   const hasSharedKeys = sharedProviders.includes(props.id as any);
   const bundleIdsArray = (props.provider as any)?.appleBundleIds ?? [];
+  // Existing Apple providers with only a client secret are legacy integrations;
+  // providers with any key credentials should open on the key-based path.
+  const isNonEmpty = (value: unknown) => typeof value === "string" && value !== "";
+  const initialAppleCredentialMode: ProviderFormValues["appleCredentialMode"] =
+    isNonEmpty((props.provider as any)?.clientSecret)
+      && !isNonEmpty((props.provider as any)?.appleTeamId)
+      && !isNonEmpty((props.provider as any)?.appleKeyId)
+      && !isNonEmpty((props.provider as any)?.applePrivateKey)
+      ? "client-secret"
+      : "private-key";
 
   const defaultValues = {
     shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
+    appleTeamId: (props.provider as any)?.appleTeamId ?? "",
+    appleKeyId: (props.provider as any)?.appleKeyId ?? "",
+    applePrivateKey: (props.provider as any)?.applePrivateKey ?? "",
+    appleCredentialMode: initialAppleCredentialMode,
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
     appleBundleIds: Array.isArray(bundleIdsArray) ? bundleIdsArray : [],
@@ -307,22 +456,36 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
     if (values.shared) {
       await props.updateProvider({ id: props.id, type: 'shared' });
     } else {
-      await props.updateProvider({
+      const provider = {
         id: props.id,
         type: 'standard',
         clientId: values.clientId || "",
-        clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
         appleBundleIds: values.appleBundleIds ?? [],
-      });
+      } as const;
+      await props.updateProvider(props.id === "apple"
+        ? {
+          ...provider,
+          clientSecret: values.appleCredentialMode === "client-secret" ? values.clientSecret || undefined : undefined,
+          appleTeamId: values.appleCredentialMode === "private-key" ? values.appleTeamId || undefined : undefined,
+          appleKeyId: values.appleCredentialMode === "private-key" ? values.appleKeyId || undefined : undefined,
+          applePrivateKey: values.appleCredentialMode === "private-key" ? values.applePrivateKey || undefined : undefined,
+        }
+        : {
+          ...provider,
+          clientSecret: values.clientSecret || undefined,
+          appleTeamId: values.appleTeamId || undefined,
+          appleKeyId: values.appleKeyId || undefined,
+          applePrivateKey: values.applePrivateKey || undefined,
+        });
     }
   };
 
   return (
     <FormDialog<ProviderFormValues>
       defaultValues={defaultValues}
-      formSchema={providerFormSchema}
+      formSchema={createProviderFormSchema(props.id)}
       onSubmit={onSubmit}
       open={props.open}
       onClose={props.onClose}

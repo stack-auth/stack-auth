@@ -11,6 +11,7 @@ const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.
 function createSlowSetDatabase() {
   const releaseSets: Array<() => void> = [];
   let setCallCount = 0;
+  let closeCallCount = 0;
   const committed = new Map<string, ArrayBuffer>();
   const initialSeq = ["slow", "initial"] as unknown as DatabaseSeq;
   const seqToPromise = new Map<DatabaseSeq, Promise<void>>([[initialSeq, Promise.resolve()]]);
@@ -64,6 +65,10 @@ function createSlowSetDatabase() {
     combineSeqs(...seqs) {
       return seqs[seqs.length - 1] ?? initialSeq;
     },
+    async close() {
+      closeCallCount++;
+      await Promise.all(seqToPromise.values());
+    },
     initialSeq,
   };
   return {
@@ -74,6 +79,7 @@ function createSlowSetDatabase() {
       releaseSet();
     },
     setCallCount: () => setCallCount,
+    closeCallCount: () => closeCallCount,
   };
 }
 
@@ -125,6 +131,27 @@ describe("instant-availability low-level database", () => {
     expect(secondWriteFinished).toBe(true);
 
     slow.releaseSet();
+  });
+
+  it("drains pending writes and closes the wrapped database exactly once", async () => {
+    const slow = createSlowSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-close-test" });
+    const store = db.declareKvStore("store");
+    await store.setAll([{ key: buffer("key"), value: buffer("pending") }]);
+
+    const closing = db.close();
+    expect(await Promise.race([
+      closing.then(() => "closed"),
+      Promise.resolve("pending"),
+    ])).toBe("pending");
+    expect(slow.closeCallCount()).toBe(0);
+
+    slow.releaseSet();
+    await closing;
+    expect(slow.closeCallCount()).toBe(1);
+    await db.close();
+    expect(slow.closeCallCount()).toBe(1);
+    await expect(store.setAll([{ key: buffer("late"), value: buffer("rejected") }])).rejects.toThrow("closing");
   });
 
   it("only allows a single winner for concurrent compareAndSet on the same key", async () => {

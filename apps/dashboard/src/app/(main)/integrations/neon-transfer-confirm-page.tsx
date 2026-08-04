@@ -10,7 +10,7 @@ import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/s
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import NeonLogo from "../../../../public/neon.png";
+import NeonLogo from "../../../../public/neon.webp";
 
 type NeonTransferState = "loading" | "success" | { type: "error", message: string };
 

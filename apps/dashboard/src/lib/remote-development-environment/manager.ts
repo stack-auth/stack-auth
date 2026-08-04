@@ -9,7 +9,7 @@ import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { errorToNiceString } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "crypto";
-import { appendFileSync, watch, type FSWatcher } from "fs";
+import { appendFileSync, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
 import { peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } from "./browser-secret";
 import { formatConfigSyncErrorForCli } from "./config-sync-error-format";
@@ -21,6 +21,7 @@ import {
   sha256String,
   updateConfigObject,
 } from "./config-file";
+import { watchConfigFile } from "./config-file-watcher";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
   RemoteDevelopmentEnvironmentProject,
@@ -59,6 +60,8 @@ type ConfigSyncEventBase = {
 };
 
 type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "syncing",
+} | {
   status: "success",
 } | {
   status: "error",
@@ -71,6 +74,8 @@ type RemoteDevelopmentEnvironmentConfigSyncEventBase = {
 };
 
 export type RemoteDevelopmentEnvironmentConfigSyncEvent = RemoteDevelopmentEnvironmentConfigSyncEventBase & ({
+  status: "syncing",
+} | {
   status: "success",
 } | {
   status: "error",
@@ -98,7 +103,7 @@ type RemoteDevelopmentEnvironmentDebugSnapshot = {
   pendingConfigSyncEvents: {
     id: number,
     configFilePath: string,
-    status: "success" | "error",
+    status: "syncing" | "success" | "error",
     errorMessage?: string,
     createdAgoMs: number,
   }[],
@@ -245,11 +250,11 @@ function summarizeConfigUpdateForLog(configUpdate: Config): Record<string, unkno
   };
 }
 
-function configSyncEventsMatchForCliDeduplication(a: ConfigSyncEvent, b: { status: "success" } | { status: "error", errorMessage: string }): boolean {
+function configSyncEventsMatchForCliDeduplication(a: ConfigSyncEvent, b: { status: "syncing" } | { status: "success" } | { status: "error", errorMessage: string }): boolean {
   if (a.status !== b.status) {
     return false;
   }
-  if (a.status === "success") {
+  if (a.status === "syncing" || a.status === "success") {
     return true;
   }
   if (b.status !== "error") {
@@ -258,7 +263,7 @@ function configSyncEventsMatchForCliDeduplication(a: ConfigSyncEvent, b: { statu
   return a.errorMessage === b.errorMessage;
 }
 
-function recordConfigSyncEvent(configFilePath: string, event: { status: "success" } | { status: "error", errorMessage: string }): void {
+function recordConfigSyncEvent(configFilePath: string, event: { status: "syncing" } | { status: "success" } | { status: "error", errorMessage: string }): void {
   const state = getGlobals();
   const createdAtMillis = Date.now();
   const lastEvent = state.lastConfigSyncEventByConfigFile.get(configFilePath);
@@ -278,9 +283,9 @@ function recordConfigSyncEvent(configFilePath: string, event: { status: "success
     configFilePath,
     createdAtMillis,
   };
-  const configSyncEvent: ConfigSyncEvent = event.status === "success"
-    ? { ...baseEvent, status: "success" }
-    : { ...baseEvent, status: "error", errorMessage: event.errorMessage };
+  const configSyncEvent: ConfigSyncEvent = event.status === "error"
+    ? { ...baseEvent, status: "error", errorMessage: event.errorMessage }
+    : { ...baseEvent, status: event.status };
   state.nextConfigSyncEventId += 1;
   state.configSyncEvents.push(configSyncEvent);
   state.lastConfigSyncEventByConfigFile.set(configFilePath, configSyncEvent);
@@ -299,16 +304,16 @@ function drainConfigSyncEventsForSession(session: ActiveSession): RemoteDevelopm
     return [];
   }
   session.lastDeliveredConfigSyncEventId = pendingEvents[pendingEvents.length - 1].id;
-  return pendingEvents.map((event) => event.status === "success"
+  return pendingEvents.map((event) => event.status === "error"
     ? {
       configFilePath: event.configFilePath,
-      status: "success",
+      status: "error",
+      errorMessage: event.errorMessage,
       createdAtMillis: event.createdAtMillis,
     }
     : {
       configFilePath: event.configFilePath,
-      status: "error",
-      errorMessage: event.errorMessage,
+      status: event.status,
       createdAtMillis: event.createdAtMillis,
     });
 }
@@ -758,6 +763,7 @@ function scheduleSync(configFilePath: string): void {
     });
     return;
   }
+  recordConfigSyncEvent(configFilePath, { status: "syncing" });
   const existing = state.syncTimers.get(configFilePath);
   if (existing != null) {
     clearTimeout(existing);
@@ -833,8 +839,25 @@ async function syncConfigToRemoteNow(configFilePath: string): Promise<ConfigSync
 function ensureWatcher(configFilePath: string): void {
   const state = getGlobals();
   if (state.watchers.has(configFilePath)) return;
-  const watcher = watch(configFilePath, { persistent: false }, () => {
+  const watcher = watchConfigFile(configFilePath, () => {
     scheduleSync(configFilePath);
+  });
+  watcher.on("error", (error) => {
+    // An errored watcher is no longer evidence that the path is watched. The
+    // next session heartbeat will retry attachment without restarting the
+    // dashboard process.
+    if (state.watchers.get(configFilePath) !== watcher) return;
+    state.watchers.delete(configFilePath);
+    watcher.close();
+    warnRemoteDevelopmentEnvironment("Config file watcher failed; will retry on the next heartbeat", {
+      configFilePath,
+      ...formatErrorForRemoteDevelopmentEnvironmentLog(error),
+    });
+  });
+  watcher.on("close", () => {
+    if (state.watchers.get(configFilePath) === watcher) {
+      state.watchers.delete(configFilePath);
+    }
   });
   state.watchers.set(configFilePath, watcher);
   logRemoteDevelopmentEnvironment("Started watching config file", {
@@ -980,6 +1003,16 @@ export function heartbeatRemoteDevelopmentEnvironmentSession(sessionId: string):
   }
   session.lastHeartbeatMs = performance.now();
   session.receivedFirstHeartbeat = true;
+  try {
+    ensureWatcher(session.configFilePath);
+  } catch (error) {
+    // Keep the session alive so a transient filesystem failure can be retried
+    // on the next heartbeat instead of forcing a dashboard restart.
+    warnRemoteDevelopmentEnvironment("Could not attach config file watcher; will retry on the next heartbeat", {
+      configFilePath: session.configFilePath,
+      ...formatErrorForRemoteDevelopmentEnvironmentLog(error),
+    });
+  }
   return {
     configSyncEvents: drainConfigSyncEventsForSession(session),
   };
@@ -1073,18 +1106,18 @@ export function getRemoteDevelopmentEnvironmentDebugSnapshot(): RemoteDevelopmen
       configFilePath,
       error: errorToNiceString(error),
     })),
-    pendingConfigSyncEvents: globals.configSyncEvents.map((event) => event.status === "success"
+    pendingConfigSyncEvents: globals.configSyncEvents.map((event) => event.status === "error"
       ? {
         id: event.id,
         configFilePath: event.configFilePath,
-        status: "success",
+        status: "error",
+        errorMessage: event.errorMessage,
         createdAgoMs: Math.max(0, unixNow - event.createdAtMillis),
       }
       : {
         id: event.id,
         configFilePath: event.configFilePath,
-        status: "error",
-        errorMessage: event.errorMessage,
+        status: event.status,
         createdAgoMs: Math.max(0, unixNow - event.createdAtMillis),
       }),
     synchronouslyUpdatingConfigFiles: [...globals.synchronouslyUpdatingConfigFiles],

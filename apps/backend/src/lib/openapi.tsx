@@ -104,6 +104,12 @@ function isSchemaMixedDescription(value: yup.SchemaFieldDescription): value is y
   return value.type === 'mixed';
 }
 
+function isFieldNullable(field: yup.SchemaFieldDescription): boolean {
+  // `SchemaFieldDescription` is a union, and its ref/lazy members don't carry a `nullable` flag.
+  // Narrow with an `in` check before reading it; ref/lazy descriptions are treated as non-nullable here.
+  return "nullable" in field && field.nullable;
+}
+
 function isSchemaArrayDescription(value: yup.SchemaFieldDescription): value is yup.SchemaInnerTypeDescription & { type: 'array', innerType: yup.SchemaInnerTypeDescription } {
   return value.type === 'array';
 }
@@ -118,6 +124,12 @@ function isSchemaStringDescription(value: yup.SchemaFieldDescription): value is 
 
 function isSchemaNumberDescription(value: yup.SchemaFieldDescription): value is yup.SchemaDescription & { type: 'number' } {
   return value.type === 'number';
+}
+
+function assertResolvedSchemaDescription(value: yup.SchemaFieldDescription): asserts value is yup.SchemaDescription {
+  if (!("nullable" in value)) {
+    throw new HexclaveAssertionError('OpenAPI generator cannot process unresolved schema descriptions', { actual: value });
+  }
 }
 
 function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescription, audience: 'client' | 'server' | 'admin') {
@@ -193,7 +205,14 @@ function parseRouteHandler(options: {
   return result;
 }
 
-function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string, items?: any, properties?: any, required?: any, default?: any } | undefined {
+function getOpenApiType(field: yup.SchemaFieldDescription, type: string): string | [string, "null"] {
+  assertResolvedSchemaDescription(field);
+  // OpenAPI 3.1 uses JSON Schema type arrays instead of the removed OpenAPI 3.0 `nullable` keyword.
+  return isFieldNullable(field) ? [type, "null"] : type;
+}
+
+function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string | [string, "null"], items?: any, properties?: any, required?: any, default?: any } | undefined {
+  assertResolvedSchemaDescription(field);
   const meta = "meta" in field ? field.meta : {};
   if (meta?.openapiField?.hidden) {
     return undefined;
@@ -212,36 +231,38 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
   switch (field.type) {
     case 'string': {
       const oneOf = (field as any).oneOf as unknown[] | undefined;
+      // `enum` is an additional constraint, so it must permit null whenever the type does.
+      const enumValues = oneOf && isFieldNullable(field) && !oneOf.includes(null) ? [...oneOf, null] : oneOf;
       return {
-        type: 'string',
-        ...oneOf && oneOf.length > 0 ? { enum: oneOf } : {},
+        type: getOpenApiType(field, 'string'),
+        ...enumValues && enumValues.length > 0 ? { enum: enumValues } : {},
         ...openapiFieldExtra,
       };
     }
     case 'number': {
       const tests = (field as any).tests as Array<{ name?: string }> | undefined;
       const isInteger = tests?.some(t => t.name === 'integer') ?? false;
-      return { type: isInteger ? 'integer' : 'number', ...openapiFieldExtra };
+      return { type: getOpenApiType(field, isInteger ? 'integer' : 'number'), ...openapiFieldExtra };
     }
     case 'boolean': {
-      return { type: field.type, ...openapiFieldExtra };
+      return { type: getOpenApiType(field, field.type), ...openapiFieldExtra };
     }
     case 'mixed': {
-      return { type: 'object', ...openapiFieldExtra };
+      return { type: getOpenApiType(field, 'object'), ...openapiFieldExtra };
     }
     case 'object': {
       return {
-        type: 'object',
+        type: getOpenApiType(field, 'object'),
         properties: typedFromEntries(typedEntries((field as any).fields)
           .map(([key, field]) => [key, getFieldSchema(field, crudOperation)])),
         required: typedEntries((field as any).fields)
-          .filter(([_, field]) => !(field as any).optional && !(field as any).nullable && getFieldSchema(field as any, crudOperation))
+          .filter(([_, field]) => !(field as any).optional && !isFieldNullable(field as any) && getFieldSchema(field as any, crudOperation))
           .map(([key]) => key),
         ...openapiFieldExtra
       };
     }
     case 'array': {
-      return { type: 'array', items: getFieldSchema((field as any).innerType, crudOperation), ...openapiFieldExtra };
+      return { type: getOpenApiType(field, 'array'), items: getFieldSchema((field as any).innerType, crudOperation), ...openapiFieldExtra };
     }
     case 'tuple': {
       // For OpenAPI, treat tuples as arrays since OpenAPI doesn't have native tuple support
@@ -249,10 +270,10 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
       const tupleField = field as any;
       if (tupleField.innerType && tupleField.innerType.length > 0) {
         // Use the first element's schema as the array item type
-        return { type: 'array', items: getFieldSchema(tupleField.innerType[0], crudOperation), ...openapiFieldExtra };
+        return { type: getOpenApiType(field, 'array'), items: getFieldSchema(tupleField.innerType[0], crudOperation), ...openapiFieldExtra };
       }
       // Fallback to string array if no inner type
-      return { type: 'array', items: { type: 'string' }, ...openapiFieldExtra };
+      return { type: getOpenApiType(field, 'array'), items: { type: 'string' }, ...openapiFieldExtra };
     }
     default: {
       throw new Error(`Unsupported field type: ${field.type}`);
@@ -304,7 +325,7 @@ function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperati
       schema,
       description: meta?.openapiField?.description,
       example: meta?.openapiField?.exampleValue,
-      required: !(field as any).optional && !(field as any).nullable && !!schema,
+      required: !(field as any).optional && !isFieldNullable(field) && !!schema,
     };
   }).filter((x) => x.schema !== undefined);
 }
@@ -312,14 +333,14 @@ function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperati
 function toSchema(description: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): any {
   if (isSchemaObjectDescription(description)) {
     return {
-      type: 'object',
+      type: getOpenApiType(description, 'object'),
       properties: Object.fromEntries(Object.entries(description.fields).map(([key, field]) => {
         return [key, getFieldSchema(field, crudOperation)];
       }, {}))
     };
   } else if (isSchemaArrayDescription(description)) {
     return {
-      type: 'array',
+      type: getOpenApiType(description, 'array'),
       items: toSchema(description.innerType, crudOperation),
     };
   } else {
@@ -331,7 +352,7 @@ function toRequired(description: yup.SchemaFieldDescription, crudOperation?: Cap
   let res: string[] = [];
   if (isSchemaObjectDescription(description)) {
     res = Object.entries(description.fields)
-      .filter(([_, field]) => !(field as any).optional && !(field as any).nullable && getFieldSchema(field, crudOperation))
+      .filter(([_, field]) => !(field as any).optional && !isFieldNullable(field) && getFieldSchema(field, crudOperation))
       .map(([key]) => key);
   } else if (isSchemaArrayDescription(description)) {
     res = [];

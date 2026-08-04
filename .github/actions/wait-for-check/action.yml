@@ -1,98 +1,102 @@
-name: "Wait for check"
-description: "Polls the GitHub Checks API until a named check-run on this commit completes, then succeeds/fails accordingly."
+name: "Wait for workflow"
+description: "Polls the GitHub Actions API until a workflow run for this event completes, then succeeds/fails accordingly."
 
 inputs:
-  check-name:
-    description: "Name of the check-run (i.e. the job name) to wait for."
+  workflow-file:
+    description: "Repository-relative workflow filename to wait for."
     required: true
   github-token:
-    description: "Token used to query the Checks API."
+    description: "Token used to query the Actions API."
     required: true
   timeout-seconds:
-    description: "How long to wait for the check to appear and complete before giving up."
+    description: "How long to wait for the workflow run to appear and complete before giving up."
     required: false
     default: "3600"
   poll-interval-seconds:
     description: "How long to sleep between polls."
     required: false
-    default: "15"
+    default: "30"
 
 runs:
   using: "composite"
   steps:
-    - name: Wait for "${{ inputs.check-name }}" to succeed
+    - name: Wait for "${{ inputs.workflow-file }}" to succeed
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
-        # A check-run can be reported against either the commit the workflow ran
-        # on (`github.sha`, the merge commit for pull_request events) or the PR
-        # head commit, depending on the event. Poll both, like all-good.yaml.
         MERGE_SHA: ${{ github.sha }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        CHECK_NAME: ${{ inputs.check-name }}
+        EVENT_NAME: ${{ github.event_name }}
+        WORKFLOW_FILE: ${{ inputs.workflow-file }}
         TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
       run: |
         set -euo pipefail
 
+        workflow_path=".github/workflows/${WORKFLOW_FILE}"
         shas="$MERGE_SHA"
         if [ -n "${HEAD_SHA:-}" ] && [ "$HEAD_SHA" != "$MERGE_SHA" ]; then
           shas="$shas $HEAD_SHA"
         fi
-        echo "Waiting for check \"${CHECK_NAME}\" on ${REPO} (commits: ${shas})..."
+        echo "Waiting for ${workflow_path} on ${REPO} for ${EVENT_NAME} (commits: ${shas})..."
 
         deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
 
         while true; do
-          # Gather matching check-runs across all candidate commits and dedupe by
-          # id, so the same run reported under two SHAs isn't counted twice.
-          # Responses can be large (up to 100 runs), so pipe them through files
-          # rather than passing them as jq argv (which hits ARG_MAX).
-          : > matching.jsonl
+          matching_file=$(mktemp)
           for sha in $shas; do
-            # Page through the check-runs API: a busy commit can have >100 runs,
-            # so the target might not be on the first page.
             page=1
             while true; do
-              curl -s -f \
+              if ! curl -sS --fail-with-body \
+                --retry 3 \
+                --retry-all-errors \
+                --connect-timeout 10 \
+                --max-time 30 \
                 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
                 -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100&page=${page}" \
-                -o response.json || echo '{}' > response.json
-              jq -c --arg name "$CHECK_NAME" \
-                '.check_runs[]? | select(.name == $name)' response.json >> matching.jsonl || true
-              page_count=$(jq '.check_runs | length' response.json 2>/dev/null || echo 0)
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${REPO}/actions/runs?event=${EVENT_NAME}&head_sha=${sha}&per_page=100&page=${page}" \
+                -o response.json; then
+                rm -f "$matching_file" response.json
+                echo "Failed to fetch workflow runs; refusing to treat an API failure as an absent workflow." >&2
+                exit 1
+              fi
+              if ! jq -c --arg path "$workflow_path" \
+                '.workflow_runs[]? | select(.path == $path)' response.json >> "$matching_file"; then
+                rm -f "$matching_file" response.json
+                echo "GitHub returned an invalid workflow-runs response." >&2
+                exit 1
+              fi
+              page_count=$(jq '.workflow_runs | length' response.json)
               [ "$page_count" -lt 100 ] && break
               page=$((page + 1))
             done
           done
-          # Keep only the most recent check-run (highest id) so a stale failed
-          # rerun doesn't block when a newer run of the same check succeeded.
-          matching=$(jq -s -c 'unique_by(.id) | if length == 0 then [] else [max_by(.id)] end' matching.jsonl)
-          count=$(echo "$matching" | jq 'length')
+          rm -f response.json
 
-          if [ "$count" -eq 0 ]; then
-            echo "Check \"${CHECK_NAME}\" not reported yet; waiting..."
+          matching=$(jq -s -c 'unique_by(.id) | if length == 0 then null else max_by(.id) end' "$matching_file")
+          rm -f "$matching_file"
+
+          if [ "$matching" = "null" ]; then
+            echo "Workflow ${workflow_path} not reported for this event yet; waiting..."
           else
-            pending=$(echo "$matching" | jq '[.[] | select(.status != "completed")] | length')
-            if [ "$pending" -gt 0 ]; then
-              echo "Check \"${CHECK_NAME}\" is still running; waiting..."
+            status=$(echo "$matching" | jq -r '.status')
+            if [ "$status" != "completed" ]; then
+              echo "Workflow ${workflow_path} is ${status}; waiting..."
             else
-              # Completed. Treat success/skipped/neutral as "did not block".
-              failed=$(echo "$matching" | jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length')
-              if [ "$failed" -eq 0 ]; then
-                echo "Check \"${CHECK_NAME}\" passed. Proceeding."
+              conclusion=$(echo "$matching" | jq -r '.conclusion')
+              if [ "$conclusion" = "success" ] || [ "$conclusion" = "skipped" ] || [ "$conclusion" = "neutral" ]; then
+                echo "Workflow ${workflow_path} completed with ${conclusion}. Proceeding."
                 exit 0
               fi
-              echo "Check \"${CHECK_NAME}\" did not pass:"
-              echo "$matching" | jq -r '.[] | "  - \(.name): \(.conclusion)"'
+              echo "$matching" | jq -r '"Workflow \(.html_url) completed with \(.conclusion)."'
               exit 1
             fi
           fi
 
           if [ "$(date +%s)" -ge "$deadline" ]; then
-            echo "Timed out after ${TIMEOUT_SECONDS}s waiting for check \"${CHECK_NAME}\"."
+            echo "Timed out after ${TIMEOUT_SECONDS}s waiting for ${workflow_path}."
             exit 1
           fi
           sleep "$POLL_INTERVAL_SECONDS"

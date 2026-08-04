@@ -857,6 +857,36 @@ export class HexclaveClientInterface {
     throw new HexclaveAssertionError(await res.text());
   }
 
+  public async consumeBrowserAction(
+    actionId: string,
+    session: InternalSession | null = null,
+  ): Promise<{ javascript: string }> {
+    const response = await this.sendClientRequest(
+      "/browser-actions/consume",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action_id: actionId,
+        }),
+      },
+      session,
+      "client",
+    );
+    const body: unknown = await response.json();
+    if (
+      typeof body !== "object"
+      || body === null
+      || !("javascript" in body)
+      || typeof body.javascript !== "string"
+    ) {
+      throw new HexclaveAssertionError("Browser action endpoint returned an invalid response");
+    }
+    return { javascript: body.javascript };
+  }
+
   async sendForgotPasswordEmail(
     email: string,
     callbackUrl: string,
@@ -1232,7 +1262,7 @@ export class HexclaveClientInterface {
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
     botChallenge?: BotChallengeInput,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["ContactChannelAlreadyUsedForAuthBySomeoneElse"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -1248,7 +1278,7 @@ export class HexclaveClientInterface {
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -1715,6 +1745,24 @@ export class HexclaveClientInterface {
   ) {
     await this.sendClientRequest(
       `/team-memberships/${teamId}/me`,
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+  }
+
+  async removeUserFromTeam(
+    teamId: string,
+    userId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      urlString`/team-memberships/${teamId}/${userId}`,
       {
         method: "DELETE",
         headers: {

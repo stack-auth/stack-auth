@@ -62,6 +62,12 @@ import type {
 // (no `fillHeight`, no `maxHeight`). Leaves ~16rem of room for the top bar, page header, and grid
 // toolbar. See the `effectiveMaxHeight` comment in DataGrid for why an infinite grid must be bounded.
 const DEFAULT_INFINITE_MAX_HEIGHT = "calc(100dvh - 16rem)";
+const DATA_GRID_SCROLLBAR_CLASS_NAME = cn(
+  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
+  "[&::-webkit-scrollbar-track]:bg-transparent",
+  "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
+  "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
+);
 
 // ─── Row click target ────────────────────────────────────────────────
 
@@ -376,6 +382,15 @@ function hashStringToInt(value: string): number {
   return Math.abs(hash);
 }
 
+/**
+ * Column flex fractions used when the grid is loading before any schema is
+ * known (e.g. QueryDataGrid discovers columns from the first result page).
+ * Without these, `SkeletonRow` would render zero cells and the body looks
+ * like an empty black void instead of a shimmer.
+ */
+const SCHEMA_PENDING_COL_FRACTIONS = [0.18, 0.16, 0.34, 0.2, 0.12] as const;
+const SCHEMA_PENDING_SKELETON_ROWS = 10;
+
 function SkeletonRow({
   columns,
   height,
@@ -399,6 +414,72 @@ function SkeletonRow({
           style={{ width: `calc(var(--col-${col.id}-size) * 1px)` }}
         >
           <DesignSkeleton className="h-3.5 rounded-md" style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Sticky header shimmer when columns haven't been discovered yet. */
+function SchemaPendingHeaderCells({ showCheckbox }: { showCheckbox?: boolean }) {
+  return (
+    <>
+      {showCheckbox && (
+        <div
+          className="flex shrink-0 items-center justify-center border-r border-foreground/[0.04]"
+          style={{ width: 44 }}
+        />
+      )}
+      {SCHEMA_PENDING_COL_FRACTIONS.map((frac, colIdx) => (
+        <div
+          key={colIdx}
+          className="flex items-center px-3 border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0"
+          style={{ width: `${frac * 100}%` }}
+        >
+          <DesignSkeleton
+            className="h-3 rounded-md"
+            style={{ width: `${45 + (colIdx * 13) % 30}%` }}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Full-width body shimmer when columns haven't been discovered yet. */
+function SchemaPendingSkeleton({
+  rowHeight,
+  showCheckbox,
+}: {
+  rowHeight: number,
+  showCheckbox?: boolean,
+}) {
+  return (
+    <div className="w-full" data-data-grid-schema-pending-skeleton="" role="status" aria-label="Loading">
+      {Array.from({ length: SCHEMA_PENDING_SKELETON_ROWS }).map((_, rowIdx) => (
+        <div
+          key={rowIdx}
+          className="flex w-full border-b border-black/[0.04] dark:border-white/[0.04]"
+          style={{ height: rowHeight }}
+          role="row"
+        >
+          {showCheckbox && (
+            <div className="flex shrink-0 items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]" style={{ width: 44 }}>
+              <DesignSkeleton className="h-4 w-4 rounded" />
+            </div>
+          )}
+          {SCHEMA_PENDING_COL_FRACTIONS.map((frac, colIdx) => (
+            <div
+              key={colIdx}
+              className="flex items-center px-3 border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0"
+              style={{ width: `${frac * 100}%` }}
+            >
+              <DesignSkeleton
+                className="h-3.5 rounded-md"
+                style={{ width: `${50 + ((rowIdx * 7 + colIdx * 19) % 40)}%` }}
+              />
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -640,6 +721,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     maxHeight,
     fillHeight = true,
     stickyTop,
+    horizontalScrollbarPosition = "bottom",
     toolbar,
     toolbarExtra,
     emptyState,
@@ -970,11 +1052,41 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     };
   }, []);
 
-  const handleBodyScroll = useCallback(() => {
+  // Keep header + body horizontal offsets locked. When the scrollbar lives under
+  // the column headers (`horizontalScrollbarPosition="top"`), the header is the
+  // scroll owner and the body mirrors it (and vice versa for the default bottom bar).
+  const isSyncingHorizontalScrollRef = useRef(false);
+  const syncHorizontalScroll = useCallback((source: "header" | "body") => {
     const body = scrollContainerRef.current;
     const header = headerScrollRef.current;
-    if (body && header) header.scrollLeft = body.scrollLeft;
+    if (body == null || header == null || isSyncingHorizontalScrollRef.current) return;
+    const from = source === "header" ? header : body;
+    const to = source === "header" ? body : header;
+    if (to.scrollLeft === from.scrollLeft) return;
+    isSyncingHorizontalScrollRef.current = true;
+    to.scrollLeft = from.scrollLeft;
+    isSyncingHorizontalScrollRef.current = false;
   }, []);
+
+  const handleBodyScroll = useCallback(() => {
+    syncHorizontalScroll("body");
+  }, [syncHorizontalScroll]);
+
+  const handleHeaderScroll = useCallback(() => {
+    syncHorizontalScroll("header");
+  }, [syncHorizontalScroll]);
+
+  const horizontalScrollbarAtTop = horizontalScrollbarPosition === "top";
+  // Shared thin thumb styling. When the bar is on top, the header scrollport shows
+  // it; the body keeps overflow-x hidden so a second thumb doesn't appear at the bottom.
+  // Trackpad / shift-wheel horizontal gestures land on the body; with the top
+  // scrollbar the body has overflow-x:hidden, so forward deltaX to the header.
+  const handleBodyWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!horizontalScrollbarAtTop || event.deltaX === 0) return;
+    const header = headerScrollRef.current;
+    if (header == null) return;
+    header.scrollLeft += event.deltaX;
+  }, [horizontalScrollbarAtTop]);
 
   // ── Toolbar / Footer context ─────────────────────────────────
   const toolbarCtx: DataGridToolbarContext<TRow> = useMemo(
@@ -1084,34 +1196,46 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             )}
             <div
               ref={headerScrollRef}
-              className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
+              className={cn(
+                "w-full min-w-0 shrink-0 border-b border-foreground/[0.06]",
+                horizontalScrollbarAtTop
+                  ? cn("overflow-x-auto overflow-y-hidden", DATA_GRID_SCROLLBAR_CLASS_NAME)
+                  : "overflow-hidden",
+              )}
+              onScroll={horizontalScrollbarAtTop ? handleHeaderScroll : undefined}
             >
               <div
                 className="flex"
-                style={{ height: headerHeight, minWidth: totalContentWidth }}
+                style={{ height: headerHeight, minWidth: totalContentWidth || undefined, width: visibleColumns.length === 0 ? "100%" : undefined }}
                 role="row"
               >
-                {selectionMode !== "none" && (
-                  <div
-                    className="flex items-center justify-center border-r border-foreground/[0.04]"
-                    style={{ width: 44 }}
-                  >
-                    {selectionMode === "multiple" && (
-                      <SelectionCheckbox
-                        checked={allSelected}
-                        indeterminate={someSelected}
-                        onChange={handleSelectAll}
-                        ariaLabel="Select all rows on this page"
-                        title="Select all rows on this page"
-                      />
+                {isLoading && visibleColumns.length === 0 ? (
+                  <SchemaPendingHeaderCells showCheckbox={selectionMode !== "none"} />
+                ) : (
+                  <>
+                    {selectionMode !== "none" && (
+                      <div
+                        className="flex items-center justify-center border-r border-foreground/[0.04]"
+                        style={{ width: 44 }}
+                      >
+                        {selectionMode === "multiple" && (
+                          <SelectionCheckbox
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={handleSelectAll}
+                            ariaLabel="Select all rows on this page"
+                            title="Select all rows on this page"
+                          />
+                        )}
+                      </div>
                     )}
-                  </div>
+                    {visibleColumns.map((col) => {
+                      const header = headerByColId.get(col.id);
+                      if (!header) return null;
+                      return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
+                    })}
+                  </>
                 )}
-                {visibleColumns.map((col) => {
-                  const header = headerByColId.get(col.id);
-                  if (!header) return null;
-                  return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
-                })}
               </div>
             </div>
           </div>
@@ -1120,14 +1244,15 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         <div
           ref={scrollContainerRef}
           className={cn(
-          "relative z-0 w-full min-w-0 overflow-auto bg-transparent",
+          "relative z-0 w-full min-w-0 bg-transparent",
+          // Top scrollbar: body is y-only so the horizontal thumb isn't duplicated
+          // under the rows. scrollLeft is still set programmatically from the header.
+          horizontalScrollbarAtTop ? "overflow-y-auto overflow-x-hidden" : "overflow-auto",
           isBounded ? "min-h-0 flex-1" : "flex-none",
-          "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-          "[&::-webkit-scrollbar-track]:bg-transparent",
-          "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-          "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
+          DATA_GRID_SCROLLBAR_CLASS_NAME,
         )}
           onScroll={handleBodyScroll}
+          onWheel={horizontalScrollbarAtTop ? handleBodyWheel : undefined}
         >
           <div
             ref={rowsClipRef}
@@ -1139,15 +1264,27 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             }}
           >
             {isLoading && (
-              <div style={{ minWidth: totalContentWidth }}>
-                {loadingState ?? Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow
-                    key={i}
-                    columns={visibleColumns}
-                    height={estimatedRowHeight}
-                    showCheckbox={selectionMode !== "none"}
-                  />
-                ))}
+              <div style={{ minWidth: totalContentWidth || undefined, width: visibleColumns.length === 0 ? "100%" : undefined }}>
+                {loadingState ?? (
+                  visibleColumns.length === 0 ? (
+                    // Schema not known yet (common for query grids that discover
+                    // columns from the first page) — fall back to a full-width
+                    // shimmer so loading never looks like an empty black pane.
+                    <SchemaPendingSkeleton
+                      rowHeight={estimatedRowHeight}
+                      showCheckbox={selectionMode !== "none"}
+                    />
+                  ) : (
+                    Array.from({ length: 8 }).map((_, i) => (
+                      <SkeletonRow
+                        key={i}
+                        columns={visibleColumns}
+                        height={estimatedRowHeight}
+                        showCheckbox={selectionMode !== "none"}
+                      />
+                    ))
+                  )
+                )}
               </div>
             )}
 

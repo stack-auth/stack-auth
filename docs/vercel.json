@@ -1,0 +1,2374 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "",
+  "outputDirectory": "public",
+  "redirects": [
+    {
+      "source": "/api/client/anonymous/auth/anonymous/sign-up",
+      "destination": "https://docs.hexclave.com/api/client/anonymous/sign-up-anonymously",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/anonymous/auth/anonymous/sign-up/post",
+      "destination": "https://docs.hexclave.com/api/client/anonymous/sign-up-anonymously",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/create-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys/api_key_id",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/update-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys/api_key_id/get",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/get-team-api-key-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys/api_key_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/update-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys/get",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/list-team-api-keys",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/team-api-keys/post",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/create-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/create-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys/api_key_id",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/update-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys/api_key_id/get",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/get-user-api-key-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys/api_key_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/update-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys/get",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/list-user-api-keys",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/api-keys/user-api-keys/post",
+      "destination": "https://docs.hexclave.com/api/client/api-keys/create-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/initiate-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli/complete",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/complete-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli/complete/post",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/complete-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli/poll",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/poll-cli-authentication-status",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli/poll/post",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/poll-cli-authentication-status",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/cli-authentication/auth/cli/post",
+      "destination": "https://docs.hexclave.com/api/client/cli-authentication/initiate-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/connected-accounts/connected-accounts/user_id",
+      "destination": "https://docs.hexclave.com/api/client/connected-accounts/list-connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/connected-accounts/connected-accounts/user_id/get",
+      "destination": "https://docs.hexclave.com/api/client/connected-accounts/list-connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/create-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/get",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/list-contact-channels",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/post",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/create-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/delete-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/delete",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/delete-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/get",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/get-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/update-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/send-contact-channel-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code/post",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/send-contact-channel-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/verify",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/verify-an-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/verify/check-code",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/check-email-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/verify/check-code/post",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/check-email-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/contact-channels/contact-channels/verify/post",
+      "destination": "https://docs.hexclave.com/api/client/contact-channels/verify-an-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/emails/emails/notification-preference/user_id",
+      "destination": "https://docs.hexclave.com/api/client/emails/list-notification-preferences",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/emails/emails/notification-preference/user_id/get",
+      "destination": "https://docs.hexclave.com/api/client/emails/list-notification-preferences",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/emails/emails/notification-preference/user_id/notification_category_id",
+      "destination": "https://docs.hexclave.com/api/client/emails/update-notification-preference",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/emails/emails/notification-preference/user_id/notification_category_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/emails/update-notification-preference",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/authorize/provider_id",
+      "destination": "https://docs.hexclave.com/api/client/oauth/oauth-authorize-endpoint",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/authorize/provider_id/get",
+      "destination": "https://docs.hexclave.com/api/client/oauth/oauth-authorize-endpoint",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/cross-domain/authorize",
+      "destination": "https://docs.hexclave.com/api/client/oauth/create-cross-domain-auth-handoff-redirect",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/cross-domain/authorize/post",
+      "destination": "https://docs.hexclave.com/api/client/oauth/create-cross-domain-auth-handoff-redirect",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/token",
+      "destination": "https://docs.hexclave.com/api/client/oauth/oauth-token-endpoints",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/auth/oauth/token/post",
+      "destination": "https://docs.hexclave.com/api/client/oauth/oauth-token-endpoints",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers",
+      "destination": "https://docs.hexclave.com/api/client/oauth/list-oauth-providers",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers/get",
+      "destination": "https://docs.hexclave.com/api/client/oauth/list-oauth-providers",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers/user_id/provider_id",
+      "destination": "https://docs.hexclave.com/api/client/oauth/delete-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers/user_id/provider_id/delete",
+      "destination": "https://docs.hexclave.com/api/client/oauth/delete-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers/user_id/provider_id/get",
+      "destination": "https://docs.hexclave.com/api/client/oauth/get-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/oauth/oauth-providers/user_id/provider_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/oauth/update-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/conversationid/delete",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/conversationid/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/conversationid/messages",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/conversationid/patch",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/ai-conversations/post",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/conversations/conversationid/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/conversations/conversationid/patch",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/conversations/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/others/internal/conversations/post",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/mfa/sign-in",
+      "destination": "https://docs.hexclave.com/api/client/otp/mfa-sign-in",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/mfa/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/client/otp/mfa-sign-in",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/send-sign-in-code",
+      "destination": "https://docs.hexclave.com/api/client/otp/send-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/send-sign-in-code/post",
+      "destination": "https://docs.hexclave.com/api/client/otp/send-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/sign-in",
+      "destination": "https://docs.hexclave.com/api/client/otp/sign-in-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/sign-in/check-code",
+      "destination": "https://docs.hexclave.com/api/client/otp/check-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/sign-in/check-code/post",
+      "destination": "https://docs.hexclave.com/api/client/otp/check-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/otp/auth/otp/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/client/otp/sign-in-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/reset",
+      "destination": "https://docs.hexclave.com/api/client/password/reset-password-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/reset/check-code",
+      "destination": "https://docs.hexclave.com/api/client/password/check-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/reset/check-code/post",
+      "destination": "https://docs.hexclave.com/api/client/password/check-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/reset/post",
+      "destination": "https://docs.hexclave.com/api/client/password/reset-password-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/send-reset-code",
+      "destination": "https://docs.hexclave.com/api/client/password/send-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/send-reset-code/post",
+      "destination": "https://docs.hexclave.com/api/client/password/send-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/set",
+      "destination": "https://docs.hexclave.com/api/client/password/set-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/set/post",
+      "destination": "https://docs.hexclave.com/api/client/password/set-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/sign-in",
+      "destination": "https://docs.hexclave.com/api/client/password/sign-in-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/client/password/sign-in-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/sign-up",
+      "destination": "https://docs.hexclave.com/api/client/password/sign-up-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/sign-up/post",
+      "destination": "https://docs.hexclave.com/api/client/password/sign-up-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/update",
+      "destination": "https://docs.hexclave.com/api/client/password/update-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/password/auth/password/update/post",
+      "destination": "https://docs.hexclave.com/api/client/password/update-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/items/customer_type/customer_id/item_id",
+      "destination": "https://docs.hexclave.com/api/client/payments/get-item",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/items/customer_type/customer_id/item_id/get",
+      "destination": "https://docs.hexclave.com/api/client/payments/get-item",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/create-purchase-url",
+      "destination": "https://docs.hexclave.com/api/client/payments/create-purchase-url",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/create-purchase-url/post",
+      "destination": "https://docs.hexclave.com/api/client/payments/create-purchase-url",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/purchase-session",
+      "destination": "https://docs.hexclave.com/api/client/payments/create-purchase-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/purchase-session/post",
+      "destination": "https://docs.hexclave.com/api/client/payments/create-purchase-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/validate-code",
+      "destination": "https://docs.hexclave.com/api/client/payments/validate-purchase-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/payments/payments/purchases/validate-code/post",
+      "destination": "https://docs.hexclave.com/api/client/payments/validate-purchase-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/permissions/project-permissions",
+      "destination": "https://docs.hexclave.com/api/client/permissions/list-project-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/permissions/project-permissions/get",
+      "destination": "https://docs.hexclave.com/api/client/permissions/list-project-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/permissions/team-permissions",
+      "destination": "https://docs.hexclave.com/api/client/permissions/list-team-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/permissions/team-permissions/get",
+      "destination": "https://docs.hexclave.com/api/client/permissions/list-team-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/projects/projects/current",
+      "destination": "https://docs.hexclave.com/api/client/projects/get-the-current-project",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/projects/projects/current/get",
+      "destination": "https://docs.hexclave.com/api/client/projects/get-the-current-project",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions",
+      "destination": "https://docs.hexclave.com/api/client/sessions/list-sessions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/current",
+      "destination": "https://docs.hexclave.com/api/client/sessions/sign-out-of-the-current-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/current/delete",
+      "destination": "https://docs.hexclave.com/api/client/sessions/sign-out-of-the-current-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/current/refresh",
+      "destination": "https://docs.hexclave.com/api/client/sessions/refresh-access-token",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/current/refresh/post",
+      "destination": "https://docs.hexclave.com/api/client/sessions/refresh-access-token",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/get",
+      "destination": "https://docs.hexclave.com/api/client/sessions/list-sessions",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/id",
+      "destination": "https://docs.hexclave.com/api/client/sessions/delete-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/sessions/auth/sessions/id/delete",
+      "destination": "https://docs.hexclave.com/api/client/sessions/delete-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations",
+      "destination": "https://docs.hexclave.com/api/client/teams/list-team-invitations",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept",
+      "destination": "https://docs.hexclave.com/api/client/teams/accept-the-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept/check-code",
+      "destination": "https://docs.hexclave.com/api/client/teams/check-if-a-team-invitation-code-is-valid",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept/check-code/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/check-if-a-team-invitation-code-is-valid",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept/details",
+      "destination": "https://docs.hexclave.com/api/client/teams/get-team-invitation-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept/details/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/get-team-invitation-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/accept/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/accept-the-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/get",
+      "destination": "https://docs.hexclave.com/api/client/teams/list-team-invitations",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/id",
+      "destination": "https://docs.hexclave.com/api/client/teams/delete-a-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/id/accept",
+      "destination": "https://docs.hexclave.com/api/client/teams/accept-a-team-invitation-by-id",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/id/accept/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/accept-a-team-invitation-by-id",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/id/delete",
+      "destination": "https://docs.hexclave.com/api/client/teams/delete-a-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/send-code",
+      "destination": "https://docs.hexclave.com/api/client/teams/send-an-email-to-invite-a-user-to-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-invitations/send-code/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/send-an-email-to-invite-a-user-to-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-member-profiles",
+      "destination": "https://docs.hexclave.com/api/client/teams/list-team-members-profiles",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-member-profiles/get",
+      "destination": "https://docs.hexclave.com/api/client/teams/list-team-members-profiles",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-member-profiles/team_id/user_id",
+      "destination": "https://docs.hexclave.com/api/client/teams/update-your-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-member-profiles/team_id/user_id/get",
+      "destination": "https://docs.hexclave.com/api/client/teams/get-a-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-member-profiles/team_id/user_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/teams/update-your-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-memberships/team_id/user_id",
+      "destination": "https://docs.hexclave.com/api/client/teams/remove-a-user-from-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/team-memberships/team_id/user_id/delete",
+      "destination": "https://docs.hexclave.com/api/client/teams/remove-a-user-from-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams",
+      "destination": "https://docs.hexclave.com/api/client/teams/create-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/get",
+      "destination": "https://docs.hexclave.com/api/client/teams/list-teams",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/post",
+      "destination": "https://docs.hexclave.com/api/client/teams/create-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/team_id",
+      "destination": "https://docs.hexclave.com/api/client/teams/delete-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/team_id/delete",
+      "destination": "https://docs.hexclave.com/api/client/teams/delete-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/team_id/get",
+      "destination": "https://docs.hexclave.com/api/client/teams/get-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/teams/teams/team_id/patch",
+      "destination": "https://docs.hexclave.com/api/client/teams/update-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/users/users/me",
+      "destination": "https://docs.hexclave.com/api/client/users/delete-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/users/users/me/delete",
+      "destination": "https://docs.hexclave.com/api/client/users/delete-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/users/users/me/get",
+      "destination": "https://docs.hexclave.com/api/client/users/get-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/client/users/users/me/patch",
+      "destination": "https://docs.hexclave.com/api/client/users/update-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query",
+      "destination": "https://docs.hexclave.com/api/server/analytics/run-analytics-query",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/post",
+      "destination": "https://docs.hexclave.com/api/server/analytics/run-analytics-query",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/timing",
+      "destination": "https://docs.hexclave.com/api/server/analytics/get-analytics-query-timing",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/timing/post",
+      "destination": "https://docs.hexclave.com/api/server/analytics/get-analytics-query-timing",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/anonymous/auth/anonymous/sign-up",
+      "destination": "https://docs.hexclave.com/api/server/anonymous/sign-up-anonymously",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/anonymous/auth/anonymous/sign-up/post",
+      "destination": "https://docs.hexclave.com/api/server/anonymous/sign-up-anonymously",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/create-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/api_key_id",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/update-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/api_key_id/get",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/get-team-api-key-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/api_key_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/update-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/check",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/check-team-api-key-validity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/check/post",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/check-team-api-key-validity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/get",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/list-team-api-keys",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/team-api-keys/post",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/create-team-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/create-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/api_key_id",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/update-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/api_key_id/get",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/get-user-api-key-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/api_key_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/update-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/check",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/check-user-api-key-validity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/check/post",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/check-user-api-key-validity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/get",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/list-user-api-keys",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/api-keys/user-api-keys/post",
+      "destination": "https://docs.hexclave.com/api/server/api-keys/create-user-api-key",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/initiate-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli/complete",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/complete-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli/complete/post",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/complete-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli/poll",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/poll-cli-authentication-status",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli/poll/post",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/poll-cli-authentication-status",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/cli-authentication/auth/cli/post",
+      "destination": "https://docs.hexclave.com/api/server/cli-authentication/initiate-cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/connected-accounts/connected-accounts/user_id",
+      "destination": "https://docs.hexclave.com/api/server/connected-accounts/list-connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/connected-accounts/connected-accounts/user_id/get",
+      "destination": "https://docs.hexclave.com/api/server/connected-accounts/list-connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/create-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/get",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/list-contact-channels",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/post",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/create-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/delete-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/delete-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/get",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/get-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/update-a-contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/send-contact-channel-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code/post",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/send-contact-channel-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/verify",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/verify-an-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/verify/check-code",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/check-email-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/verify/check-code/post",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/check-email-verification-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/contact-channels/contact-channels/verify/post",
+      "destination": "https://docs.hexclave.com/api/server/contact-channels/verify-an-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/datavault/data-vault/stores/id/get",
+      "destination": "https://docs.hexclave.com/api/server/datavault/retrieve-encrypted-value-from-data-vault",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/datavault/data-vault/stores/id/get/post",
+      "destination": "https://docs.hexclave.com/api/server/datavault/retrieve-encrypted-value-from-data-vault",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/datavault/data-vault/stores/id/set",
+      "destination": "https://docs.hexclave.com/api/server/datavault/store-encrypted-value-in-data-vault",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/datavault/data-vault/stores/id/set/post",
+      "destination": "https://docs.hexclave.com/api/server/datavault/store-encrypted-value-in-data-vault",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/capacity-boost",
+      "destination": "https://docs.hexclave.com/api/server/emails/activate-email-capacity-boost",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/capacity-boost/post",
+      "destination": "https://docs.hexclave.com/api/server/emails/activate-email-capacity-boost",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/delivery-info",
+      "destination": "https://docs.hexclave.com/api/server/emails/get-email-delivery-info",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/delivery-info/get",
+      "destination": "https://docs.hexclave.com/api/server/emails/get-email-delivery-info",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/notification-preference/user_id",
+      "destination": "https://docs.hexclave.com/api/server/emails/list-notification-preferences",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/notification-preference/user_id/get",
+      "destination": "https://docs.hexclave.com/api/server/emails/list-notification-preferences",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/notification-preference/user_id/notification_category_id",
+      "destination": "https://docs.hexclave.com/api/server/emails/update-notification-preference",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/notification-preference/user_id/notification_category_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/emails/update-notification-preference",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/outbox",
+      "destination": "https://docs.hexclave.com/api/server/emails/list-email-outbox",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/outbox/get",
+      "destination": "https://docs.hexclave.com/api/server/emails/list-email-outbox",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/outbox/id",
+      "destination": "https://docs.hexclave.com/api/server/emails/update-email-outbox-entry",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/outbox/id/get",
+      "destination": "https://docs.hexclave.com/api/server/emails/get-email-outbox-entry",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/outbox/id/patch",
+      "destination": "https://docs.hexclave.com/api/server/emails/update-email-outbox-entry",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/send-email",
+      "destination": "https://docs.hexclave.com/api/server/emails/send-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/emails/emails/send-email/post",
+      "destination": "https://docs.hexclave.com/api/server/emails/send-email",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/authorize/provider_id",
+      "destination": "https://docs.hexclave.com/api/server/oauth/oauth-authorize-endpoint",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/authorize/provider_id/get",
+      "destination": "https://docs.hexclave.com/api/server/oauth/oauth-authorize-endpoint",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/cross-domain/authorize",
+      "destination": "https://docs.hexclave.com/api/server/oauth/create-cross-domain-auth-handoff-redirect",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/cross-domain/authorize/post",
+      "destination": "https://docs.hexclave.com/api/server/oauth/create-cross-domain-auth-handoff-redirect",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/token",
+      "destination": "https://docs.hexclave.com/api/server/oauth/oauth-token-endpoints",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/auth/oauth/token/post",
+      "destination": "https://docs.hexclave.com/api/server/oauth/oauth-token-endpoints",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers",
+      "destination": "https://docs.hexclave.com/api/server/oauth/create-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/get",
+      "destination": "https://docs.hexclave.com/api/server/oauth/list-oauth-providers",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/post",
+      "destination": "https://docs.hexclave.com/api/server/oauth/create-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/user_id/provider_id",
+      "destination": "https://docs.hexclave.com/api/server/oauth/delete-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/user_id/provider_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/oauth/delete-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/user_id/provider_id/get",
+      "destination": "https://docs.hexclave.com/api/server/oauth/get-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/oauth/oauth-providers/user_id/provider_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/oauth/update-an-oauth-provider",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/conversationid/delete",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/conversationid/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/conversationid/messages",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/conversationid/patch",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/ai-conversations/post",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/conversations/conversationid/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/conversations/conversationid/patch",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/conversations/get",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/others/internal/conversations/post",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/mfa/sign-in",
+      "destination": "https://docs.hexclave.com/api/server/otp/mfa-sign-in",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/mfa/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/server/otp/mfa-sign-in",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/send-sign-in-code",
+      "destination": "https://docs.hexclave.com/api/server/otp/send-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/send-sign-in-code/post",
+      "destination": "https://docs.hexclave.com/api/server/otp/send-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/sign-in",
+      "destination": "https://docs.hexclave.com/api/server/otp/sign-in-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/sign-in/check-code",
+      "destination": "https://docs.hexclave.com/api/server/otp/check-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/sign-in/check-code/post",
+      "destination": "https://docs.hexclave.com/api/server/otp/check-sign-in-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/otp/auth/otp/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/server/otp/sign-in-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/reset",
+      "destination": "https://docs.hexclave.com/api/server/password/reset-password-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/reset/check-code",
+      "destination": "https://docs.hexclave.com/api/server/password/check-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/reset/check-code/post",
+      "destination": "https://docs.hexclave.com/api/server/password/check-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/reset/post",
+      "destination": "https://docs.hexclave.com/api/server/password/reset-password-with-a-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/send-reset-code",
+      "destination": "https://docs.hexclave.com/api/server/password/send-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/send-reset-code/post",
+      "destination": "https://docs.hexclave.com/api/server/password/send-reset-password-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/set",
+      "destination": "https://docs.hexclave.com/api/server/password/set-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/set/post",
+      "destination": "https://docs.hexclave.com/api/server/password/set-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/sign-in",
+      "destination": "https://docs.hexclave.com/api/server/password/sign-in-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/sign-in/post",
+      "destination": "https://docs.hexclave.com/api/server/password/sign-in-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/sign-up",
+      "destination": "https://docs.hexclave.com/api/server/password/sign-up-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/sign-up/post",
+      "destination": "https://docs.hexclave.com/api/server/password/sign-up-with-email-and-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/update",
+      "destination": "https://docs.hexclave.com/api/server/password/update-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/password/auth/password/update/post",
+      "destination": "https://docs.hexclave.com/api/server/password/update-password",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/items/customer_type/customer_id/item_id",
+      "destination": "https://docs.hexclave.com/api/server/payments/get-item",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/items/customer_type/customer_id/item_id/get",
+      "destination": "https://docs.hexclave.com/api/server/payments/get-item",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/items/customer_type/customer_id/item_id/update-quantity",
+      "destination": "https://docs.hexclave.com/api/server/payments/update-item-quantity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/items/customer_type/customer_id/item_id/update-quantity/post",
+      "destination": "https://docs.hexclave.com/api/server/payments/update-item-quantity",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/create-purchase-url",
+      "destination": "https://docs.hexclave.com/api/server/payments/create-purchase-url",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/create-purchase-url/post",
+      "destination": "https://docs.hexclave.com/api/server/payments/create-purchase-url",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/purchase-session",
+      "destination": "https://docs.hexclave.com/api/server/payments/create-purchase-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/purchase-session/post",
+      "destination": "https://docs.hexclave.com/api/server/payments/create-purchase-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/validate-code",
+      "destination": "https://docs.hexclave.com/api/server/payments/validate-purchase-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/payments/payments/purchases/validate-code/post",
+      "destination": "https://docs.hexclave.com/api/server/payments/validate-purchase-code",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/project-permissions",
+      "destination": "https://docs.hexclave.com/api/server/permissions/list-project-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/project-permissions/get",
+      "destination": "https://docs.hexclave.com/api/server/permissions/list-project-permissions",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/project-permissions/user_id/permission_id",
+      "destination": "https://docs.hexclave.com/api/server/permissions/revoke-a-global-permission-from-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/project-permissions/user_id/permission_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/permissions/revoke-a-global-permission-from-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/project-permissions/user_id/permission_id/post",
+      "destination": "https://docs.hexclave.com/api/server/permissions/grant-a-global-permission-to-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/team-permissions",
+      "destination": "https://docs.hexclave.com/api/server/permissions/list-team-permissions-of-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/team-permissions/get",
+      "destination": "https://docs.hexclave.com/api/server/permissions/list-team-permissions-of-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/team-permissions/team_id/user_id/permission_id",
+      "destination": "https://docs.hexclave.com/api/server/permissions/revoke-a-team-permission-from-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/team-permissions/team_id/user_id/permission_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/permissions/revoke-a-team-permission-from-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/permissions/team-permissions/team_id/user_id/permission_id/post",
+      "destination": "https://docs.hexclave.com/api/server/permissions/grant-a-team-permission-to-a-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/projects/projects/current",
+      "destination": "https://docs.hexclave.com/api/server/projects/get-the-current-project",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/projects/projects/current/get",
+      "destination": "https://docs.hexclave.com/api/server/projects/get-the-current-project",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions",
+      "destination": "https://docs.hexclave.com/api/server/sessions/create-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/current",
+      "destination": "https://docs.hexclave.com/api/server/sessions/sign-out-of-the-current-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/current/delete",
+      "destination": "https://docs.hexclave.com/api/server/sessions/sign-out-of-the-current-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/current/refresh",
+      "destination": "https://docs.hexclave.com/api/server/sessions/refresh-access-token",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/current/refresh/post",
+      "destination": "https://docs.hexclave.com/api/server/sessions/refresh-access-token",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/get",
+      "destination": "https://docs.hexclave.com/api/server/sessions/list-sessions",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/id",
+      "destination": "https://docs.hexclave.com/api/server/sessions/delete-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/id/delete",
+      "destination": "https://docs.hexclave.com/api/server/sessions/delete-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/sessions/auth/sessions/post",
+      "destination": "https://docs.hexclave.com/api/server/sessions/create-session",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations",
+      "destination": "https://docs.hexclave.com/api/server/teams/list-team-invitations",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept",
+      "destination": "https://docs.hexclave.com/api/server/teams/accept-the-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept/check-code",
+      "destination": "https://docs.hexclave.com/api/server/teams/check-if-a-team-invitation-code-is-valid",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept/check-code/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/check-if-a-team-invitation-code-is-valid",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept/details",
+      "destination": "https://docs.hexclave.com/api/server/teams/get-team-invitation-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept/details/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/get-team-invitation-details",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/accept/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/accept-the-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/get",
+      "destination": "https://docs.hexclave.com/api/server/teams/list-team-invitations",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/id",
+      "destination": "https://docs.hexclave.com/api/server/teams/delete-a-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/id/accept",
+      "destination": "https://docs.hexclave.com/api/server/teams/accept-a-team-invitation-by-id",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/id/accept/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/accept-a-team-invitation-by-id",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/id/delete",
+      "destination": "https://docs.hexclave.com/api/server/teams/delete-a-team-invitation",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/send-code",
+      "destination": "https://docs.hexclave.com/api/server/teams/send-an-email-to-invite-a-user-to-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-invitations/send-code/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/send-an-email-to-invite-a-user-to-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-member-profiles",
+      "destination": "https://docs.hexclave.com/api/server/teams/list-team-members-profiles",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-member-profiles/get",
+      "destination": "https://docs.hexclave.com/api/server/teams/list-team-members-profiles",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-member-profiles/team_id/user_id",
+      "destination": "https://docs.hexclave.com/api/server/teams/update-a-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-member-profiles/team_id/user_id/get",
+      "destination": "https://docs.hexclave.com/api/server/teams/get-a-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-member-profiles/team_id/user_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/teams/update-a-team-member-profile",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-memberships/team_id/user_id",
+      "destination": "https://docs.hexclave.com/api/server/teams/remove-a-user-from-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-memberships/team_id/user_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/teams/remove-a-user-from-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/team-memberships/team_id/user_id/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/add-a-user-to-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams",
+      "destination": "https://docs.hexclave.com/api/server/teams/create-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/get",
+      "destination": "https://docs.hexclave.com/api/server/teams/list-teams",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/post",
+      "destination": "https://docs.hexclave.com/api/server/teams/create-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/team_id",
+      "destination": "https://docs.hexclave.com/api/server/teams/delete-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/team_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/teams/delete-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/team_id/get",
+      "destination": "https://docs.hexclave.com/api/server/teams/get-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/teams/teams/team_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/teams/update-a-team",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users",
+      "destination": "https://docs.hexclave.com/api/server/users/create-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/get",
+      "destination": "https://docs.hexclave.com/api/server/users/list-users",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/me",
+      "destination": "https://docs.hexclave.com/api/server/users/delete-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/me/delete",
+      "destination": "https://docs.hexclave.com/api/server/users/delete-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/me/get",
+      "destination": "https://docs.hexclave.com/api/server/users/get-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/me/patch",
+      "destination": "https://docs.hexclave.com/api/server/users/update-current-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/post",
+      "destination": "https://docs.hexclave.com/api/server/users/create-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/user_id",
+      "destination": "https://docs.hexclave.com/api/server/users/delete-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/user_id/delete",
+      "destination": "https://docs.hexclave.com/api/server/users/delete-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/user_id/get",
+      "destination": "https://docs.hexclave.com/api/server/users/get-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/users/users/user_id/patch",
+      "destination": "https://docs.hexclave.com/api/server/users/update-user",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team_membership.created",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/team_membershipcreated",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team_membership.deleted",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/team_membershipdeleted",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team_permission.created",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/team_permissioncreated",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team_permission.deleted",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/team_permissiondeleted",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team.created",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/teamcreated",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team.deleted",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/teamdeleted",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/teams/team.updated",
+      "destination": "https://docs.hexclave.com/api/webhooks/teams/teamupdated",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/users/user.created",
+      "destination": "https://docs.hexclave.com/api/webhooks/users/usercreated",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/users/user.deleted",
+      "destination": "https://docs.hexclave.com/api/webhooks/users/userdeleted",
+      "permanent": true
+    },
+    {
+      "source": "/api/webhooks/users/user.updated",
+      "destination": "https://docs.hexclave.com/api/webhooks/users/userupdated",
+      "permanent": true
+    },
+    {
+      "source": "/docs",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/api",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/analytics",
+      "destination": "https://docs.hexclave.com/guides/apps/analytics/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/api-keys",
+      "destination": "https://docs.hexclave.com/guides/apps/api-keys/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/data-vault",
+      "destination": "https://docs.hexclave.com/guides/apps/data-vault/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/emails",
+      "destination": "https://docs.hexclave.com/guides/apps/emails/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/fraud-protection",
+      "destination": "https://docs.hexclave.com/guides/apps/fraud-protection/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/launch-checklist",
+      "destination": "https://docs.hexclave.com/guides/apps/launch-checklist/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/oauth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/orgs-and-teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/payments",
+      "destination": "https://docs.hexclave.com/guides/apps/payments/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/permissions",
+      "destination": "https://docs.hexclave.com/guides/apps/rbac/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/webhooks",
+      "destination": "https://docs.hexclave.com/guides/apps/webhooks/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/account-settings",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/credential-sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/credential-sign-up",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/forgot-password",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/index",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/magic-link-sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/oauth-button",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/oauth-button-group",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/password-reset",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/selected-team-switcher",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/sign-up",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-handler",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-provider",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-theme",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/user-button",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/api-keys",
+      "destination": "https://docs.hexclave.com/guides/apps/api-keys/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/apple",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/apple",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/bitbucket",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/bitbucket",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/discord",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/discord",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/facebook",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/facebook",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/github",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/github",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/gitlab",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/gitlab",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/google",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/google",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/linkedin",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/linkedin",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/microsoft",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/microsoft",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/passkey",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/passkey",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/spotify",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/spotify",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/twitch",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/twitch",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/two-factor-auth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/two-factor-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/x-twitter",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/x-twitter",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/backend-integration",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/custom-user-data",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals#custom-metadata",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/emails",
+      "destination": "https://docs.hexclave.com/guides/apps/emails/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/jwt",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/jwts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/oauth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/orgs-and-teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/permissions",
+      "destination": "https://docs.hexclave.com/guides/apps/rbac/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/sign-up-rules",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/sign-up-rules",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/team-selection",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/team-selection",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/user-onboarding",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/user-onboarding",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/webhooks",
+      "destination": "https://docs.hexclave.com/guides/apps/webhooks/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/custom-pages",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/custom-styles",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/dark-mode",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/internationalization",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/forgot-password",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/password-reset",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/sign-in",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/sign-up",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/faq",
+      "destination": "https://docs.hexclave.com/guides/faq",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/components",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/vite-example",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/cli-authentication",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/convex",
+      "destination": "https://docs.hexclave.com/guides/integrations/convex/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/mcp-setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/ai-integration",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/self-host",
+      "destination": "https://docs.hexclave.com/guides/other/self-host",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/supabase",
+      "destination": "https://docs.hexclave.com/guides/integrations/supabase/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/overview",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/rest-api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/hooks/use-stack-app",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/hooks/use-user",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-user",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/index",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/overview-new",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/api-key",
+      "destination": "https://docs.hexclave.com/sdk/types/api-key",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/connected-account",
+      "destination": "https://docs.hexclave.com/sdk/types/connected-account",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/contact-channel",
+      "destination": "https://docs.hexclave.com/sdk/types/contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/customer",
+      "destination": "https://docs.hexclave.com/sdk/types/customer",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/email",
+      "destination": "https://docs.hexclave.com/sdk/types/email",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/item",
+      "destination": "https://docs.hexclave.com/sdk/types/item",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/project",
+      "destination": "https://docs.hexclave.com/sdk/types/project",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team",
+      "destination": "https://docs.hexclave.com/sdk/types/team",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-permission",
+      "destination": "https://docs.hexclave.com/sdk/types/team-permission",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-profile",
+      "destination": "https://docs.hexclave.com/sdk/types/team-profile",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-user",
+      "destination": "https://docs.hexclave.com/sdk/types/team-user",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/user",
+      "destination": "https://docs.hexclave.com/sdk/types/user",
+      "permanent": true
+    },
+    {
+      "source": "/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/js/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/js/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/next/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/next/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/others/js-client",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/python/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/python/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/react/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/react/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/rest-api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/sdk/hooks/use-stack-app",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/api/admin/:path*",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    }
+  ]
+}

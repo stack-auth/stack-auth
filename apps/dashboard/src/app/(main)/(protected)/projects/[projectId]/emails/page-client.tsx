@@ -840,14 +840,16 @@ function EditEmailServerDialog(props: {
           ]}
         />
         {form.watch('type') === 'resend' && <>
-          <InputFieldWithInfo
-            label="Resend API Key"
-            name="password"
-            control={form.control}
-            type="password"
-            required
-            infoText="Get your API key from resend.com/api-keys. Create a new key with 'Sending access' permissions."
-          />
+          <div className="hexclave-sensitive">
+            <InputFieldWithInfo
+              label="Resend API Key"
+              name="password"
+              control={form.control}
+              type="password"
+              required
+              infoText="Get your API key from resend.com/api-keys. Create a new key with 'Sending access' permissions."
+            />
+          </div>
           <InputFieldWithInfo
             label="Sender Email"
             name="senderEmail"
@@ -909,19 +911,21 @@ function EditEmailServerDialog(props: {
             required
             infoText="Your SMTP username, usually your full email address (e.g., user@example.com)"
           />
-          <InputFieldWithInfo
-            label="Password"
-            name="password"
-            control={form.control}
-            type="password"
-            required
-            infoText="Your SMTP password or app-specific password. Most email providers require app passwords for security."
-            infoLinks={[
-              { label: "Gmail: Create App Password", url: "https://myaccount.google.com/apppasswords" },
-              { label: "Outlook: App Password Guide", url: "https://support.microsoft.com/account-billing/using-app-passwords-with-apps-that-don-t-support-two-step-verification-5896ed9b-4263-e681-128a-a6f2979a7944" },
-              { label: "Yahoo: Generate App Password", url: "https://help.yahoo.com/kb/generate-app-password-sln15241.html" },
-            ]}
-          />
+          <div className="hexclave-sensitive">
+            <InputFieldWithInfo
+              label="Password"
+              name="password"
+              control={form.control}
+              type="password"
+              required
+              infoText="Your SMTP password or app-specific password. Most email providers require app passwords for security."
+              infoLinks={[
+                { label: "Gmail: Create App Password", url: "https://myaccount.google.com/apppasswords" },
+                { label: "Outlook: App Password Guide", url: "https://support.microsoft.com/account-billing/using-app-passwords-with-apps-that-don-t-support-two-step-verification-5896ed9b-4263-e681-128a-a6f2979a7944" },
+                { label: "Yahoo: Generate App Password", url: "https://help.yahoo.com/kb/generate-app-password-sln15241.html" },
+              ]}
+            />
+          </div>
           <InputFieldWithInfo
             label="Sender Email"
             name="senderEmail"

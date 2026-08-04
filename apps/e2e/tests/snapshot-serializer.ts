@@ -147,6 +147,14 @@ const stringRegexReplacements = [
   [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>"],
   [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX%3E"],
   [/(Timeout exceeded: elapsed )[0-9.]+( ms)/gi, "$1<stripped time>$2"],
+  // react-dom serializes a zero-length CSS value as either "0" or "0px" depending on
+  // the react-dom build that renders the email — the mock and prod Freestyle sandboxes
+  // resolve different versions, so the same template yields "margin:0" in one E2E mode
+  // and "margin:0px" in the other, breaking inline email-HTML snapshots across modes.
+  // "0px" and "0" are identical in CSS, so canonicalize the standalone zero-pixel form
+  // to unitless "0" for stable, environment-independent snapshots. \b keeps this from
+  // touching non-zero lengths like "10px"/"100px" (no word boundary precedes their "0").
+  [/\b0px\b/g, "0"],
 ] as const;
 
 

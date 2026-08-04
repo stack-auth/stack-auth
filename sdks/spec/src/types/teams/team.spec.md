@@ -76,6 +76,18 @@ See types/teams/team-member-profile.spec.md for TeamMemberProfile.
 Does not error.
 
 
+### removeUser(userId)
+
+userId: string
+
+DELETE /api/v1/team-memberships/{teamId}/{userId} [authenticated]
+
+Removes the specified user from the team. Requires the `$remove_members` team permission
+when removing another user; users may always remove themselves.
+
+Does not error.
+
+
 ### listInvitations()
 
 Returns: TeamInvitation[]

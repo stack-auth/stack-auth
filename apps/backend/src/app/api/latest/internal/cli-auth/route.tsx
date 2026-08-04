@@ -131,17 +131,21 @@ export const GET = createSmartRouteHandler({
       };
     });
 
-    // Active-session discovery is also bounded: it considers refresh tokens
-    // attached to the most recently used CLI attempts, then checks which of
-    // those sessions still exist in the canonical refresh-token table.
+    // Apply LIMIT before the nullable-column predicates. Otherwise LIMIT only
+    // bounds returned rows and a tenant with sparse completed attempts could
+    // scan its entire history looking for 200 qualifying entries.
     const cliRefreshTokens = await prisma.$replica().$queryRaw<{ refreshToken: string }[]>(Prisma.sql`
+      WITH "recentAttempts" AS MATERIALIZED (
+        SELECT "refreshToken", "usedAt"
+        FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+        ORDER BY "createdAt" DESC, "id" DESC
+        LIMIT ${activeTokenAttemptLimit}
+      )
       SELECT "refreshToken"
-      FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
-      WHERE "tenancyId" = ${tenancy.id}::UUID
-        AND "refreshToken" IS NOT NULL
+      FROM "recentAttempts"
+      WHERE "refreshToken" IS NOT NULL
         AND "usedAt" IS NOT NULL
-      ORDER BY "createdAt" DESC, "id" DESC
-      LIMIT ${activeTokenAttemptLimit}
     `);
 
     let activeCliUsers: Array<{
@@ -157,15 +161,6 @@ export const GET = createSmartRouteHandler({
 
     if (cliRefreshTokens.length > 0) {
       const tokenValues = cliRefreshTokens.map((row) => row.refreshToken);
-      const countResult = await globalPrismaClient.$replica().$queryRaw<{ count: bigint }[]>(Prisma.sql`
-        SELECT COUNT(*) AS count
-        FROM "ProjectUserRefreshToken"
-        WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "refreshToken" = ANY(${tokenValues})
-          AND ("expiresAt" IS NULL OR "expiresAt" >= ${now})
-      `);
-      activeTokenCount = Number(countResult[0]?.count ?? 0n);
-
       const activeTokens = await globalPrismaClient.$replica().$queryRaw<ActiveCliTokenRow[]>(Prisma.sql`
         SELECT
           "id",
@@ -177,8 +172,9 @@ export const GET = createSmartRouteHandler({
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "refreshToken" = ANY(${tokenValues})
         ORDER BY "lastActiveAt" DESC
-        LIMIT 50
+        LIMIT ${activeTokenAttemptLimit}
       `);
+      activeTokenCount = activeTokens.filter((token) => token.expiresAt == null || token.expiresAt >= now).length;
 
       if (activeTokens.length > 0) {
         const userIds = [...new Set(activeTokens.map((token) => token.projectUserId))];

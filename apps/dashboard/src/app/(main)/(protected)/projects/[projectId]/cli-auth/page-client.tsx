@@ -175,7 +175,7 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
           CLI Auth allows users to authenticate from command-line tools using a browser-based login flow.
           The CLI initiates a session, the user confirms in a browser, and a refresh token is issued to the CLI.
           Metrics below are bounded snapshots: attempt counts cover the newest {summary.attempt_window_limit} attempts,
-          and active sessions are discovered from the newest {summary.active_token_lookup_window_limit} used attempts.
+          and CLI sessions are discovered from the newest {summary.active_token_lookup_window_limit} attempts.
         </>}
       />
 
@@ -189,7 +189,7 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
 
       <DesignCard
         title="Active CLI Sessions"
-        subtitle={`${summary.active_tokens_in_lookup_window} active token${summary.active_tokens_in_lookup_window === 1 ? "" : "s"} found in the latest ${summary.active_token_lookup_window_limit} used attempts`}
+        subtitle={`${summary.active_tokens_in_lookup_window} active token${summary.active_tokens_in_lookup_window === 1 ? "" : "s"} found in the latest ${summary.active_token_lookup_window_limit} attempts`}
         icon={UserIcon}
         glassmorphic
       >

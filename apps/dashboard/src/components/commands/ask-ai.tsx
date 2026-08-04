@@ -88,6 +88,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
           composerAttachments
           attachmentAdapter={attachmentAdapter}
           autoFocusComposer={false}
+          agentEjectFooter
         />
       </div>
     </AssistantRuntimeProvider>

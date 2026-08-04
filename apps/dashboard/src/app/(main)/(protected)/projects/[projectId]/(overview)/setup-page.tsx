@@ -77,6 +77,28 @@ function buildCloudSetupPrompt(options: {
   const normalizedDocsBaseUrl = docsBaseUrl.replace(/\/$/, '');
   const reminders = remindersPrompt.replaceAll(PROD_DOCS_BASE_URL, normalizedDocsBaseUrl);
 
+  // The SDK's baked-in default base URL is the production cloud API, so there's no point telling
+  // the agent to set a custom API URL when the deployment already uses it — omit the line in that
+  // case. Non-default deployments (dev/staging cloud, self-host custom domains) still show it.
+  const isDefaultApiBaseUrl = apiBaseUrl === PROD_API_BASE_URL;
+
+  const projectValues = isDefaultApiBaseUrl
+    ? deindent`
+      - Hexclave project ID: ${projectId}
+    `
+    : deindent`
+      - Hexclave API URL: ${apiBaseUrl}
+      - Hexclave project ID: ${projectId}
+    `;
+
+  const envVarInstructions = isDefaultApiBaseUrl
+    ? deindent`
+      Create the framework-specific public environment variable for the Hexclave project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify a different environment variable name, use the docs' framework-specific name with the value above.
+    `
+    : deindent`
+      Create the framework-specific public environment variables for the Hexclave API URL and project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_API_URL and VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify different environment variable names, use the docs' framework-specific names with the values above.
+    `;
+
   return deindent`
     Install and set up Hexclave in this project by following these instructions:
 
@@ -88,10 +110,9 @@ function buildCloudSetupPrompt(options: {
 
     Use these Hexclave project values when creating environment variables:
 
-    - Hexclave API URL: ${apiBaseUrl}
-    - Hexclave project ID: ${projectId}
+    ${projectValues}
 
-    Create the framework-specific public environment variables for the Hexclave API URL and project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_API_URL and VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify different environment variable names, use the docs' framework-specific names with the values above.
+    ${envVarInstructions}
 
     After setup finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. If it is not registered, add it manually so future agents have live access to Hexclave docs and APIs.
 

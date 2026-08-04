@@ -26,8 +26,10 @@ export function GlobeSectionWithData({ includeAnonymous, interactive }: { includ
   );
 }
 
-function GlobeErrorComponent(props: { error: Error }) {
-  captureGlobeErrorOnce(props.error);
+function GlobeErrorComponent(props: { error: unknown }) {
+  if (props.error instanceof Error) {
+    captureGlobeErrorOnce(props.error);
+  }
   return <div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>;
 }
 

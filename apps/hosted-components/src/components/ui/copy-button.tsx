@@ -10,7 +10,7 @@ import { cn } from "./utils";
 const CopyButton = forwardRefIfNeeded<
   HTMLButtonElement,
   ButtonProps & { content: string }
->(({ content, ...props }, ref) => {
+>(({ content, children, ...props }, ref) => {
   const [copied, setCopied] = useState(false);
   const resetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -26,7 +26,7 @@ const CopyButton = forwardRefIfNeeded<
     <Button
       variant="secondary"
       {...props}
-      className={cn("h-6 w-6 p-1", props.className)}
+      className={cn(children == null ? "h-6 w-6 p-1" : "gap-1.5", props.className)}
       ref={ref}
       onClick={async (...args) => {
         await props.onClick?.(...args);
@@ -39,6 +39,7 @@ const CopyButton = forwardRefIfNeeded<
       }}
     >
       {copied ? <Check className="text-success" /> : <Copy />}
+      {children != null && <span>{children}</span>}
     </Button>
   );
 });

@@ -27,5 +27,9 @@ export type Database = {
    */
   waitUntilReplicated(seq: DatabaseSeq): Promise<void>,
   combineSeqs(...seqs: DatabaseSeq[]): DatabaseSeq,
+  /**
+   * Drains pending writes and releases resources. Calls are idempotent.
+   */
+  close(): Promise<void>,
   initialSeq: DatabaseSeq,
 };

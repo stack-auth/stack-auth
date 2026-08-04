@@ -1,7 +1,7 @@
 import { KnownErrors } from "@hexclave/shared";
 import { useStackApp } from "@hexclave/react";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Button,
@@ -24,6 +24,13 @@ function MagicLinkOtp(props: {
   const [otp, setOtp] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Focus the (visually hidden) OTP input on mount so the user can type or paste the
+  // code immediately without having to click on the boxes first.
+  useEffect(() => {
+    otpInputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (otp.length !== 6 || submitting) {
@@ -56,6 +63,7 @@ function MagicLinkOtp(props: {
       <form className="mb-4 flex w-full flex-col items-center">
         <Typography className="mb-4 text-center text-sm text-muted-foreground">Enter the code from your email</Typography>
         <InputOTP
+          ref={otpInputRef}
           maxLength={6}
           type="text"
           inputMode="text"
@@ -79,9 +87,13 @@ function MagicLinkOtp(props: {
   );
 }
 
-export function MagicLinkSignIn() {
+export function MagicLinkSignIn(props: {
+  email: string,
+  onEmailChange: (email: string) => void,
+}) {
   const app = useStackApp();
-  const [email, setEmail] = useState("");
+  const email = props.email;
+  const setEmail = props.onEmailChange;
   const [emailError, setEmailError] = useState<string | null>(null);
   const [nonce, setNonce] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -130,6 +142,7 @@ export function MagicLinkSignIn() {
         id="email"
         type="email"
         autoComplete="email"
+        autoFocus
         className="h-10 rounded-xl border-border bg-background"
         value={email}
         onChange={(event) => {

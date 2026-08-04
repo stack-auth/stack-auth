@@ -1,7 +1,6 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
 import { grantProductToCustomer } from "@/lib/payments";
 import { getTenancy } from "@/lib/tenancies";
-import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -39,6 +38,8 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
+    // Test mode does not simulate free trials (no Stripe trialing / SetupIntent /
+    // deferred charge). Configured freeTrial is ignored; the dashboard warns.
     await grantProductToCustomer({
       prisma,
       tenancy,

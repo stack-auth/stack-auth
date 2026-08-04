@@ -36,6 +36,19 @@ describe("buildWorkflowYaml", () => {
     expect(workflowYaml).toContain("HEXCLAVE_SOURCE_REPO: ${{ github.repository }}");
     expect(workflowYaml).not.toMatch(/HEXCLAVE_SOURCE_REPO:\s+"[^$]/);
   });
+
+  it("installs the repo's dependencies (with lockfile detection) before pushing config", () => {
+    const workflowYaml = buildWorkflowYaml("main", "hexclave.config.ts");
+    expect(workflowYaml).toContain("- name: Install dependencies");
+    for (const marker of ["pnpm-lock.yaml", "yarn.lock", "package-lock.json", "npm ci"]) {
+      expect(workflowYaml).toContain(marker);
+    }
+    // The install must run before the push step, otherwise the SDK import would
+    // still be unresolvable when the CLI evaluates the config.
+    expect(workflowYaml.indexOf("- name: Install dependencies")).toBeLessThan(
+      workflowYaml.indexOf("- name: Push Hexclave config"),
+    );
+  });
 });
 
 describe("normalizeConfigPath", () => {

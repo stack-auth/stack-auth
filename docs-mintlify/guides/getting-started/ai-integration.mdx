@@ -53,7 +53,7 @@ Install the skill once so your agent loads it automatically every time Hexclave 
     The fastest way to install the Hexclave skill for a Claude Code-style agent or similar:
 
     ```sh title="Terminal"
-    npx -y skills add hexclave/hexclave --skill stack-auth
+    npx -y skills add hexclave/hexclave --skill hexclave
     ```
 
     This detects your agent and installs the skill in the correct location (per-project or global) automatically. From then on, your agent picks it up whenever the conversation touches Hexclave.
@@ -77,7 +77,7 @@ Install the skill once so your agent loads it automatically every time Hexclave 
        - If any such folder exists → default to **project** scope.
        - Otherwise → default to **global** scope.
 
-    3. **Resolve the install directory.** Write `SKILL.md` to `<skills-dir>/stack-auth/SKILL.md`, where `<skills-dir>` comes from this table (mirrors `vercel-labs/skills/src/agents.ts`):
+    3. **Resolve the install directory.** Write `SKILL.md` to `<skills-dir>/hexclave/SKILL.md`, where `<skills-dir>` comes from this table (mirrors `vercel-labs/skills/src/agents.ts`):
 
        | Agent | Project `<skills-dir>` | Global `<skills-dir>` |
        | --- | --- | --- |
@@ -97,7 +97,7 @@ Install the skill once so your agent loads it automatically every time Hexclave 
 
        For any agent not listed, follow its documented skills directory or fall back to `.agents/skills` (project) / `~/.<agent>/skills` (global).
 
-    4. **Install.** Download `SKILL.md` once to a stable cache location — `~/.cache/stack-auth/SKILL.md` (or `$XDG_CACHE_HOME/stack-auth/SKILL.md`) — then create a **symlink** at `<skills-dir>/stack-auth/SKILL.md` pointing to that cached file. Create missing parent directories. If the target path already exists, replace it (overwrite the symlink, or back up and replace a regular file). Symlinking means future re-installs at additional scopes/agents reuse the same source file, and re-running the prompt after an update to the cached file picks up automatically. If the platform doesn't support symlinks (e.g. Windows without dev mode), fall back to copying the file verbatim.
+    4. **Install.** Download `SKILL.md` once to a stable cache location — `~/.cache/hexclave/SKILL.md` (or `$XDG_CACHE_HOME/hexclave/SKILL.md`) — then create a **symlink** at `<skills-dir>/hexclave/SKILL.md` pointing to that cached file. Create missing parent directories. If the target path already exists, replace it (overwrite the symlink, or back up and replace a regular file). Symlinking means future re-installs at additional scopes/agents reuse the same source file, and re-running the prompt after an update to the cached file picks up automatically. If the platform doesn't support symlinks (e.g. Windows without dev mode), fall back to copying the file verbatim.
 
     5. **Confirm and offer alternatives.** Print the absolute symlink path and the cache target it points to. Then ask me a single multiple-choice question covering anything I might want to change, e.g.:
 

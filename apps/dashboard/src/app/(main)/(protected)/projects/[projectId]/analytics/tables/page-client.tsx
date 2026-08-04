@@ -1,6 +1,7 @@
 "use client";
 
 import { Link } from "@/components/link";
+import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowClockwiseIcon, CodeIcon } from "@phosphor-icons/react";
@@ -9,13 +10,12 @@ import { useCallback, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { AnalyticsEventLimitBanner } from "../shared";
-import { AiQueryBar } from "./ai-query-bar";
-import { AiQueryDialog } from "./ai-query-dialog";
 import {
   QueryDataGrid,
   type QueryDataGridMode,
 } from "./query-data-grid";
-import { useAiQueryChat } from "./use-ai-query-chat";
+import { TableSearchBar } from "./table-search-bar";
+import { useAiTableFilterChat } from "./use-ai-table-filter-chat";
 
 // ─── Available tables ───────────────────────────────────────────────
 
@@ -27,8 +27,6 @@ type TableConfig = {
 };
 
 type TableId = string;
-const ANALYTICS_TABLES_STICKY_TOP = "var(--analytics-tables-sticky-top)";
-const ANALYTICS_TABLES_SIDEBAR_HEIGHT = "var(--analytics-tables-sidebar-height)";
 
 const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   [
@@ -141,84 +139,76 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   ],
 ]);
 
+const AVAILABLE_TABLE_OPTIONS = [...AVAILABLE_TABLES.entries()].map(
+  ([value, config]) => ({ value, label: config.displayName }),
+);
+
 // ─── Per-table content ──────────────────────────────────────────────
 
 function TableContent({ tableId }: { tableId: TableId }) {
   const tableConfig = AVAILABLE_TABLES.get(tableId) ?? throwErr(`Unknown analytics table: ${tableId}`);
-  const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Shared AI chat state — feeds both the search bar and the eye
-  // dialog, so they operate on a single conversation thread.
-  const chat = useAiQueryChat();
+  // AI thread behind the search bar — constrained to row filters over this
+  // table, so the grid's columns never change.
+  const filterChat = useAiTableFilterChat(tableId);
 
-  const aiQuery = chat.latestQuery;
-  const isAiActive = aiQuery != null;
+  const filterQuery = filterChat.latestQuery;
 
-  // When the AI has committed a query, it becomes the source of
-  // truth; otherwise fall back to the table's own default query.
-  const effectiveQuery = aiQuery ?? tableConfig.baseQuery;
-  const effectiveMode: QueryDataGridMode = isAiActive ? "one-shot" : "paginated";
-
-  // Default sort / search only apply while the AI is inactive — an
-  // AI-generated aggregate won't have an `event_at` column to sort on.
-  const defaultOrderBy = isAiActive ? undefined : tableConfig.defaultOrderBy;
-  const defaultOrderDir = isAiActive ? undefined : tableConfig.defaultOrderDir;
-
-  const handleResetChat = useCallback(() => {
-    chat.clearMessages();
-  }, [chat]);
-
-  const aiSearchBar = (
-    <AiQueryBar
-      chat={chat}
-      isActive={isAiActive}
-      onOpenDialog={() => setDialogOpen(true)}
-      onReset={handleResetChat}
-    />
-  );
+  const effectiveQuery = filterQuery ?? tableConfig.baseQuery;
+  const effectiveMode: QueryDataGridMode = filterQuery != null ? "one-shot" : "paginated";
 
   const renderToolbarExtra = useCallback(
-    (ctx: { rowCount: number, hasMore: boolean, reload: () => void }) => (
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={ctx.reload}
-          className="h-7 w-7"
-          title="Refresh"
-        >
-          <ArrowClockwiseIcon className="h-3.5 w-3.5" />
-        </Button>
-        <span className="hidden sm:inline px-1 text-[11px] tabular-nums text-muted-foreground">
-          {ctx.hasMore
-            ? `${ctx.rowCount.toLocaleString()}+ rows`
-            : `${ctx.rowCount.toLocaleString()} rows`}
-        </span>
-      </div>
+    (ctx: { rowCount: number, hasMore: boolean }) => (
+      <span className="hidden h-[22px] shrink-0 items-center rounded-full bg-foreground/[0.04] px-2 text-[10px] tabular-nums text-muted-foreground ring-1 ring-foreground/[0.06] sm:inline-flex">
+        {ctx.hasMore
+          ? `${ctx.rowCount.toLocaleString()}+ rows`
+          : `${ctx.rowCount.toLocaleString()} rows`}
+      </span>
+    ),
+    [],
+  );
+
+  const renderToolbarActions = useCallback(
+    (ctx: { reload: () => void }) => (
+      <Button
+        variant="ghost"
+        onClick={ctx.reload}
+        className="h-7 gap-1.5 px-2.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        title="Refresh"
+      >
+        <ArrowClockwiseIcon className="h-3.5 w-3.5" />
+        Refresh
+      </Button>
     ),
     [],
   );
 
   return (
-    <div className="flex min-w-0 flex-col">
+    // fillHeight grid owns its own scrollport below the page header, so rows never
+    // paint under the sticky translucent header (the dark-mode seam bug).
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <QueryDataGrid
         query={effectiveQuery}
         mode={effectiveMode}
-        defaultOrderBy={defaultOrderBy}
-        defaultOrderDir={defaultOrderDir}
-        enableQuickSearchFilter={!isAiActive}
-        searchBar={aiSearchBar}
+        defaultOrderBy={tableConfig.defaultOrderBy}
+        defaultOrderDir={tableConfig.defaultOrderDir}
+        searchBar={(ctx) => (
+          <TableSearchBar
+            ctx={ctx}
+            queryKey={effectiveQuery}
+            chat={filterChat}
+            activeFilterQuery={filterQuery}
+            filterRejected={filterChat.filterRejected}
+            onAiSubmit={(text) => filterChat.sendMessage({ text })}
+            onClearFilter={filterChat.clearMessages}
+          />
+        )}
         toolbarExtra={renderToolbarExtra}
+        toolbarActions={renderToolbarActions}
         exportFilename={`${tableId}-export`}
-        fillHeight={false}
-        stickyTop={ANALYTICS_TABLES_STICKY_TOP}
-      />
-
-      <AiQueryDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        chat={chat}
-        currentQuery={aiQuery}
+        fillHeight
+        stickyTop={0}
+        horizontalScrollbarPosition="top"
       />
     </div>
   );
@@ -229,70 +219,98 @@ export default function PageClient() {
 
   return (
     <AppEnabledGuard appId="analytics">
-      <PageLayout fillWidth noPadding>
-        <AnalyticsEventLimitBanner />
-        <div className="flex w-full min-w-0 items-stretch lg:-ml-2 [--analytics-tables-sticky-top:3.5rem] [--analytics-tables-sidebar-height:calc(100vh-3.5rem)] dark:[--analytics-tables-sticky-top:5rem] dark:[--analytics-tables-sidebar-height:calc(100vh-6rem)]">
-          {/* Left sidebar — hidden on mobile */}
-          <div
-            className="hidden lg:flex w-48 min-h-0 flex-shrink-0 self-start flex-col overflow-hidden border-r border-border/50 pl-2 sticky"
-            style={{
-              top: ANALYTICS_TABLES_STICKY_TOP,
-              height: ANALYTICS_TABLES_SIDEBAR_HEIGHT,
-            }}
-          >
-            <div className="px-4 py-4">
-              <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">
-                Tables
-              </Typography>
-              <div className="space-y-1">
-                {[...AVAILABLE_TABLES.entries()].map(([id, config]) => (
-                  <button
-                    key={id}
-                    onClick={() => setSelectedTable(id)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:transition-none",
-                      selectedTable === id
-                        ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    {config.displayName}
-                  </button>
-                ))}
-              </div>
-
-              <Link
-                href="./queries"
-                className="mt-4 flex items-center gap-2 border-t border-border/50 px-3 pt-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
-              >
-                <CodeIcon className="h-4 w-4" />
-                Queries
-              </Link>
-            </div>
+      {/* containedHeight: page fills the shell under the header and scrolls internally,
+          so table rows cannot travel behind the floating dark-mode header. */}
+      <PageLayout fillWidth noPadding containedHeight>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0">
+            <AnalyticsEventLimitBanner />
           </div>
 
-          {/* Right content — flush to card edge; companion gap is on <main> in sidebar-layout */}
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 flex-col",
-              "[&_[role=grid]]:rounded-r-none",
-              "[&_[role=grid]_.sticky]:rounded-t-none",
-              // Toolbar row only (first child of sticky chrome) — analytics layout
-              "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
-              "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
-              "[&_[role=grid]_.sticky>div:first-child>div]:pr-0",
-              "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
-            )}
-          >
-            {selectedTable ? (
-              <TableContent key={selectedTable} tableId={selectedTable} />
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <Typography variant="secondary">
-                  Select a table to view its contents
-                </Typography>
+          <div className="shrink-0 px-3 py-2 lg:hidden">
+            <label htmlFor="analytics-table-selector" className="sr-only">
+              Table
+            </label>
+            <DesignSelectorDropdown
+              value={selectedTable ?? "events"}
+              onValueChange={setSelectedTable}
+              options={AVAILABLE_TABLE_OPTIONS}
+              placeholder="Select a table"
+              size="sm"
+              triggerId="analytics-table-selector"
+            />
+          </div>
+
+          {/* Dark: match the primary nav's rounded-2xl so the gap junction mirrors
+              the same radius on both sides (nav top-right ↔ tables top-left).
+              Light: only round the left edge — the shell card already owns the
+              top-right radius, so an inner tr curve reads as a stray notch. */}
+          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl dark:rounded-tr-2xl lg:ml-0.5">
+            {/* Use the same surface treatment as the primary sidebar so equal radii render
+                identically. Omit the right border to keep the sidebar/grid junction divider-free. */}
+            <div className="hidden w-48 min-h-0 flex-shrink-0 flex-col overflow-hidden rounded-l-2xl bg-black/[0.03] dark:border dark:border-r-0 dark:border-foreground/5 dark:bg-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm lg:flex">
+              <div className="min-h-0 flex-1 overflow-y-auto pl-2">
+                <div className="min-h-full px-4 py-4">
+                  <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">
+                    Tables
+                  </Typography>
+                  <div className="space-y-1">
+                    {[...AVAILABLE_TABLES.entries()].map(([id, config]) => (
+                      <button
+                        key={id}
+                        onClick={() => setSelectedTable(id)}
+                        className={cn(
+                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:transition-none",
+                        selectedTable === id
+                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                      >
+                        {config.displayName}
+                      </button>
+                    ))}
+                  </div>
+
+                  <Link
+                    href="./queries"
+                    className="mt-4 flex items-center gap-2 border-t border-border/50 px-3 pt-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
+                  >
+                    <CodeIcon className="h-4 w-4" />
+                    Queries
+                  </Link>
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Right content — grid fills remaining height and scrolls internally.
+                Sticky chrome is its own composited layer and paints square over a
+                parent's overflow:hidden radius, so dark mode clips the panel itself.
+                Below lg the tables sidebar is hidden and the grid owns both top
+                corners; at lg+ the sidebar owns the left radius. */}
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+                "[&_[role=grid]]:rounded-none",
+                "[&_[role=grid]_.sticky]:rounded-none",
+                // Toolbar row only (first child of sticky chrome) — analytics layout
+                "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
+                "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
+                "[&_[role=grid]_.sticky>div:first-child>div]:pr-3",
+                "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
+                "max-lg:dark:rounded-t-2xl max-lg:dark:[clip-path:inset(0_round_1rem_1rem_0_0)]",
+                "lg:dark:rounded-tr-2xl lg:dark:[clip-path:inset(0_round_0_1rem_0_0)]",
+              )}
+            >
+              {selectedTable ? (
+                <TableContent key={selectedTable} tableId={selectedTable} />
+              ) : (
+                <div className="flex flex-1 items-center justify-center">
+                  <Typography variant="secondary">
+                    Select a table to view its contents
+                  </Typography>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </PageLayout>

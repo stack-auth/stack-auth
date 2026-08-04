@@ -37,6 +37,29 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("flushes delayed commits before close resolves", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({ path, dbId: "close-drain" });
+    try {
+      const store = db.declareKvStore("store");
+      await store.setAll([{ key: buffer("key"), value: buffer("durable") }]);
+      // setAll intentionally returns before the 10ms commit batch is submitted.
+      // close must flush that application-level queue before closing LMDB.
+      await db.close();
+
+      const reopened = declareLmdbLowLevelDatabase({ path, dbId: "close-drain" });
+      try {
+        const reopenedStore = reopened.declareKvStore("store");
+        expect(text((await reopenedStore.get(buffer("key"))).buffer)).toBe("durable");
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("supports compareAndSet without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {

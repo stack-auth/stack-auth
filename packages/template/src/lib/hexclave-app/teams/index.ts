@@ -74,6 +74,7 @@ export type Team = {
   clientReadOnlyMetadata: any,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
+  removeUser(userId: string): Promise<void>,
   useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
   listInvitations(): Promise<SentTeamInvitation[]>,
   useInvitations(): SentTeamInvitation[], // THIS_LINE_PLATFORM react-like
@@ -128,6 +129,9 @@ export type ServerTeam = {
 
 type ServerListUsersOptionsBase = {
   cursor?: string,
+  /**
+   * Maximum number of users to return per page. Must be at most 1000.
+   */
   limit?: number,
   orderBy?: 'signedUpAt' | 'lastActiveAt',
   desc?: boolean,

@@ -52,6 +52,27 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "20"
+      # Install the repo's dependencies so the config file's SDK import (e.g.
+      # \`@hexclave/js\`) — and any other package it imports — resolves when the
+      # CLI evaluates it. The package manager is detected from the lockfile.
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable
+            pnpm install --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            corepack enable
+            yarn install --immutable
+          elif [ -f bun.lockb ] || [ -f bun.lock ]; then
+            npm install -g bun
+            bun install --frozen-lockfile
+          elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          elif [ -f package.json ]; then
+            npm install
+          else
+            echo "No package.json found at the repository root; skipping dependency install."
+          fi
       - name: Push Hexclave config
         env:
           HEXCLAVE_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}

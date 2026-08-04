@@ -18,7 +18,7 @@ jobs:
     name: wait-for-fast-fail
     runs-on: ubuntu-latest
     permissions:
-      checks: read
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/wait-for-check
         with:
-          check-name: fast-fail-tests
+          workflow-file: fast-fail-tests.yaml
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
@@ -76,7 +76,6 @@ jobs:
           cp apps/backend/.env.development apps/backend/.env.test.local
           cp apps/dashboard/.env.development apps/dashboard/.env.test.local
           cp apps/e2e/.env.development apps/e2e/.env.test.local
-          cp docs/.env.development docs/.env.test.local
           cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
           cp examples/demo/.env.development examples/demo/.env.test.local
           cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local

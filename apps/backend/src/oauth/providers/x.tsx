@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -34,6 +34,9 @@ export class XProvider extends OAuthBaseProvider {
     );
     if (!fetchRes.ok) {
       const text = await fetchRes.text();
+      if (fetchRes.status === 403 && text.includes("client-not-enrolled")) {
+        throw new StatusError(400, "X rejected the user info request because the X developer App is not attached to an X API Project. Attach the App to a Project in the X developer portal (https://developer.x.com/en/docs/projects/overview), then try signing in again.");
+      }
       throw new HexclaveAssertionError(`Failed to fetch user info from X: ${fetchRes.status} ${text}`, {
         status: fetchRes.status,
         text,

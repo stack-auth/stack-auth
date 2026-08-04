@@ -1,4 +1,4 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, type PrismaClientTransaction } from "@/prisma-client";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,22 +10,25 @@ function assertUuid(value: unknown, label: string): asserts value is string {
 }
 
 // Queues a sync request for a specific tenant if one isn't already pending.
-export async function enqueueExternalDbSync(tenancyId: string): Promise<void> {
+// The client is injectable so callers can run the insert on their own connection or transaction (e.g. an isolated schema in tests).
+export async function enqueueExternalDbSync(tenancyId: string, client: PrismaClientTransaction = globalPrismaClient): Promise<void> {
   assertUuid(tenancyId, "tenancyId");
-  await enqueueExternalDbSyncBatch([tenancyId]);
+  await enqueueExternalDbSyncBatch([tenancyId], client);
 }
 
 // Queues sync requests for multiple tenants in a single query.
 // Only inserts for tenants that don't already have a pending request.
-export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<void> {
+export async function enqueueExternalDbSyncBatch(tenancyIds: string[], client: PrismaClientTransaction = globalPrismaClient): Promise<void> {
   if (tenancyIds.length === 0) return;
 
   for (const id of tenancyIds) {
     assertUuid(id, "tenancyId");
   }
 
+  const sortedTenancyIds = [...new Set(tenancyIds)].sort();
+
   // Use unnest to pass array of UUIDs and insert all in one query
-  await globalPrismaClient.$executeRaw`
+  await client.$executeRaw`
     INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
     SELECT
       gen_random_uuid(),
@@ -37,7 +40,8 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
       ),
       NULL,
       'sentinel-sync-key-' || t.tenancy_id
-    FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
+    FROM unnest(${sortedTenancyIds}::uuid[]) AS t(tenancy_id)
+    ORDER BY t.tenancy_id
     ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
   `;
 }
