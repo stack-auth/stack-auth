@@ -122,6 +122,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Write comments as if the reader is new to the codebase but already familiar with the goal of the project. Don't explain what the project is trying to achieve; instead, explain the local context they'd be missing — why this particular piece of code exists, the non-obvious decisions behind it, and how it fits into the surrounding code.
 - If you create any temporary files, always suffix them with `.untracked` or `.untracked.<ext>` so they don't get committed to Git.
 - Super important: WE ARE AN OPEN-SOURCE PROJECT. NEVER PUT ANYTHING POTENTIALLY PRIVATE, SECURITY-SENSITIVE, OR CONFIDENTIAL INTO THE CODEBASE OR ANY PULL REQUEST DESCRIPTIONS. Don't mention customer data, security details, or other potentially sensitive information in comments, pull request descriptions, commit messages, or anywhere else.
+- Make sure that services that are run during Hexclave development respect the custom port prefix environment variable (instead of hardcoding 81xx ports).
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
