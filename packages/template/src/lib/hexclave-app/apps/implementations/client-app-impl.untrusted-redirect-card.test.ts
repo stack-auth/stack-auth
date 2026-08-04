@@ -4,6 +4,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { HexclaveSetupError } from "@hexclave/shared/dist/utils/errors";
 import { afterEach, describe, expect, it } from "vitest";
+import { getGlobalUiInstance, setGlobalUiInstance } from "../../../../in-page-ui/dom";
 import { SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY } from "../../../../setup-error-overlay";
 import { StackClientApp } from "../interfaces/client-app";
 
@@ -83,10 +84,12 @@ function createCrossDomainAuthRedirectUrl(app: StackClientApp<true>, redirectUri
 
 describe("cross-domain handoff rejected by the server", () => {
   afterEach(() => {
+    // The card's own cleanup, so that the focus trap it installed is released too and does not follow the next test.
+    getGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY)?.cleanup();
+    setGlobalUiInstance(SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY, null);
     for (const root of overlayRoots()) {
       root.remove();
     }
-    Reflect.deleteProperty(window, SETUP_ERROR_OVERLAY_GLOBAL_INSTANCE_KEY);
   });
 
   it("shows a setup error card even when the caller swallows the redirect failure", async () => {
@@ -108,13 +111,14 @@ describe("cross-domain handoff rejected by the server", () => {
       caught = error;
     }
 
-    expect(HexclaveSetupError.isSetupError(caught)).toBe(true);
-    expect(caught).toBeInstanceOf(Error);
+    if (!HexclaveSetupError.isSetupError(caught)) {
+      throw new Error(`Expected the rejected handoff to throw a setup error, got: ${caught}`);
+    }
     // The handoff query parameters have nothing to do with the rejection, so the message keeps only the checked part.
-    expect((caught as Error).message).toBe("Cross-domain auth redirect URL https://demo.example.test/ is not trusted.");
+    expect(caught.message).toBe("Cross-domain auth redirect URL https://demo.example.test/ is not trusted.");
     // The full URL is still handed to the error sinks, which is where `customCaptureExtraArgs` ends up.
-    expect(Reflect.get(caught as object, "customCaptureExtraArgs")).toMatchObject([{ url: untrustedUrl }]);
-    expect((caught as Error).cause).toBeInstanceOf(KnownErrors.RedirectUrlNotWhitelisted);
+    expect(Reflect.get(caught, "customCaptureExtraArgs")).toMatchObject([{ url: untrustedUrl }]);
+    expect(caught.cause).toBeInstanceOf(KnownErrors.RedirectUrlNotWhitelisted);
 
     expect(overlayRoots()).toHaveLength(1);
     const cardText = document.body.textContent;
