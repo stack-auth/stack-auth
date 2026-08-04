@@ -5,8 +5,13 @@ import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, moneyAmountSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 // Platform-wide analytics for the internal (platform team) dashboard. Aggregates
 // across EVERY customer project in a handful of grouped queries — never N per-project
@@ -71,11 +76,15 @@ function monthlyRecurringCents(product: unknown, priceId: string | null, quantit
   const intervalMonths = count * unitMonths;
   if (!(intervalMonths > 0)) return 0;
   // Amounts are decimal strings per currency (e.g. "9.99"); we sum USD only.
+  // Convert via moneyAmountToStripeUnits — never `Number(USD) * 100`, which
+  // yields non-integers for values like 79.99 (→ 7998.999999999999).
   const usd = (price as Record<string, unknown>).USD;
-  const amount = usd == null ? NaN : Number(usd);
-  if (!Number.isFinite(amount)) return 0;
+  if (typeof usd !== "string" || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(usd)) {
+    return 0;
+  }
+  const amountStripeUnits = moneyAmountToStripeUnits(usd as MoneyAmount, USD_CURRENCY);
   if (!Number.isFinite(quantity) || quantity < 0) return 0;
-  return Math.round((amount * 100 * quantity) / intervalMonths);
+  return Math.round((amountStripeUnits * quantity) / intervalMonths);
 }
 
 const KpiSchema = yupObject({

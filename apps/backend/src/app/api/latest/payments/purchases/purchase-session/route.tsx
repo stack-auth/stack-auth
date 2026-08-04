@@ -9,9 +9,14 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
-import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { moneyAmountSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -89,17 +94,18 @@ export const POST = createSmartRouteHandler({
       throw new HexclaveAssertionError("Price not resolved for purchase session");
     }
 
-    // Validate the price amount up-front so a malformed config can't slip past
-    // the Stripe-minimum guards below and produce a raw Stripe error at
-    // PaymentIntent/Subscription.create time.
-    const priceAmount = Number(selectedPrice.USD);
-    if (!Number.isFinite(priceAmount) || priceAmount < 0) {
+    // Validate up-front so a malformed config returns 400 instead of letting
+    // moneyAmountToStripeUnits throw a yup ValidationError that becomes a 500.
+    // Also never use `Number(USD) * 100` — e.g. 79.99 → 7998.999999999999 and
+    // Stripe rejects with parameter_invalid_integer.
+    if (selectedPrice.USD == null || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(selectedPrice.USD)) {
       throw new StatusError(400, `Price amount must be a finite, non-negative number (got ${JSON.stringify(selectedPrice.USD)})`);
     }
+    const unitAmountStripeUnits = moneyAmountToStripeUnits(selectedPrice.USD as MoneyAmount, USD_CURRENCY);
     // TODO(default-plans): when default/free plans become first-class, route
     // these directly via an ensureDefaultPlan-style grant instead of forcing
     // callers to configure an interval just to make Stripe happy.
-    const isFreePrice = priceAmount === 0;
+    const isFreePrice = unitAmountStripeUnits === 0;
     if (isFreePrice && !selectedPrice.interval) {
       throw new StatusError(400, "Free products must have a billing interval");
     }
@@ -109,7 +115,11 @@ export const POST = createSmartRouteHandler({
     // PaymentIntent.create time. Recurring sub items don't have this minimum
     // (handled above for the $0 case).
     const stripeOneTimeMin = getStripeOneTimeMinAmount('USD');
-    if (!selectedPrice.interval && priceAmount > 0 && priceAmount < stripeOneTimeMin) {
+    const minOneTimeStripeUnits = moneyAmountToStripeUnits(
+      stripeOneTimeMin.toFixed(USD_CURRENCY.decimals) as MoneyAmount,
+      USD_CURRENCY,
+    );
+    if (!selectedPrice.interval && unitAmountStripeUnits > 0 && unitAmountStripeUnits < minOneTimeStripeUnits) {
       throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
     }
 
@@ -153,7 +163,7 @@ export const POST = createSmartRouteHandler({
               id: existingItem.id,
               price_data: {
                 currency: "usd",
-                unit_amount: Number(selectedPrice.USD) * 100,
+                unit_amount: unitAmountStripeUnits,
                 product: product.id,
                 recurring: {
                   interval_count: selectedPrice.interval![0],
@@ -217,7 +227,7 @@ export const POST = createSmartRouteHandler({
     }
     // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
-      const amountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+      const amountCents = unitAmountStripeUnits * Math.max(1, quantity);
       const applicationFeeAmount = computeApplicationFeeAmount({
         amountStripeUnits: amountCents,
         projectId: tenancy.project.id,
@@ -280,7 +290,7 @@ export const POST = createSmartRouteHandler({
       items: [{
         price_data: {
           currency: "usd",
-          unit_amount: Number(selectedPrice.USD) * 100,
+          unit_amount: unitAmountStripeUnits,
           product: product.id,
           recurring: {
             interval_count: selectedPrice.interval![0],

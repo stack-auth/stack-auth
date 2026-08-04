@@ -3,8 +3,14 @@
 import { DesignInput } from "@/components/design-components/input";
 import { DesignButton } from "@/components/design-components/button";
 import { Typography } from "@/components/ui";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { shortenedInterval } from "./purchase-utils";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 type PriceData = {
   USD?: string,
@@ -28,10 +34,12 @@ export function PurchaseQuantitySelector({
   selectedPriceId,
   priceData,
 }: Props) {
-  const unitPriceUsd = Number(priceData.USD ?? "0");
-  const totalAmount = selectedPriceId && Number.isFinite(unitPriceUsd)
-    ? (unitPriceUsd * Math.max(0, quantityNumber)).toFixed(2)
-    : "0.00";
+  // Scale in integer minor units — float `19.99 * 3` is 59.97000000000001.
+  let totalAmount = "0.00";
+  if (selectedPriceId && priceData.USD != null) {
+    const unitCents = moneyAmountToStripeUnits(priceData.USD as MoneyAmount, USD_CURRENCY);
+    totalAmount = stripeUnitsToMoneyAmount(unitCents * Math.max(0, quantityNumber), USD_CURRENCY);
+  }
 
   return (
     <div className="space-y-4">

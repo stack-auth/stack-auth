@@ -19,6 +19,30 @@ import { createSmartRouteHandler, SmartRouteHandler, SmartRouteHandlerOverloadMe
 
 const MAX_ATTEMPTS_PER_CODE = 20;
 
+export async function claimVerificationCode(options: {
+  projectId: string,
+  branchId: string,
+  type: VerificationCodeType,
+  code: string,
+}): Promise<void> {
+  const claimResult = await globalPrismaClient.verificationCode.updateMany({
+    where: {
+      projectId: options.projectId,
+      branchId: options.branchId,
+      code: options.code,
+      type: options.type,
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    data: {
+      usedAt: new Date(),
+    },
+  });
+  if (claimResult.count === 0) {
+    throw new KnownErrors.VerificationCodeAlreadyUsed();
+  }
+}
+
 type CreateCodeOptions<Data, Method extends {}, CallbackUrl extends string | URL | undefined, AlreadyParsed extends boolean = true> = ProjectBranchCombo<AlreadyParsed> & {
   method: Method,
   expiresInMs?: number,
@@ -232,22 +256,20 @@ export function createVerificationCodeHandler<
       switch (handlerType) {
         case 'post': {
           // Atomic claim — conditional WHERE closes the TOCTOU against the checks above.
-          const claimResult = await globalPrismaClient.verificationCode.updateMany({
-            where: {
+          // claimVerificationCode throws VerificationCodeAlreadyUsed if the code was
+          // claimed between the checks above and here; log that race as a used_otp failure.
+          try {
+            await claimVerificationCode({
               projectId: auth.project.id,
-              branchId: auth.tenancy.branchId,
-              code,
+              branchId: auth.branchId,
               type: options.type,
-              usedAt: null,
-              expiresAt: { gt: new Date() },
-            },
-            data: {
-              usedAt: new Date(),
-            },
-          });
-          if (claimResult.count === 0) {
-            logOtpFailure("used_otp", verificationCode.method);
-            throw new KnownErrors.VerificationCodeAlreadyUsed();
+              code,
+            });
+          } catch (error) {
+            if (KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)) {
+              logOtpFailure("used_otp", verificationCode.method);
+            }
+            throw error;
           }
 
           return await options.handler(auth.tenancy, validatedMethod, validatedData, requestBody as any, auth.user, getApiUrlForRequest(fullReq));

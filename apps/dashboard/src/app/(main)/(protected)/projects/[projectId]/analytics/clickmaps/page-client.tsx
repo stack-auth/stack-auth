@@ -20,32 +20,23 @@ import {
 import { DesignAnalyticsCard } from "@/components/design-components/analytics-card";
 import { useRouter } from "@/components/router";
 import type { AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
-import {
-  CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
-  CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
+import { createClickmapOverlaySnippet } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { ArrowRight, GlobeHemisphereWest, InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { getClickmapOriginOptions, normalizeClickmapOrigin, type ClickmapOrigin } from "./clickmap-origins";
+import { openBrowserActionInNewTab } from "@/lib/browser-actions";
+import { getTrustedOriginOptions, normalizeTrustedOrigin, type TrustedOrigin } from "@/lib/trusted-origins";
 
 // The clickmap token is a self-describing JWT (its payload carries the project
 // and origin it was minted for), so the snippet only has to hand over the token
 // itself — the in-page overlay derives everything else from it.
-function createConsoleSnippet(token: string): string {
-  return [
-    `sessionStorage.setItem(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
-    `window.dispatchEvent(new Event(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
-  ].join("\n");
-}
-
 function ClickmapTokenDialog(props: {
-  origin: ClickmapOrigin | null,
+  origin: TrustedOrigin | null,
   token: AnalyticsClickmapTokenResponse | null,
   autoCopied?: boolean,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const snippet = props.token == null ? "" : createConsoleSnippet(props.token.token);
+  const snippet = props.token == null ? "" : createClickmapOverlaySnippet(props.token.token);
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -63,7 +54,7 @@ function ClickmapTokenDialog(props: {
             <>
               <CopyField type="textarea" value={snippet} monospace fixedSize height={124} initialCopied={props.autoCopied} />
               <Typography type="p" variant="secondary" className="text-sm">
-                The site will use normal client authentication plus this origin-bound clickmap token to fetch aggregate clickmap data.
+                The site will use normal client authentication plus this website-specific clickmap token to fetch aggregate clickmap data.
               </Typography>
             </>
           )}
@@ -95,7 +86,7 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const config = project.useConfig();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOrigin, setSelectedOrigin] = useState<ClickmapOrigin | null>(null);
+  const [selectedOrigin, setSelectedOrigin] = useState<TrustedOrigin | null>(null);
   const [token, setToken] = useState<AnalyticsClickmapTokenResponse | null>(null);
   const [autoCopied, setAutoCopied] = useState(false);
   const [customOrigin, setCustomOrigin] = useState("");
@@ -105,10 +96,26 @@ export default function PageClient() {
   }, []);
 
   const { origins, wildcardDomains } = useMemo(() => {
-    return getClickmapOriginOptions(config.domains.trustedDomains);
+    return getTrustedOriginOptions(config.domains.trustedDomains);
   }, [config.domains.trustedDomains]);
 
-  async function showClickmap(origin: ClickmapOrigin) {
+  async function launchBrowserAction(origin: TrustedOrigin) {
+    await openBrowserActionInNewTab(adminApp, {
+      type: "clickmap-overlay",
+      origin: origin.origin,
+    });
+  }
+
+  function parseCustomOrigin(): TrustedOrigin | null {
+    const origin = normalizeTrustedOrigin(customOrigin);
+    if (origin == null) {
+      window.alert("Enter a valid website address, for example https://app.example.com.");
+      return null;
+    }
+    return { id: "exact-origin", origin };
+  }
+
+  async function showClickmapFallback(origin: TrustedOrigin) {
     setSelectedOrigin(origin);
     setToken(null);
     setDialogOpen(true);
@@ -126,7 +133,7 @@ export default function PageClient() {
     setToken(created);
     setAutoCopied(false);
     try {
-      await navigator.clipboard.writeText(createConsoleSnippet(created.token));
+      await navigator.clipboard.writeText(createClickmapOverlaySnippet(created.token));
       setAutoCopied(true);
     } catch {
       // Clipboard access can be denied (e.g. lost user-gesture after the
@@ -138,14 +145,14 @@ export default function PageClient() {
     <AppEnabledGuard appId="clickmaps">
       <PageLayout
         title="Clickmaps"
-        description="Launch the clickmap toolbar on a trusted domain."
+        description="Launch the clickmap toolbar on a trusted website."
         fillWidth
       >
         <DesignAnalyticsCard gradient="slate" className="p-4">
           <div className="space-y-1">
-            <Typography className="font-medium">Exact page origin</Typography>
+            <Typography className="font-medium">Exact page address</Typography>
             <Typography type="p" variant="secondary" className="text-xs">
-              Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
+              Use the exact website address shown in the browser address bar, including for wildcard domains.
             </Typography>
             <div className="flex items-center gap-2">
               <Input className="flex-1" value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
@@ -153,18 +160,24 @@ export default function PageClient() {
                 className="shrink-0 gap-1.5"
                 disabled={customOrigin.trim() === ""}
                 onClick={async () => {
-                  const origin = normalizeClickmapOrigin(customOrigin);
-                  if (origin == null) {
-                    window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
-                    return;
-                  }
-                  await showClickmap({ id: "exact-origin", origin });
+                  const origin = parseCustomOrigin();
+                  if (origin != null) await launchBrowserAction(origin);
                 }}
               >
-                Show clickmap
+                Open clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
+            <Button
+              variant="secondary"
+              disabled={customOrigin.trim() === ""}
+              onClick={async () => {
+                const origin = parseCustomOrigin();
+                if (origin != null) await showClickmapFallback(origin);
+              }}
+            >
+              Copy console snippet instead
+            </Button>
             {wildcardDomains.length > 0 && (
               <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
                 <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -182,7 +195,7 @@ export default function PageClient() {
               <span>
                 {wildcardDomains.length === 0
                   ? "Add a trusted domain before launching a production clickmap."
-                  : "Enter an exact origin that matches a wildcard domain, or add a concrete trusted domain."}
+                  : "Enter an exact website address that matches a wildcard domain, or add a concrete trusted domain."}
               </span>
               <Button
                 className="shrink-0 gap-1.5"
@@ -204,14 +217,19 @@ export default function PageClient() {
                   <div className="min-w-0">
                     <Typography className="truncate font-medium">{origin.origin}</Typography>
                     <Typography type="p" variant="secondary" className="text-xs">
-                      24-hour overlay token, scoped to this origin
+                      24-hour overlay token, scoped to this website
                     </Typography>
                   </div>
                 </div>
-                <Button className="gap-1.5" onClick={async () => await showClickmap(origin)}>
-                  Show clickmap
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button onClick={() => launchBrowserAction(origin)}>
+                    Open clickmap
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="secondary" onClick={async () => await showClickmapFallback(origin)}>
+                    Copy console snippet
+                  </Button>
+                </div>
               </div>
             ))}
           </DesignAnalyticsCard>

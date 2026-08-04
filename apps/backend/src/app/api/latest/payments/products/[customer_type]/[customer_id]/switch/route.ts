@@ -7,12 +7,16 @@ import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, moneyAmountSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import Stripe from "stripe";
+
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
+  ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 
 export const POST = createSmartRouteHandler({
@@ -182,9 +186,12 @@ export const POST = createSmartRouteHandler({
     if (!selectedPrice.interval) {
       throw new StatusError(400, "Price not found for target product.");
     }
-    if (selectedPrice.USD === undefined) {
-      throw new StatusError(400, "Target price must include a USD amount.");
+    if (selectedPrice.USD == null || !moneyAmountSchema(USD_CURRENCY).defined().isValidSync(selectedPrice.USD)) {
+      throw new StatusError(400, `Price amount must be a finite, non-negative number (got ${JSON.stringify(selectedPrice.USD)})`);
     }
+    // Never `Number(USD) * 100` — e.g. 79.99 → 7998.999999999999 and Stripe
+    // rejects with parameter_invalid_integer.
+    const unitAmountStripeUnits = moneyAmountToStripeUnits(selectedPrice.USD as MoneyAmount, USD_CURRENCY);
     const selectedInterval = selectedPrice.interval;
     const quantity = body.quantity ?? existingSub?.quantity ?? 1;
     if (body.quantity !== undefined && quantity !== 1 && toProduct.stackable !== true) {
@@ -269,7 +276,7 @@ export const POST = createSmartRouteHandler({
           id: existingItem.id,
           price_data: {
             currency: "usd",
-            unit_amount: Number(selectedPrice.USD) * 100,
+            unit_amount: unitAmountStripeUnits,
             product: stripeProduct.id,
             recurring: {
               interval_count: selectedInterval[0],
@@ -333,7 +340,7 @@ export const POST = createSmartRouteHandler({
         items: [{
           price_data: {
             currency: "usd",
-            unit_amount: Number(selectedPrice.USD) * 100,
+            unit_amount: unitAmountStripeUnits,
             product: stripeProduct.id,
             recurring: {
               interval_count: selectedInterval[0],

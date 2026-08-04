@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { HexclaveClientApp, HexclaveClientAppConstructorOptions, HexclaveClientAppJson } from "../interfaces/client-app";
+import { stripBrowserActionQueryParam } from "./client-app-impl";
 
 const baseOptions = {
   baseUrl: "http://localhost:12345",
@@ -118,5 +119,41 @@ describe("HexclaveClientApp automatic side effects", () => {
     const second = HexclaveClientApp[hexclaveAppInternalsSymbol].fromClientJson(json);
 
     expect(second).toBe(first);
+  });
+
+  it("keeps stripping the browser action parameter after a router restores it", () => {
+    vi.useFakeTimers();
+    const previousWindow = Reflect.get(globalThis, "window");
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    let currentHref = "http://localhost:12345/?hexclave_action_id=action-id";
+    const browserGlobal = {
+      location: {
+        get href() {
+          return currentHref;
+        },
+      },
+      history: {
+        state: null,
+        replaceState: (_state: null, _title: string, url: string | URL) => {
+          currentHref = String(url);
+        },
+      },
+      setTimeout,
+    };
+
+    Reflect.set(globalThis, "window", browserGlobal);
+    try {
+      stripBrowserActionQueryParam();
+      currentHref = "http://localhost:12345/?hexclave_action_id=action-id";
+      vi.runAllTimers();
+      expect(currentHref).toBe("http://localhost:12345/");
+    } finally {
+      vi.useRealTimers();
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
   });
 });
