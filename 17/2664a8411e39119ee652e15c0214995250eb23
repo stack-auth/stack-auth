@@ -1,0 +1,21 @@
+.github/workflows/setup-tests.yaml
+  s_1b8d7e574d384a::t_b520be1c98c476 62-64
+apps/backend/package.json
+  s_1b8d7e574d384a::t_46703b7ca34faa 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "172664a8411e39119ee652e15c0214995250eb23",
+  "prompts": {},
+  "sessions": {
+    "s_1b8d7e574d384a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf52-d5e5-7432-a63f-9edcbbd73b88",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
