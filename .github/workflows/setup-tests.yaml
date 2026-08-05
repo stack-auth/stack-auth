@@ -59,6 +59,9 @@ jobs:
       - run: pnpm run start-deps
 
       - name: Start development services with persistent logs
+        env:
+          # Package/codegen watchers still run, but CI keeps the already-built backend process stable.
+          STACK_BACKEND_DEV_DISABLE_WATCH: "true"
         run: |
           dev_log="$RUNNER_TEMP/hexclave-dev.untracked.log"
           (
