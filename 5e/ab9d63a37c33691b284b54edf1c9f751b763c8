@@ -1,0 +1,54 @@
+apps/backend/src/server/trusted-proxy.test.ts
+  s_5ffc71306a9e04::t_c2e54f7f7958a4 30,34,46
+  s_5ffc71306a9e04::t_0e54a1c5748fa3 4,35-38,45,48-65,67-71
+  s_5ffc71306a9e04::t_f69fc65c135b7f 33,39-44
+apps/backend/src/prisma-client.tsx
+  s_5ffc71306a9e04::t_0e54a1c5748fa3 131
+apps/backend/src/server/start-command.test.ts
+  s_5ffc71306a9e04::t_77eed67f3aedc3 16-21
+apps/backend/src/server/app.ts
+  s_5ffc71306a9e04::t_3011a69bc3f6f0 96,131,159,176-181,212-216
+  s_5ffc71306a9e04::t_694f49af1529de 217-218
+apps/backend/src/server/standalone.ts
+  s_5ffc71306a9e04::t_3191cb6537ad21 10,14,29-32,59,61-65
+docker/backend/Dockerfile
+  s_5ffc71306a9e04::t_3191cb6537ad21 86
+apps/backend/src/server/shutdown.ts
+  s_5ffc71306a9e04::t_3191cb6537ad21 14,32-50
+  s_5ffc71306a9e04::t_f1e041f6301fa1 51
+apps/backend/src/server/node-environment.ts
+  s_5ffc71306a9e04::t_77eed67f3aedc3 3
+apps/backend/src/server/registry.ts
+  s_5ffc71306a9e04::t_1172e2f0be2260 19,26-31,34-37,39,186-201
+  s_5ffc71306a9e04::t_36086d6a517bb5 202
+apps/backend/src/server/shutdown.test.ts
+  s_5ffc71306a9e04::t_3191cb6537ad21 2,10,12-28
+apps/backend/src/server/cron-monitor.ts
+  s_5ffc71306a9e04::t_1fde4b9a3945a7 2,27-30,38
+  s_5ffc71306a9e04::t_2ff8e2a75daed9 47-48,56-59,71,83,87-88,102-125
+apps/backend/src/server/compression.ts
+  s_5ffc71306a9e04::t_ab71b2304340c6 11,50,65-66,69-77,91-92,94,143,145-159
+apps/backend/src/instrument.ts
+  s_5ffc71306a9e04::t_ffd91c2075b3e9 53-55
+  s_5ffc71306a9e04::t_e938c696dcc62d 42
+docker/server/entrypoint.sh
+  s_5ffc71306a9e04::t_3191cb6537ad21 207,214-217,220,223-230,232,241-242
+apps/backend/src/app/health/route.tsx
+  s_5ffc71306a9e04::t_e938c696dcc62d 8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5eab9d63a37c33691b284b54edf1c9f751b763c8",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
