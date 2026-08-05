@@ -174,7 +174,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
     if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
       const shouldSanityTest = !options.disableSanityTest && Math.random() < 0.05;
       if (shouldSanityTest) {
-        runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
+        runAsynchronouslyAndWaitUntil(runSanityTestWithoutExpectedCancellation(code, options));
       }
 
       return await runWithFallback(code, options);
@@ -186,6 +186,19 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
       return await runWithoutFallback(code, options);
     }
   });
+}
+
+async function runSanityTestWithoutExpectedCancellation(code: string, options: ExecuteJavascriptOptions): Promise<void> {
+  try {
+    await runSanityTest(code, options);
+  } catch (error) {
+    // Client disconnects are expected cancellation, not failed canary executions.
+    // Only suppress the exact reason thrown by this signal; unrelated failures
+    // still reach runAsynchronouslyAndWaitUntil's error reporting.
+    if (options.signal?.aborted !== true || error !== options.signal.reason) {
+      throw error;
+    }
+  }
 }
 
 /**
