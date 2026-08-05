@@ -420,7 +420,9 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
     query: `
       SELECT
         toDate(event_at) AS day,
-        uniqExact(assumeNotNull(user_id)) AS dau
+        -- Counting hashes instead of the raw uuids keeps the count exact while
+        -- holding 8 bytes per distinct user per day group rather than 36.
+        uniqExact(sipHash64(assumeNotNull(user_id))) AS dau
       FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
@@ -472,7 +474,7 @@ async function loadHourlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymo
     query: `
       SELECT
         toStartOfHour(event_at) AS hour,
-        uniqExact(assumeNotNull(user_id)) AS dau
+        uniqExact(sipHash64(assumeNotNull(user_id))) AS dau
       FROM analytics_internal.events
       WHERE event_type = '$token-refresh'
         AND project_id = {projectId:String}
@@ -528,6 +530,13 @@ async function loadDailyActiveSplitFromClickhouse(options: {
     : "";
 
   const clickhouseClient = getClickhouseAdminClientForMetrics();
+  // The `active_days` bitmask below dedupes days per entity, so it must cover
+  // the whole window plus today in a UInt64.
+  const windowDays = METRICS_WINDOW_DAYS + 1;
+  if (windowDays > 64) {
+    throw new HexclaveAssertionError("The daily-active split packs one bit per day of the metrics window into a UInt64, so the window can't exceed 63 days.", { windowDays });
+  }
+
   // Note: the inner `assumeNotNull(${idCol}) AS entity_id` must not reuse the
   // column name, or ClickHouse re-resolves `WHERE ${idCol} IS NOT NULL`
   // against the alias (assumeNotNull returns '' for NULLs, which passes the
@@ -536,23 +545,36 @@ async function loadDailyActiveSplitFromClickhouse(options: {
   // The LEFT JOIN's `min(event_at)` subquery below is intentionally unbounded:
   // bounding it would reclassify entities first seen >30d ago and active today
   // as "new" instead of "reactivated".
+  //
+  // Shape: one row per entity holding a bitmask of the days it was active, then
+  // fan that back out to one row per (entity, active day). The straightforward
+  // shape — DISTINCT (day, entity_id) plus a `lagInFrame` window to find each
+  // entity's previous active day — has to hold every (day, entity) pair in
+  // memory at once, which is up to 31x the number of entities and blew
+  // `max_memory_usage` on busy projects (a 500 there takes down the whole
+  // metrics endpoint). The bitmask collapses that to one row per entity, and
+  // "was active yesterday" becomes a bit test on the neighbouring day instead
+  // of a window function. Entities are keyed by hash for the same reason: only
+  // per-day counts are read back, so there's no need to carry 36-char uuid
+  // strings through the aggregation and the join. A 64-bit collision would
+  // merge two entities' first-seen dates; at these cardinalities that is
+  // ~1e-8 likely.
   const result = await clickhouseClient.query({
     query: `
       SELECT
-        toString(w.day) AS day,
+        toString(addDays(toDate({since:DateTime}), idx)) AS day,
         count() AS total_count,
-        countIf(f.first_date = w.day) AS new_count,
-        countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
-        countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
+        countIf(f_first_date = addDays(toDate({since:DateTime}), idx)) AS new_count,
+        countIf(f_first_date < addDays(toDate({since:DateTime}), idx) AND idx > 0 AND bitTest(active_days, if(idx = 0, 0, idx - 1))) AS retained_count,
+        countIf(f_first_date < addDays(toDate({since:DateTime}), idx) AND (idx = 0 OR NOT bitTest(active_days, if(idx = 0, 0, idx - 1)))) AS reactivated_count
       FROM (
         SELECT
-          day,
-          entity_id,
-          lagInFrame(day, 1) OVER (PARTITION BY entity_id ORDER BY day) AS prev_day
+          a.active_days AS active_days,
+          f.first_date AS f_first_date
         FROM (
-          SELECT DISTINCT
-            toDate(event_at) AS day,
-            assumeNotNull(${idCol}) AS entity_id
+          SELECT
+            sipHash64(assumeNotNull(${idCol})) AS entity_id,
+            groupBitOr(bitShiftLeft(toUInt64(1), toUInt8(dateDiff('day', toDate({since:DateTime}), toDate(event_at))))) AS active_days
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
@@ -561,23 +583,26 @@ async function loadDailyActiveSplitFromClickhouse(options: {
             AND event_at >= {since:DateTime}
             AND event_at < {untilExclusive:DateTime}
             ${anonFilter}
-        )
-      ) AS w
-      LEFT JOIN (
-        SELECT
-          assumeNotNull(${idCol}) AS entity_id,
-          toDate(min(event_at)) AS first_date
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND ${idCol} IS NOT NULL
-          AND event_at < {untilExclusive:DateTime}
-          ${anonFilter}
-        GROUP BY entity_id
-      ) AS f USING (entity_id)
-      GROUP BY w.day
-      ORDER BY w.day ASC
+          GROUP BY entity_id
+        ) AS a
+        LEFT JOIN (
+          SELECT
+            sipHash64(assumeNotNull(${idCol})) AS entity_id,
+            toDate(min(event_at)) AS first_date
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND ${idCol} IS NOT NULL
+            AND event_at < {untilExclusive:DateTime}
+            ${anonFilter}
+          GROUP BY entity_id
+        ) AS f USING (entity_id)
+      )
+      ARRAY JOIN range({windowDays:UInt32}) AS idx
+      WHERE bitTest(active_days, idx)
+      GROUP BY idx
+      ORDER BY idx ASC
     `,
     query_params: {
       projectId: tenancy.project.id,
@@ -585,6 +610,7 @@ async function loadDailyActiveSplitFromClickhouse(options: {
       since: formatClickhouseDateTimeParam(since),
       untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
       includeAnonymous: includeAnonymous ? 1 : 0,
+      windowDays,
     },
     format: "JSONEachRow",
   });
