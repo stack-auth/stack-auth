@@ -3,11 +3,18 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import vercelConfig from "../../vercel.json";
 
 type MonitorConfig = NonNullable<Parameters<typeof Sentry.withMonitor>[2]>;
-type MonitorRunner = <T>(
+type MonitorRunner = (
   monitorSlug: string,
-  callback: () => T,
+  callback: () => Promise<Response>,
   monitorConfig: MonitorConfig,
-) => T;
+) => Promise<Response>;
+
+class FailedCronResponseError extends Error {
+  constructor(readonly response: Response) {
+    super(`Vercel cron handler returned HTTP ${response.status}`);
+    this.name = "FailedCronResponseError";
+  }
+}
 
 const vercelCronsByPath = new Map(
   vercelConfig.crons.map((cron) => [cron.path, cron]),
@@ -18,52 +25,70 @@ const vercelCronsByPath = new Map(
  * only genuine Vercel Cron requests create check-ins, and the configured path
  * remains the monitor slug so existing monitors continue receiving check-ins.
  */
-export function withVercelCronMonitor<T>(
+export async function withVercelCronMonitor(
   request: Request,
   normalizedPath: string,
-  callback: () => T,
+  callback: () => Promise<Response>,
   runMonitor: MonitorRunner = Sentry.withMonitor,
-): T {
+): Promise<Response> {
   const cronSecret = getEnvVariable("CRON_SECRET", "");
   if (cronSecret === ""
     || request.headers.get("user-agent") !== "vercel-cron/1.0"
     || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return callback();
+    return await callback();
   }
   const cron = vercelCronsByPath.get(normalizedPath);
   if (cron == null) {
-    return callback();
+    return await callback();
   }
-  return runMonitor(cron.path, callback, {
-    // The longest-running cron (workflow-engine-step) may legitimately use the full
-    // Vercel function budget of 800 seconds (see FUNCTION_BUDGET_MS in
-    // app/api/latest/internal/workflow-engine-step/route.tsx and `maxDuration: 800` in
-    // src/index.ts): ceil(800 / 60) = 14 minutes, plus one minute of slack so a
-    // full-budget tick doesn't trigger a false "timed out" Sentry check-in. Revisit
-    // this value if maxDuration changes.
-    maxRuntime: 15,
-    schedule: {
-      type: "crontab",
-      value: cron.schedule,
-    },
-  });
+  try {
+    return await runMonitor(cron.path, async () => {
+      const response = await callback();
+      // Sentry's withMonitor treats any resolved callback as a successful check-in. Route
+      // handlers resolve normally for HTTP error responses, so temporarily reject here to
+      // mark the monitor as failed, then recover the original Response below. This preserves
+      // the exact status, headers, and body returned to Vercel while keeping cron telemetry
+      // aligned with the scheduler-visible outcome.
+      if (!response.ok) {
+        throw new FailedCronResponseError(response);
+      }
+      return response;
+    }, {
+      // The longest-running cron (workflow-engine-step) may legitimately use the full
+      // Vercel function budget of 800 seconds (see FUNCTION_BUDGET_MS in
+      // app/api/latest/internal/workflow-engine-step/route.tsx and `maxDuration: 800` in
+      // src/index.ts): ceil(800 / 60) = 14 minutes, plus one minute of slack so a
+      // full-budget tick doesn't trigger a false "timed out" Sentry check-in. Revisit
+      // this value if maxDuration changes.
+      maxRuntime: 15,
+      schedule: {
+        type: "crontab",
+        value: cron.schedule,
+      },
+    });
+  } catch (error) {
+    if (error instanceof FailedCronResponseError) {
+      return error.response;
+    }
+    throw error;
+  }
 }
 
 const vitest = import.meta.vitest;
 if (vitest != null) {
-  const { afterEach, test, vi } = vitest;
+  const { afterEach, expect, test, vi } = vitest;
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  test("Vercel cron requests retain their configured Sentry monitor", ({ expect }) => {
+  test("Vercel cron requests retain their configured Sentry monitor", async ({ expect }) => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     const calls: { monitorSlug: string, monitorConfig: MonitorConfig }[] = [];
-    const runMonitor: MonitorRunner = (monitorSlug, callback, monitorConfig) => {
+    const runMonitor: MonitorRunner = async (monitorSlug, callback, monitorConfig) => {
       calls.push({ monitorSlug, monitorConfig });
-      return callback();
+      return await callback();
     };
-    const result = withVercelCronMonitor(
+    const result = await withVercelCronMonitor(
       new Request("http://localhost/api/latest/internal/workflow-engine-step", {
         headers: {
           authorization: "Bearer test-cron-secret",
@@ -71,11 +96,11 @@ if (vitest != null) {
         },
       }),
       "/api/latest/internal/workflow-engine-step",
-      () => "completed",
+      async () => new Response("completed"),
       runMonitor,
     );
 
-    expect({ result, calls }).toMatchInlineSnapshot(`
+    expect({ resultStatus: result.status, calls }).toMatchInlineSnapshot(`
       {
         "calls": [
           {
@@ -89,32 +114,78 @@ if (vitest != null) {
             "monitorSlug": "/api/latest/internal/workflow-engine-step",
           },
         ],
-        "result": "completed",
+        "resultStatus": 200,
       }
     `);
   });
 
-  test("ordinary requests do not create Sentry cron check-ins", ({ expect }) => {
+  test.each([401, 500])(
+    "Vercel cron HTTP %s responses produce failed check-ins without changing the response",
+    async (status) => {
+      vi.stubEnv("CRON_SECRET", "test-cron-secret");
+      const monitorOutcomes: string[] = [];
+      const runMonitor: MonitorRunner = async (_monitorSlug, callback) => {
+        try {
+          const result = await callback();
+          monitorOutcomes.push("ok");
+          return result;
+        } catch (error) {
+          monitorOutcomes.push("error");
+          throw error;
+        }
+      };
+      const response = await withVercelCronMonitor(
+        new Request("http://localhost/api/latest/internal/email-queue-step", {
+          headers: {
+            authorization: "Bearer test-cron-secret",
+            "user-agent": "vercel-cron/1.0",
+          },
+        }),
+        "/api/latest/internal/email-queue-step",
+        async () => new Response("original body", {
+          status,
+          headers: {
+            "x-original-header": "preserved",
+          },
+        }),
+        runMonitor,
+      );
+
+      expect({
+        status: response.status,
+        body: await response.text(),
+        originalHeader: response.headers.get("x-original-header"),
+        monitorOutcomes,
+      }).toEqual({
+        status,
+        body: "original body",
+        originalHeader: "preserved",
+        monitorOutcomes: ["error"],
+      });
+    },
+  );
+
+  test("ordinary requests do not create Sentry cron check-ins", async ({ expect }) => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     let monitorCalls = 0;
-    const runMonitor: MonitorRunner = (_monitorSlug, callback) => {
+    const runMonitor: MonitorRunner = async (_monitorSlug, callback) => {
       monitorCalls++;
-      return callback();
+      return await callback();
     };
-    const result = withVercelCronMonitor(
+    const result = await withVercelCronMonitor(
       new Request("http://localhost/api/latest/internal/email-queue-step"),
       "/api/latest/internal/email-queue-step",
-      () => "completed",
+      async () => new Response("completed"),
       runMonitor,
     );
 
-    expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+    expect({ resultStatus: result.status, monitorCalls }).toEqual({ resultStatus: 200, monitorCalls: 0 });
   });
 
-  test("spoofed Vercel cron requests do not create check-ins", ({ expect }) => {
+  test("spoofed Vercel cron requests do not create check-ins", async ({ expect }) => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     let monitorCalls = 0;
-    const result = withVercelCronMonitor(
+    const result = await withVercelCronMonitor(
       new Request("http://localhost/api/latest/internal/email-queue-step", {
         headers: {
           authorization: "Bearer wrong-secret",
@@ -122,13 +193,13 @@ if (vitest != null) {
         },
       }),
       "/api/latest/internal/email-queue-step",
-      () => "completed",
-      (_monitorSlug, callback) => {
+      async () => new Response("completed"),
+      async (_monitorSlug, callback) => {
         monitorCalls++;
-        return callback();
+        return await callback();
       },
     );
 
-    expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+    expect({ resultStatus: result.status, monitorCalls }).toEqual({ resultStatus: 200, monitorCalls: 0 });
   });
 }

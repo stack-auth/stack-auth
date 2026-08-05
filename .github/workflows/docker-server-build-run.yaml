@@ -35,7 +35,17 @@ jobs:
 
       - name: Run Docker container and check logs
         run: |
-          docker run --add-host=host.docker.internal:host-gateway --env-file docker/server/.env.example -p 8101:8101 -p 8102:8102 -d --name stackframe-server server
+          docker run \
+            --add-host=host.docker.internal:host-gateway \
+            --env-file docker/server/.env.example \
+            -e NEXT_PUBLIC_HEXCLAVE_API_URL=https://auth-api.example.test \
+            -e NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL=https://auth.example.test \
+            -e HEXCLAVE_TRUSTED_PROXY=generic \
+            -p 8101:8101 \
+            -p 8102:8102 \
+            -d \
+            --name stackframe-server \
+            server
           sleep 120
           docker logs -t stackframe-server
 
@@ -80,4 +90,4 @@ jobs:
           }
           
           check_health "dashboard" "http://localhost:8101" || exit 1
-          check_health "backend" "http://localhost:8102/health" || exit 1
+          check_health "backend" "http://localhost:8102/health?db=1" || exit 1

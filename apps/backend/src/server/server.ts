@@ -17,7 +17,7 @@ const hostname = getEnvVariable("HOSTNAME", "0.0.0.0");
 const trustedProxy = getTrustedProxy();
 validateStandaloneTrustedProxyConfiguration({
   nodeEnvironment: getEnvVariable("NODE_ENV", ""),
-  publicApiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL"),
+  publicApiUrl: getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL"),
   trustedProxy,
 });
 
@@ -39,11 +39,11 @@ const listenOptions = {
   gracefulShutdown: false,
   // Without a cap, srvx buffers arbitrarily large request bodies and every smart route reads the
   // full body with `arrayBuffer()` before auth/schema validation, so concurrent chunked uploads
-  // could exhaust memory on direct Node ingress (Docker/self-host). Vercel's platform cap
-  // (~4.5 MB) already bounds hosted deployments; default to the same bound here so self-host and
-  // hosted accept the same requests. srvx rejects the body read with an ERR_BODY_TOO_LARGE error,
-  // which the request pipeline maps to an HTTP 413. Large payloads (deployment tarballs) already
-  // bypass the backend via S3 presigned uploads, so nothing that works on Vercel needs more.
+  // could exhaust memory on direct Node ingress (Docker/self-host). Keep a conservative default
+  // independent of hosted platform limits; operators can raise it explicitly for a known
+  // integration. srvx rejects the body read with an ERR_BODY_TOO_LARGE error, which the request
+  // pipeline maps to an HTTP 413. Large payloads (deployment tarballs) already bypass the backend
+  // via S3 presigned uploads.
   maxRequestBodySize: getMaxRequestBodySizeBytes(),
 };
 const boundServerPromise = new Promise<ElysiaServer>((resolve, reject) => {

@@ -1,9 +1,9 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
-// Vercel rejects request bodies above ~4.5 MB at the platform edge, so hosted deployments are
-// already bound to this value. Direct Node ingress (Docker/self-host) matches it by default so
-// both deployment styles accept the same requests; operators with a legitimate need for larger
-// bodies can raise the cap explicitly.
+// Direct Node ingress needs an application-level cap because srvx buffers route bodies before
+// authentication and schema validation. Keep the conservative historical 4.5 MiB bound as the
+// self-host default; hosted platform limits are independent and may be larger. Operators with a
+// legitimate existing integration can raise this cap explicitly.
 const defaultMaxRequestBodySizeBytes = 4.5 * 1024 * 1024;
 
 export function getMaxRequestBodySizeBytes(): number {

@@ -13,7 +13,7 @@ describe("standalone trusted proxy configuration", () => {
         nodeEnvironment,
         publicApiUrl: "https://auth-api.example.com",
         trustedProxy: "",
-      })).toThrow("STACK_TRUSTED_PROXY must be configured");
+      })).toThrow("HEXCLAVE_TRUSTED_PROXY must be configured");
     },
   );
 

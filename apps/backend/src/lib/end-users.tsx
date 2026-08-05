@@ -187,7 +187,7 @@ export async function getEndUserInfo(): Promise<
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
-    // STACK_TRUSTED_PROXY should name the platform proxy, use "generic" for a locked-down
+    // HEXCLAVE_TRUSTED_PROXY should name the platform proxy, use "generic" for a locked-down
     // reverse proxy that overwrites forwarding headers, or remain empty for no proxy trust.
     const trustedProxy = getTrustedProxy();
     return getBrowserEndUserInfo(allHeaders, trustedProxy);

@@ -105,8 +105,11 @@ ENV DASHBOARD_PORT=8101
 
 USER node
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "Promise.all([fetch('http://127.0.0.1:' + process.env.BACKEND_PORT + '/health'), fetch('http://127.0.0.1:' + process.env.DASHBOARD_PORT + '/')]).then((responses) => { if (responses.some((response) => !response.ok)) process.exit(1); }).catch(() => process.exit(1));"]
+# The entrypoint completes migrations and seeding before either service listens. Give large
+# production databases a realistic startup window, then require backend database readiness
+# rather than accepting a process that cannot serve authenticated traffic.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
+  CMD ["node", "-e", "Promise.all([fetch('http://127.0.0.1:' + process.env.BACKEND_PORT + '/health?db=1'), fetch('http://127.0.0.1:' + process.env.DASHBOARD_PORT + '/')]).then((responses) => { if (responses.some((response) => !response.ok)) process.exit(1); }).catch(() => process.exit(1));"]
 
 # Set entrypoint to run both backend and dashboard
 ENTRYPOINT ["./entrypoint.sh"]

@@ -85,6 +85,9 @@ At minimum, set:
 NEXT_PUBLIC_STACK_API_URL=https://auth-api.example.com
 NEXT_PUBLIC_STACK_DASHBOARD_URL=https://auth.example.com
 
+# Required for the ordinary locked-down reverse proxy used by this guide.
+HEXCLAVE_TRUSTED_PROXY=generic
+
 STACK_DATABASE_CONNECTION_STRING=postgresql://postgres:password@hexclave-postgres:5432/stackframe
 STACK_SERVER_SECRET=replace-with-a-32-byte-base64url-secret
 CRON_SECRET=replace-with-a-long-random-secret
@@ -173,7 +176,7 @@ curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://auth-api.example.com/a
 curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://auth-api.example.com/api/latest/internal/external-db-sync/poller
 ```
 
-Use your deployment platform's scheduler, Kubernetes `CronJob`, systemd timer, or another reliable cron service. If you run multiple application replicas, do not let every replica run its own scheduler against the same database.
+Use your deployment platform's scheduler, Kubernetes `CronJob`, systemd timer, or another reliable cron service. Configure it to treat every non-2xx response as a failed run—the `-f` option in the example does this. A request that reached the server is not necessarily a successful tick. If you run multiple application replicas, do not let every replica run its own scheduler against the same database.
 
 ### 5. Put It Behind HTTPS
 
@@ -189,16 +192,18 @@ The public URLs must match `NEXT_PUBLIC_STACK_DASHBOARD_URL` and `NEXT_PUBLIC_ST
 For a standalone API backend behind an ordinary locked-down nginx, Traefik, Caddy, or similar reverse proxy, explicitly enable generic proxy trust:
 
 ```env
-STACK_TRUSTED_PROXY=generic
+HEXCLAVE_TRUSTED_PROXY=generic
 ```
 
 Use a provider-specific value instead when that provider is the backend's ingress:
 
-- `STACK_TRUSTED_PROXY=vercel`
-- `STACK_TRUSTED_PROXY=cloudflare`
-- `STACK_TRUSTED_PROXY=cloudrun`
+- `HEXCLAVE_TRUSTED_PROXY=vercel`
+- `HEXCLAVE_TRUSTED_PROXY=cloudflare`
+- `HEXCLAVE_TRUSTED_PROXY=cloudrun`
 
-Proxy trust is intentionally never inferred from forwarding headers. A production-like standalone backend with an HTTPS `NEXT_PUBLIC_STACK_API_URL` refuses to start until one of these modes is configured. Development, tests, and plain-HTTP local deployments do not require it.
+The backend automatically selects `vercel` or `cloudrun` when the complete platform-provided environment identifies one of those platforms. An explicit value always takes precedence. The legacy `STACK_TRUSTED_PROXY` spelling remains supported.
+
+Generic proxy trust cannot be selected automatically. Forwarding headers are controlled by the caller until the backend already knows that a trusted proxy is in front of it, so using those headers for auto-detection would let clients opt themselves into a trusted state. A production-like standalone backend with an HTTPS `NEXT_PUBLIC_STACK_API_URL` therefore refuses to start until generic or provider-specific trust is established. Development, tests, and plain-HTTP local deployments do not require it.
 
 <Warning>
   Enable a trusted proxy mode only when direct access to the API origin is blocked by a private network, firewall, security group, or equivalent control. Otherwise, a client can bypass the proxy and spoof the forwarding headers used to construct OAuth and identity-provider absolute URLs.
@@ -287,6 +292,18 @@ Custom, manual, and programmatic email sending requires Freestyle:
 STACK_FREESTYLE_API_KEY=...
 ```
 
+### Request Body Size
+
+Direct Docker and Node deployments accept request bodies up to 4.5 MiB by default. This protects the process from buffering arbitrarily large bodies before authentication and schema validation. Built-in large deployment assets use presigned object-storage uploads instead of this request path.
+
+If an existing integration legitimately sends larger requests, set the limit before starting the upgraded image:
+
+```env
+HEXCLAVE_MAX_REQUEST_BODY_SIZE_BYTES=10485760
+```
+
+The value is a positive number of bytes. Choose the smallest limit that covers the integration, and enforce an equal or lower limit at the reverse proxy.
+
 ## Operations
 
 ### Upgrades
@@ -295,18 +312,33 @@ Before upgrading:
 
 1. Back up Postgres and any configured object storage.
 2. Back up ClickHouse if you depend on analytics or external database sync data.
-3. Pull the new Docker image.
-4. Run the new image once with migrations enabled.
-5. Verify dashboard sign-in, project loading, cron jobs, email sending, and any webhook flows you use.
-6. Roll forward your application containers to the same image.
+3. Read the release notes and compare the current [server environment template](https://github.com/hexclave/hexclave/blob/dev/docker/server/.env) with your saved environment file.
+4. Pull the new Docker image by immutable digest. Keep the previous digest available for rollback.
+5. Run the new image once with migrations enabled.
+6. Verify the database health check, dashboard sign-in, project loading, cron jobs, email sending, and any webhook flows you use.
+7. Roll forward your application containers to the same image.
 
 The server image runs migrations by default. If you run multiple replicas, use your deployment system to ensure migrations run once before scaling the new version.
 
+<Warning>
+  The Elysia server upgrade requires explicit `HEXCLAVE_TRUSTED_PROXY=generic` for ordinary reverse proxies. Older Next.js images do not understand the `generic` value, so do not add it to one shared environment while old and new replicas are serving simultaneously. For a single-container deployment, stop the old revision and start the new image with the new value. For a zero-downtime deployment, give each revision its own environment, verify the new revision, switch traffic atomically, and then drain the old revision. Provider-specific `vercel`, `cloudflare`, and `cloudrun` values work across both revisions.
+</Warning>
+
+All other configuration in this release remains backward compatible. The new image automatically detects Vercel and Cloud Run, retains legacy `STACK_*` environment variable aliases, and applies a safe request-body default. Only generic proxy trust and a larger-than-default body requirement need operator input because neither can be inferred safely.
+
 ### Health Checks
 
-After deploy, verify:
+The existing health endpoint supports an optional database check:
+
+- `GET /health` checks the backend process without depending on Postgres.
+- `GET /health?db=1` also reads a real Prisma model, verifying the configured database read path and the Project schema expected by the running server revision. It returns a non-2xx response when that check fails.
+
+The official Docker images use the existing `?db=1` mode and allow five minutes for startup because migrations and seeding complete before the services listen.
+
+After deploy, verify the database-backed response:
 
 ```bash title="Terminal"
+curl -fsS "https://auth-api.example.com/health?db=1"
 curl https://auth-api.example.com/api/v1/internal/backend-urls
 ```
 
