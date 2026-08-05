@@ -1,0 +1,27 @@
+apps/backend/src/utils/background-tasks.tsx
+  s_5ffc71306a9e04::t_f72d0749e98bcf 5-6,10-15,19
+apps/backend/src/app/health/route.tsx
+  s_5ffc71306a9e04::t_f72d0749e98bcf 32-34
+apps/backend/src/app/api/latest/internal/workflow-engine-step/route.tsx
+  s_5ffc71306a9e04::t_f72d0749e98bcf 11-13
+apps/backend/src/lib/config/repo-agent.ts
+  s_5ffc71306a9e04::t_f72d0749e98bcf 103,105,110-112
+apps/backend/src/server/backend-request.ts
+  s_5ffc71306a9e04::t_f72d0749e98bcf 9-11,21-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "05aba193f41bad38c59df23fa2ca9ebee1864b93",
+  "prompts": {},
+  "sessions": {
+    "s_5ffc71306a9e04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd29b-8f21-7731-8b4b-3022e696152b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
