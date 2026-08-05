@@ -12,7 +12,6 @@ import { handleUncaughtBackendError } from "./error-handler";
 import { getCorsHeadersInit, runRequestPipeline } from "./middleware";
 import { createRequestCompletionLog } from "./request-log";
 import { MalformedRouteParamError, matchRoute, type RouteMethods } from "./registry";
-import { createRequestLifetime } from "./request-lifetime";
 
 const globalSecurityHeaders = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -120,21 +119,15 @@ async function dispatch(request: Request) {
   requestSpan?.updateName(`${method} ${match.normalizedPath}`);
   requestSpan?.setAttribute("http.request.method", method);
   requestSpan?.setAttribute("http.route", match.normalizedPath);
-  const lifetime = createRequestLifetime({
-    maxDurationSeconds: match.maxDurationSeconds,
-    normalizedPath: match.normalizedPath,
-    startedAt: requestStartTimes.get(request) ?? performance.now(),
-  });
   const context: RequestContext = {
     headers: pipeline.mergedHeaders,
     incomingCookies: parseCookieHeader(pipeline.mergedHeaders.get("cookie")),
     pendingSetCookies: [],
     deletedCookies: [],
-    lifetime,
     normalizedPath: match.normalizedPath,
   };
 
-  return await requestContextALS.run(context, async () => await lifetime.runHandler(async (timeoutSignal) => {
+  return await requestContextALS.run(context, async () => {
     const methods = await match.loadMethods();
     if (!isHttpMethod(method)) {
       return withResponseHeaders(createMethodNotAllowedResponse(methods), pipeline.corsHeadersInit);
@@ -144,12 +137,7 @@ async function dispatch(request: Request) {
       return withResponseHeaders(createMethodNotAllowedResponse(methods), pipeline.corsHeadersInit);
     }
 
-    const backendRequest = createBackendRequest(
-      request,
-      pipeline.mergedHeaders,
-      pipeline.originalUrl,
-      AbortSignal.any([request.signal, timeoutSignal]),
-    );
+    const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
     const response = await withVercelCronMonitor(request, match.normalizedPath, async () => {
       try {
         return await handler(backendRequest, {
@@ -183,8 +171,8 @@ async function dispatch(request: Request) {
     for (const cookie of context.deletedCookies) {
       finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
     }
-    return lifetime.ownResponse(withResponseHeaders(finalResponse, pipeline.corsHeadersInit));
-  }));
+    return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
+  });
 }
 
 function getLoggedResponseStatus(response: unknown, fallbackStatus: number | string | undefined) {

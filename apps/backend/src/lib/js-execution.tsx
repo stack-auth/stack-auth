@@ -1,6 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
-import { getOptionalRequestAbortSignal } from '@/lib/runtime/request-context';
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
 import { Result } from '@hexclave/shared/dist/utils/results';
@@ -163,32 +162,28 @@ const engineMap = new Map<string, JsEngine>([
  * the code throws an error.
  */
 export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<ExecuteResult> {
-  const resolvedOptions: ExecuteJavascriptOptions = {
-    ...options,
-    signal: options.signal ?? getOptionalRequestAbortSignal(),
-  };
   return await traceSpan({
     description: 'js-execution.executeJavascript',
     attributes: {
       'js-execution.code.length': code.length.toString(),
-      'js-execution.nodeModules.count': resolvedOptions.nodeModules ? Object.keys(resolvedOptions.nodeModules).length.toString() : '0',
+      'js-execution.nodeModules.count': options.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
     }
   }, async () => {
-    resolvedOptions.signal?.throwIfAborted();
+    options.signal?.throwIfAborted();
 
     if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
-      const shouldSanityTest = !resolvedOptions.disableSanityTest && Math.random() < 0.05;
+      const shouldSanityTest = !options.disableSanityTest && Math.random() < 0.05;
       if (shouldSanityTest) {
-        runAsynchronouslyAndWaitUntil(runSanityTest(code, resolvedOptions));
+        runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
       }
 
-      return await runWithFallback(code, resolvedOptions);
+      return await runWithFallback(code, options);
     } else {
       if (getNodeEnvironment().includes("prod")) {
         throw new HexclaveAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 
-      return await runWithoutFallback(code, resolvedOptions);
+      return await runWithoutFallback(code, options);
     }
   });
 }

@@ -9,15 +9,12 @@ import {
   startConfigAgentRun,
 } from "@/lib/config";
 import { applyConfigUpdate, type ConfigAgentInFlightStage, type GithubRepoRef } from "@/lib/config/repo-agent";
-import { getRequestContext } from "@/lib/runtime/request-context";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { getInvalidConfigReason } from "@hexclave/shared/dist/config/format";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
-
-export const maxDuration = 800;
 
 /**
  * Kicks off an AI-agent config write to the linked GitHub repo (writes go through
@@ -84,7 +81,6 @@ export const POST = createSmartRouteHandler({
     // Fetched fresh per boot; this admin route can't mint GitHub tokens for the
     // internal user (would be priv-esc), so we reuse the caller's freshest OAuth token.
     const getGithubToken = async () => githubToken;
-    const signal = getRequestContext().lifetime.signal;
     // Persist the sandbox id so a concurrent cancel can hard-stop it while the agent
     // runs. `applyConfigUpdate` owns the sandbox lifetime and always stops it before
     // returning/throwing, so the route doesn't need to track or stop it itself.
@@ -108,7 +104,6 @@ export const POST = createSmartRouteHandler({
           getGithubToken,
           ref,
           completeConfig,
-          signal,
           onSandboxId,
           onStage,
           onProgress,

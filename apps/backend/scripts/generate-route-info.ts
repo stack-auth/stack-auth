@@ -1,8 +1,6 @@
 import { SmartRouter } from "@/smart-router";
-import { validateRouteMaxDurationSeconds } from "@/server/runtime-limits";
 import { writeFileSyncIfChanged } from "@hexclave/shared/dist/utils/fs";
 import fs from "fs";
-import ts from "typescript";
 
 const httpMethodNames = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"] as const;
 
@@ -14,48 +12,20 @@ function routeFilePathToImportPath(filePath: string) {
   return `@/${filePath.replace(/^src\//, "").replace(/\.(ts|tsx|js|jsx)$/, "")}`;
 }
 
-function getRouteMaxDurationSeconds(filePath: string, normalizedPath: string): number | undefined {
-  const source = ts.createSourceFile(
-    filePath,
-    fs.readFileSync(filePath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  );
-
-  for (const statement of source.statements) {
-    if (!ts.isVariableStatement(statement)
-      || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
-      continue;
-    }
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== "maxDuration") {
-        continue;
-      }
-      if (declaration.initializer == null || !ts.isNumericLiteral(declaration.initializer)) {
-        throw new Error(`Route ${normalizedPath} must export maxDuration as a numeric literal.`);
-      }
-      return validateRouteMaxDurationSeconds(Number(declaration.initializer.text), normalizedPath);
-    }
-  }
-  return undefined;
-}
-
 function generateRouteModules(routes: Awaited<ReturnType<typeof SmartRouter.listRoutes>>) {
   const routeFiles = routes
     .filter(route => route.isRoute && /\/route\.(ts|tsx|js|jsx)$/.test(route.filePath))
     .sort((a, b) => stringCompare(a.normalizedPath, b.normalizedPath) || stringCompare(a.filePath, b.filePath));
 
   const entries = routeFiles.map((route) => {
-    const maxDurationSeconds = getRouteMaxDurationSeconds(route.filePath, route.normalizedPath);
-    const runtimeConfig = maxDurationSeconds == null ? "" : `, maxDurationSeconds: ${maxDurationSeconds}`;
-    return `  { normalizedPath: ${JSON.stringify(route.normalizedPath)}, load: async () => await import(${JSON.stringify(routeFilePathToImportPath(route.filePath))})${runtimeConfig} },`;
+    return `  { normalizedPath: ${JSON.stringify(route.normalizedPath)}, load: async () => await import(${JSON.stringify(routeFilePathToImportPath(route.filePath))}) },`;
   });
 
   return `import type { UnknownRouteModule } from "@/server/registry";
 
 export const httpMethodNames = ${JSON.stringify(httpMethodNames)} as const;
 
-export const routeModules: readonly { normalizedPath: string, load: () => Promise<UnknownRouteModule>, maxDurationSeconds?: number }[] = [
+export const routeModules: readonly { normalizedPath: string, load: () => Promise<UnknownRouteModule> }[] = [
 ${entries.join("\n")}
 ];
 `;

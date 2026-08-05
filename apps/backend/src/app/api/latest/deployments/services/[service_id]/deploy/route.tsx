@@ -8,10 +8,6 @@ import { DEPLOYMENT_ENV_VAR_KEY_REGEX, deploymentEnvVarSchema } from "@hexclave/
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// Source fan-out is intentionally synchronous for the MVP. The Elysia
-// dispatcher enforces this route-local budget inside the shared function.
-export const maxDuration = 300;
-
 async function deleteDeploymentSourceObject(objectKey: string): Promise<void> {
   try {
     // Cleanup must still run after the route deadline aborts its main signal,

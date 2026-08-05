@@ -25,11 +25,9 @@
 import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "@hexclave/shared-backend/config-agent";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Sandbox } from "@vercel/sandbox";
 import { applyPatch, parsePatch } from "diff";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
-import { getOptionalRequestAbortSignal } from "../runtime/request-context";
 
 const AGENT_SDK_VERSION = "0.2.73";
 const BASE = "/vercel/sandbox";
@@ -102,17 +100,16 @@ function sandboxCreds(): SandboxCreds {
   };
 }
 
-async function getConfigAgentSandbox(sandboxId: string, signal?: AbortSignal): Promise<Sandbox> {
+async function getConfigAgentSandbox(sandboxId: string): Promise<Sandbox> {
   const creds = sandboxCreds();
-  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId, signal });
+  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
 }
 
-async function stopSandboxWithContext(sandboxId: string, context: string, signal: AbortSignal): Promise<void> {
+async function stopSandboxWithContext(sandboxId: string, context: string): Promise<void> {
   try {
-    const sandbox = await getConfigAgentSandbox(sandboxId, signal);
-    await sandbox.stop({ signal });
+    const sandbox = await getConfigAgentSandbox(sandboxId);
+    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
   } catch (error) {
-    signal.throwIfAborted();
     captureError(context, error);
   }
 }
@@ -150,27 +147,17 @@ function redactTokens(text: string): string {
 }
 
 type RunResult = { exitCode: number, stdout: string, stderr: string };
-type RunOptions = { cwd?: string, env?: Record<string, string>, signal?: AbortSignal, sudo?: boolean };
 
-async function runRaw(sandbox: Sandbox, cmd: string, args: string[], opts?: RunOptions): Promise<RunResult> {
+async function runRaw(sandbox: Sandbox, cmd: string, args: string[], opts?: { cwd?: string, env?: Record<string, string>, sudo?: boolean }): Promise<RunResult> {
   const finished = await sandbox.runCommand({ cmd, args, ...opts });
   const [stdout, stderr] = await Promise.all([
-    readCommandOutput(() => finished.stdout({ signal: opts?.signal }), opts?.signal),
-    readCommandOutput(() => finished.stderr({ signal: opts?.signal }), opts?.signal),
+    finished.stdout().catch(() => ""),
+    finished.stderr().catch(() => ""),
   ]);
   return { exitCode: finished.exitCode, stdout, stderr };
 }
 
-async function readCommandOutput(read: () => Promise<string>, signal: AbortSignal | undefined): Promise<string> {
-  try {
-    return await read();
-  } catch {
-    signal?.throwIfAborted();
-    return "";
-  }
-}
-
-async function run(sandbox: Sandbox, cmd: string, args: string[], opts?: RunOptions): Promise<RunResult> {
+async function run(sandbox: Sandbox, cmd: string, args: string[], opts?: { cwd?: string, env?: Record<string, string>, sudo?: boolean }): Promise<RunResult> {
   const r = await runRaw(sandbox, cmd, args, opts);
   if (r.exitCode !== 0) {
     throw new ConfigRepoAgentError(redactTokens(`Command failed (exit ${r.exitCode}): ${cmd} ${args.join(" ")}\n${(r.stderr || r.stdout).slice(-1500)}`));
@@ -184,8 +171,8 @@ async function run(sandbox: Sandbox, cmd: string, args: string[], opts?: RunOpti
  * remote. Rebuilding the bundle from the (snapshot-captured) CA material fixes
  * it and needs no network. Best-effort — ignore failures on images without it.
  */
-async function ensureTls(sandbox: Sandbox, signal?: AbortSignal): Promise<void> {
-  await runRaw(sandbox, "update-ca-certificates", [], { signal, sudo: true });
+async function ensureTls(sandbox: Sandbox): Promise<void> {
+  await runRaw(sandbox, "update-ca-certificates", [], { sudo: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -268,11 +255,11 @@ status({ ok: sawResult, resultText });
 `;
 }
 
-async function installAgentSdk(sandbox: Sandbox, signal?: AbortSignal): Promise<void> {
+async function installAgentSdk(sandbox: Sandbox): Promise<void> {
   await sandbox.writeFiles([
     { path: `${TOOLS_DIR}/package.json`, content: Buffer.from(JSON.stringify({ name: "config-agent-tools", private: true, type: "module" }), "utf-8") },
-  ], { signal });
-  await run(sandbox, "npm", ["install", "--no-save", `@anthropic-ai/claude-agent-sdk@${AGENT_SDK_VERSION}`], { cwd: TOOLS_DIR, signal });
+  ]);
+  await run(sandbox, "npm", ["install", "--no-save", `@anthropic-ai/claude-agent-sdk@${AGENT_SDK_VERSION}`], { cwd: TOOLS_DIR });
 }
 
 /** A sanitized live-activity callback (recent agent actions joined by newlines). */
@@ -288,24 +275,17 @@ const PROGRESS_POLL_MS = 1500;
  */
 async function pollAgentProgress(
   sandbox: Sandbox,
-  command: { wait: (options?: { signal?: AbortSignal }) => Promise<unknown> },
+  command: { wait: () => Promise<unknown> },
   onProgress: AgentProgressSink,
-  signal: AbortSignal,
 ): Promise<void> {
   let finished = false;
   const markFinished = () => {
     finished = true;
   };
-  const waiter = command.wait({ signal }).then(markFinished, markFinished);
+  const waiter = command.wait().then(markFinished, markFinished);
   let last = "";
   const readOnce = async () => {
-    let buf;
-    try {
-      buf = await sandbox.readFileToBuffer({ path: `${TOOLS_DIR}/progress.json` }, { signal });
-    } catch {
-      signal.throwIfAborted();
-      return;
-    }
+    const buf = await sandbox.readFileToBuffer({ path: `${TOOLS_DIR}/progress.json` }).catch(() => null);
     if (!buf) return;
     let lines: unknown;
     try {
@@ -321,14 +301,13 @@ async function pollAgentProgress(
     }
   };
   while (!finished) {
-    signal.throwIfAborted();
     await Promise.race([waiter, new Promise((r) => setTimeout(r, PROGRESS_POLL_MS))]);
     await readOnce();
   }
   await readOnce(); // capture the final state
 }
 
-async function runAgent(sandbox: Sandbox, prompt: string, signal: AbortSignal, onProgress?: AgentProgressSink): Promise<void> {
+async function runAgent(sandbox: Sandbox, prompt: string, onProgress?: AgentProgressSink): Promise<void> {
   const agentInput = {
     prompt,
     model: getEnvVariable("STACK_CONFIG_AGENT_MODEL", DEFAULT_AGENT_MODEL),
@@ -340,31 +319,16 @@ async function runAgent(sandbox: Sandbox, prompt: string, signal: AbortSignal, o
   await sandbox.writeFiles([
     { path: `${TOOLS_DIR}/runner.mjs`, content: Buffer.from(buildRunnerScript(), "utf-8") },
     { path: `${TOOLS_DIR}/agent-input.json`, content: Buffer.from(JSON.stringify(agentInput), "utf-8") },
-  ], { signal });
+  ]);
   // Run detached so we can poll the runner's progress file while it works; status
   // is read from status.json afterwards (the exit code isn't authoritative here).
-  const command = await sandbox.runCommand({ cmd: "node", args: [`${TOOLS_DIR}/runner.mjs`], detached: true, signal });
+  const command = await sandbox.runCommand({ cmd: "node", args: [`${TOOLS_DIR}/runner.mjs`], detached: true });
   if (onProgress) {
-    try {
-      await pollAgentProgress(sandbox, command, onProgress, signal);
-    } catch (error) {
-      signal.throwIfAborted();
-      captureError("config-repo-agent-progress", error);
-    }
+    await pollAgentProgress(sandbox, command, onProgress).catch((error) => captureError("config-repo-agent-progress", error));
   } else {
-    try {
-      await command.wait({ signal });
-    } catch {
-      signal.throwIfAborted();
-    }
+    await command.wait().catch(() => {});
   }
-  let statusBuf;
-  try {
-    statusBuf = await sandbox.readFileToBuffer({ path: `${TOOLS_DIR}/status.json` }, { signal });
-  } catch {
-    signal.throwIfAborted();
-    statusBuf = null;
-  }
+  const statusBuf = await sandbox.readFileToBuffer({ path: `${TOOLS_DIR}/status.json` }).catch(() => null);
   const status = statusBuf ? JSON.parse(statusBuf.toString()) : null;
   if (!status?.ok) {
     const detail = status?.error != null ? redactTokens(String(status.error)) : status?.error;
@@ -377,8 +341,8 @@ async function runAgent(sandbox: Sandbox, prompt: string, signal: AbortSignal, o
 // Sandbox boot
 // ---------------------------------------------------------------------------
 
-async function gitHead(sandbox: Sandbox, signal: AbortSignal): Promise<string> {
-  return (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", "HEAD"], { signal })).stdout.trim();
+async function gitHead(sandbox: Sandbox): Promise<string> {
+  return (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", "HEAD"])).stdout.trim();
 }
 
 /**
@@ -398,7 +362,7 @@ function diffHasBinaryChange(diff: string): boolean {
  * install the SDK inline (slower — used locally / before the image is built).
  * The returned sandbox has NO repo cloned yet (the caller clones fresh).
  */
-async function bootAgentSandbox(creds: SandboxCreds, signal: AbortSignal): Promise<Sandbox> {
+async function bootAgentSandbox(creds: SandboxCreds): Promise<Sandbox> {
   const baseSnapshotId = getEnvVariable("STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID", "");
   if (baseSnapshotId) {
     const sandbox = await Sandbox.create({
@@ -408,11 +372,10 @@ async function bootAgentSandbox(creds: SandboxCreds, signal: AbortSignal): Promi
       teamId: creds.teamId,
       projectId: creds.projectId,
       token: creds.token,
-      signal,
     });
     try {
       // Snapshot boots can ship an empty CA bundle; rebuild it before any HTTPS git.
-      await ensureTls(sandbox, signal);
+      await ensureTls(sandbox);
       return sandbox;
     } catch (error) {
       await stopSandboxAfterFailedBoot(sandbox);
@@ -426,10 +389,9 @@ async function bootAgentSandbox(creds: SandboxCreds, signal: AbortSignal): Promi
     teamId: creds.teamId,
     projectId: creds.projectId,
     token: creds.token,
-    signal,
   });
   try {
-    await installAgentSdk(sandbox, signal);
+    await installAgentSdk(sandbox);
     return sandbox;
   } catch (error) {
     await stopSandboxAfterFailedBoot(sandbox);
@@ -506,39 +468,20 @@ export async function applyConfigUpdate(options: {
   getGithubToken: GithubTokenProvider,
   ref: GithubRepoRef,
   completeConfig: Record<string, unknown>,
-  signal: AbortSignal,
   onSandboxId?: (sandboxId: string) => Promise<void>,
   onStage?: (stage: ConfigAgentInFlightStage) => Promise<void>,
   onProgress?: AgentProgressSink,
 }): Promise<ConfigUpdateApplyResult> {
-  const { getGithubToken, ref, completeConfig, signal, onSandboxId, onStage, onProgress } = options;
+  const { getGithubToken, ref, completeConfig, onSandboxId, onStage, onProgress } = options;
   const creds = sandboxCreds();
   const step = async (msg: string) => {
     await reportConfigAgentProgress(onProgress, msg, "config-repo-agent-step-record");
   };
-  signal.throwIfAborted();
   const githubToken = await getGithubToken(); // fresh token for the clone
-  signal.throwIfAborted();
 
   await reportConfigAgentStage(onStage, "initializing_sandbox");
   await step("Initializing the sandbox…");
-  const sandbox = await bootAgentSandbox(creds, signal);
-  const stopSandboxOnAbort = () => {
-    runAsynchronously(stopSandboxWithContext(
-      sandbox.sandboxId,
-      "config-repo-agent-timeout-stop",
-      AbortSignal.timeout(5000),
-    ));
-  };
-  if (signal.aborted) {
-    await stopSandboxWithContext(
-      sandbox.sandboxId,
-      "config-repo-agent-timeout-stop",
-      AbortSignal.timeout(5000),
-    );
-    signal.throwIfAborted();
-  }
-  signal.addEventListener("abort", stopSandboxOnAbort, { once: true });
+  const sandbox = await bootAgentSandbox(creds);
   try {
     // Record the id so a concurrent cancel (a separate invocation) can hard-stop the
     // sandbox while the agent is still running.
@@ -550,8 +493,8 @@ export async function applyConfigUpdate(options: {
     // or `git remote -v`. We never push from the sandbox, so the token is not needed again.
     await reportConfigAgentStage(onStage, "cloning_repo");
     await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
-    await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR], { signal });
-    await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)], { signal });
+    await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
+    await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
 
     // Agent writes the COMPLETE config to the file — no dependency install, no
     // typecheck (the linked repo's CI validates the committed change).
@@ -561,18 +504,18 @@ export async function applyConfigUpdate(options: {
       scope: { mode: "repo" },
       completeConfig,
       commandPolicy: "Do NOT install dependencies, run builds, or run a type check. The repository's own CI validates the change after we push, and dependencies are intentionally not installed in this sandbox.",
-    }), signal, onProgress);
+    }), onProgress);
 
     // Stage everything so new/renamed files are captured too, then check for changes.
-    await run(sandbox, "git", ["-C", REPO_DIR, "add", "-A"], { signal });
-    const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"], { signal })).stdout.trim();
+    await run(sandbox, "git", ["-C", REPO_DIR, "add", "-A"]);
+    const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
     if (dirty === "") {
       return { mode: "no-change" };
     }
 
     // `add -A` does not move HEAD, so this is still the commit we cloned — the base
     // the diff is rebuilt against, and our fast-forward conflict check, at commit time.
-    const baseSha = await gitHead(sandbox, signal);
+    const baseSha = await gitHead(sandbox);
     // The diff drives BOTH the review render and the commit (`--no-renames` keeps it to
     // add/modify/delete; `--cached HEAD` includes newly created files). Captured VERBATIM:
     // it is the authoritative commit source, so it must never be altered. The GitHub token
@@ -580,7 +523,7 @@ export async function applyConfigUpdate(options: {
     // reads) and is reset to a tokenless URL before the agent runs, so tracked content
     // never contains it. (Token scrubbing stays on the error/log paths, where the tokenized
     // clone URL genuinely can surface.)
-    const diff = (await runRaw(sandbox, "git", ["-c", "core.quotePath=false", "-C", REPO_DIR, "diff", "--cached", "--no-renames", "HEAD"], { signal })).stdout;
+    const diff = (await runRaw(sandbox, "git", ["-c", "core.quotePath=false", "-C", REPO_DIR, "diff", "--cached", "--no-renames", "HEAD"])).stdout;
     if (diff.trim() === "") {
       return { mode: "no-change" };
     }
@@ -592,14 +535,9 @@ export async function applyConfigUpdate(options: {
     }
     return { mode: "awaiting_review", change: { diff, baseSha } };
   } finally {
-    signal.removeEventListener("abort", stopSandboxOnAbort);
     // The sandbox's whole job is done once the change set is captured; the commit is
     // replayed later via the GitHub API, so we never keep it alive for review.
-    await stopSandboxWithContext(
-      sandbox.sandboxId,
-      "config-repo-agent-apply-stop",
-      AbortSignal.timeout(5000),
-    );
+    await stopSandboxWithContext(sandbox.sandboxId, "config-repo-agent-apply-stop");
   }
 }
 
@@ -639,16 +577,11 @@ async function githubFetch(token: string, method: string, path: string, body?: u
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: getOptionalRequestAbortSignal(),
   });
   let json: any = null;
   try {
     json = await res.json();
-  } catch (error) {
-    const signal = getOptionalRequestAbortSignal();
-    if (signal?.aborted) {
-      signal.throwIfAborted();
-    }
+  } catch {
     json = null;
   }
   return { ok: res.ok, status: res.status, json };
@@ -835,9 +768,5 @@ export async function commitConfigUpdate(options: {
  * cancelling then just flips the row to terminal with nothing to stop.
  */
 export async function stopConfigAgentSandbox(sandboxId: string): Promise<void> {
-  await stopSandboxWithContext(
-    sandboxId,
-    "config-repo-agent-cancel-stop",
-    getOptionalRequestAbortSignal() ?? AbortSignal.timeout(5000),
-  );
+  await stopSandboxWithContext(sandboxId, "config-repo-agent-cancel-stop");
 }
