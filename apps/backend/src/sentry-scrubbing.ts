@@ -62,12 +62,26 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   event.spans = event.spans?.map(sanitizeBackendSentrySpan);
 
   const traceContext = event.contexts?.trace;
+  const requestContext = event.contexts?.["stack-request"];
+  const requestId = requestContext?.requestId;
+  const requestMethod = requestContext?.method;
+  const safeRequestContext = typeof requestId === "string"
+    ? {
+      requestId,
+      ...(typeof requestMethod === "string" ? { method: requestMethod } : {}),
+    }
+    : undefined;
   if (traceContext != null) {
     traceContext.data = getSafeSpanData(traceContext.data ?? {});
     traceContext.tags = undefined;
     traceContext.links = undefined;
   }
-  event.contexts = traceContext == null ? undefined : { trace: traceContext };
+  event.contexts = traceContext == null && safeRequestContext == null
+    ? undefined
+    : {
+      ...(traceContext == null ? {} : { trace: traceContext }),
+      ...(safeRequestContext == null ? {} : { "stack-request": safeRequestContext }),
+    };
 
   return event;
 }

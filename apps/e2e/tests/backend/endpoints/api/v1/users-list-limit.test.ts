@@ -7,7 +7,10 @@ import { waitUntilReplicasHaveCaughtUp } from "../../../helpers/replication";
 
 const batchSize = 5000;
 
-async function seedUsers(projectId: string, userCount: number, prefix: string): Promise<void> {
+async function seedUsers(projectId: string, userCount: number, prefixes: {
+  displayName: string,
+  emailLocalPart: string,
+}): Promise<void> {
   const client = new Client({
     connectionString: `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/stackframe`,
   });
@@ -67,11 +70,11 @@ async function seedUsers(projectId: string, userCount: number, prefix: string): 
           'TRUE'::"BooleanTrue",
           'TRUE'::"BooleanTrue",
           true,
-          lower($5::text) || '-user-' || g.idx || '@test.example.com',
+          $6::text || '-user-' || g.idx || '@test.example.com',
           g.ts,
           g.ts
         FROM generated g
-      `, [tenancyId, projectId, offset + 1, count, prefix]);
+      `, [tenancyId, projectId, offset + 1, count, prefixes.displayName, prefixes.emailLocalPart]);
     }
 
     // The users endpoint reads from a read replica, and these inserts don't go through the Prisma extension that
@@ -91,7 +94,10 @@ async function createProject(displayName: string): Promise<string> {
 describe.sequential("users list limit safety", () => {
   test("allows exactly 1000 unbounded users", async ({ expect }) => {
     const projectId = await createProject("Users list limit boundary");
-    await seedUsers(projectId, 1000, "Boundary");
+    await seedUsers(projectId, 1000, {
+      displayName: "Boundary",
+      emailLocalPart: "boundary",
+    });
 
     const response = await testRequest();
 
@@ -102,7 +108,10 @@ describe.sequential("users list limit safety", () => {
 
   test("rejects 1001 unbounded users and supports paging with an explicit limit", async ({ expect }) => {
     const projectId = await createProject("Users list limit pagination");
-    await seedUsers(projectId, 1001, "Pagination");
+    await seedUsers(projectId, 1001, {
+      displayName: "Pagination",
+      emailLocalPart: "pagination",
+    });
 
     const unboundedResponse = await testRequest();
     expect(unboundedResponse).toMatchInlineSnapshot(`
@@ -160,7 +169,10 @@ describe.sequential("users list limit safety", () => {
   test("rejects the former high-volume failure case before loading the tenancy", async ({ expect }) => {
     const projectId = await createProject("Users list limit high volume");
     const seedStarted = performance.now();
-    await seedUsers(projectId, 33_000, "High Volume");
+    await seedUsers(projectId, 33_000, {
+      displayName: "High Volume",
+      emailLocalPart: "high-volume",
+    });
     const seedDurationMs = performance.now() - seedStarted;
 
     const requestStarted = performance.now();

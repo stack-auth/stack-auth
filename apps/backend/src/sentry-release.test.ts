@@ -20,6 +20,18 @@ describe("getSentryRelease", () => {
     })).toBe("@hexclave-backend@1.2.3");
   });
 
+  it("ignores empty release variables so source-map fallback still works", () => {
+    expect(getSentryRelease({
+      packageName: "@hexclave/backend",
+      packageVersion: "1.2.3",
+      environment: {
+        SENTRY_RELEASE: "",
+        VERCEL_GIT_COMMIT_SHA: "   ",
+        GITHUB_SHA: "commit-456",
+      },
+    })).toBe("commit-456");
+  });
+
   it("does not use Cloud Run metadata that is unavailable during the image build", () => {
     const buildRelease = getSentryRelease({
       packageName: "@hexclave/backend",

@@ -1,7 +1,7 @@
 import { httpMethodNames } from "@/generated/route-modules";
 import { serializeSetCookie } from "@/lib/runtime/headers";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
-import { node } from "@elysiajs/node";
+import { node } from "@elysia/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { Elysia } from "elysia";
 import { createBackendRequest } from "./backend-request";
