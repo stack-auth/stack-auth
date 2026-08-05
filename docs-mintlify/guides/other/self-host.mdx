@@ -186,6 +186,32 @@ Expose the dashboard and API through HTTPS with your reverse proxy or load balan
 
 The public URLs must match `NEXT_PUBLIC_STACK_DASHBOARD_URL` and `NEXT_PUBLIC_STACK_API_URL`. The API URL must be reachable from browsers, your application servers, and the dashboard.
 
+For a standalone API backend behind an ordinary locked-down nginx, Traefik, Caddy, or similar reverse proxy, explicitly enable generic proxy trust:
+
+```env
+STACK_TRUSTED_PROXY=generic
+```
+
+Use a provider-specific value instead when that provider is the backend's ingress:
+
+- `STACK_TRUSTED_PROXY=vercel`
+- `STACK_TRUSTED_PROXY=cloudflare`
+- `STACK_TRUSTED_PROXY=cloudrun`
+
+Proxy trust is intentionally never inferred from forwarding headers. A production-like standalone backend with an HTTPS `NEXT_PUBLIC_STACK_API_URL` refuses to start until one of these modes is configured. Development, tests, and plain-HTTP local deployments do not require it.
+
+<Warning>
+  Enable a trusted proxy mode only when direct access to the API origin is blocked by a private network, firewall, security group, or equivalent control. Otherwise, a client can bypass the proxy and spoof the forwarding headers used to construct OAuth and identity-provider absolute URLs.
+</Warning>
+
+For `generic` mode, configure the proxy to discard client-supplied values and overwrite all of the following on every request:
+
+- `X-Real-IP` with the client address observed by the proxy
+- `X-Forwarded-Host` with the validated public API host
+- `X-Forwarded-Proto` with the public request protocol (`https`)
+
+Appending to or preserving incoming values is not sufficient. Restrict accepted public hosts at the proxy as well.
+
 <Info>
   Keep `NEXT_PUBLIC_STACK_API_URL` as the browser-reachable API URL. In the bundled Docker image, the entrypoint sets the dashboard's server-side API URL to the backend inside the same container, so most deployments should not set API split variables manually. If you run the API and dashboard as separate services outside the bundled image, the codebase also supports `NEXT_PUBLIC_BROWSER_STACK_API_URL` and `NEXT_PUBLIC_SERVER_STACK_API_URL` for advanced network layouts.
 </Info>

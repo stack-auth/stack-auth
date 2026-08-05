@@ -1,5 +1,5 @@
 import { closeBackendInstrumentation } from "@/instrument";
-import { getTrustedProxy } from "@/lib/trusted-proxy";
+import { getTrustedProxy, validateStandaloneTrustedProxyConfiguration } from "@/lib/trusted-proxy";
 import "@/polyfills";
 import { disconnectPostgresPrismaClients } from "@/prisma-client";
 import { drainInFlightPromises } from "@/utils/background-tasks";
@@ -15,6 +15,11 @@ const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));
 const hostname = getEnvVariable("HOSTNAME", "0.0.0.0");
 const trustedProxy = getTrustedProxy();
+validateStandaloneTrustedProxyConfiguration({
+  nodeEnvironment: getEnvVariable("NODE_ENV", ""),
+  publicApiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL"),
+  trustedProxy,
+});
 
 // The @elysia/node adapter never assigns `app.server`, so `app.stop()` falls through to the
 // web-standard adapter's stop and throws "Elysia isn't running" even while the server is serving
@@ -85,21 +90,21 @@ function handleShutdownSignal(signal: NodeJS.Signals) {
     // stop(false) mirrors the previous app.stop(false) intent: stop accepting new connections but
     // let in-flight requests finish. On Node ≥19, `http.Server.close()` also closes idle
     // keep-alive sockets, so this resolves once active requests complete. The step is bounded:
-    // a request that can't finish within its slice is presumed long-running and will be cut by
-    // the platform's grace period anyway — the remaining budget must still drain background
-    // tasks and flush the database/instrumentation instead of being starved by one request.
-    stopAcceptingRequests: async () => await runShutdownOperationWithTimeout(
+    // a request that can't finish within the HTTP cap is presumed long-running and will be cut
+    // by the platform's grace period anyway. Any unused time flows to background tasks, while
+    // the database and instrumentation keep their reserved tail of the overall deadline.
+    stopAcceptingRequests: async (timeoutMs) => await runShutdownOperationWithTimeout(
       "http server close",
-      backendShutdownBudget.httpServerTimeoutMs,
+      timeoutMs,
       async () => (await boundServerPromise).stop(false),
     ),
-    drainBackgroundTasks: async () => await drainInFlightPromises(backendShutdownBudget.backgroundTasksTimeoutMs),
-    disconnectDatabases: async () => await runShutdownOperationWithTimeout(
+    drainBackgroundTasks: async (timeoutMs) => await drainInFlightPromises(timeoutMs),
+    disconnectDatabases: async (timeoutMs) => await runShutdownOperationWithTimeout(
       "database disconnect",
-      backendShutdownBudget.databaseTimeoutMs,
+      timeoutMs,
       disconnectPostgresPrismaClients,
     ),
-    closeInstrumentation: async () => await closeBackendInstrumentation(backendShutdownBudget.instrumentationTimeoutMs),
+    closeInstrumentation: async (timeoutMs) => await closeBackendInstrumentation(timeoutMs),
     log: (event) => {
       const serializedEvent = JSON.stringify(event);
       if (event.event === "backend.shutdown.failed") {

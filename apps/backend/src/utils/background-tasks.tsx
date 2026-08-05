@@ -1,10 +1,11 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 // Serverful runtimes use this set for shutdown and the test-only flush endpoint.
 // Vercel lifetime is owned separately by every invocation's native waitUntil.
 const inFlightPromises = new Set<Promise<unknown>>();
+let isReportingMissingVercelRequestContext = false;
 
 /**
  * Detects whether Vercel's `waitUntil` would actually do anything right now.
@@ -32,6 +33,21 @@ function hasVercelRequestContextWaitUntil(): boolean {
   return typeof Reflect.get(context, "waitUntil") === "function";
 }
 
+function reportMissingVercelRequestContext(): void {
+  // Error sinks may flush through runAsynchronouslyAndWaitUntil. Without this guard,
+  // reporting the missing context re-enters this function and recursively reports
+  // the same error until the process exhausts its call stack.
+  if (isReportingMissingVercelRequestContext) return;
+  isReportingMissingVercelRequestContext = true;
+  try {
+    captureError("wait-until-outside-request-context", new HexclaveAssertionError(
+      "waitUntil was called outside of a Vercel request context; the background task is not protected from the function being suspended and may be lost",
+    ));
+  } finally {
+    isReportingMissingVercelRequestContext = false;
+  }
+}
+
 function waitUntilImpl(promise: Promise<unknown>) {
   if (getEnvVariable("VERCEL", "") !== "") {
     // The same promise can be registered by separate Fluid invocations. Each
@@ -41,9 +57,7 @@ function waitUntilImpl(promise: Promise<unknown>) {
     if (!hasVercelRequestContextWaitUntil()) {
       // Fail loud, but don't throw: the task itself may still complete if the
       // instance stays warm, and killing it here would only make things worse.
-      captureError("wait-until-outside-request-context", new HexclaveAssertionError(
-        "waitUntil was called outside of a Vercel request context; the background task is not protected from the function being suspended and may be lost",
-      ));
+      reportMissingVercelRequestContext();
     }
     // Still call waitUntil even when there is no context — it's harmless there,
     // and this keeps the behavior identical in the (expected) in-request case.
@@ -212,3 +226,41 @@ import.meta.vitest?.test("flushing times out loudly when a call-time task hangs"
   resolveHanging?.();
   await hangingTask;
 });
+
+const vitest = import.meta.vitest;
+if (vitest != null) {
+  vitest.test("reporting a missing Vercel request context cannot recursively schedule itself", ({ expect }) => {
+    const contextSymbol = Symbol.for("@vercel/request-context");
+    const hadContextHolder = Object.prototype.hasOwnProperty.call(globalThis, contextSymbol);
+    const previousContextHolder: unknown = Reflect.get(globalThis, contextSymbol);
+    let sinkIsActive = true;
+    let reentrantSinkCalls = 0;
+    const consoleErrorSpy = vitest.vi.spyOn(console, "error").mockImplementation(() => {});
+
+    registerErrorSink((location) => {
+      if (sinkIsActive && location === "wait-until-outside-request-context") {
+        reentrantSinkCalls++;
+        runAsynchronouslyAndWaitUntil(Promise.resolve());
+      }
+    });
+
+    vitest.vi.stubEnv("VERCEL", "1");
+    if (!Reflect.set(globalThis, contextSymbol, { get: () => undefined })) {
+      throw new Error("Failed to install the test Vercel request-context holder");
+    }
+
+    try {
+      expect(() => runAsynchronouslyAndWaitUntil(Promise.resolve())).not.toThrow();
+      expect(reentrantSinkCalls).toBe(1);
+    } finally {
+      sinkIsActive = false;
+      consoleErrorSpy.mockRestore();
+      vitest.vi.unstubAllEnvs();
+      if (hadContextHolder) {
+        Reflect.set(globalThis, contextSymbol, previousContextHolder);
+      } else {
+        Reflect.deleteProperty(globalThis, contextSymbol);
+      }
+    }
+  });
+}
