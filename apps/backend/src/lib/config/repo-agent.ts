@@ -100,14 +100,16 @@ function sandboxCreds(): SandboxCreds {
   };
 }
 
-async function getConfigAgentSandbox(sandboxId: string): Promise<Sandbox> {
+async function getConfigAgentSandbox(sandboxId: string, signal: AbortSignal): Promise<Sandbox> {
   const creds = sandboxCreds();
-  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
+  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId, signal });
 }
 
 async function stopSandboxWithContext(sandboxId: string, context: string): Promise<void> {
   try {
-    const sandbox = await getConfigAgentSandbox(sandboxId);
+    // Lookup and stop have independent budgets so a stalled lookup cannot make
+    // cleanup hang, while a successful lookup still leaves time to stop the sandbox.
+    const sandbox = await getConfigAgentSandbox(sandboxId, AbortSignal.timeout(5000));
     await sandbox.stop({ signal: AbortSignal.timeout(5000) });
   } catch (error) {
     captureError(context, error);

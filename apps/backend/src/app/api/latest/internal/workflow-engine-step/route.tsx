@@ -8,6 +8,9 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
+// Keep this operational loop budget aligned with the literal Vercel entrypoint
+// limit in src/index.ts. The entrypoint cannot import a shared value because
+// Vercel's builder statically requires a numeric literal in the config object.
 const FUNCTION_BUDGET_MS = 800 * 1000;
 const FUNCTION_SHUTDOWN_SLACK_MS = 20 * 1000;
 // This is a latest-start budget, not a latest-finish budget. A workflow

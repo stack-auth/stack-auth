@@ -29,8 +29,9 @@ async function getHealthResponse(req: Request, checkDatabase: () => Promise<unkn
   });
 }
 
-import.meta.vitest?.test("the database readiness probe verifies connectivity without requiring rows", async ({ expect }) => {
-  const { vi } = import.meta.vitest!;
+const vitest = import.meta.vitest;
+vitest?.test("the database readiness probe verifies connectivity without requiring rows", async ({ expect }) => {
+  const { vi } = vitest;
   const checkDatabase = vi.fn(async () => {});
   const livenessResponse = await getHealthResponse(new Request("http://localhost/health"), checkDatabase);
   const readinessResponse = await getHealthResponse(new Request("http://localhost/health?db=1"), checkDatabase);
