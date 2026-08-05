@@ -1,0 +1,20 @@
+scripts/wait-for-dev-package-imports.ts
+  s_b07d251f777792::t_00d16072779221 1-2
+  s_b07d251f777792::t_c371298d45b1b8 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "2416e7e4a3bf37a1c3ec805fe0a1b967ebe2fc8f",
+  "prompts": {},
+  "sessions": {
+    "s_b07d251f777792": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8c6421f5-012e-4250-b916-983c24dd8e80",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
