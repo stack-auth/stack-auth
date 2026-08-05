@@ -20,19 +20,21 @@ export function getMaxRequestBodySizeBytes(): number {
 
 /**
  * Matches the error srvx rejects body reads with once the accumulated body exceeds
- * `maxRequestBodySize` (it carries `code: "ERR_BODY_TOO_LARGE"` and `status`/`statusCode` 413).
- * The request pipeline maps it to an HTTP 413 instead of the sanitized 500 an unknown error
- * would produce.
+ * `maxRequestBodySize`. The request pipeline maps it to an HTTP 413 instead of the sanitized
+ * 500 an unknown error would produce.
+ *
+ * Deliberately matches ONLY srvx's `code: "ERR_BODY_TOO_LARGE"` marker (verified to survive
+ * the createBackendRequest re-wrap of the body stream), NOT the error's `status`/`statusCode`
+ * fields: a route handler may intentionally throw its own `StatusError` with statusCode 413
+ * and a descriptive message (e.g. the deploy route's tarball-size check), and a status-based
+ * match would intercept it in catchError and silently replace that message with the generic
+ * "Payload Too Large".
  */
 export function isRequestBodyTooLargeError(error: unknown): boolean {
   if (error == null || typeof error !== "object") {
     return false;
   }
-  if ("code" in error && error.code === "ERR_BODY_TOO_LARGE") {
-    return true;
-  }
-  return ("statusCode" in error && error.statusCode === 413)
-    || ("status" in error && error.status === 413);
+  return "code" in error && error.code === "ERR_BODY_TOO_LARGE";
 }
 
 import.meta.vitest?.test("the body size limit is env-overridable and rejects invalid values", ({ expect }) => {
@@ -50,9 +52,13 @@ import.meta.vitest?.test("the body size limit is env-overridable and rejects inv
   }
 });
 
-import.meta.vitest?.test("only srvx body-too-large errors are recognized", ({ expect }) => {
+import.meta.vitest?.test("only srvx body-too-large errors are recognized", async ({ expect }) => {
+  const { StatusError } = await import("@hexclave/shared/dist/utils/errors");
   expect(isRequestBodyTooLargeError(Object.assign(new Error("too large"), { code: "ERR_BODY_TOO_LARGE" }))).toBe(true);
-  expect(isRequestBodyTooLargeError({ status: 413, statusCode: 413 })).toBe(true);
+  // A route-thrown 413 StatusError with a descriptive message must NOT match — catchError
+  // has to pass it through untouched instead of replacing it with the generic 413.
+  expect(isRequestBodyTooLargeError(new StatusError(StatusError.PayloadTooLarge, "The uploaded tarball is too large (max 123 bytes)."))).toBe(false);
+  expect(isRequestBodyTooLargeError({ status: 413, statusCode: 413 })).toBe(false);
   expect(isRequestBodyTooLargeError(new Error("some other error"))).toBe(false);
   expect(isRequestBodyTooLargeError(null)).toBe(false);
   expect(isRequestBodyTooLargeError("ERR_BODY_TOO_LARGE")).toBe(false);
