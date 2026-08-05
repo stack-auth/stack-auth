@@ -1,4 +1,5 @@
 import { createAuthTokens } from "@/lib/tokens";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { verifyTOTP } from "@oslojs/otp";
@@ -25,6 +26,9 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   data: yupObject({
     user_id: yupString().defined(),
     is_new_user: yupBoolean().defined(),
+    method: yupString().oneOf(["password", "otp", "passkey", "oauth"]).optional(),
+    email: yupString().optional(),
+    oauth_provider: yupString().optional(),
   }),
   method: yupObject({}),
   requestBody: yupObject({
@@ -52,6 +56,16 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     }
     const isTotpValid = verifyTOTP(totpSecret, 30, 6, body.totp);
     if (!isTotpValid) {
+      if (data.method != null) {
+        logSignInAttemptInBackground(tenancy, {
+          outcome: "failed",
+          method: data.method,
+          failureReason: "invalid_mfa_totp",
+          email: data.email ?? null,
+          oauthProvider: data.oauth_provider ?? null,
+          userId: data.user_id,
+        });
+      }
       throw new KnownErrors.InvalidTotpCode();
     }
   },
@@ -62,6 +76,15 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
       apiUrl,
       brainAuthReason: "mfa_completion",
     });
+    if (data.method != null) {
+      logSignInAttemptInBackground(tenancy, {
+        outcome: "success",
+        method: data.method,
+        email: data.email ?? null,
+        oauthProvider: data.oauth_provider ?? null,
+        userId: data.user_id,
+      });
+    }
 
     return {
       statusCode: 200,
@@ -76,7 +99,15 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   },
 });
 
-export async function createMfaRequiredError(options: { project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string, isNewUser: boolean, userId: string }) {
+export async function createMfaRequiredError(options: {
+  project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
+  branchId: string,
+  isNewUser: boolean,
+  userId: string,
+  method?: "password" | "otp" | "passkey" | "oauth",
+  email?: string,
+  oauthProvider?: string,
+}) {
   const attemptCode = await mfaVerificationCodeHandler.createCode({
     expiresInMs: 1000 * 60 * 5,
     project: options.project,
@@ -84,6 +115,9 @@ export async function createMfaRequiredError(options: { project: Omit<ProjectsCr
     data: {
       user_id: options.userId,
       is_new_user: options.isNewUser,
+      ...(options.method == null ? {} : { method: options.method }),
+      ...(options.email == null ? {} : { email: options.email }),
+      ...(options.oauthProvider == null ? {} : { oauth_provider: options.oauthProvider }),
     },
     method: {},
     callbackUrl: undefined,

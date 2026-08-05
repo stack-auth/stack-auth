@@ -116,3 +116,16 @@ import.meta.vitest?.test("AppleProvider mints short-lived ES256 client secrets",
   });
   expect(claims.exp! - claims.iat!).toBe(300);
 });
+
+import.meta.vitest?.test("AppleProvider works with key credentials only, without a static client secret", async ({ expect }) => {
+  const { privateKey } = await generateKeyPair("ES256", { extractable: true });
+  const provider = await AppleProvider.create({
+    clientId: "com.example.web",
+    teamId: "TEAM123",
+    keyId: "KEY123",
+    privateKey: await exportPKCS8(privateKey),
+    redirectUri: "https://example.com/callback",
+  });
+  const claims = decodeJwt(provider.oauthClient.metadata.client_secret ?? throwErr("AppleProvider must set a client secret"));
+  expect(claims).toMatchObject({ iss: "TEAM123", sub: "com.example.web" });
+});

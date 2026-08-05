@@ -126,7 +126,7 @@ it("should not sign up new users if verification callback url is not valid", asy
 });
 
 it("should not allow signing up with an e-mail that already exists", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const res2 = await niceBackendFetch("/api/v1/auth/password/sign-up", {
     method: "POST",
     accessType: "client",

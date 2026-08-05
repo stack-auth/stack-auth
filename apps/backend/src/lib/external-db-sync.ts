@@ -1456,6 +1456,9 @@ async function syncDatabase(
     const externalClientOptions = await getSafeExternalPostgresClientOptions(dbConfig.connectionString);
 
     const externalClient = new Client(externalClientOptions);
+    // node-postgres treats an EventEmitter "error" without a listener as fatal to
+    // the whole process; report connection loss to the error sink instead.
+    externalClient.on("error", (error) => captureError("external-db-sync-client", error));
 
     let needsResync = false;
     const syncResult = await Result.fromPromise((async () => {

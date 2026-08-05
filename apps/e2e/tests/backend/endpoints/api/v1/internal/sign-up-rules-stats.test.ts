@@ -131,7 +131,9 @@ describe("with admin access", () => {
       await wait(1_000 + 10_000 - (now.getTime() - lastSecondOfHour.getTime()));
     }
 
-    // Sign up a user to trigger the rule
+    // Sign up a user to trigger the rule. Keep the (otherwise unnecessary) verification email wait:
+    // it doubles as the delay that lets the rule-trigger event land in ClickHouse before we query
+    // the stats endpoint below, which snapshots exact trigger counts.
     const { userId } = await Auth.Password.signUpWithEmail();
 
     const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
@@ -188,7 +190,7 @@ describe("with admin access", () => {
       },
     });
 
-    await Auth.Password.signUpWithEmail();
+    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
     // Wait for the ClickHouse event to appear and verify via a raw COALESCE query
     let chResult: any;

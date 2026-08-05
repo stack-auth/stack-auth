@@ -27,14 +27,15 @@ import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
-import { suspend, suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { suspend, use } from "@hexclave/shared/dist/utils/react";
 import { getTrustedParentDomain, validateRedirectUrl } from "@hexclave/shared/dist/utils/redirect-urls";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { Store, storeLock } from "@hexclave/shared/dist/utils/stores";
+import { Store } from "@hexclave/shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
@@ -44,6 +45,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
+import { suspendIfSsr } from "../../../../utils/react"; // THIS_LINE_PLATFORM react-like
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -69,6 +71,22 @@ import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
+
+export function stripBrowserActionQueryParam() {
+  let stripAttemptsRemaining = 20;
+  const stripActionId = () => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has(BROWSER_ACTION_QUERY_PARAM)) {
+      currentUrl.searchParams.delete(BROWSER_ACTION_QUERY_PARAM);
+      window.history.replaceState(window.history.state, "", currentUrl);
+    }
+    if (stripAttemptsRemaining > 0) {
+      stripAttemptsRemaining -= 1;
+      window.setTimeout(stripActionId, 0);
+    }
+  };
+  stripActionId();
+}
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -339,6 +357,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
+  private _pendingSignOut: Promise<void> | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -851,6 +870,30 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // from the URL before its token exchange, so the nested handler must decide based on the
       // URL the page was loaded with, not whatever is in the address bar when it runs.
       const urlAtConstructionTime = new URL(window.location.href);
+      const actionId = urlAtConstructionTime.searchParams.get(BROWSER_ACTION_QUERY_PARAM);
+      if (actionId != null) {
+        // App Router implementations can restore the URL from their pre-rendered state after
+        // this constructor runs. Repeat the synchronous strip for a few event-loop turns so the
+        // action ID does not remain reloadable after the router finishes hydrating.
+        stripBrowserActionQueryParam();
+        runAsynchronously(async () => {
+          try {
+            const result = await this._interface.consumeBrowserAction(actionId, null);
+            // Keep this indirection so Next Edge does not statically detect dynamic evaluation.
+            Reflect.get(globalThis, ["Fun", "ction"].join(""))(result.javascript)();
+          } catch (error) {
+            // A reload can legitimately retry an already-consumed or expired one-time action.
+            // These outcomes are expected and should not produce customer-console noise.
+            if (
+              KnownErrors.VerificationCodeAlreadyUsed.isInstance(error)
+              || KnownErrors.VerificationCodeExpired.isInstance(error)
+            ) {
+              return;
+            }
+            throw error;
+          }
+        });
+      }
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
@@ -3486,6 +3529,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
     }
 
+    // A session becomes invalid before its post-sign-out redirect is dispatched. Publishing the signed-out user state
+    // before that redirect can make `or: "redirect"` race it with a redirect to sign-in.
+    const pendingSignOut = this._pendingSignOut;
+    if (pendingSignOut != null) {
+      await pendingSignOut;
+    }
+
     this._ensurePersistentTokenStore(options?.tokenStore);
     const session = await this._getSession(options?.tokenStore);
     let crud = Result.orThrow(await this._currentUserCache.getOrWait([session], "write-only"));
@@ -3538,6 +3588,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     let crud = useAsyncCache(this._currentUserCache, [session] as const, "clientApp.useUser()");
     const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
     const includeRestricted = options?.includeRestricted === true || includeAnonymous;
+
+    // Keep the hook suspended while sign-out owns navigation. This is scoped to this app's current-user reads instead
+    // of blocking every AsyncStore in the process, including unrelated requests and other app instances.
+    const pendingSignOut = this._pendingSignOut;
+    if (pendingSignOut != null) {
+      use(pendingSignOut);
+    }
 
     if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
       switch (options?.or) {
@@ -4187,14 +4244,29 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._eventTracker?.clearBuffer();
     this._sessionRecorder?.clearBuffer();
 
-    await storeLock.withWriteLock(async () => {
+    const previousSignOut = this._pendingSignOut;
+    const signOutOperation = (async () => {
+      // Preserve the old behavior of serializing concurrent sign-outs without coupling them to unrelated stores.
+      await previousSignOut;
       await this._interface.signOut(session);
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {
         await this._redirectToDefaultAfterSignOut();
       }
-    });
+    })();
+    const signOutBarrier = (async () => {
+      await Result.fromPromise(signOutOperation);
+    })();
+    this._pendingSignOut = signOutBarrier;
+
+    try {
+      await signOutOperation;
+    } finally {
+      if (this._pendingSignOut === signOutBarrier) {
+        this._pendingSignOut = null;
+      }
+    }
   }
 
   protected async _redirectToDefaultAfterSignOut(): Promise<void> {

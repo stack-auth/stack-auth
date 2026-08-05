@@ -1,4 +1,5 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -60,6 +61,11 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
 
     if (!passkey) {
+      logSignInAttemptInBackground(tenancy, {
+        outcome: "failed",
+        method: "passkey",
+        failureReason: "passkey_not_found",
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("Passkey not found");
     }
 
@@ -68,6 +74,12 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     const { origin } = clientDataJSON;
 
     if (!validateRedirectUrl(origin, tenancy)) {
+      logSignInAttemptInBackground(tenancy, {
+        outcome: "failed",
+        method: "passkey",
+        failureReason: "invalid_origin",
+        userId: passkey.projectUserId,
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("Passkey authentication failed because the origin is not allowed");
     }
 
@@ -91,6 +103,12 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
 
 
     if (!authVerify.verified) {
+      logSignInAttemptInBackground(tenancy, {
+        outcome: "failed",
+        method: "passkey",
+        failureReason: "signature_verification_failed",
+        userId: passkey.projectUserId,
+      });
       throw new KnownErrors.PasskeyAuthenticationFailed("The signature of the authentication response could not be verified with the stored public key tied to this credential ID");
     }
     const authenticationInfo = authVerify.authenticationInfo;
@@ -116,6 +134,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
         branchId: tenancy.branchId,
         isNewUser: false,
         userId: user.projectUserId,
+        method: "passkey",
       });
     }
 
@@ -124,6 +143,11 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
       projectUserId: user.projectUserId,
       apiUrl,
       brainAuthReason: "passkey_signin",
+    });
+    logSignInAttemptInBackground(tenancy, {
+      outcome: "success",
+      method: "passkey",
+      userId: user.projectUserId,
     });
 
     return {

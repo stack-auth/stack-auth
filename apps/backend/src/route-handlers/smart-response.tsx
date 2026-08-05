@@ -3,7 +3,6 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Json } from "@hexclave/shared/dist/utils/json";
 import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
-import { NextRequest } from "next/server";
 import * as yup from "yup";
 import "../polyfills";
 import { SmartRequest } from "./smart-request";
@@ -42,7 +41,7 @@ export type SmartResponse = {
   }
 );
 
-export async function validateSmartResponse<T>(req: NextRequest | null, smartReq: SmartRequest, obj: unknown, schema: yup.Schema<T>): Promise<T> {
+export async function validateSmartResponse<T>(req: Request | null, smartReq: SmartRequest, obj: unknown, schema: yup.Schema<T>): Promise<T> {
   try {
     return await yupValidate(schema, obj, {
       abortEarly: false,
@@ -68,7 +67,7 @@ function isResponseBody(body: unknown): body is Response {
   return typeof body === "object" && body !== null && body instanceof Response;
 }
 
-export async function createResponse<T extends SmartResponse>(req: NextRequest | null, requestId: string, obj: T): Promise<Response> {
+export async function createResponse<T extends SmartResponse>(req: Request | null, requestId: string, obj: T): Promise<Response> {
   return await traceSpan("creating HTTP response from smart response", async () => {
     let status = obj.statusCode;
     const headers = new Map<string, string[]>();

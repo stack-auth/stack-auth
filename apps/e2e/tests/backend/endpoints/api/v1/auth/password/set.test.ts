@@ -23,7 +23,7 @@ it("should set password", async ({ expect }) => {
 });
 
 it("is not allowed to set password if user already has a password", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   const response = await niceBackendFetch("/api/v1/auth/password/set", {
     method: "POST",

@@ -21,6 +21,8 @@ import { getBillingTeamId } from './plan-entitlements';
 import { CLOUD_HOST_PAIRS } from './request-api-url';
 import { Tenancy } from './tenancies';
 
+export const MAX_AUTH_SESSION_EXPIRATION_MS = 1000 * 60 * 60 * 24 * 367;
+
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
 
 const accessTokenSchema = yupObject({
@@ -484,4 +486,19 @@ export async function createAuthTokens(options: CreateAuthTokensOptions) {
   }
 
   return { refreshToken: refreshTokenObj.refreshToken, accessToken };
+}
+
+export async function createImpersonationAuthTokens(options: {
+  tenancy: Tenancy,
+  projectUserId: string,
+  expiresInMillis: number,
+  apiUrl: string,
+}) {
+  return await createAuthTokens({
+    tenancy: options.tenancy,
+    projectUserId: options.projectUserId,
+    expiresAt: new Date(Date.now() + options.expiresInMillis),
+    isImpersonation: true,
+    apiUrl: options.apiUrl,
+  });
 }

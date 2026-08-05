@@ -67,6 +67,12 @@ const personalTeamDefaultDisplayName = "Personal Team";
 // excluding gmail.com intentionally does not exclude mail.gmail.com.
 const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const maxExcludedEmailDomains = 100; // to prevent abuse
+// Prisma loads each userFullInclude relation with a follow-up query whose IN-list over
+// the composite key (tenancyId, projectUserId) uses two bind parameters per user. The
+// former whole-tenancy path hit PostgreSQL's 65535-parameter limit at ~32.7k users
+// (32.5k OK, 33k -> "bind message has 465 parameter formats but 0 parameters") and
+// already took 10.6s at 30k users.
+const maxListPageSize = 1000;
 
 function getSignedUpAtMillis(signedUpAt: Date): number {
   return signedUpAt.getTime();
@@ -551,7 +557,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   }),
   querySchema: yupObject({
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
-    limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
+    limit: yupNumber().integer().min(1).max(maxListPageSize).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: `The maximum number of items to return (capped at ${maxListPageSize}). Larger result sets must be paged with cursor.` } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
     order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
@@ -682,7 +688,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         { projectUserId: sortDirection },
       ],
       // +1 to detect whether a next page exists without a separate count.
-      take: query.limit ? query.limit + 1 : undefined,
+      take: query.limit == null ? maxListPageSize + 1 : query.limit + 1,
       // Cursor convention (matches teams/crud.tsx): the client sends the
       // id of the LAST row of the previous page; Prisma starts AT that id,
       // and `skip: 1` drops it so we don't re-emit it.
@@ -696,6 +702,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
       } : {},
     });
+
+    if (query.limit == null && db.length > maxListPageSize) {
+      throw new StatusError(StatusError.BadRequest, `Listing more than ${maxListPageSize} users requires a limit. Pass limit and paginate using cursor.`);
+    }
 
     const items = db.slice(0, query.limit).map((user) => userPrismaToCrud(user, auth.tenancy.config));
     const hasMore = query.limit != null && db.length > query.limit;

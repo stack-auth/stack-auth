@@ -1,11 +1,12 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { ExpiringPromiseCache } from "@/utils/expiring-promise-cache";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import * as fs from "fs/promises";
 import * as path from "path";
 
-const REVALIDATE_SECONDS = 60 * 60;
+const remoteChangelogCache = new ExpiringPromiseCache<string>(60 * 60 * 1000);
 
 type ChangeType = "major" | "minor" | "patch";
 
@@ -168,21 +169,20 @@ export const GET = createSmartRouteHandler({
       } as const;
     }
 
-    const response = await fetch(changelogUrl, {
-      headers: {
-        "Accept": "text/plain",
-        "User-Agent": "stack-auth-backend-changelog",
-      },
-      next: {
-        revalidate: REVALIDATE_SECONDS,
-      },
+    const content = await remoteChangelogCache.get(changelogUrl, async () => {
+      const response = await fetch(changelogUrl, {
+        headers: {
+          "Accept": "text/plain",
+          "User-Agent": "stack-auth-backend-changelog",
+        },
+      });
+
+      if (!response.ok) {
+        throw new HexclaveAssertionError(`Changelog fetch failed with status ${response.status}`, { changelogUrl });
+      }
+
+      return await response.text();
     });
-
-    if (!response.ok) {
-      throw new HexclaveAssertionError(`Changelog fetch failed with status ${response.status}`, { changelogUrl });
-    }
-
-    const content = await response.text();
     const entries = parseRootChangelog(content).slice(0, 8);
 
     return {
@@ -192,4 +192,3 @@ export const GET = createSmartRouteHandler({
     } as const;
   },
 });
-

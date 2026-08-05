@@ -18,18 +18,22 @@ type StripeConnectProviderProps = {
   children: React.ReactNode,
 };
 
-const stripeConnectInstances = new Map<string, ReturnType<typeof loadConnectAndInitialize>>();
-export function getStripeConnectInstance(adminApp: StackAdminApp) {
-  if (!stripeConnectInstances.has(adminApp.projectId)) {
-    stripeConnectInstances.set(adminApp.projectId, loadConnectAndInitialize({
-      publishableKey: getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? throwErr("No Stripe publishable key found"),
-      fetchClientSecret: async () => {
-        const { client_secret } = await adminApp.createStripeWidgetAccountSession();
-        return client_secret;
-      },
-    }));
-  }
-  return stripeConnectInstances.get(adminApp.projectId)!;
+type StripeConnectAdminApp = Pick<StackAdminApp, "createStripeWidgetAccountSession">;
+
+const stripeConnectInstances = new WeakMap<object, ReturnType<typeof loadConnectAndInitialize>>();
+export function getStripeConnectInstance(adminApp: StripeConnectAdminApp) {
+  const existing = stripeConnectInstances.get(adminApp);
+  if (existing != null) return existing;
+
+  const created = loadConnectAndInitialize({
+    publishableKey: getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? throwErr("No Stripe publishable key found"),
+    fetchClientSecret: async () => {
+      const { client_secret } = await adminApp.createStripeWidgetAccountSession();
+      return client_secret;
+    },
+  });
+  stripeConnectInstances.set(adminApp, created);
+  return created;
 }
 
 export function StripeConnectProvider({ children }: StripeConnectProviderProps) {

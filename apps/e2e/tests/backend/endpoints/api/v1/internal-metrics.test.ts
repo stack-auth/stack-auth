@@ -372,7 +372,7 @@ it("should handle mixed auth methods excluding anonymous users", async ({ expect
   // Regular user with password
   const passwordMailbox = createMailbox();
   backendContext.set({ mailbox: passwordMailbox });
-  await Auth.Password.signUpWithEmail({ password: "test1234" });
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "test1234" });
 
   // Anonymous users (should not be counted)
   for (let i = 0; i < 5; i++) {

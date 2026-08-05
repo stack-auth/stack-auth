@@ -7,9 +7,8 @@ import { StackClientApp } from "../interfaces/client-app";
 import { planRedirectToHandler } from "./redirect-page-urls";
 
 // Every app in this file is constructed with `devTool: false`. The tests install a mock window and document, which makes
-// the SDK believe it is in a browser, and mounting the dev tool kicks off a background `getProject()` against a backend
-// that does not exist here. That fetch never settles, and because it runs inside the global store lock, it blocks every
-// later `withWriteLock` caller (`_signOut`, most visibly) for the rest of the test file.
+// the SDK believe it is in a browser; mounting the dev tool would then start background requests against a backend that
+// does not exist here and leak that work across test cases.
 function createAccessTokenString(refreshTokenId: string): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const nowSeconds = Math.floor(Date.now() / 1000);
