@@ -43,29 +43,28 @@ const postgresPrismaClientsStore: Map<string, {
   client: PrismaClient,
   schema: string,
 }> = globalVar.__stack_postgres_prisma_clients ??= new Map();
-type PostgresPoolLabel = "primary" | "replica";
-function getPostgresPrismaClient(connectionString: string, poolLabel: PostgresPoolLabel) {
+function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
     if (getEnvVariable("VERCEL", "") !== "") {
       // Fluid Compute can suspend an instance while an application-owned pool still
-      // has idle clients. attachDatabasePool keeps the invocation alive until pg's
-      // idle timeout releases those clients, so suspended instances do not strand
-      // server-side connections.
+      // has idle clients. Registering the pool keeps the invocation alive until
+      // those clients reach the pool's idle timeout.
       attachDatabasePool(pool);
     }
-    // The label is deliberately closed over primary/replica so a future call site
-    // cannot accidentally expose a credential-bearing connection string in stats or errors.
-    registerPgPool(pool, poolLabel);
+    registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
+    // Error-capture locations use a label instead of the connection string so
+    // credentials never enter the error sink.
+    const safePoolLabel = poolLabel ?? "tenant";
     const adapter = new PrismaPg(pool, {
       schema,
       // Prisma receives a Pool created by this application. Without this option,
       // $disconnect removes Prisma's listener but deliberately leaves the pool open.
       disposeExternalPool: true,
-      onPoolError: (error) => captureError(`pg-pool-${poolLabel}`, error),
-      onConnectionError: (error) => captureError(`pg-connection-${poolLabel}`, error),
+      onPoolError: (error) => captureError(`pg-pool-${safePoolLabel}`, error),
+      onConnectionError: (error) => captureError(`pg-connection-${safePoolLabel}`, error),
     });
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
@@ -128,7 +127,6 @@ let actualGlobalConnectionString: string = globalVar.__hexclave_actual_global_co
 let actualReplicaConnectionString: string = globalVar.__hexclave_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
 export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
-  $primary: () => Omit<T, "$on">,
   $replica: () => Omit<T, "$on">,
 };
 

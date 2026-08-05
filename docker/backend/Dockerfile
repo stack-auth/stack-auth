@@ -83,13 +83,13 @@ COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/pr
 
 ENV NODE_ENV=production
 ENV PORT=8102
-ENV STACK_BACKEND_HOST=0.0.0.0
+ENV HOSTNAME=0.0.0.0
 
 USER node
 
 EXPOSE 8102
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/health?db=1').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
 
 CMD ["node", "apps/backend/dist/server.mjs"]
