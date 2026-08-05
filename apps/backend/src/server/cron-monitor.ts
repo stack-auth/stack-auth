@@ -43,84 +43,86 @@ export function withVercelCronMonitor<T>(
   });
 }
 
-import.meta.vitest?.test("Vercel cron requests retain their configured Sentry monitor", ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("CRON_SECRET", "test-cron-secret");
-  const calls: { monitorSlug: string, monitorConfig: MonitorConfig }[] = [];
-  const runMonitor: MonitorRunner = (monitorSlug, callback, monitorConfig) => {
-    calls.push({ monitorSlug, monitorConfig });
-    return callback();
-  };
-  const result = withVercelCronMonitor(
-    new Request("http://localhost/api/latest/internal/workflow-engine-step", {
-      headers: {
-        authorization: "Bearer test-cron-secret",
-        "user-agent": "vercel-cron/1.0",
-      },
-    }),
-    "/api/latest/internal/workflow-engine-step",
-    () => "completed",
-    runMonitor,
-  );
+const vitest = import.meta.vitest;
+if (vitest != null) {
+  const { afterEach, test, vi } = vitest;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
-  expect({ result, calls }).toMatchInlineSnapshot(`
-    {
-      "calls": [
-        {
-          "monitorConfig": {
-            "maxRuntime": 12,
-            "schedule": {
-              "type": "crontab",
-              "value": "* * * * *",
-            },
-          },
-          "monitorSlug": "/api/latest/internal/workflow-engine-step",
+  test("Vercel cron requests retain their configured Sentry monitor", ({ expect }) => {
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+    const calls: { monitorSlug: string, monitorConfig: MonitorConfig }[] = [];
+    const runMonitor: MonitorRunner = (monitorSlug, callback, monitorConfig) => {
+      calls.push({ monitorSlug, monitorConfig });
+      return callback();
+    };
+    const result = withVercelCronMonitor(
+      new Request("http://localhost/api/latest/internal/workflow-engine-step", {
+        headers: {
+          authorization: "Bearer test-cron-secret",
+          "user-agent": "vercel-cron/1.0",
         },
-      ],
-      "result": "completed",
-    }
-  `);
-  vi.unstubAllEnvs();
-});
+      }),
+      "/api/latest/internal/workflow-engine-step",
+      () => "completed",
+      runMonitor,
+    );
 
-import.meta.vitest?.test("ordinary requests do not create Sentry cron check-ins", ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("CRON_SECRET", "test-cron-secret");
-  let monitorCalls = 0;
-  const runMonitor: MonitorRunner = (_monitorSlug, callback) => {
-    monitorCalls++;
-    return callback();
-  };
-  const result = withVercelCronMonitor(
-    new Request("http://localhost/api/latest/internal/email-queue-step"),
-    "/api/latest/internal/email-queue-step",
-    () => "completed",
-    runMonitor,
-  );
+    expect({ result, calls }).toMatchInlineSnapshot(`
+      {
+        "calls": [
+          {
+            "monitorConfig": {
+              "maxRuntime": 12,
+              "schedule": {
+                "type": "crontab",
+                "value": "* * * * *",
+              },
+            },
+            "monitorSlug": "/api/latest/internal/workflow-engine-step",
+          },
+        ],
+        "result": "completed",
+      }
+    `);
+  });
 
-  expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
-  vi.unstubAllEnvs();
-});
-
-import.meta.vitest?.test("spoofed Vercel cron requests do not create check-ins", ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("CRON_SECRET", "test-cron-secret");
-  let monitorCalls = 0;
-  const result = withVercelCronMonitor(
-    new Request("http://localhost/api/latest/internal/email-queue-step", {
-      headers: {
-        authorization: "Bearer wrong-secret",
-        "user-agent": "custom-vercel-cron-client",
-      },
-    }),
-    "/api/latest/internal/email-queue-step",
-    () => "completed",
-    (_monitorSlug, callback) => {
+  test("ordinary requests do not create Sentry cron check-ins", ({ expect }) => {
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+    let monitorCalls = 0;
+    const runMonitor: MonitorRunner = (_monitorSlug, callback) => {
       monitorCalls++;
       return callback();
-    },
-  );
+    };
+    const result = withVercelCronMonitor(
+      new Request("http://localhost/api/latest/internal/email-queue-step"),
+      "/api/latest/internal/email-queue-step",
+      () => "completed",
+      runMonitor,
+    );
 
-  expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
-  vi.unstubAllEnvs();
-});
+    expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+  });
+
+  test("spoofed Vercel cron requests do not create check-ins", ({ expect }) => {
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+    let monitorCalls = 0;
+    const result = withVercelCronMonitor(
+      new Request("http://localhost/api/latest/internal/email-queue-step", {
+        headers: {
+          authorization: "Bearer wrong-secret",
+          "user-agent": "custom-vercel-cron-client",
+        },
+      }),
+      "/api/latest/internal/email-queue-step",
+      () => "completed",
+      (_monitorSlug, callback) => {
+        monitorCalls++;
+        return callback();
+      },
+    );
+
+    expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+  });
+}

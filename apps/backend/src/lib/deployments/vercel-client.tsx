@@ -9,6 +9,7 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { getOptionalRequestAbortSignal } from "@/lib/runtime/request-context";
 
 const MOCK_VERCEL_TOKEN = "mock_hexclave_vercel_key";
 
@@ -140,7 +141,7 @@ export class VercelDeploymentsClient {
       // (SharedArrayBuffer-backed views are not valid bodies); it also
       // guarantees we never send trailing bytes of a larger shared buffer.
       body: init.rawBody != null ? new Uint8Array(init.rawBody).slice().buffer : init.body,
-      signal: init.signal,
+      signal: init.signal ?? getOptionalRequestAbortSignal(),
     });
     const text = await response.text();
     let json: any = undefined;

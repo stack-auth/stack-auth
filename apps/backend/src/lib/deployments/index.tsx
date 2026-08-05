@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
+import { getOptionalRequestAbortSignal, requestContextALS } from "@/lib/runtime/request-context";
 
 /**
  * The app id doubles as the top-level config section key, and it carries the
@@ -596,6 +597,25 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
+async function awaitDeploymentOperation<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal == null) return await promise;
+  signal.throwIfAborted();
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * Unpacks an uploaded gzipped tarball into deployable files. Defensive on
  * purpose — the tarball is untrusted user input (see limits above; path
@@ -603,19 +623,27 @@ export function redactSecrets(text: string, secretValues: string[]): string {
  * as defense-in-depth even though the CLI already excludes them.
  */
 export async function unpackSourceTarball(tarballGzipped: Uint8Array): Promise<{ path: string, data: Uint8Array }[]> {
+  const signal = getOptionalRequestAbortSignal();
+  signal?.throwIfAborted();
   let tarBytes: Buffer;
   try {
-    tarBytes = await gunzipAsync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES });
+    tarBytes = await awaitDeploymentOperation(
+      gunzipAsync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES }),
+      signal,
+    );
   } catch (e) {
+    signal?.throwIfAborted();
     if (e instanceof RangeError || (e instanceof Error && "code" in e && e.code === "ERR_BUFFER_TOO_LARGE")) {
       throw new StatusError(400, `Uploaded source tarball is too large when unpacked (max ${MAX_TARBALL_UNPACKED_BYTES} bytes).`);
     }
     throw new StatusError(400, "Uploaded source is not a valid gzip stream.");
   }
+  signal?.throwIfAborted();
   const entries = parseTar(tarBytes, {
     maxEntries: MAX_TARBALL_ENTRIES,
     maxTotalBytes: MAX_TARBALL_UNPACKED_BYTES,
   });
+  signal?.throwIfAborted();
   return entries
     .filter((entry) => !entry.path.endsWith("/"))
     .filter((entry) => {
@@ -623,6 +651,23 @@ export async function unpackSourceTarball(tarballGzipped: Uint8Array): Promise<{
       return !segments.includes("node_modules") && !segments.includes(".git");
     });
 }
+
+import.meta.vitest?.test("source unpacking observes the inbound client signal", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  controller.abort(cancellation);
+
+  await requestContextALS.run({
+    abortSignal: controller.signal,
+    headers: new Headers(),
+    incomingCookies: new Map(),
+    pendingSetCookies: [],
+    deletedCookies: [],
+    normalizedPath: "/api/latest/deployments/services/[service_id]/deploy",
+  }, async () => {
+    await expect(unpackSourceTarball(new Uint8Array())).rejects.toBe(cancellation);
+  });
+});
 
 export type StartDeploymentResult = {
   runId: string,

@@ -1,4 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
+import { getOptionalRequestAbortSignal } from '@/lib/runtime/request-context';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
@@ -162,28 +163,32 @@ const engineMap = new Map<string, JsEngine>([
  * the code throws an error.
  */
 export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<ExecuteResult> {
+  const resolvedOptions: ExecuteJavascriptOptions = {
+    ...options,
+    signal: options.signal ?? getOptionalRequestAbortSignal(),
+  };
   return await traceSpan({
     description: 'js-execution.executeJavascript',
     attributes: {
       'js-execution.code.length': code.length.toString(),
-      'js-execution.nodeModules.count': options.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
+      'js-execution.nodeModules.count': resolvedOptions.nodeModules ? Object.keys(resolvedOptions.nodeModules).length.toString() : '0',
     }
   }, async () => {
-    options.signal?.throwIfAborted();
+    resolvedOptions.signal?.throwIfAborted();
 
     if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
-      const shouldSanityTest = !options.disableSanityTest && Math.random() < 0.05;
+      const shouldSanityTest = !resolvedOptions.disableSanityTest && Math.random() < 0.05;
       if (shouldSanityTest) {
-        runAsynchronouslyAndWaitUntil(runSanityTestWithoutExpectedCancellation(code, options));
+        runAsynchronouslyAndWaitUntil(runSanityTestWithoutExpectedCancellation(code, resolvedOptions));
       }
 
-      return await runWithFallback(code, options);
+      return await runWithFallback(code, resolvedOptions);
     } else {
       if (getNodeEnvironment().includes("prod")) {
         throw new HexclaveAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 
-      return await runWithoutFallback(code, options);
+      return await runWithoutFallback(code, resolvedOptions);
     }
   });
 }

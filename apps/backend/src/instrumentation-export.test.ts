@@ -84,3 +84,31 @@ it("exports spans from Sentry's provider to an OTLP HTTP collector", async () =>
     });
   }
 }, 10_000);
+
+it("preserves active span context without Sentry or an OTLP exporter", async () => {
+  await execFileAsync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    `
+      import { trace } from "@opentelemetry/api";
+      import { NoopSpanProcessor } from "@opentelemetry/sdk-trace-base";
+      import * as Sentry from "@sentry/node";
+
+      Sentry.init({
+        enabled: false,
+        openTelemetryInstrumentations: [],
+        openTelemetrySpanProcessors: [new NoopSpanProcessor()],
+        registerEsmLoaderHooks: false,
+        tracesSampleRate: 0,
+      });
+      await trace.getTracer("no-export-context-test").startActiveSpan("active-context", async (span) => {
+        if (trace.getActiveSpan() !== span) throw new Error("No active span context");
+        span.end();
+      });
+      if (!await Sentry.close(5_000)) throw new Error("Sentry did not close");
+    `,
+  ], {
+    cwd: backendDirectory,
+    env: { NODE_ENV: "test" },
+  });
+});

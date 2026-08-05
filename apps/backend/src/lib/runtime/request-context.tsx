@@ -15,6 +15,8 @@ export type ResponseCookieOptions = {
 };
 
 export type RequestContext = {
+  /** The inbound client signal. This is deliberately independent of deployment-duration limits. */
+  abortSignal: AbortSignal,
   headers: Headers,
   incomingCookies: Map<string, string>,
   pendingSetCookies: CookieWrite[],
@@ -36,6 +38,10 @@ export function getRequestContext() {
     throw new Error("Backend request context is only available while handling a backend request");
   }
   return context;
+}
+
+export function getOptionalRequestAbortSignal(): AbortSignal | undefined {
+  return requestContextALS.getStore()?.abortSignal;
 }
 
 export function parseCookieHeader(cookieHeader: string | null) {

@@ -120,6 +120,7 @@ async function dispatch(request: Request) {
   requestSpan?.setAttribute("http.request.method", method);
   requestSpan?.setAttribute("http.route", match.normalizedPath);
   const context: RequestContext = {
+    abortSignal: request.signal,
     headers: pipeline.mergedHeaders,
     incomingCookies: parseCookieHeader(pipeline.mergedHeaders.get("cookie")),
     pendingSetCookies: [],

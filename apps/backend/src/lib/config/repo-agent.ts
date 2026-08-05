@@ -106,11 +106,12 @@ async function getConfigAgentSandbox(sandboxId: string, signal: AbortSignal): Pr
 }
 
 async function stopSandboxWithContext(sandboxId: string, context: string): Promise<void> {
+  // One request-independent budget covers lookup plus stop. It is shorter than
+  // the standalone background-task drain, so shutdown cannot outlive PID 1.
+  const cleanupSignal = AbortSignal.timeout(5000);
   try {
-    // Lookup and stop have independent budgets so a stalled lookup cannot make
-    // cleanup hang, while a successful lookup still leaves time to stop the sandbox.
-    const sandbox = await getConfigAgentSandbox(sandboxId, AbortSignal.timeout(5000));
-    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+    const sandbox = await getConfigAgentSandbox(sandboxId, cleanupSignal);
+    await sandbox.stop({ signal: cleanupSignal });
   } catch (error) {
     captureError(context, error);
   }
