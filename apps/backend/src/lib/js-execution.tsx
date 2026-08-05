@@ -144,12 +144,33 @@ function createVercelSandboxEngine(): JsEngine {
           throw new HexclaveAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode: options.logSafeCode ?? code, innerOptions: options });
         }
       } finally {
-        // The operation signal is normally aborted on timeout, but stopping the
-        // already-created sandbox is exactly the cleanup that still needs to run.
-        await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+        const cleanupPromise = stopVercelSandboxAfterExecution(sandbox);
+        if (options.signal?.aborted === true) {
+          // Once the caller has timed out, cleanup must not add another five
+          // seconds to its latency. Keep the teardown owned by the invocation
+          // so Vercel or standalone shutdown still gives it time to finish.
+          runAsynchronouslyAndWaitUntil(cleanupPromise);
+        } else {
+          await cleanupPromise;
+        }
       }
     },
   };
+}
+
+async function stopVercelSandboxAfterExecution(sandbox: Sandbox): Promise<void> {
+  try {
+    // The operation signal may already be aborted, but stopping the
+    // already-created sandbox is exactly the cleanup that still needs to run.
+    await sandbox.stop({ signal: AbortSignal.timeout(5000) });
+  } catch (error) {
+    // Teardown failure is observable, but must not replace the execution
+    // result or the original provider error that led us into `finally`.
+    captureError("js-execution-vercel-sandbox-cleanup-failed", new HexclaveAssertionError(
+      "Failed to stop Vercel Sandbox after JavaScript execution",
+      { cause: error },
+    ));
+  }
 }
 
 const engineMap = new Map<string, JsEngine>([

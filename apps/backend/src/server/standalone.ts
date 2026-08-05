@@ -7,6 +7,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { Server as ElysiaServer } from "elysia/universal";
 import { app } from "./app";
+import { waitForNodeServerToListen } from "./node-server";
 import { backendShutdownBudget, runShutdownOperationWithTimeout, shutdownBackend } from "./shutdown";
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
@@ -26,15 +27,28 @@ const listenOptions = {
   // the origin is blocked; otherwise clients could spoof HTTPS and host values.
   trustProxy: trustedProxy !== "",
 };
-const boundServerPromise = new Promise<ElysiaServer>((resolve) => {
+const boundServerPromise = new Promise<ElysiaServer>((resolve, reject) => {
   app.listen(listenOptions, (server) => {
-    resolve(server);
+    waitForNodeServerToListen(server).then(resolve, reject);
   });
 });
 
-console.log(`Hexclave backend listening on http://${hostname}:${port}`);
-
 let shutdownPromise: Promise<void> | undefined;
+
+runAsynchronously(boundServerPromise.then(() => {
+  if (shutdownPromise == null) {
+    console.log(`Hexclave backend listening on http://${hostname}:${port}`);
+  }
+}), {
+  noErrorLogging: true,
+  onError: (error) => {
+    console.error(JSON.stringify({
+      event: "backend.startup.failed",
+      error: error.message,
+    }));
+    process.exit(1);
+  },
+});
 
 function handleShutdownSignal(signal: NodeJS.Signals) {
   if (shutdownPromise != null) {

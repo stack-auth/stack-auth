@@ -41,6 +41,7 @@ function canCompressResponse(request: Request, response: Response): boolean {
     request.method === "HEAD"
     || request.headers.has("range")
     || response.body == null
+    || response.body.locked
     || response.status < 200
     || response.status === 204
     || response.status === 205
@@ -166,4 +167,13 @@ import.meta.vitest?.test("does not compress ineligible or refused representation
   expect(compressResponse(new Request("http://localhost/test", {
     headers: { "accept-encoding": "gzip" },
   }), noTransformResponse)).toBe(noTransformResponse);
+
+  const lockedResponse = new Response("locked body", {
+    headers: { "content-type": "text/plain" },
+  });
+  const reader = lockedResponse.body?.getReader();
+  expect(compressResponse(new Request("http://localhost/test", {
+    headers: { "accept-encoding": "gzip" },
+  }), lockedResponse)).toBe(lockedResponse);
+  reader?.releaseLock();
 });

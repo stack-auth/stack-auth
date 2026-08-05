@@ -7,6 +7,12 @@ test("the production launcher preserves an explicit test environment", ({ expect
   expect(initializeNodeEnvironment(environment)).toBe("test");
 });
 
+test("the production launcher trims an explicit environment", ({ expect }) => {
+  const environment = { NODE_ENV: " production\n" };
+  expect(initializeNodeEnvironment(environment)).toBe("production");
+  expect(environment.NODE_ENV).toBe("production");
+});
+
 test("the production launcher defaults an unset environment to production", ({ expect }) => {
   const environment = {};
   expect(initializeNodeEnvironment(environment)).toBe("production");
