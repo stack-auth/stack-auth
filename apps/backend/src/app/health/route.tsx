@@ -5,7 +5,9 @@ export async function GET(req: Request) {
 }
 
 async function checkDatabaseConnection(): Promise<void> {
-  await globalPrismaClient.$replica().$queryRaw`SELECT 1`;
+  await globalPrismaClient.$primary().project.findFirst({
+    select: { id: true },
+  });
 }
 
 async function getHealthResponse(req: Request, checkDatabase: () => Promise<unknown>) {

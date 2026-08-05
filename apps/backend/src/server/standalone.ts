@@ -4,22 +4,20 @@ import "@/polyfills";
 import { disconnectPostgresPrismaClients } from "@/prisma-client";
 import { drainInFlightPromises } from "@/utils/background-tasks";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { Server as ElysiaServer } from "elysia/universal";
 import { app } from "./app";
-import { backendShutdownBudget, shutdownBackend } from "./shutdown";
+import { backendShutdownBudget, runShutdownOperationWithTimeout, shutdownBackend } from "./shutdown";
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));
-const hostname = getEnvVariable("HOSTNAME", "0.0.0.0");
+const hostname = getEnvVariable("HEXCLAVE_BACKEND_HOST", "0.0.0.0");
 const trustedProxy = getTrustedProxy();
 
 // The @elysia/node adapter never assigns `app.server`, so `app.stop()` falls through to the
 // web-standard adapter's stop and throws "Elysia isn't running" even while the server is serving
 // traffic. The adapter instead hands a working server handle (whose stop() closes the underlying
 // Node http.Server) to the listen callback, so capture that and use it for graceful shutdown.
-let boundServer: ElysiaServer | undefined;
 const listenOptions = {
   hostname,
   port,
@@ -28,8 +26,10 @@ const listenOptions = {
   // the origin is blocked; otherwise clients could spoof HTTPS and host values.
   trustProxy: trustedProxy !== "",
 };
-app.listen(listenOptions, (server) => {
-  boundServer = server;
+const boundServerPromise = new Promise<ElysiaServer>((resolve) => {
+  app.listen(listenOptions, (server) => {
+    resolve(server);
+  });
 });
 
 console.log(`Hexclave backend listening on http://${hostname}:${port}`);
@@ -53,14 +53,16 @@ function handleShutdownSignal(signal: NodeJS.Signals) {
     }));
     process.exit(1);
   }, backendShutdownBudget.hardExitTimeoutMs);
-  hardExitTimeout.unref();
-
   shutdownPromise = shutdownBackend(signal, {
     // stop(false) mirrors the previous app.stop(false) intent: stop accepting new connections but
     // let in-flight requests finish (the drain steps below and the hard-exit cover the rest).
-    stopAcceptingRequests: async () => (boundServer ?? throwErr("HTTP server handle missing — the listen callback should have run at startup")).stop(false),
+    stopAcceptingRequests: async () => (await boundServerPromise).stop(false),
     drainBackgroundTasks: async () => await drainInFlightPromises(backendShutdownBudget.backgroundTasksTimeoutMs),
-    disconnectDatabases: disconnectPostgresPrismaClients,
+    disconnectDatabases: async () => await runShutdownOperationWithTimeout(
+      "database disconnect",
+      backendShutdownBudget.databaseTimeoutMs,
+      disconnectPostgresPrismaClients,
+    ),
     closeInstrumentation: async () => await closeBackendInstrumentation(backendShutdownBudget.instrumentationTimeoutMs),
     log: (event) => {
       const serializedEvent = JSON.stringify(event);

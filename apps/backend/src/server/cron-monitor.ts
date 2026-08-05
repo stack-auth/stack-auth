@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/node";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import vercelConfig from "../../vercel.json";
 
 type MonitorConfig = NonNullable<Parameters<typeof Sentry.withMonitor>[2]>;
@@ -23,7 +24,10 @@ export function withVercelCronMonitor<T>(
   callback: () => T,
   runMonitor: MonitorRunner = Sentry.withMonitor,
 ): T {
-  if (!request.headers.get("user-agent")?.includes("vercel-cron")) {
+  const cronSecret = getEnvVariable("CRON_SECRET", "");
+  if (cronSecret === ""
+    || request.headers.get("user-agent") !== "vercel-cron/1.0"
+    || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
     return callback();
   }
   const cron = vercelCronsByPath.get(normalizedPath);
@@ -31,7 +35,7 @@ export function withVercelCronMonitor<T>(
     return callback();
   }
   return runMonitor(cron.path, callback, {
-    maxRuntime: 60 * 12,
+    maxRuntime: 12,
     schedule: {
       type: "crontab",
       value: cron.schedule,
@@ -40,6 +44,8 @@ export function withVercelCronMonitor<T>(
 }
 
 import.meta.vitest?.test("Vercel cron requests retain their configured Sentry monitor", ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("CRON_SECRET", "test-cron-secret");
   const calls: { monitorSlug: string, monitorConfig: MonitorConfig }[] = [];
   const runMonitor: MonitorRunner = (monitorSlug, callback, monitorConfig) => {
     calls.push({ monitorSlug, monitorConfig });
@@ -47,7 +53,10 @@ import.meta.vitest?.test("Vercel cron requests retain their configured Sentry mo
   };
   const result = withVercelCronMonitor(
     new Request("http://localhost/api/latest/internal/workflow-engine-step", {
-      headers: { "user-agent": "vercel-cron/1.0" },
+      headers: {
+        authorization: "Bearer test-cron-secret",
+        "user-agent": "vercel-cron/1.0",
+      },
     }),
     "/api/latest/internal/workflow-engine-step",
     () => "completed",
@@ -59,7 +68,7 @@ import.meta.vitest?.test("Vercel cron requests retain their configured Sentry mo
       "calls": [
         {
           "monitorConfig": {
-            "maxRuntime": 720,
+            "maxRuntime": 12,
             "schedule": {
               "type": "crontab",
               "value": "* * * * *",
@@ -71,9 +80,12 @@ import.meta.vitest?.test("Vercel cron requests retain their configured Sentry mo
       "result": "completed",
     }
   `);
+  vi.unstubAllEnvs();
 });
 
 import.meta.vitest?.test("ordinary requests do not create Sentry cron check-ins", ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("CRON_SECRET", "test-cron-secret");
   let monitorCalls = 0;
   const runMonitor: MonitorRunner = (_monitorSlug, callback) => {
     monitorCalls++;
@@ -87,4 +99,28 @@ import.meta.vitest?.test("ordinary requests do not create Sentry cron check-ins"
   );
 
   expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+  vi.unstubAllEnvs();
+});
+
+import.meta.vitest?.test("spoofed Vercel cron requests do not create check-ins", ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("CRON_SECRET", "test-cron-secret");
+  let monitorCalls = 0;
+  const result = withVercelCronMonitor(
+    new Request("http://localhost/api/latest/internal/email-queue-step", {
+      headers: {
+        authorization: "Bearer wrong-secret",
+        "user-agent": "custom-vercel-cron-client",
+      },
+    }),
+    "/api/latest/internal/email-queue-step",
+    () => "completed",
+    (_monitorSlug, callback) => {
+      monitorCalls++;
+      return callback();
+    },
+  );
+
+  expect({ result, monitorCalls }).toEqual({ result: "completed", monitorCalls: 0 });
+  vi.unstubAllEnvs();
 });

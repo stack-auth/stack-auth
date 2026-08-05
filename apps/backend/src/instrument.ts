@@ -39,7 +39,7 @@ export function registerBackendInstrumentation() {
   const openTelemetrySpanProcessors = plan.otlpTracesEndpoint == null
     ? plan.sentryEnabled ? [] : [new NoopSpanProcessor()]
     : [new BatchSpanProcessor(new OTLPTraceExporter({ url: plan.otlpTracesEndpoint }))];
-  const openTelemetryInstrumentations = plan.sentryEnabled
+  const openTelemetryInstrumentations = plan.sentryEnabled || plan.otlpTracesEndpoint == null
     ? []
     : [
       new PrismaInstrumentation(),
@@ -50,10 +50,9 @@ export function registerBackendInstrumentation() {
   initPerfStats();
 
   // Sentry owns the one global OpenTelemetry provider in every environment.
-  // When Sentry is disabled, its integrations are disabled too, so register the
-  // existing Node and Prisma instrumentations explicitly. A no-op processor keeps
-  // request context working even when no exporter is configured; an OTLP endpoint
-  // replaces it with one real processor on the same provider.
+  // When Sentry is disabled but an OTLP destination exists, register the Node and
+  // Prisma instrumentations explicitly. With no exporter, the no-op processor keeps
+  // request context available without paying to patch every instrumented library.
   Sentry.init({
     ignoreErrors: sentryBaseConfig.ignoreErrors,
     normalizeDepth: sentryBaseConfig.normalizeDepth,

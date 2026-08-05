@@ -8,6 +8,7 @@ const compressibleApplicationTypes = new Set([
   "application/x-javascript",
   "image/svg+xml",
 ]);
+const minimumCompressionBytes = 1024;
 
 export function compressResponse(request: Request, response: Response): Response {
   if (!canCompressResponse(request, response)) {
@@ -46,6 +47,7 @@ function canCompressResponse(request: Request, response: Response): boolean {
     || response.status === 304
     || response.headers.has("content-encoding")
     || response.headers.has("content-range")
+    || isKnownSmallRepresentation(response.headers.get("content-length"))
     || hasNoTransformDirective(response.headers.get("cache-control"))
     || !isCompressibleContentType(response.headers.get("content-type"))
   ) {
@@ -60,10 +62,19 @@ function hasNoTransformDirective(cacheControl: string | null): boolean {
 
 function isCompressibleContentType(contentTypeHeader: string | null): boolean {
   const contentType = contentTypeHeader?.split(";", 1)[0]?.trim().toLowerCase();
-  return contentType?.startsWith("text/") === true
+  return contentType !== "text/event-stream"
+    && (contentType?.startsWith("text/") === true
     || contentType?.endsWith("+json") === true
     || contentType?.endsWith("+xml") === true
-    || (contentType != null && compressibleApplicationTypes.has(contentType));
+    || (contentType != null && compressibleApplicationTypes.has(contentType)));
+}
+
+function isKnownSmallRepresentation(contentLengthHeader: string | null): boolean {
+  if (contentLengthHeader == null) {
+    return false;
+  }
+  const contentLength = Number(contentLengthHeader);
+  return Number.isSafeInteger(contentLength) && contentLength >= 0 && contentLength < minimumCompressionBytes;
 }
 
 function acceptsGzip(acceptEncodingHeader: string | null): boolean {
@@ -77,9 +88,10 @@ function acceptsGzip(acceptEncodingHeader: string | null): boolean {
     const qualityParameter = rawParameters.find((parameter) => parameter.trim().startsWith("q="));
     const parsedQuality = qualityParameter == null ? 1 : Number(qualityParameter.trim().slice(2));
     const quality = Number.isFinite(parsedQuality) && parsedQuality >= 0 && parsedQuality <= 1 ? parsedQuality : 0;
-    if (rawEncoding === "gzip" || rawEncoding === "x-gzip") {
+    const encoding = rawEncoding.trim();
+    if (encoding === "gzip" || encoding === "x-gzip") {
       gzipQuality = quality;
-    } else if (rawEncoding === "*") {
+    } else if (encoding === "*") {
       wildcardQuality = quality;
     }
   }
@@ -128,8 +140,23 @@ import.meta.vitest?.test("does not compress ineligible or refused representation
   const response = Response.json({ ok: true });
   expect(compressResponse(new Request("http://localhost/test"), response)).toBe(response);
   expect(compressResponse(new Request("http://localhost/test", {
-    headers: { "accept-encoding": "gzip;q=0, *;q=1" },
+    headers: { "accept-encoding": "gzip ; q=0, *;q=1" },
   }), response)).toBe(response);
+  const smallResponse = new Response("small", {
+    headers: {
+      "content-length": "5",
+      "content-type": "text/plain",
+    },
+  });
+  expect(compressResponse(new Request("http://localhost/test", {
+    headers: { "accept-encoding": "gzip" },
+  }), smallResponse)).toBe(smallResponse);
+  const eventStreamResponse = new Response("data: hello\n\n", {
+    headers: { "content-type": "text/event-stream" },
+  });
+  expect(compressResponse(new Request("http://localhost/test", {
+    headers: { "accept-encoding": "gzip" },
+  }), eventStreamResponse)).toBe(eventStreamResponse);
   const noTransformResponse = new Response("sensitive", {
     headers: {
       "cache-control": "private, no-transform",

@@ -16,19 +16,27 @@ type RouteEntry = {
 };
 
 type RouteMatch = {
-  loadMethods: () => Promise<RouteMethods>,
+  methods: RouteMethods,
   normalizedPath: string,
   params: Record<string, string | string[]>,
 };
 
 const routeRegistry = buildRouteRegistry();
 
-export function matchRoute(dispatchPath: string): RouteMatch | undefined {
-  for (const entry of routeRegistry) {
+export async function matchRoute(dispatchPath: string): Promise<RouteMatch | undefined> {
+  return await findRouteMatch(dispatchPath, routeRegistry);
+}
+
+async function findRouteMatch(dispatchPath: string, entries: RouteEntry[]): Promise<RouteMatch | undefined> {
+  for (const entry of entries) {
     const params = SmartRouter.matchNormalizedPath(dispatchPath, entry.normalizedPath);
     if (params !== false) {
+      const methods = await entry.loadMethods();
+      if (methods.size === 0) {
+        continue;
+      }
       return {
-        loadMethods: entry.loadMethods,
+        methods,
         normalizedPath: entry.normalizedPath,
         params: decodeRouteParams(params),
       };
@@ -174,4 +182,21 @@ import.meta.vitest?.test("a failed route import stays isolated to its loader", a
     [Error: route import failed]
   `);
   expect((await healthyLoader()).has("GET")).toBe(true);
+});
+
+import.meta.vitest?.test("an empty specific route does not shadow a valid fallback route", async ({ expect }) => {
+  const match = await findRouteMatch("/test/value", [
+    {
+      loadMethods: async () => new Map(),
+      normalizedPath: "/test/[id]",
+      specificity: getSpecificity("/test/[id]"),
+    },
+    {
+      loadMethods: async () => new Map([["GET", async () => new Response("fallback")]]),
+      normalizedPath: "/test/[...path]",
+      specificity: getSpecificity("/test/[...path]"),
+    },
+  ]);
+
+  expect(match?.normalizedPath).toBe("/test/[...path]");
 });

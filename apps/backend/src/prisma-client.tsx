@@ -128,6 +128,7 @@ let actualGlobalConnectionString: string = globalVar.__hexclave_actual_global_co
 let actualReplicaConnectionString: string = globalVar.__hexclave_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
 export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
+  $primary: () => Omit<T, "$on">,
   $replica: () => Omit<T, "$on">,
 };
 

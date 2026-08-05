@@ -93,7 +93,7 @@ async function dispatch(request: Request) {
 
   let match;
   try {
-    match = matchRoute(pipeline.dispatchPath);
+    match = await matchRoute(pipeline.dispatchPath);
   } catch (error) {
     if (error instanceof MalformedRouteParamError) {
       return withResponseHeaders(new Response("Bad Request", { status: 400 }), pipeline.corsHeadersInit);
@@ -128,7 +128,7 @@ async function dispatch(request: Request) {
   };
 
   return await requestContextALS.run(context, async () => {
-    const methods = await match.loadMethods();
+    const methods = match.methods;
     if (!isHttpMethod(method)) {
       return withResponseHeaders(createMethodNotAllowedResponse(methods), pipeline.corsHeadersInit);
     }
@@ -156,9 +156,7 @@ async function dispatch(request: Request) {
       }
     });
 
-    if (method === "HEAD" && response.body != null) {
-      await response.body.cancel();
-    }
+    await discardHeadResponseBody(method, response);
     const finalResponse = method === "HEAD" ? new Response(null, {
       status: response.status,
       statusText: response.statusText,
@@ -173,6 +171,12 @@ async function dispatch(request: Request) {
     }
     return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
   });
+}
+
+async function discardHeadResponseBody(method: string, response: Response): Promise<void> {
+  if (method === "HEAD" && response.body != null && !response.body.locked) {
+    await Promise.allSettled([response.body.cancel()]);
+  }
 }
 
 function getLoggedResponseStatus(response: unknown, fallbackStatus: number | string | undefined) {
@@ -203,6 +207,13 @@ import.meta.vitest?.test("the Elysia response mapper compresses direct Node resp
 
   expect(response.headers.get("content-encoding")).toBe("gzip");
   expect(gunzipSync(Buffer.from(await response.arrayBuffer())).toString()).toContain("Welcome to Hexclave's API endpoint");
+});
+
+import.meta.vitest?.test("HEAD responses remain usable when their source body is locked", async ({ expect }) => {
+  const response = new Response("body");
+  const reader = response.body?.getReader();
+  await expect(discardHeadResponseBody("HEAD", response)).resolves.toBeUndefined();
+  await reader?.cancel();
 });
 
 function isRedirectError(error: unknown): error is { redirectStatus: 307 | 308, redirectUrl: string } {

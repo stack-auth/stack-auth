@@ -1,6 +1,6 @@
 export function initializeNodeEnvironment(environment: object) {
   const configuredEnvironment = Reflect.get(environment, "NODE_ENV");
-  if (configuredEnvironment == null) {
+  if (configuredEnvironment == null || (typeof configuredEnvironment === "string" && configuredEnvironment.trim() === "")) {
     if (!Reflect.set(environment, "NODE_ENV", "production")) {
       throw new Error("Could not set the default backend NODE_ENV");
     }

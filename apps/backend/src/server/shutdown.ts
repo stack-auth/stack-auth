@@ -11,6 +11,7 @@ export type BackendShutdownDependencies = {
 // terminal log and exit code when an in-flight request or dependency hangs.
 export const backendShutdownBudget = {
   backgroundTasksTimeoutMs: 6000,
+  databaseTimeoutMs: 1000,
   instrumentationTimeoutMs: 1000,
   hardExitTimeoutMs: 9000,
   platformGracePeriodMs: 10000,
@@ -27,6 +28,26 @@ type ShutdownStep = {
   name: string,
   run: () => Promise<unknown>,
 };
+
+export async function runShutdownOperationWithTimeout<T>(
+  operationName: string,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${operationName} did not complete within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(), timeoutPromise]);
+  } finally {
+    if (timeout != null) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 async function runShutdownStep(step: ShutdownStep) {
   const [result] = await Promise.allSettled([Promise.resolve().then(step.run)]);
