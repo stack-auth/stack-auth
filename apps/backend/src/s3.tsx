@@ -114,10 +114,13 @@ export async function headBytes(options: { key: string, private?: boolean, signa
   const { client, bucket } = getS3Target(options.private === true);
   const signal = options.signal ?? getOptionalRequestAbortSignal();
   try {
-    const response = await client.send(new HeadObjectCommand({
-      Bucket: bucket,
-      Key: options.key,
-    }), { abortSignal: signal });
+    const response = await awaitS3Operation(
+      client.send(new HeadObjectCommand({
+        Bucket: bucket,
+        Key: options.key,
+      }), { abortSignal: signal }),
+      signal,
+    );
     if (response.ContentLength == null) {
       throw new HexclaveAssertionError("S3 headObject response is missing ContentLength");
     }
@@ -132,6 +135,18 @@ export async function headBytes(options: { key: string, private?: boolean, signa
     if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404) {
       return null;
     }
+    throw error;
+  }
+}
+
+async function awaitS3Operation<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  try {
+    return await operation;
+  } catch (error) {
+    // AWS wraps request cancellation in a provider-specific AbortError. Keep
+    // the originating reason so request and explicit cleanup callers can
+    // distinguish their own cancellation from an unrelated S3 failure.
+    signal?.throwIfAborted();
     throw error;
   }
 }
@@ -188,6 +203,9 @@ async function readBodyToBytes(body: unknown, signal: AbortSignal | undefined): 
         }
         chunks.push(Buffer.from(chunk));
       }
+      // destroy() is allowed to end a Node stream normally, so the iterator
+      // can complete after cancellation without throwing on its own.
+      signal?.throwIfAborted();
       return new Uint8Array(Buffer.concat(chunks));
     } catch (error) {
       signal?.throwIfAborted();
@@ -226,7 +244,10 @@ export async function downloadBytes(options: { key: string, private?: boolean, i
     IfMatch: options.ifMatch,
   });
 
-  const res = await client.send(command, { abortSignal: signal });
+  const res = await awaitS3Operation(
+    client.send(command, { abortSignal: signal }),
+    signal,
+  );
   if (!res.Body) {
     throw new HexclaveAssertionError("S3 getObject returned empty body");
   }
@@ -237,10 +258,13 @@ export async function downloadBytes(options: { key: string, private?: boolean, i
 export async function deleteBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<void> {
   const { client, bucket } = getS3Target(options.private === true);
   const signal = options.signal ?? getOptionalRequestAbortSignal();
-  await client.send(new DeleteObjectCommand({
-    Bucket: bucket,
-    Key: options.key,
-  }), { abortSignal: signal });
+  await awaitS3Operation(
+    client.send(new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: options.key,
+    }), { abortSignal: signal }),
+    signal,
+  );
 }
 
 import.meta.vitest?.test("S3 body buffering cancels immediately with the client signal", async ({ expect }) => {
@@ -261,6 +285,17 @@ import.meta.vitest?.test("S3 body buffering cancels immediately with the client 
   controller.abort(cancellation);
 
   await expect(readPromise).rejects.toBe(cancellation);
+});
+
+import.meta.vitest?.test("S3 operation failures preserve the originating cancellation reason", async ({ expect }) => {
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected");
+  controller.abort(cancellation);
+
+  await expect(awaitS3Operation(
+    Promise.reject(new Error("AWS SDK abort wrapper")),
+    controller.signal,
+  )).rejects.toBe(cancellation);
 });
 
 async function uploadBase64Image({

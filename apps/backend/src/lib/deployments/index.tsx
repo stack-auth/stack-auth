@@ -43,8 +43,8 @@ import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { parseTar } from "@hexclave/shared/dist/utils/tar";
 import { createHash } from "node:crypto";
-import { promisify } from "node:util";
-import { gunzip } from "node:zlib";
+import { addAbortSignal } from "node:stream";
+import { createGunzip } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
 import { getOptionalRequestAbortSignal, requestContextALS } from "@/lib/runtime/request-context";
 
@@ -56,7 +56,6 @@ import { getOptionalRequestAbortSignal, requestContextALS } from "@/lib/runtime/
  * write to a section the schema doesn't know about.
  */
 export const DEPLOYMENTS_CONFIG_SECTION = "deployments-alpha";
-const gunzipAsync = promisify(gunzip);
 
 export type DeploymentServiceDefinition = CompleteConfig[typeof DEPLOYMENTS_CONFIG_SECTION]["services"][string];
 export type DeploymentEnvVarConfig = DeploymentServiceDefinition["env"][string];
@@ -597,23 +596,37 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
-async function awaitDeploymentOperation<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (signal == null) return await promise;
-  signal.throwIfAborted();
-  return await new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-  });
+async function gunzipSourceTarball(tarballGzipped: Uint8Array, signal: AbortSignal | undefined): Promise<Buffer> {
+  const gunzipStream = createGunzip();
+  if (signal != null) {
+    // zlib.gunzip does not accept AbortSignal in Node 22. A streaming decoder
+    // gives cancellation a real resource to destroy instead of merely letting
+    // the request stop awaiting a native job that continues in the background.
+    addAbortSignal(signal, gunzipStream);
+  }
+  gunzipStream.end(tarballGzipped);
+
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    for await (const chunk of gunzipStream) {
+      signal?.throwIfAborted();
+      if (!(chunk instanceof Uint8Array)) {
+        throw new HexclaveAssertionError("Gunzip returned an unexpected chunk type");
+      }
+      totalBytes += chunk.byteLength;
+      if (totalBytes > MAX_TARBALL_UNPACKED_BYTES) {
+        gunzipStream.destroy();
+        throw new RangeError("Uploaded source tarball exceeds the unpacked size limit");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw error;
+  }
+  signal?.throwIfAborted();
+  return Buffer.concat(chunks, totalBytes);
 }
 
 /**
@@ -627,10 +640,7 @@ export async function unpackSourceTarball(tarballGzipped: Uint8Array): Promise<{
   signal?.throwIfAborted();
   let tarBytes: Buffer;
   try {
-    tarBytes = await awaitDeploymentOperation(
-      gunzipAsync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES }),
-      signal,
-    );
+    tarBytes = await gunzipSourceTarball(tarballGzipped, signal);
   } catch (e) {
     signal?.throwIfAborted();
     if (e instanceof RangeError || (e instanceof Error && "code" in e && e.code === "ERR_BUFFER_TOO_LARGE")) {
@@ -667,6 +677,19 @@ import.meta.vitest?.test("source unpacking observes the inbound client signal", 
   }, async () => {
     await expect(unpackSourceTarball(new Uint8Array())).rejects.toBe(cancellation);
   });
+});
+
+import.meta.vitest?.test("source inflation stops when the inbound client disconnects", async ({ expect }) => {
+  const { gzipSync } = await import("node:zlib");
+  const controller = new AbortController();
+  const cancellation = new Error("client disconnected during inflation");
+  const inflationPromise = gunzipSourceTarball(
+    gzipSync(Buffer.alloc(1024 * 1024)),
+    controller.signal,
+  );
+
+  controller.abort(cancellation);
+  await expect(inflationPromise).rejects.toBe(cancellation);
 });
 
 export type StartDeploymentResult = {
