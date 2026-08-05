@@ -83,7 +83,7 @@ COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/pr
 
 ENV NODE_ENV=production
 ENV PORT=8102
-ENV HEXCLAVE_BACKEND_HOST=0.0.0.0
+ENV STACK_BACKEND_HOST=0.0.0.0
 
 USER node
 

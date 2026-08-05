@@ -11,7 +11,7 @@ import { backendShutdownBudget, runShutdownOperationWithTimeout, shutdownBackend
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));
-const hostname = getEnvVariable("HEXCLAVE_BACKEND_HOST", "0.0.0.0");
+const hostname = getEnvVariable("STACK_BACKEND_HOST", "0.0.0.0");
 const trustedProxy = getTrustedProxy();
 
 // The @elysia/node adapter never assigns `app.server`, so `app.stop()` falls through to the

@@ -204,7 +204,7 @@ fi
 
 echo "Starting backend on port $BACKEND_PORT..."
 cd "$WORK_DIR"
-PORT=$BACKEND_PORT HEXCLAVE_BACKEND_HOST=0.0.0.0 node apps/backend/dist/server.mjs &
+PORT=$BACKEND_PORT STACK_BACKEND_HOST=0.0.0.0 node apps/backend/dist/server.mjs &
 backend_pid=$!
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."
