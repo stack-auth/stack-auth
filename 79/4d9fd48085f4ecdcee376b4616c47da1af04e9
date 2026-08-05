@@ -1,0 +1,84 @@
+apps/backend/src/server/trusted-proxy.test.ts
+  s_981e2e2530bca6::t_0d39d45784365e 1,8-47
+  s_b07d251f777792::t_d3ceaba7770dd8 48
+apps/backend/scripts/runtime-external-packages.ts
+  s_fef40774fb5156::t_34772cc8f0e3c0 1-34
+apps/backend/src/lib/trusted-proxy.ts
+  s_981e2e2530bca6::t_945620f768dc5e 10-14,18-35
+  s_981e2e2530bca6::t_6cd50812a91a89 15-17
+apps/backend/scripts/runtime-external-packages.test.ts
+  s_fef40774fb5156::t_2b33cbf9d45897 2,4-23
+  s_fef40774fb5156::t_34772cc8f0e3c0 1,3,24-25
+apps/backend/package.json
+  s_b07d251f777792::t_6196c0dd09b758 68
+apps/backend/src/hexclave.tsx
+  s_b07d251f777792::t_99633c438c69c0 1
+apps/backend/src/utils/background-tasks.tsx
+  s_b07d251f777792::t_a204c4bc794dfa 2,8,36-50,60,229-266
+apps/backend/src/server/server.ts
+  s_981e2e2530bca6::t_9386a1330a90bf 2,18-22
+  s_079043e4a473ff::t_15c6760ee1a292 93-96,98,101-102,104,107
+apps/backend/src/server/app.ts
+  s_0a73e2feefc9d6::t_57780d3474c457 135-142,206-225,329,331,340-397,485,488-518,522-569,571-686,689-713,715-718,730-736,739-742,744-755,762-773
+  s_b07d251f777792::t_b94312f37eb01d 8
+  s_0a73e2feefc9d6::t_c8ffc1f8099aec 774
+docs-mintlify/guides/other/self-host.mdx
+  s_981e2e2530bca6::t_ac1b8b1dbc5d50 189-214
+apps/backend/src/server/shutdown.ts
+  s_079043e4a473ff::t_6e141ca2d3b252 2-5,10-14,16-19,64-71,73-75,80,82-87,96-99,103-105,109-112,116-119,129,141
+apps/backend/tsdown.config.ts
+  s_fef40774fb5156::t_5c6fef520ccb01 10
+  s_fef40774fb5156::t_34772cc8f0e3c0 9,25,82
+apps/backend/src/server/shutdown.test.ts
+  s_079043e4a473ff::t_290dcfc301d92b 6,8-9,60-83
+  s_079043e4a473ff::t_1a1b58f91929f6 84-89
+  s_b07d251f777792::t_e028b7d8df21ab 90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "794d9fd48085f4ecdcee376b4616c47da1af04e9",
+  "prompts": {},
+  "sessions": {
+    "s_079043e4a473ff": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c72cde-5d25-4621-95a0-153eb1b48713",
+        "model": "gpt-5.6-sol-xhigh-fast"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_0a73e2feefc9d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a0c9fadd-cd20-4b83-a372-348795e652f3",
+        "model": "gpt-5.6-sol-xhigh-fast"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_981e2e2530bca6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "807343a5-988f-498b-aff5-abd9764eb5dd",
+        "model": "gpt-5.6-sol-xhigh-fast"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b07d251f777792": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8c6421f5-012e-4250-b916-983c24dd8e80",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fef40774fb5156": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd37c-c2f3-7842-820b-fc8d3139c3e3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
