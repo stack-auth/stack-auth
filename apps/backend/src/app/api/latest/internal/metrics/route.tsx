@@ -1350,10 +1350,19 @@ async function loadAnalyticsOverview(
     // last 30 days now coalesce to non-anonymous. The proper fix is to stamp
     // `is_anonymous` on page-view/click events at ingest and drop this join
     // entirely (the coalesce below short-circuits on the first non-null arg).
+    //
+    // The join key is the hashed user id rather than the 36-char uuid string:
+    // the build side holds one row per user seen in the window, and a 64-bit key
+    // costs a fraction of the string one (~290 MiB -> tens of MiB on a project
+    // with hundreds of thousands of visitors, which is the difference between
+    // fitting in `max_memory_usage` and 500ing the whole endpoint). A 64-bit
+    // collision would merge two users' anonymity flags; at these cardinalities
+    // that is ~1e-8 likely, and the blast radius is one visitor counted on the
+    // wrong side of the anonymous filter.
     const buildAnalyticsUserJoin = (includeCountry: boolean) => `
       LEFT JOIN (
         SELECT
-          user_id,
+          sipHash64(user_id) AS user_hash,
           argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
           ${includeCountry ? ", argMax(CAST(data.ip_info.country_code, 'Nullable(String)'), event_at) AS latest_country" : ""}
         FROM analytics_internal.events
@@ -1363,14 +1372,20 @@ async function loadAnalyticsOverview(
           AND user_id IS NOT NULL
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
-        GROUP BY user_id
+        GROUP BY user_hash
       ) AS token_refresh_users
-        ON e.user_id = token_refresh_users.user_id
+        ON sipHash64(assumeNotNull(e.user_id)) = token_refresh_users.user_hash
     `;
     const analyticsUserJoinForFilteredEvents = buildAnalyticsUserJoin(filters.country_code != null);
     const analyticsUserJoinWithCountry = buildAnalyticsUserJoin(true);
     const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
     const analyticsContributingUserFilter = `e.user_id IS NOT NULL AND ${nonAnonymousAnalyticsUserFilter}`;
+    // `uniqExact` keeps every distinct value it sees, once per aggregation
+    // group, so exact visitor counts over 36-char user ids cost (users x groups)
+    // strings — the per-day/per-hour queries alone blew the memory limit on
+    // high-traffic projects. Hashing first keeps the counts exact (64-bit
+    // collisions are ~1e-8 likely here) at 8 bytes per distinct user.
+    const analyticsVisitorKey = "sipHash64(assumeNotNull(e.user_id))";
 
     // Build per-dimension filter fragments; callers below opt out of the
     // fragment matching their own dimension so top-N queries don't collapse to
@@ -1423,7 +1438,7 @@ async function loadAnalyticsOverview(
             countIf(e.event_type = '$page-view') AS pv,
             countIf(e.event_type = '$click') AS cl,
             uniqExactIf(
-              assumeNotNull(e.user_id),
+              ${analyticsVisitorKey},
               e.event_type = '$page-view'
             ) AS visitors
           FROM analytics_internal.events AS e
@@ -1454,11 +1469,11 @@ async function loadAnalyticsOverview(
             toStartOfHour(e.event_at) AS hour,
             countIf(e.event_type = '$page-view') AS pv,
             uniqExactIf(
-              assumeNotNull(e.user_id),
+              ${analyticsVisitorKey},
               e.event_type IN ('$page-view', '$click')
             ) AS active_users,
             uniqExactIf(
-              assumeNotNull(e.user_id),
+              ${analyticsVisitorKey},
               e.event_type = '$page-view'
             ) AS visitors
           FROM analytics_internal.events AS e
@@ -1491,7 +1506,7 @@ async function loadAnalyticsOverview(
       clickhouseClient.query({
         query: `
           SELECT
-            uniqExact(assumeNotNull(e.user_id)) AS visitors
+            uniqExact(${analyticsVisitorKey}) AS visitors
           FROM analytics_internal.events AS e
           ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
@@ -1516,7 +1531,7 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
-            uniqExact(assumeNotNull(e.user_id)) AS visitors
+            uniqExact(${analyticsVisitorKey}) AS visitors
           FROM analytics_internal.events AS e
           ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
@@ -1551,7 +1566,7 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             upper(coalesce(token_refresh_users.latest_country, '')) AS country_code,
-            uniqExact(assumeNotNull(e.user_id)) AS visitors
+            uniqExact(${analyticsVisitorKey}) AS visitors
           FROM analytics_internal.events AS e
           ${analyticsUserJoinWithCountry}
           WHERE e.event_type = '$page-view'
@@ -1608,11 +1623,30 @@ async function loadAnalyticsOverview(
       // Session aggregates keyed by session_replay_segment_id (one row per
       // browser tab/session): bounce rate (single-page-view sessions) and
       // average session duration per day.
+      //
+      // One pass over the session's events instead of prefiltering the matching
+      // session ids and re-scanning with `sid IN (SELECT ...)`: that set held
+      // every session id in the window, which on its own outgrew the memory
+      // limit on projects with millions of sessions. Counting the page-views
+      // that match the user/dimension filters per session and requiring at least
+      // one keeps exactly the population the prefilter selected, while the
+      // aggregates still span all of the session's page-views and clicks.
+      // Sessions are grouped by the hashed id because only the aggregates are
+      // read back, and 64-bit keys cost a fraction of the uuid strings.
       clickhouseClient.query({
         query: `
-          WITH matching_sessions AS (
+          SELECT
+            session_day AS day,
+            count() AS sessions,
+            countIf(pv = 1) AS bounced,
+            avg(duration_s) AS avg_duration_s
+          FROM (
             SELECT
-              e.session_replay_segment_id AS sid
+              sipHash64(e.session_replay_segment_id) AS sid,
+              toDate(min(e.event_at)) AS session_day,
+              countIf(e.event_type = '$page-view') AS pv,
+              dateDiff('second', min(e.event_at), max(e.event_at)) AS duration_s,
+              countIf(e.event_type = '$page-view' AND (${analyticsContributingUserFilter} ${sharedExtraFilters})) AS matching_pv
             FROM analytics_internal.events AS e
             ${analyticsUserJoinForFilteredEvents}
             WHERE e.session_replay_segment_id IS NOT NULL
@@ -1620,32 +1654,10 @@ async function loadAnalyticsOverview(
               AND e.branch_id = {branchId:String}
               AND e.event_at >= {since:DateTime}
               AND e.event_at < {untilExclusive:DateTime}
-              AND e.event_type = '$page-view'
-              AND ${analyticsContributingUserFilter}
-              ${sharedExtraFilters}
-            GROUP BY sid
-          ),
-          sessions AS (
-            SELECT
-              e.session_replay_segment_id AS sid,
-              toDate(min(e.event_at)) AS session_day,
-              countIf(e.event_type = '$page-view') AS pv,
-              dateDiff('second', min(e.event_at), max(e.event_at)) AS duration_s
-            FROM analytics_internal.events AS e
-            WHERE e.session_replay_segment_id IN (SELECT sid FROM matching_sessions)
-              AND e.project_id = {projectId:String}
-              AND e.branch_id = {branchId:String}
-              AND e.event_at >= {since:DateTime}
-              AND e.event_at < {untilExclusive:DateTime}
               AND e.event_type IN ('$page-view', '$click')
             GROUP BY sid
+            HAVING matching_pv > 0
           )
-          SELECT
-            session_day AS day,
-            count() AS sessions,
-            countIf(pv = 1) AS bounced,
-            avg(duration_s) AS avg_duration_s
-          FROM sessions
           GROUP BY day
           ORDER BY day ASC
         `,
@@ -1668,10 +1680,10 @@ async function loadAnalyticsOverview(
           SELECT
             tupleElement(facet, 1) AS dimension,
             tupleElement(facet, 2) AS name,
-            uniqExact(assumeNotNull(user_id)) AS visitors
+            uniqExact(visitor) AS visitors
           FROM (
             SELECT
-              e.user_id AS user_id,
+              ${analyticsVisitorKey} AS visitor,
               ${analyticsOverviewBrowserSql} AS browser,
               ${analyticsOverviewOsSql} AS os,
               ${analyticsOverviewDeviceSql} AS device
@@ -1686,6 +1698,11 @@ async function loadAnalyticsOverview(
               AND ${analyticsOverviewUserAgentSql} != ''
               ${referrerFragment}
               ${countryFragment}
+            -- Collapse to one row per visitor/facet combination before the
+            -- ARRAY JOIN triples the row count: the buckets only need distinct
+            -- visitors, and this keeps the fan-out proportional to visitors
+            -- rather than to page-views.
+            GROUP BY visitor, browser, os, device
           )
           ARRAY JOIN [
             ('browser', browser),
