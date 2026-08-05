@@ -1403,7 +1403,11 @@ async function loadAnalyticsOverview(
           AND event_at < {untilExclusive:DateTime}
         GROUP BY user_hash
       ) AS token_refresh_users
-        ON sipHash64(assumeNotNull(e.user_id)) = token_refresh_users.user_hash
+        -- Hash the nullable column directly rather than via assumeNotNull: the
+        -- hash of NULL stays NULL and matches nothing, whereas assumeNotNull
+        -- would turn every event without a user into the hash of the empty
+        -- string and join them all onto a user whose id is empty, if one exists.
+        ON sipHash64(e.user_id) = token_refresh_users.user_hash
     `;
     const analyticsUserJoinForFilteredEvents = buildAnalyticsUserJoin(filters.country_code != null);
     const analyticsUserJoinWithCountry = buildAnalyticsUserJoin(true);
