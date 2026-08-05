@@ -26,6 +26,11 @@ describe("sanitizeBackendSentryEvent", () => {
         connectionString: "postgres://secret",
       },
       contexts: {
+        "stack-request": {
+          requestId: "request-123",
+          method: "POST",
+          authorization: "Bearer secret",
+        },
         response: {
           headers: {
             "set-cookie": "refresh-token=secret",
@@ -72,6 +77,10 @@ describe("sanitizeBackendSentryEvent", () => {
           },
         ],
         "contexts": {
+          "stack-request": {
+            "method": "POST",
+            "requestId": "request-123",
+          },
           "trace": {
             "data": {
               "http.route": "/api/latest/users/{user_id}",

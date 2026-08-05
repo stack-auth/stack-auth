@@ -58,14 +58,15 @@ jobs:
       - run: pnpm run codegen
       - run: pnpm run start-deps
 
-      - uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
-        with:
-          run: pnpm run dev &
-          wait-on: |
-            http://localhost:8102
-          tail: true
-          wait-for: 120s
-          log-output-if: true
+      - name: Start development services with persistent logs
+        run: |
+          dev_log="$RUNNER_TEMP/hexclave-dev.untracked.log"
+          (
+            set +e
+            pnpm run dev >"$dev_log" 2>&1
+            echo "$?" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
+          ) &
+          pnpm exec wait-on --timeout 120000 http://localhost:8102
       - name: Run tests (first attempt)
         id: run-tests-first-attempt
         continue-on-error: ${{ (github.head_ref || github.ref_name) != 'main' && (github.head_ref || github.ref_name) != 'dev' }}
@@ -75,3 +76,21 @@ jobs:
       - name: Run tests (retry once on non-dev/main branches)
         if: ${{ (github.head_ref || github.ref_name) != 'main' && (github.head_ref || github.ref_name) != 'dev' && steps.run-tests-first-attempt.outcome == 'failure' }}
         run: pnpm run test run --reporter=verbose
+
+      - name: Print development service diagnostics
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt" ]]; then
+            echo "Development service command exited with code $(<"$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt")"
+          else
+            echo "Development service command is still running; a child service may have exited"
+          fi
+          tail -n 2000 "$RUNNER_TEMP/hexclave-dev.untracked.log"
+
+      - name: Upload development service logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: setup-tests-development-services
+          path: ${{ runner.temp }}/hexclave-dev.untracked.log
+          if-no-files-found: error

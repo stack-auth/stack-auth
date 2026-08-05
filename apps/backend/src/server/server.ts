@@ -7,14 +7,13 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { Server as ElysiaServer } from "elysia/universal";
 import { app } from "./app";
-import "./env-expand";
 import { shutdownBackend } from "./shutdown";
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));
 const hostname = getEnvVariable("HOSTNAME", "0.0.0.0");
 
-// The @elysiajs/node adapter never assigns `app.server`, so `app.stop()` falls through to the
+// The @elysia/node adapter never assigns `app.server`, so `app.stop()` falls through to the
 // web-standard adapter's stop and throws "Elysia isn't running" even while the server is serving
 // traffic. The adapter instead hands a working server handle (whose stop() closes the underlying
 // Node http.Server) to the listen callback, so capture that and use it for graceful shutdown.
