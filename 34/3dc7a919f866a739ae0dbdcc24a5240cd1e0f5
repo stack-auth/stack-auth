@@ -1,0 +1,20 @@
+apps/backend/src/server/request-body-limit.ts
+  s_5cd874e3a3be70::t_4288edc9eaeee9 23-31,37
+  s_5cd874e3a3be70::t_1e8021c389245e 55-56,58-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "343dc7a919f866a739ae0dbdcc24a5240cd1e0f5",
+  "prompts": {},
+  "sessions": {
+    "s_5cd874e3a3be70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6736fe4-df52-4b8d-a46a-355c85d4a0a6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
