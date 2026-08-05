@@ -9,8 +9,14 @@ export type BackendShutdownDependencies = {
 // Cloud Run and Docker commonly allow ten seconds between SIGTERM and SIGKILL.
 // Exit one second earlier so the process, rather than the platform, owns the
 // terminal log and exit code when an in-flight request or dependency hangs.
+// Every step is individually bounded so one hanging step (most plausibly the
+// HTTP close waiting on a long-running request) cannot starve the later steps
+// out of the budget — draining background tasks and flushing the database and
+// instrumentation matters more than waiting longer for a request the platform
+// is about to kill anyway.
 export const backendShutdownBudget = {
-  backgroundTasksTimeoutMs: 6000,
+  httpServerTimeoutMs: 2000,
+  backgroundTasksTimeoutMs: 4000,
   databaseTimeoutMs: 1000,
   instrumentationTimeoutMs: 1000,
   hardExitTimeoutMs: 9000,

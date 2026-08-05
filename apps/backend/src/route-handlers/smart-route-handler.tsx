@@ -2,6 +2,7 @@ import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
 import { requestContextALS } from "@/lib/runtime/request-context";
+import { isRequestBodyTooLargeError } from "@/server/request-body-limit";
 import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
@@ -47,6 +48,15 @@ function catchError(error: unknown, requestId: string): StatusError {
         throw error;
       }
     }
+  }
+
+  // srvx aborts the request body stream with ERR_BODY_TOO_LARGE once the ingress cap
+  // (maxRequestBodySize) is exceeded, and smart routes buffer the body with req.arrayBuffer()
+  // before validation, so the abort surfaces here as an unknown error. Without this mapping the
+  // client would get a sanitized 500 and Sentry would be spammed for a purely client-caused
+  // condition; map it to a proper 413 instead.
+  if (isRequestBodyTooLargeError(error)) {
+    return new StatusError(StatusError.PayloadTooLarge);
   }
 
   if (StatusError.isStatusError(error)) return error;
