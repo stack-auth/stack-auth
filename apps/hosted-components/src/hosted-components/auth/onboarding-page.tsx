@@ -1,9 +1,11 @@
-import { useStackApp, useUser } from "@hexclave/react";
+import { hexclaveAppInternalsSymbol, useStackApp, useUser } from "@hexclave/react";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { AlertTriangle, Check, Mail } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Input, Label, Spinner, Typography } from "~/components/ui";
+import { createAuthFlowEmailVerificationUrl } from "~/routes/handler/after-auth-return-policy";
 
 import { HostedAuthLoading, HostedAuthShell } from "./supporting/layout";
 import { getSearchParams } from "./supporting/utils";
@@ -261,7 +263,20 @@ export function HostedOnboarding(props: {
       setError(null);
       setResent(false);
       try {
-        await user.sendVerificationEmail();
+        if (demoMode) {
+          await user.sendVerificationEmail();
+        } else {
+          const appInternals = realApp[hexclaveAppInternalsSymbol];
+          const rawAfterAuthReturnTo = appInternals.getRawAfterAuthReturnTo()
+            ?? throwErr("Hosted onboarding requires an after-auth return URL.");
+          await user.sendVerificationEmail({
+            callbackUrl: createAuthFlowEmailVerificationUrl({
+              emailVerificationUrl: appInternals.getUrls().emailVerification,
+              currentUrl: new URL(window.location.href),
+              rawAfterAuthReturnTo,
+            }),
+          });
+        }
         setResent(true);
       } catch (err: any) {
         setError(err.message || "Failed to send verification email.");

@@ -11,21 +11,28 @@ export function HostedEmailVerification(props: {
   const app = useStackApp();
   const searchParams = getSearchParams();
   const code = searchParams.code;
+  const [cancelled, setCancelled] = useState(false);
   const [result, setResult] = useState<Awaited<ReturnType<typeof app.verifyEmail>> | null>(null);
 
   const invalid = (
     <HostedAuthMessage
       title="Invalid verification link"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      This verification link is invalid. Please check the link or request a new verification email.
+      This verification link is invalid. Please check the link or request a new verification email. You can close this tab.
     </HostedAuthMessage>
   );
 
   if (code == null) {
     return invalid;
+  }
+
+  if (cancelled) {
+    return (
+      <HostedAuthMessage title="Verification cancelled" fullPage={props.fullPage}>
+        Your email was not verified. You can close this tab.
+      </HostedAuthMessage>
+    );
   }
 
   if (result == null) {
@@ -37,7 +44,7 @@ export function HostedEmailVerification(props: {
           setResult(await app.verifyEmail(code));
         }}
         secondaryText="Cancel"
-        secondaryAction={() => app.redirectToHome()}
+        secondaryAction={() => setCancelled(true)}
         fullPage={props.fullPage}
       >
         Confirm that you want to verify this email address for your account.
@@ -50,11 +57,9 @@ export function HostedEmailVerification(props: {
       return (
         <HostedAuthMessage
           title="Verification link expired"
-          primaryAction={() => app.redirectToHome()}
-          primaryText="Go home"
           fullPage={props.fullPage}
         >
-          This verification link has expired. Please request a new verification email from your account settings.
+          This verification link has expired. Please request a new verification email from your account settings. You can close this tab.
         </HostedAuthMessage>
       );
     }
@@ -62,11 +67,9 @@ export function HostedEmailVerification(props: {
       return (
         <HostedAuthMessage
           title="Email already verified"
-          primaryAction={() => app.redirectToHome()}
-          primaryText="Go home"
           fullPage={props.fullPage}
         >
-          This verification link has already been used, so your email is already verified.
+          This verification link has already been used, so your email is already verified. You can close this tab.
         </HostedAuthMessage>
       );
     }
@@ -79,11 +82,9 @@ export function HostedEmailVerification(props: {
   return (
     <HostedAuthMessage
       title="Email verified"
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Go home"
       fullPage={props.fullPage}
     >
-      Your email has been verified. You can continue using your account.
+      Your email has been verified. You can close this tab.
     </HostedAuthMessage>
   );
 }

@@ -14,6 +14,14 @@
 // protocol's semantics (it cannot import backend code). If you change
 // anything here, bump WORKFLOWS_PROTOCOL_VERSION and update the runtime
 // source in the same commit.
+//
+// The one exception is DROPPING a field the engine simply stops sending, when
+// every stored runtime already reads it defensively (`input.x?.y ?? default`).
+// Such a field cannot break an old bundle, and bumping the version for it
+// would be strictly worse: stored runtimes compare the version for strict
+// equality, so a bump makes every already-synced workflow refuse to run. See
+// WorkflowSandboxCredentials below for the case this was written for. Adding,
+// renaming, or changing the meaning of a field is NOT covered by this.
 
 export const WORKFLOWS_PROTOCOL_VERSION = 1;
 
@@ -41,12 +49,21 @@ export type WorkflowSandboxLimits = {
   inlineSleepBudgetMs: number,
 };
 
+/**
+ * The run token rides in the server-key slot only: it is a SERVER-scoped
+ * credential (see run-token.tsx), so there is nothing to put in an admin slot.
+ *
+ * Dropping the former `superSecretAdminKey` field did NOT need a protocol
+ * version bump: already-stored runtimes read it as
+ * `appCredentials?.superSecretAdminKey ?? <inert placeholder>`, so omitting it
+ * degrades them to exactly the intended scope (their server calls keep
+ * working, their admin calls stop) instead of breaking the invocation.
+ */
 export type WorkflowSandboxCredentials = {
   apiUrl: string,
   projectId: string,
   branchId: string,
   secretServerKey: string,
-  superSecretAdminKey: string,
 };
 
 export type WorkflowSandboxInput = {

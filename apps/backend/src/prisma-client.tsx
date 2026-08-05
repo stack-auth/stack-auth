@@ -7,17 +7,17 @@ import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@hexclave/shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@hexclave/shared/dist/utils/promises";
 import { throwingProxy } from "@hexclave/shared/dist/utils/proxies";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
+import { attachDatabasePool } from "@vercel/functions";
 import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
-import { drainInFlightPromises } from "./utils/background-tasks";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -48,10 +48,24 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
-    // pg Pool emits 'error' on idle clients (e.g. TCP reset); unhandled = process crash
-    pool.on('error', (err) => captureError("pg-pool-error", err));
+    if (getEnvVariable("VERCEL", "") !== "") {
+      // Fluid Compute can suspend an instance while an application-owned pool still
+      // has idle clients. Registering the pool keeps the invocation alive until
+      // those clients reach the pool's idle timeout.
+      attachDatabasePool(pool);
+    }
     registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
-    const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
+    // Error-capture locations use a label instead of the connection string so
+    // credentials never enter the error sink.
+    const safePoolLabel = poolLabel ?? "tenant";
+    const adapter = new PrismaPg(pool, {
+      schema,
+      // Prisma receives a Pool created by this application. Without this option,
+      // $disconnect removes Prisma's listener but deliberately leaves the pool open.
+      disposeExternalPool: true,
+      onPoolError: (error) => captureError(`pg-pool-${safePoolLabel}`, error),
+      onConnectionError: (error) => captureError(`pg-connection-${safePoolLabel}`, error),
+    });
     postgresPrismaClient = {
       client: new PrismaClient({ adapter }),
       schema,
@@ -61,22 +75,10 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   return postgresPrismaClient;
 }
 
-// Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
-if (!getEnvVariable("VERCEL", "") && !globalVar.__hexclave_prisma_sigterm_registered) {
-  globalVar.__hexclave_prisma_sigterm_registered = true;
-  process.on("SIGTERM", () => {
-    const keepAlive = setTimeout(() => {}, 10_000);
-    runAsynchronously(async () => {
-      try {
-        await drainInFlightPromises(8000);
-        for (const [, entry] of postgresPrismaClientsStore) {
-          await entry.client.$disconnect();
-        }
-      } finally {
-        clearTimeout(keepAlive);
-      }
-    });
-  });
+export async function disconnectPostgresPrismaClients(): Promise<void> {
+  await Promise.all(
+    [...postgresPrismaClientsStore.values()].map(({ client }) => client.$disconnect()),
+  );
 }
 
 async function tcpPing(host: string, port: number, timeout = 2000) {

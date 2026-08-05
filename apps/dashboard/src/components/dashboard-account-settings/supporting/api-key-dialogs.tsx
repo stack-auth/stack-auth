@@ -144,7 +144,7 @@ export function ShowApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: {
         <span className="text-sm font-medium text-foreground">
           Please copy your API key now. You will not be able to see it again.
         </span>
-        <div className='flex flex-col gap-1.5'>
+        <div className='hexclave-sensitive flex flex-col gap-1.5'>
           <Label htmlFor="apiKey">API Key</Label>
           <CopyField type="input" value={props.apiKey?.value.secret || ''} />
         </div>

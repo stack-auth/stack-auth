@@ -1,4 +1,4 @@
-import { node } from "@elysiajs/node";
+import { node } from "@elysia/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
@@ -1039,7 +1039,7 @@ const app = new Elysia({ adapter: node() })
   .post("/v1/:tenancyId/test-mode/one-time-purchases", () => notImplemented("create-test-mode-one-time-purchase"))
   .post("/v1/:tenancyId/test-mode/subscriptions/:subscriptionId/switch", () => notImplemented("switch-test-mode-subscription"))
   .listen(port, (server) => {
-    // @elysiajs/node 1.4.5 does not assign the server to app.server, so
+    // @elysia/node 1.4.6 does not assign the server to app.server, so
     // Elysia.stop() throws even though the callback's server is running.
     stopHttpServer = () => server.stop();
   });

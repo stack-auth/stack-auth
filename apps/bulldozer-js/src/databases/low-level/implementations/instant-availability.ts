@@ -140,6 +140,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   };
   const declareStoreOrDump = (wrappedStore: LowLevelKvStore & LowLevelKvDump): LowLevelKvStore & LowLevelKvDump => {
     const cachedValues = new Map<string, CachedValue>();
+    let lastWriteSeq: DatabaseSeq | undefined;
     cacheMaps.add(cachedValues);
     const attributes = { "bulldozer.low_level.backend": "instant-availability" };
     const cacheKey = (key: ArrayBuffer) => encodeBase64(new Uint8Array(key));
@@ -156,15 +157,24 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         })
         .catch(() => {});
     };
+    const chainRequiresSeq = async (previousWriteSeq: DatabaseSeq | undefined, requiresSeq: DatabaseSeq): Promise<DatabaseSeq> => {
+      if (previousWriteSeq === undefined) return requiresSeq;
+      // Same-key underlying writes must be issued in instant-seq order; otherwise an evicted cache entry exposes and persists the older value.
+      const previousUnderlyingSeq = await getSeqRecord(previousWriteSeq).underlyingSeq.catch(() => undefined);
+      return previousUnderlyingSeq === undefined ? requiresSeq : wrapped.combineSeqs(requiresSeq, previousUnderlyingSeq);
+    };
 
     const setAllLocked = (entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, setOptions?: { requiresSeq?: DatabaseSeq }): { seq: DatabaseSeq } => {
       const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
+      const previousWriteSeq = lastWriteSeq;
       const underlyingSeq = (async () => {
-        const requiresSeq = await getUnderlyingSeq(setOptions?.requiresSeq);
-        const { seq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
+        const chainedRequiresSeq = await chainRequiresSeq(previousWriteSeq, await getUnderlyingSeq(setOptions?.requiresSeq));
+        // The chained dependency deliberately propagates prior commit failures so later writes cannot overtake a failed predecessor.
+        const { seq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq: chainedRequiresSeq });
         return seq;
       })();
       const seq = createSeq(underlyingSeq);
+      lastWriteSeq = seq;
       for (const { key, value } of entries) setCachedValue(key, value, seq);
       evictAfterWrappedAvailability(entries.map(({ key }) => key), seq);
       return { seq };
@@ -198,11 +208,14 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (keys.length === 0) return { seq: initialSeq };
           return await withWriteGate(async () => {
             const keysForWrapped = keys.map(cloneArrayBuffer);
+            const previousWriteSeq = lastWriteSeq;
             const underlyingSeq = (async () => {
+              await getSeqRecord(previousWriteSeq).underlyingAvailable;
               const { seq } = await wrappedStore.deleteAll(keysForWrapped);
               return seq;
             })();
             const seq = createSeq(underlyingSeq);
+            lastWriteSeq = seq;
             for (const key of keys) setCachedValue(key, null, seq);
             evictAfterWrappedAvailability(keys, seq);
             return { seq };
@@ -217,6 +230,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
             const requiresSeq = await getUnderlyingSeq(insertOptions?.requiresSeq);
             const { keys, seq: underlyingInsertSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
             const seq = createSeq(Promise.resolve(underlyingInsertSeq));
+            lastWriteSeq = seq;
             keys.forEach((key, index) => setCachedValue(key, values[index], seq));
             evictAfterWrappedAvailability(keys, seq);
             return { keys: keys.map(cloneArrayBuffer), seq };

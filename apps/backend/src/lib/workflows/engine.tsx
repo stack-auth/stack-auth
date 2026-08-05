@@ -18,6 +18,7 @@ import { listCronOccurrences, MAX_CATCHUP_WINDOW_MS, parseCronExpression } from 
 import {
   WORKFLOWS_DEFAULT_LIMITS,
   WORKFLOWS_PROTOCOL_VERSION,
+  type WorkflowSandboxCredentials,
   type WorkflowSandboxEvent,
   type WorkflowSandboxInput,
   type WorkflowSandboxOutcome,
@@ -811,9 +812,11 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     return;
   }
 
-  // Short-lived project-admin credentials, minted per claim. Workflow source
-  // is admin-authored and deliberately receives the complete AdminApp. The
-  // expiry must cover the longest possible CHAIN of steps under this claim
+  // Short-lived project-server credentials, minted per claim. Workflow source
+  // is admin-authored, but it only ever needs to read and write project data,
+  // so it receives the ServerApp surface and a token the auth path refuses on
+  // admin-type requests. The expiry must cover the longest possible CHAIN of
+  // steps under this claim
   // (the lease is renewed at every step boundary, but the credential is not
   // re-minted). Worst case: the loop's deadline check admits one more
   // invocation at up to 150s after the tick started, that invocation may run
@@ -830,19 +833,21 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     leaseToken: run.leaseToken,
     expiresInMs: WORKFLOW_RUN_TOKEN_TTL_MS,
   });
-  const credentials = {
+  // Annotated so that re-adding an admin key here is a compile error rather
+  // than a silent restoration of admin scope: passed as a variable into the
+  // input literal below, this object would otherwise never see an
+  // excess-property check.
+  const credentials: WorkflowSandboxCredentials = {
     apiUrl: getWorkflowsSandboxApiUrl(),
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
-    // The run token rides in the SDK's existing project-credential slots.
-    // Both hold the same value: the SDK attaches the server key on server- and
-    // admin-type requests and adds the admin key on admin ones, and the auth
-    // path recognises a run token in either. Reusing these slots (rather than
-    // adding a dedicated header) keeps the credential change entirely inside
-    // the engine — stored bundles pin their runtime shim forever, so a new
-    // header would strand every already-synced workflow version.
+    // The run token rides in the SDK's existing secret-server-key slot.
+    // Reusing that slot (rather than adding a dedicated header) keeps the
+    // credential change entirely inside the engine — stored bundles pin their
+    // runtime shim forever, so a new header would strand every already-synced
+    // workflow version. Nothing is put in the admin slot: the token is
+    // server-scoped and the auth path rejects it on admin-type requests.
     secretServerKey: runToken,
-    superSecretAdminKey: runToken,
   };
 
   const triggerPayload = run.triggerPayload as { ts_millis: number, data: unknown };

@@ -27,6 +27,7 @@ export const hexclaveClientApp = new StackClientApp({
     enabled: !isRemoteDevelopmentEnvironment,
     replays: {
       maskAllInputs: false,
+      blockClass: "hexclave-sensitive",
       enabled: !isPreview && !isRemoteDevelopmentEnvironment,
     },
   },

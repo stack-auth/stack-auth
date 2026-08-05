@@ -41,7 +41,7 @@ describe("invokeWorkflowSandbox", () => {
     });
   });
 
-  test("keeps the fallback sandbox alive beyond the engine backstop", async () => {
+  test("gives providers the same ceiling as the engine backstop", async () => {
     const result = await invokeWorkflowSandbox({
       compiledBundle: "export default async () => ({ status: 'ok' });",
       input,
@@ -52,7 +52,7 @@ describe("invokeWorkflowSandbox", () => {
     expect(result.status).toBe("ok");
     expect(executeJavascriptMock).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ executionTimeoutMs: 660_000 }),
+      expect.objectContaining({ executionTimeoutMs: 630_000 }),
     );
   });
 });

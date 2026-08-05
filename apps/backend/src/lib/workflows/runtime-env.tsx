@@ -19,7 +19,7 @@ export type WorkflowsRuntimeEnv = {
   stdlibNodeModules: Record<string, string>,
 };
 
-export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-27.1";
+export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-30.1";
 
 const WORKFLOWS_RUNTIME_ENVS = new Map<string, WorkflowsRuntimeEnv>([
   ["2026-07-20.1", {
@@ -44,6 +44,17 @@ const WORKFLOWS_RUNTIME_ENVS = new Map<string, WorkflowsRuntimeEnv>([
       "date-fns": "4.1.0",
     },
   }],
+  ["2026-07-27.1", {
+    runtimeNodeModules: {
+      "@hexclave/js": "1.0.52",
+    },
+    stdlibNodeModules: {
+      "date-fns": "4.1.0",
+    },
+  }],
+  // 2026-07-30.1: the runtime shim's hexclaveApp became a ServerApp
+  // authenticated with a server-scoped run token (was an AdminApp). Same pins;
+  // the bump exists because the shim's behavior changed.
   [WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION, {
     runtimeNodeModules: {
       "@hexclave/js": "1.0.52",

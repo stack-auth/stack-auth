@@ -1,36 +1,23 @@
-import { useUser } from "@hexclave/react";
 import { createFileRoute } from '@tanstack/react-router';
 import { DevelopmentPageNote } from "~/components/development-page-note";
-import { HostedUserButton } from "~/components/hosted-user-button";
+import { HostedAuthMessage } from "~/hosted-components/auth/supporting/layout";
 
 export const Route = createFileRoute('/')({
-  component: HandlerPage,
-  pendingComponent: () => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-      <div style={{ width: 24, height: 24, border: "2px solid #e5e5e5", borderTop: "2px solid #333", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </div>
-  ),
+  component: RootPage,
 });
 
-function HandlerPage() {
-  const user = useUser({ or: "redirect" });
-  const name = user.displayName || user.primaryEmail || "User";
-
+function RootPage() {
   return (
     <>
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", paddingBottom: "var(--hexclave-development-page-note-height, 0px)", fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-          <HostedUserButton />
-        </div>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: "0.5rem" }}>
-          Welcome, {name}
-        </h1>
-        <p style={{ color: "#666", fontSize: "0.875rem" }}>
-          You are signed in.
-        </p>
-      </div>
-      <DevelopmentPageNote description="This is Hexclave's default post-sign-in landing page. Configure your own afterSignIn URL to customize what users see after signing in." />
+      <HostedAuthMessage
+        title="No destination configured"
+        primaryAction={() => window.history.back()}
+        primaryText="Back"
+        fullPage
+      >
+        This hosted root page does not have a destination. Go back to the website that opened it, or close this tab.
+      </HostedAuthMessage>
+      <DevelopmentPageNote description="The hosted root is a diagnostic fallback. Configure an explicit destination instead of navigating users here." />
     </>
   );
 }

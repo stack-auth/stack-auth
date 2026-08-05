@@ -83,7 +83,7 @@ services:
     image: dpage/pgadmin4
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
-      PGADMIN_DEFAULT_PASSWORD: PASSWORD-PLACEHOLDER--vu9p2iy3f
+      PGADMIN_DEFAULT_PASSWORD: PASSWORD-PLACEHOLDER--vu9p2iy3f  # note: this password is not used for authentication due to PGADMIN_CONFIG_SERVER_MODE=False
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     configs:

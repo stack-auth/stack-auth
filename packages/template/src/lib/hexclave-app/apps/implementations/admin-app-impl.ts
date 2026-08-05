@@ -229,9 +229,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
           id: p.id,
           type: 'standard',
           clientId: p.client_id ?? throwErr("Client ID is missing"),
-          clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
+          clientSecret: p.id === "apple" ? p.client_secret : p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleTeamId: p.apple_team_id,
+          appleKeyId: p.apple_key_id,
+          applePrivateKey: p.apple_private_key,
           appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
@@ -1427,6 +1430,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({
       id: r.id,
+      refreshTokenId: r.refresh_token_id,
       projectUser: {
         id: r.project_user.id,
         displayName: r.project_user.display_name,
@@ -1448,6 +1452,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     const response = await this._interface.getSessionReplay(sessionReplayId);
     return {
       id: response.id,
+      refreshTokenId: response.refresh_token_id,
       projectUser: {
         id: response.project_user.id,
         displayName: response.project_user.display_name,
