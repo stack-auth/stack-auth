@@ -23,7 +23,14 @@ export function createBackendInstrumentationPlan(options: BackendInstrumentation
     };
   }
 
-  const sentryEnabled = options.nodeEnvironment === "production" && options.sentryDsn !== "";
+  // Matches the pre-Elysia @sentry/nextjs gating: Sentry was enabled whenever the DSN
+  // was set and we were neither in development nor in CI (CI is short-circuited above).
+  // An exact-match on "production" would be too narrow — a self-hoster or staging deploy
+  // with a custom NODE_ENV (e.g. "staging", "preview") would silently drop all error
+  // reporting. We additionally exclude "test" so test runs never report to Sentry.
+  const sentryEnabled = options.sentryDsn !== ""
+    && options.nodeEnvironment !== "development"
+    && options.nodeEnvironment !== "test";
   const configuredOtlpTracesEndpoint = options.otlpTracesEndpoint.trim();
   const configuredOtlpEndpoint = options.otlpEndpoint.trim();
   const otlpTracesEndpoint = configuredOtlpTracesEndpoint !== ""
@@ -44,7 +51,16 @@ export function createBackendInstrumentationPlan(options: BackendInstrumentation
 }
 
 function validateOtlpEndpoint(environmentVariableName: string, value: string) {
-  const url = new URL(value);
+  // A bare `new URL(value)` throws TypeError("Invalid URL") without naming the source,
+  // which is useless during a boot crash-loop — the operator can't tell which env var is
+  // malformed. This narrow try/catch is NOT error swallowing: it rethrows immediately
+  // (fail early, fail loud), just with the env var name and offending value attached.
+  let url;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    throw new Error(`${environmentVariableName} is not a valid URL: ${JSON.stringify(value)}`, { cause: error });
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`${environmentVariableName} must use HTTP or HTTPS, got: ${JSON.stringify(url.protocol)}`);
   }

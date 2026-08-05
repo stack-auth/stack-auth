@@ -35,7 +35,13 @@ export function withVercelCronMonitor<T>(
     return callback();
   }
   return runMonitor(cron.path, callback, {
-    maxRuntime: 12,
+    // The longest-running cron (workflow-engine-step) may legitimately use the full
+    // Vercel function budget of 800 seconds (see FUNCTION_BUDGET_MS in
+    // app/api/latest/internal/workflow-engine-step/route.tsx and `maxDuration: 800` in
+    // src/index.ts): ceil(800 / 60) = 14 minutes, plus one minute of slack so a
+    // full-budget tick doesn't trigger a false "timed out" Sentry check-in. Revisit
+    // this value if maxDuration changes.
+    maxRuntime: 15,
     schedule: {
       type: "crontab",
       value: cron.schedule,
@@ -74,7 +80,7 @@ if (vitest != null) {
         "calls": [
           {
             "monitorConfig": {
-              "maxRuntime": 12,
+              "maxRuntime": 15,
               "schedule": {
                 "type": "crontab",
                 "value": "* * * * *",

@@ -68,6 +68,42 @@ export type PipelineResult = {
 
 export async function runRequestPipeline(request: Request): Promise<PipelineResult> {
   const url = new URL(request.url);
+
+  // Next.js canonicalized URLs with a 308 redirect before any handler ran: `/api/v1/`
+  // → 308 `Location: /api/v1`, and duplicate slashes like `/api//v1/users` → 308 to the
+  // normalized path. The Elysia cutover initially dropped this — trailing-slash paths
+  // were served directly (the route matcher strips trailing slashes) and duplicate-slash
+  // paths 404'd — which is a wire-contract change: mixed old/new deployments would see
+  // nondeterministic behavior and noncanonical integrations would break. This restores
+  // the previous contract so signed URLs, caches, and integrations relying on
+  // canonicalization behave identically across old and new deployments. Existing e2e
+  // tests fetch `/api/v1/` and assert a 200 because their fetch follows redirects — that
+  // held on Next (308→200) and holds again now. This runs before the artificial
+  // development delay and the OPTIONS short-circuit (Next redirected all methods,
+  // including OPTIONS), and redirecting early keeps the dev rate limiter from counting
+  // phantom duplicate paths. 308 (not 301/307) preserves the method and body, exactly
+  // what Next used.
+  const canonicalPathname = getCanonicalPathname(url.pathname);
+  if (canonicalPathname !== url.pathname) {
+    return {
+      corsHeadersInit: getCorsHeadersInit(request),
+      dispatchPath: canonicalPathname,
+      mergedHeaders: mergeHexclaveHeaderAliases(request.headers),
+      originalUrl: request.url,
+      shortCircuitResponse: new Response(null, {
+        status: 308,
+        headers: {
+          // The query string is preserved verbatim. Because runs of leading slashes
+          // collapse to a single `/`, the Location always starts with exactly one `/`
+          // followed by a non-slash character, so it can never be interpreted as a
+          // protocol-relative `//host` redirect — which is why this relative redirect
+          // is safe against open-redirect abuse.
+          "Location": canonicalPathname + url.search,
+        },
+      }),
+    };
+  }
+
   const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
   ensureForwardedForHeader(mergedHeaders, request);
   const artificialDevelopmentBehaviorDisabled = isArtificialDevelopmentBehaviorDisabled(mergedHeaders);
@@ -140,6 +176,37 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
     originalUrl: request.url,
   };
 }
+
+function getCanonicalPathname(pathname: string): string {
+  // Mirrors Next.js's URL canonicalization: collapse runs of literal `/` into one and
+  // strip the trailing slash (except the root path `/` itself). Operates on the
+  // percent-encoded pathname, so encoded characters — including `%2F` — are left
+  // untouched; only literal slashes are normalized. Note: WHATWG URL parsing already
+  // converts backslashes to forward slashes in special-scheme URLs (http/https), so by
+  // the time we have `url.pathname` backslashes are gone — that's why there's no
+  // explicit backslash handling here.
+  const collapsed = pathname.replace(/\/{2,}/g, "/");
+  return collapsed.length > 1 && collapsed.endsWith("/") ? collapsed.slice(0, -1) : collapsed;
+}
+
+import.meta.vitest?.test("getCanonicalPathname normalizes literal slashes only", ({ expect }) => {
+  expect(getCanonicalPathname("/api/v1/")).toBe("/api/v1");
+  expect(getCanonicalPathname("/api//v1//users")).toBe("/api/v1/users");
+  expect(getCanonicalPathname("/")).toBe("/");
+  expect(getCanonicalPathname("//")).toBe("/");
+  expect(getCanonicalPathname("/api/v1")).toBe("/api/v1");
+  // Percent-encoded slashes are data, not path separators — they must survive untouched.
+  expect(getCanonicalPathname("/api/v1/users/foo%2Fbar")).toBe("/api/v1/users/foo%2Fbar");
+});
+
+import.meta.vitest?.test("runRequestPipeline 308-redirects noncanonical paths", async ({ expect }) => {
+  const redirected = await runRequestPipeline(new Request("http://localhost/api/v1/?foo=bar"));
+  expect(redirected.shortCircuitResponse?.status).toBe(308);
+  expect(redirected.shortCircuitResponse?.headers.get("Location")).toBe("/api/v1?foo=bar");
+
+  const canonical = await runRequestPipeline(new Request("http://localhost/api/v1?foo=bar"));
+  expect(canonical.shortCircuitResponse).toBe(undefined);
+});
 
 function mergeHexclaveHeaderAliases(headers: Headers) {
   const newRequestHeaders = new Headers(headers);

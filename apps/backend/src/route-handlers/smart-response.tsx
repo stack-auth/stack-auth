@@ -56,7 +56,14 @@ export async function validateSmartResponse<T>(req: Request | null, smartReq: Sm
 }
 
 
-function isBinaryBody(body: unknown): body is BodyInit {
+// The predicate lists exactly the runtime checks below (rather than the wider
+// BodyInit, which also includes string): intersected with SmartResponse's
+// declared body types this narrows the "binary" case to buffers, whose
+// byteLength the content-length derivation below relies on. Claiming
+// ArrayBufferView<ArrayBuffer> (non-shared backing) is as precise as we can
+// get — isView can't inspect the backing buffer — and is no stronger a claim
+// than the previous `body is BodyInit` already made.
+function isBinaryBody(body: unknown): body is ArrayBuffer | SharedArrayBuffer | Blob | ArrayBufferView<ArrayBuffer> {
   return body instanceof ArrayBuffer
     || body instanceof SharedArrayBuffer
     || body instanceof Blob
@@ -131,14 +138,33 @@ export async function createResponse<T extends SmartResponse>(req: Request | nul
     }
 
 
+    // Next.js used to set Content-Length on route-handler responses, and both
+    // clients and the compression layer's minimum-size threshold rely on it
+    // being present. Only the "response" bodyType can carry a stream
+    // (Response#body is ReadableStream | null); every other case materialized
+    // the body into a buffer above, so its byte length is known exactly. The
+    // value MUST be exact or Node will truncate/hang the response — which is
+    // why it is derived from the encoded buffer, never from the pre-encoding
+    // string. Skip when the map already has one (e.g. copied from an inner
+    // Response in the "response" case).
+    if (!(arrayBufferBody instanceof ReadableStream) && arrayBufferBody != null && !headers.has("content-length")) {
+      headers.set("content-length", [arrayBufferBody.byteLength.toString()]);
+    }
+
     // Add the request ID to the response headers
     // Hexclave rebrand: dual-emit both x-hexclave-* and x-stack-* so old and new SDKs can both read it.
     headers.set("x-stack-request-id", [requestId]);
     headers.set("x-hexclave-request-id", [requestId]);
 
 
-    // Disable caching by default
-    headers.set("cache-control", ["no-store, max-age=0"]);
+    // Disable caching by default, but only if nothing set a cache-control yet:
+    // routes returning a raw Response (bodyType "response") had their inner
+    // Response's headers copied into the map above and must be able to opt
+    // out — e.g. streaming routes send `no-transform` so the compression
+    // layer's gzip buffering doesn't stall incremental delivery.
+    if (!headers.has("cache-control")) {
+      headers.set("cache-control", ["no-store, max-age=0"]);
+    }
 
 
     // If the x-stack-override-error-status header is given, override 4xx statuses to 200.
@@ -163,3 +189,33 @@ export async function createResponse<T extends SmartResponse>(req: Request | nul
     );
   });
 }
+
+import.meta.vitest?.test("createResponse sets an exact content-length for JSON bodies", async ({ expect }) => {
+  const response = await createResponse(null, "test-request-id", {
+    statusCode: 200,
+    bodyType: "json",
+    // Non-ASCII on purpose: the byte length differs from the string length, so
+    // this catches any regression back to measuring the pre-encoding string.
+    body: { value: "ünïcödé" },
+  });
+  const bodyBytes = await response.arrayBuffer();
+  expect(bodyBytes.byteLength).toBeGreaterThan("ünïcödé".length);
+  expect(response.headers.get("content-length")).toBe(bodyBytes.byteLength.toString());
+  expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
+});
+
+import.meta.vitest?.test("createResponse keeps an inner Response's cache-control and does not fabricate a content-length for streams", async ({ expect }) => {
+  const response = await createResponse(null, "test-request-id", {
+    statusCode: 200,
+    bodyType: "response",
+    body: new Response("streamed body", {
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store, no-transform",
+      },
+    }),
+  });
+  expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
+  expect(response.headers.get("content-length")).toBeNull();
+  expect(await response.text()).toBe("streamed body");
+});

@@ -6,6 +6,7 @@ describe("shutdownBackend", () => {
     expect(backendShutdownBudget.hardExitTimeoutMs).toBeLessThan(backendShutdownBudget.platformGracePeriodMs);
     expect(
       backendShutdownBudget.hardExitTimeoutMs
+      - backendShutdownBudget.httpServerTimeoutMs
       - backendShutdownBudget.backgroundTasksTimeoutMs
       - backendShutdownBudget.databaseTimeoutMs
       - backendShutdownBudget.instrumentationTimeoutMs,

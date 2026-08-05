@@ -1,3 +1,5 @@
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+
 const compressibleApplicationTypes = new Set([
   "application/graphql-response+json",
   "application/javascript",
@@ -37,6 +39,15 @@ export function compressResponse(request: Request, response: Response): Response
 }
 
 function canCompressResponse(request: Request, response: Response): boolean {
+  // On Vercel, the CDN in front of the function already compresses responses
+  // off-function (both gzip AND brotli, negotiated per client, while
+  // preserving ETag/Content-Length). Compressing in-process there would burn
+  // billed function CPU, forfeit the better brotli encoding, and strip the
+  // validator headers the CDN would otherwise keep — so skip entirely.
+  // Evaluated per call (not at module init) so tests can stub the env var.
+  if (getEnvVariable("VERCEL", "") !== "") {
+    return false;
+  }
   if (
     request.method === "HEAD"
     || request.headers.has("range")
@@ -135,6 +146,22 @@ import.meta.vitest?.test("compresses eligible responses as a streaming gzip repr
     vary: "Accept-Encoding",
     body,
   });
+});
+
+import.meta.vitest?.test("does not compress on Vercel, where the CDN compresses off-function", ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("VERCEL", "1");
+  try {
+    const body = JSON.stringify({ value: "repeated-value-".repeat(100) });
+    const response = new Response(body, {
+      headers: { "content-type": "application/json" },
+    });
+    expect(compressResponse(new Request("http://localhost/test", {
+      headers: { "accept-encoding": "gzip" },
+    }), response)).toBe(response);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 import.meta.vitest?.test("does not compress ineligible or refused representations", ({ expect }) => {

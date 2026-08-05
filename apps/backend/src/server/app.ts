@@ -231,6 +231,16 @@ function withGlobalHeaders(response: Response) {
   for (const [key, value] of Object.entries(globalSecurityHeaders)) {
     response.headers.set(key, value);
   }
+  // Next.js added `Cache-Control: no-store` to every dynamic response. Smart
+  // responses still set their own default, but raw-Response routes (/health,
+  // the dispatcher's 404/405/400, the HTML pages) would otherwise emit no
+  // cache-control at all and intermediaries could cache them. Only set when
+  // absent so routes that intentionally cache stay cacheable — which is also
+  // why this is NOT part of globalSecurityHeaders: that object is stamped
+  // unconditionally and would overwrite smart responses' own values.
+  if (!response.headers.has("cache-control")) {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
   return response;
 }
 
@@ -295,6 +305,34 @@ import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", 
         },
       ]
     `);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+import.meta.vitest?.test("global headers add a default cache-control only when the route set none", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+
+  try {
+    const [homePage, smartResponse] = await Promise.all([
+      // The home page is a raw Response with no cache-control of its own
+      // (unlike /api 404s, which the smart NotFoundHandler catch-all serves),
+      // so it must receive the default.
+      app.handle(new Request("http://localhost/")),
+      // Smart responses set their own cache-control; the default must not
+      // overwrite it.
+      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler")),
+    ]);
+
+    expect({
+      homePageCacheControl: homePage.headers.get("cache-control"),
+      smartResponseCacheControl: smartResponse.headers.get("cache-control"),
+    }).toEqual({
+      homePageCacheControl: "private, no-store",
+      smartResponseCacheControl: "no-store, max-age=0",
+    });
   } finally {
     vi.unstubAllEnvs();
   }
