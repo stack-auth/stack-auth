@@ -33,6 +33,7 @@
 // how you delete a live project by mistake.
 
 import { getBranchConfigOverrideSource, overrideBranchConfigOverride } from "@/lib/config";
+import { getOptionalRequestAbortSignal } from "@/lib/runtime/request-context";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
@@ -43,7 +44,8 @@ import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { parseTar } from "@hexclave/shared/dist/utils/tar";
 import { createHash } from "node:crypto";
-import { gunzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
 
 /**
@@ -54,6 +56,7 @@ import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVerce
  * write to a section the schema doesn't know about.
  */
 export const DEPLOYMENTS_CONFIG_SECTION = "deployments-alpha";
+const gunzipAsync = promisify(gunzip);
 
 export type DeploymentServiceDefinition = CompleteConfig[typeof DEPLOYMENTS_CONFIG_SECTION]["services"][string];
 export type DeploymentEnvVarConfig = DeploymentServiceDefinition["env"][string];
@@ -594,26 +597,54 @@ export function redactSecrets(text: string, secretValues: string[]): string {
   return result;
 }
 
+async function awaitDeploymentOperation<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal == null) {
+    return await promise;
+  }
+  signal.throwIfAborted();
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * Unpacks an uploaded gzipped tarball into deployable files. Defensive on
  * purpose — the tarball is untrusted user input (see limits above; path
  * traversal is rejected by parseTar itself). node_modules and .git are dropped
  * as defense-in-depth even though the CLI already excludes them.
  */
-export function unpackSourceTarball(tarballGzipped: Uint8Array): { path: string, data: Uint8Array }[] {
+export async function unpackSourceTarball(tarballGzipped: Uint8Array): Promise<{ path: string, data: Uint8Array }[]> {
+  const signal = getOptionalRequestAbortSignal();
+  signal?.throwIfAborted();
   let tarBytes: Buffer;
   try {
-    tarBytes = gunzipSync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES });
+    tarBytes = await awaitDeploymentOperation(
+      gunzipAsync(tarballGzipped, { maxOutputLength: MAX_TARBALL_UNPACKED_BYTES }),
+      signal,
+    );
   } catch (e) {
     if (e instanceof RangeError || (e as any)?.code === "ERR_BUFFER_TOO_LARGE") {
       throw new StatusError(400, `Uploaded source tarball is too large when unpacked (max ${MAX_TARBALL_UNPACKED_BYTES} bytes).`);
     }
     throw new StatusError(400, "Uploaded source is not a valid gzip stream.");
   }
+  signal?.throwIfAborted();
   const entries = parseTar(tarBytes, {
     maxEntries: MAX_TARBALL_ENTRIES,
     maxTotalBytes: MAX_TARBALL_UNPACKED_BYTES,
   });
+  signal?.throwIfAborted();
   return entries
     .filter((entry) => !entry.path.endsWith("/"))
     .filter((entry) => {
@@ -740,7 +771,7 @@ export async function startDeployment(options: {
     sanitizeVercelError(e, "Pushing env vars to the deployment failed");
   }
 
-  const files = unpackSourceTarball(tarballGzipped);
+  const files = await unpackSourceTarball(tarballGzipped);
   if (files.length === 0) {
     throw new StatusError(400, "Uploaded source tarball contains no files.");
   }
@@ -818,6 +849,7 @@ export async function syncServiceDomainsToVercel(options: {
   vercelProjectId: string,
 }): Promise<void> {
   const { tenancy, prisma, serviceDbId, client, vercelProjectId } = options;
+  const signal = getOptionalRequestAbortSignal();
   const domains = await prisma.deploymentServiceDomain.findMany({
     where: {
       tenancyId: tenancy.id,
@@ -845,6 +877,12 @@ export async function syncServiceDomainsToVercel(options: {
       // the domain read route for why these are separate signals.
       verified = vercelDomain.verified && !await client.isDomainMisconfigured(domain.hostname);
     } catch (e) {
+      // An invocation deadline is not a domain-specific transient failure. Stop
+      // the loop immediately instead of swallowing the abort and starting more
+      // provider calls after the deployment request has expired.
+      if (signal?.aborted) {
+        signal.throwIfAborted();
+      }
       // NOTHING here may fail the caller — the build is already running on
       // Vercel, so a domain hiccup (4xx like domain-in-use, a transient 5xx,
       // or a network error) must not turn a started deploy into an error.

@@ -1,9 +1,9 @@
 import { normalizeCountryCode } from "@hexclave/shared/dist/utils/country-codes";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
 import { pick } from "@hexclave/shared/dist/utils/objects";
 import { headers } from "@/lib/runtime/headers";
+import { getTrustedProxy, type TrustedProxy } from "@/lib/trusted-proxy";
 
 // An end user is a person sitting behind a computer screen.
 //
@@ -42,8 +42,6 @@ type EndUserLocation = {
   longitude?: number,
   tzIdentifier?: string,
 };
-
-type TrustedProxy = "" | "vercel" | "cloudflare" | "cloudrun";
 
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
@@ -185,11 +183,8 @@ export async function getEndUserInfo(): Promise<
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
-    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
-    const trustedProxy = getEnvVariable("STACK_TRUSTED_PROXY", "").toLowerCase().trim();
-    if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare" && trustedProxy !== "cloudrun") {
-      throw new HexclaveAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
-    }
+    // HEXCLAVE_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
+    const trustedProxy = getTrustedProxy();
     return getBrowserEndUserInfo(allHeaders, trustedProxy);
   }
 

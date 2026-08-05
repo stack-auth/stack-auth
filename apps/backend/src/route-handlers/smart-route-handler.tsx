@@ -1,6 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
+import { requestContextALS } from "@/lib/runtime/request-context";
 import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
@@ -78,14 +79,20 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
     try {
       const requestId = generateSecureRandomString(80);
       const requestUrl = new URL(req.url);
+      // The route pattern (not the concrete path — see RequestContext.normalizedPath for why).
+      // Optional access because unit tests may invoke handlers outside the server dispatcher.
+      const normalizedPath = requestContextALS.getStore()?.normalizedPath;
       // Sentry's httpIntegration already forks an isolation scope per incoming request (which is
       // what keeps concurrent requests on Fluid Compute / Cloud Run from leaking context into each
       // other), so we only need to attach the request context to that scope — error events must be
-      // correlatable with the x-stack-request-id a user reports. Never add auth headers or query
-      // values here; both routinely contain credentials.
+      // correlatable with the x-stack-request-id a user reports. Never add auth headers, query
+      // values, or the concrete request path here; the former routinely contain credentials and
+      // path params can contain customer identifiers. The route pattern is safe (it's the same
+      // shape as the http.route span attribute) and is what triage uses to locate the endpoint.
       Sentry.getIsolationScope().setContext("stack-request", {
         requestId,
         method: req.method,
+        ...(normalizedPath == null ? {} : { route: normalizedPath }),
       });
       return await traceSpan({
         description: 'handling API request',
@@ -137,7 +144,7 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
             // This diagnostic timer must not keep a drained server process alive.
             await waitForTimeout(warnAfterSeconds * 1000, undefined, { ref: false });
             if (!hasRequestFinished) {
-              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} using ${req.method} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} using ${req.method} ${normalizedPath ?? "<unknown route>"} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
             }
           });
 

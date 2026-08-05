@@ -6,6 +6,16 @@ export type BackendShutdownDependencies = {
   log: (event: BackendShutdownLogEvent) => void,
 };
 
+// Cloud Run and Docker commonly allow ten seconds between SIGTERM and SIGKILL.
+// Exit one second earlier so the process, rather than the platform, owns the
+// terminal log and exit code when an in-flight request or dependency hangs.
+export const backendShutdownBudget = {
+  backgroundTasksTimeoutMs: 6000,
+  instrumentationTimeoutMs: 1000,
+  hardExitTimeoutMs: 9000,
+  platformGracePeriodMs: 10000,
+};
+
 export type BackendShutdownLogEvent = {
   event: "backend.shutdown.started" | "backend.shutdown.completed" | "backend.shutdown.failed",
   signal: NodeJS.Signals,

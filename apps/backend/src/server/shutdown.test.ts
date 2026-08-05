@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { shutdownBackend, type BackendShutdownLogEvent } from "./shutdown";
+import { backendShutdownBudget, shutdownBackend, type BackendShutdownLogEvent } from "./shutdown";
 
 describe("shutdownBackend", () => {
+  it("keeps the hard exit inside the shortest supported platform grace period", () => {
+    expect(backendShutdownBudget.hardExitTimeoutMs).toBeLessThan(backendShutdownBudget.platformGracePeriodMs);
+    expect(
+      backendShutdownBudget.hardExitTimeoutMs
+      - backendShutdownBudget.backgroundTasksTimeoutMs
+      - backendShutdownBudget.instrumentationTimeoutMs,
+    ).toBe(2000);
+  });
+
   it("stops ingress before draining resources and reports completion", async () => {
     const calls: string[] = [];
     const events: BackendShutdownLogEvent[] = [];

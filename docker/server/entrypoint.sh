@@ -211,8 +211,16 @@ echo "Starting dashboard on port $DASHBOARD_PORT..."
 PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
 dashboard_pid=$!
 
+terminating=false
 terminate_children() {
-  trap - SIGTERM SIGINT
+  # A real second signal is an operator-requested forced shutdown. The normal
+  # post-wait cleanup below checks `terminating` before calling this function,
+  # so it cannot accidentally manufacture that second signal itself.
+  if [ "$terminating" = true ]; then
+    kill -KILL "$backend_pid" "$dashboard_pid" 2>/dev/null || true
+    return
+  fi
+  terminating=true
   kill -TERM "$backend_pid" "$dashboard_pid" 2>/dev/null || true
 }
 
@@ -225,7 +233,9 @@ wait -n "$backend_pid" "$dashboard_pid"
 child_exit_code=$?
 set -e
 
-terminate_children
+if [ "$terminating" = false ]; then
+  terminate_children
+fi
 wait "$backend_pid" 2>/dev/null || true
 wait "$dashboard_pid" 2>/dev/null || true
 exit "$child_exit_code"

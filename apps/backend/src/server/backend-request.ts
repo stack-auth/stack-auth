@@ -2,10 +2,16 @@ type NodeRequestInit = RequestInit & {
   duplex?: "half",
 };
 
-export function createBackendRequest(request: Request, headers: Headers, originalUrl: string): Request {
+export function createBackendRequest(
+  request: Request,
+  headers: Headers,
+  originalUrl: string,
+  signal: AbortSignal = request.signal,
+): Request {
   const init: NodeRequestInit = {
     method: request.method,
     headers,
+    signal,
   };
 
   if (request.method !== "GET" && request.method !== "HEAD") {

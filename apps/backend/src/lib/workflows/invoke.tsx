@@ -1,4 +1,5 @@
 import { executeJavascript } from "@/lib/js-execution";
+import { getOptionalRequestAbortSignal } from "@/lib/runtime/request-context";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -44,40 +45,46 @@ export async function invokeWorkflowSandbox(options: {
   nodeModules: Record<string, string>,
   /** Engine-side backstop; the authoritative per-step timeout is enforced by the runtime inside the sandbox. */
   timeoutMs: number,
+  signal?: AbortSignal,
 }): Promise<Result<WorkflowSandboxOutcome, WorkflowInvocationFailure>> {
   const invocationId = generateUuid();
   const prelude = "globalThis.__HEXCLAVE_WORKFLOWS_INPUT__ = " + JSON.stringify(options.input) + ";\n";
   const code = prelude + options.compiledBundle;
 
+  const requestSignal = options.signal ?? getOptionalRequestAbortSignal();
+  const timeoutController = new AbortController();
+  const executionSignal = requestSignal == null
+    ? timeoutController.signal
+    : AbortSignal.any([requestSignal, timeoutController.signal]);
+  const timer = setTimeout(() => {
+    timeoutController.abort(new Error(`Workflow sandbox exceeded its ${options.timeoutMs}ms engine backstop.`));
+  }, options.timeoutMs);
+
   let executeResult;
   try {
-    let timer: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<"timeout">((resolve) => {
-      timer = setTimeout(() => resolve("timeout"), options.timeoutMs);
+    executeResult = await executeJavascript(code, {
+      nodeModules: options.nodeModules,
+      // Give providers the same hard ceiling as the engine backstop. The
+      // request signal stops local ownership immediately, while the provider
+      // ceiling prevents an uncancellable remote run from continuing later.
+      executionTimeoutMs: options.timeoutMs,
+      // Step execution is side-effectful; running it twice for a
+      // cross-engine comparison would double-fire the effects.
+      disableSanityTest: true,
+      // The prelude embeds per-run credentials — never let
+      // the raw code reach error reports. The invocation id makes
+      // js-execution's internal captures correlatable with ours without
+      // widening its API.
+      logSafeCode: `<workflow bundle, ${options.compiledBundle.length} bundle bytes + redacted input prelude, mode ${options.input.mode}, invocation ${invocationId}>`,
+      signal: executionSignal,
     });
-    try {
-      executeResult = await Promise.race([
-        executeJavascript(code, {
-          nodeModules: options.nodeModules,
-          // Keep the provider sandbox alive slightly longer than our own
-          // backstop. Its lifetime also includes setup and package install,
-          // while the engine timer remains the authoritative cutoff.
-          executionTimeoutMs: options.timeoutMs + 30_000,
-          // Step execution is side-effectful; running it twice for a
-          // cross-engine comparison would double-fire the effects.
-          disableSanityTest: true,
-          // The prelude embeds per-run credentials — never let
-          // the raw code reach error reports. The invocation id makes
-          // js-execution's internal captures correlatable with ours without
-          // widening its API.
-          logSafeCode: `<workflow bundle, ${options.compiledBundle.length} bundle bytes + redacted input prelude, mode ${options.input.mode}, invocation ${invocationId}>`,
-        }),
-        timeoutPromise,
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
   } catch (error) {
+    if (requestSignal?.aborted) {
+      requestSignal.throwIfAborted();
+    }
+    if (timeoutController.signal.aborted) {
+      return Result.error({ kind: "timeout", invocationId, message: `Workflow sandbox invocation exceeded the ${Math.round(options.timeoutMs / 1000)}s engine-side backstop timeout` });
+    }
     // From the engine's perspective this is a retriable platform failure of
     // the attempt. Captured HERE, not just inside js-execution: several of
     // its throw paths (a missing provider env var, the disabled sentinel,
@@ -92,11 +99,10 @@ export async function invokeWorkflowSandbox(options: {
       { mode: options.input.mode, invocationId, error },
     ));
     return Result.error({ kind: "invocation-error", invocationId, message: "The workflow sandbox could not be started because of an internal error. This is usually transient — retrying is safe." });
+  } finally {
+    clearTimeout(timer);
   }
 
-  if (executeResult === "timeout") {
-    return Result.error({ kind: "timeout", invocationId, message: `Workflow sandbox invocation exceeded the ${Math.round(options.timeoutMs / 1000)}s engine-side backstop timeout` });
-  }
   if (executeResult.status === "error") {
     // The entry harness catches all user-code errors into normal outcomes,
     // so an error envelope here means the harness/runtime itself broke — a

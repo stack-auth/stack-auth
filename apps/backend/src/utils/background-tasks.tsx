@@ -1,36 +1,48 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { requestContextALS } from "@/lib/runtime/request-context";
 
-// Track on every runtime. Vercel's waitUntil owns function lifetime, while this
-// set gives shutdown and the test-only flush endpoint a deterministic drain.
+// Serverful runtimes use this set for shutdown and the test-only flush endpoint.
+// Vercel lifetime is owned separately by each invocation's bounded waitUntil.
 const inFlightPromises = new Set<Promise<unknown>>();
 
-function waitUntilImpl(promise: Promise<unknown>) {
-  if (inFlightPromises.has(promise)) {
-    return;
+function waitUntilImpl(promise: Promise<unknown>, invocationOwnershipPromise: Promise<unknown>) {
+  const isVercel = getEnvVariable("VERCEL", "") !== "";
+  // Vercel owns only the bounded invocation-local wrapper. Retaining a
+  // non-cooperative original promise in a process-global set after that wrapper
+  // expires would leak one promise graph per timed-out Fluid invocation.
+  if (!isVercel && !inFlightPromises.has(promise)) {
+    inFlightPromises.add(promise);
+    const cleanup = promise.finally(() => inFlightPromises.delete(promise));
+    ignoreUnhandledRejection(cleanup);
   }
 
-  inFlightPromises.add(promise);
-  const cleanup = promise.finally(() => inFlightPromises.delete(promise));
-  ignoreUnhandledRejection(cleanup);
+  // Global shutdown deduplication must never suppress request-local ownership:
+  // the same original promise can be registered by multiple invocations, each
+  // of which needs its own waitUntil and rejection observer.
+  if (invocationOwnershipPromise !== promise) {
+    ignoreUnhandledRejection(invocationOwnershipPromise);
+  }
 
-  if (getEnvVariable("VERCEL", "") !== "") {
+  if (isVercel) {
     // On Vercel, use the native waitUntil to keep the function alive
     const { waitUntil } = require("@vercel/functions") as typeof import("@vercel/functions");
-    waitUntil(promise);
+    waitUntil(invocationOwnershipPromise);
   }
 }
 
 export function runAsynchronouslyAndWaitUntil<T>(promiseOrFunction: Promise<T> | (() => Promise<T>)) {
   const promise = typeof promiseOrFunction === "function" ? promiseOrFunction() : promiseOrFunction;
   runAsynchronously(promise);
-  waitUntilImpl(promise);
+  const invocationOwnershipPromise = requestContextALS.getStore()?.lifetime.trackBackgroundTask(promise) ?? promise;
+  waitUntilImpl(promise, invocationOwnershipPromise);
 }
 
 export async function allPromisesAndWaitUntilEach(promises: Promise<unknown>[]): Promise<unknown[]> {
   for (const promise of promises) {
-    waitUntilImpl(promise);
+    const invocationOwnershipPromise = requestContextALS.getStore()?.lifetime.trackBackgroundTask(promise) ?? promise;
+    waitUntilImpl(promise, invocationOwnershipPromise);
   }
   return await Promise.all(promises);
 }

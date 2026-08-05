@@ -1,13 +1,18 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("db")) {
-    const project = await globalPrismaClient.project.findFirst({});
+  return await getHealthResponse(req, checkDatabaseConnection);
+}
 
-    if (!project) {
-      throw new HexclaveAssertionError("No project found");
-    }
+async function checkDatabaseConnection(): Promise<void> {
+  await globalPrismaClient.$replica().$queryRaw`SELECT 1`;
+}
+
+async function getHealthResponse(req: Request, checkDatabase: () => Promise<unknown>) {
+  if (new URL(req.url).searchParams.get("db")) {
+    // A readiness probe needs database connectivity, not application data. An
+    // empty but correctly migrated database is ready and should pass this check.
+    await checkDatabase();
   }
 
   return Response.json({
@@ -21,3 +26,26 @@ export async function GET(req: Request) {
     }
   });
 }
+
+import.meta.vitest?.test("the database readiness probe verifies connectivity without requiring rows", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  const checkDatabase = vi.fn(async () => {});
+  const livenessResponse = await getHealthResponse(new Request("http://localhost/health"), checkDatabase);
+  const readinessResponse = await getHealthResponse(new Request("http://localhost/health?db=1"), checkDatabase);
+
+  expect({
+    livenessStatus: livenessResponse.status,
+    readinessStatus: readinessResponse.status,
+    databaseChecks: checkDatabase.mock.calls.length,
+  }).toEqual({
+    livenessStatus: 200,
+    readinessStatus: 200,
+    databaseChecks: 1,
+  });
+  await expect(getHealthResponse(
+    new Request("http://localhost/health?db=1"),
+    async () => {
+      throw new Error("database unavailable");
+    },
+  )).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: database unavailable]`);
+});

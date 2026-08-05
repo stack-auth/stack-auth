@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { RequestLifetime } from "@/server/request-lifetime";
 
 export type CookieWrite = {
   name: string,
@@ -19,6 +20,14 @@ export type RequestContext = {
   incomingCookies: Map<string, string>,
   pendingSetCookies: CookieWrite[],
   deletedCookies: CookieWrite[],
+  lifetime: RequestLifetime,
+  /**
+   * The matched route pattern (e.g. `/api/latest/users/[user_id]`), NOT the concrete
+   * request path. Concrete paths must not be logged or sent to Sentry in production
+   * because their params can contain customer identifiers; the pattern carries no
+   * customer data, so observability code may use it freely.
+   */
+  normalizedPath: string,
 };
 
 export const requestContextALS = new AsyncLocalStorage<RequestContext>();
@@ -29,6 +38,10 @@ export function getRequestContext() {
     throw new Error("Backend request context is only available while handling a backend request");
   }
   return context;
+}
+
+export function getOptionalRequestAbortSignal(): AbortSignal | undefined {
+  return requestContextALS.getStore()?.lifetime.signal;
 }
 
 export function parseCookieHeader(cookieHeader: string | null) {

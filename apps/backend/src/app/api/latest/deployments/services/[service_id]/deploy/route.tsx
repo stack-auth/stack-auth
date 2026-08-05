@@ -8,13 +8,15 @@ import { DEPLOYMENT_ENV_VAR_KEY_REGEX, deploymentEnvVarSchema } from "@hexclave/
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// Source fan-out is intentionally synchronous for the MVP; make the expected
-// Vercel Function budget explicit instead of inheriting a shorter default.
+// Source fan-out is intentionally synchronous for the MVP. The Elysia
+// dispatcher enforces this route-local budget inside the shared function.
 export const maxDuration = 300;
 
 async function deleteDeploymentSourceObject(objectKey: string): Promise<void> {
   try {
-    await deleteBytes({ key: objectKey, private: true });
+    // Cleanup must still run after the route deadline aborts its main signal,
+    // but it gets only the drain window rather than an unbounded S3 request.
+    await deleteBytes({ key: objectKey, private: true, signal: AbortSignal.timeout(5000) });
   } catch (error) {
     // The R2 lifecycle rule is the final safety net for cleanup failures. The
     // deployment result must not be hidden by a failed best-effort delete.

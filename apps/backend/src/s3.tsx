@@ -3,6 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
+import { getOptionalRequestAbortSignal } from "./lib/runtime/request-context";
 
 const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
@@ -105,16 +106,17 @@ export async function createPresignedUploadUrl(options: {
   );
 }
 
-export async function headBytes(options: { key: string, private?: boolean }): Promise<{
+export async function headBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<{
   byteLength: number,
   eTag: string,
 } | null> {
   const { client, bucket } = getS3Target(options.private === true);
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
   try {
     const response = await client.send(new HeadObjectCommand({
       Bucket: bucket,
       Key: options.key,
-    }));
+    }), { abortSignal: signal });
     if (response.ContentLength == null) {
       throw new HexclaveAssertionError("S3 headObject response is missing ContentLength");
     }
@@ -133,19 +135,23 @@ export async function headBytes(options: { key: string, private?: boolean }): Pr
   }
 }
 
-async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
+async function readBodyToBytes(body: unknown, signal: AbortSignal | undefined): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   if (body instanceof Uint8Array) return body;
   if (Buffer.isBuffer(body)) return new Uint8Array(body);
 
   // Web ReadableStream (some runtimes)
   if (typeof body === "object" && body !== null && "transformToByteArray" in body && typeof (body as any).transformToByteArray === "function") {
-    return (body as any).transformToByteArray();
+    const result = await (body as any).transformToByteArray();
+    signal?.throwIfAborted();
+    return result;
   }
 
   // Node.js Readable or any AsyncIterable<Uint8Array>
   if (typeof body === "object" && body !== null && Symbol.asyncIterator in (body as any)) {
     const chunks: Buffer[] = [];
     for await (const chunk of body as any) {
+      signal?.throwIfAborted();
       if (chunk instanceof Uint8Array) {
         chunks.push(Buffer.from(chunk));
       } else if (Buffer.isBuffer(chunk)) {
@@ -160,8 +166,9 @@ async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
   throw new HexclaveAssertionError("Unexpected S3 body type");
 }
 
-export async function downloadBytes(options: { key: string, private?: boolean, ifMatch?: string }): Promise<Uint8Array> {
+export async function downloadBytes(options: { key: string, private?: boolean, ifMatch?: string, signal?: AbortSignal }): Promise<Uint8Array> {
   const { client, bucket } = getS3Target(options.private === true);
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -169,20 +176,21 @@ export async function downloadBytes(options: { key: string, private?: boolean, i
     IfMatch: options.ifMatch,
   });
 
-  const res = await client.send(command);
+  const res = await client.send(command, { abortSignal: signal });
   if (!res.Body) {
     throw new HexclaveAssertionError("S3 getObject returned empty body");
   }
 
-  return await readBodyToBytes(res.Body);
+  return await readBodyToBytes(res.Body, signal);
 }
 
-export async function deleteBytes(options: { key: string, private?: boolean }): Promise<void> {
+export async function deleteBytes(options: { key: string, private?: boolean, signal?: AbortSignal }): Promise<void> {
   const { client, bucket } = getS3Target(options.private === true);
+  const signal = options.signal ?? getOptionalRequestAbortSignal();
   await client.send(new DeleteObjectCommand({
     Bucket: bucket,
     Key: options.key,
-  }));
+  }), { abortSignal: signal });
 }
 
 async function uploadBase64Image({

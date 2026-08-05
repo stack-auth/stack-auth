@@ -1,21 +1,25 @@
 import { httpMethodNames, routeModules } from "@/generated/route-modules";
 import { SmartRouter } from "@/smart-router";
+import { DEFAULT_ROUTE_MAX_DURATION_SECONDS, validateRouteMaxDurationSeconds } from "./runtime-limits";
 
 type HttpMethod = typeof httpMethodNames[number];
 type RouteParams = Record<string, string | string[]>;
 type RouteHandlerOptions = { params: Promise<RouteParams> };
 type RouteHandler = (request: Request, options: RouteHandlerOptions) => Promise<Response> | Response;
-export type UnknownRouteModule = Partial<Record<HttpMethod, unknown>>;
+export type UnknownRouteModule = Partial<Record<HttpMethod, unknown>> & { maxDuration?: unknown };
 type UnknownRouteFunction = (request: Request, options: RouteHandlerOptions) => unknown;
+export type RouteMethods = Map<HttpMethod, RouteHandler>;
 
 type RouteEntry = {
-  methods: Map<HttpMethod, RouteHandler>,
+  loadMethods: () => Promise<RouteMethods>,
+  maxDurationSeconds: number,
   normalizedPath: string,
   specificity: number[],
 };
 
 type RouteMatch = {
-  methods: Map<HttpMethod, RouteHandler>,
+  loadMethods: () => Promise<RouteMethods>,
+  maxDurationSeconds: number,
   normalizedPath: string,
   params: Record<string, string | string[]>,
 };
@@ -27,7 +31,8 @@ export function matchRoute(dispatchPath: string): RouteMatch | undefined {
     const params = SmartRouter.matchNormalizedPath(dispatchPath, entry.normalizedPath);
     if (params !== false) {
       return {
-        methods: entry.methods,
+        loadMethods: entry.loadMethods,
+        maxDurationSeconds: entry.maxDurationSeconds,
         normalizedPath: entry.normalizedPath,
         params: decodeRouteParams(params),
       };
@@ -63,21 +68,47 @@ function decodeRouteParams(params: Record<string, string | string[]>): Record<st
 function buildRouteRegistry() {
   return routeModules
     .map((route) => {
-      const methods = new Map<HttpMethod, RouteHandler>();
-      for (const method of httpMethodNames) {
-        const handler = route.module[method];
-        if (isRouteFunction(handler)) {
-          methods.set(method, createRouteHandler(route.normalizedPath, method, handler));
-        }
-      }
+      const maxDurationSeconds = validateRouteMaxDurationSeconds(
+        route.maxDurationSeconds ?? DEFAULT_ROUTE_MAX_DURATION_SECONDS,
+        route.normalizedPath,
+      );
       return {
-        methods,
+        loadMethods: createRouteMethodsLoader(route.normalizedPath, maxDurationSeconds, route.load),
+        maxDurationSeconds,
         normalizedPath: route.normalizedPath,
         specificity: getSpecificity(route.normalizedPath),
       };
     })
-    .filter((route) => route.methods.size > 0)
     .sort(compareRouteEntries);
+}
+
+function createRouteMethodsLoader(
+  normalizedPath: string,
+  maxDurationSeconds: number,
+  loadModule: () => Promise<UnknownRouteModule>,
+) {
+  let methodsPromise: Promise<RouteMethods> | undefined;
+  return () => {
+    // Cache the promise, not only the resolved module, so concurrent first requests
+    // share one import and a deterministic initialization failure stays route-local.
+    methodsPromise ??= loadModule().then((routeModule) => {
+      const exportedMaxDuration = routeModule.maxDuration;
+      if (exportedMaxDuration !== undefined && exportedMaxDuration !== maxDurationSeconds) {
+        throw new Error(
+          `Generated maxDuration metadata for ${normalizedPath} is stale: expected ${maxDurationSeconds}, received ${String(exportedMaxDuration)}.`,
+        );
+      }
+      const methods: RouteMethods = new Map();
+      for (const method of httpMethodNames) {
+        const handler = routeModule[method];
+        if (isRouteFunction(handler)) {
+          methods.set(method, createRouteHandler(normalizedPath, method, handler));
+        }
+      }
+      return methods;
+    });
+    return methodsPromise;
+  };
 }
 
 function isRouteFunction(value: unknown): value is UnknownRouteFunction {
@@ -123,3 +154,40 @@ function getSpecificity(normalizedPath: string) {
 function stringCompare(a: string, b: string) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+import.meta.vitest?.test("route modules are loaded lazily and only once", async ({ expect }) => {
+  let loadCount = 0;
+  const loadMethods = createRouteMethodsLoader("/api/latest/test", DEFAULT_ROUTE_MAX_DURATION_SECONDS, async () => {
+    loadCount++;
+    return {
+      GET: async () => new Response("ok"),
+    };
+  });
+
+  expect(loadCount).toBe(0);
+  const [firstMethods, secondMethods] = await Promise.all([loadMethods(), loadMethods()]);
+  expect(loadCount).toBe(1);
+  expect(firstMethods).toBe(secondMethods);
+  const handler = firstMethods.get("GET");
+  if (handler == null) {
+    throw new Error("The test route should expose a GET handler");
+  }
+  const response = await handler(new Request("http://localhost/api/latest/test"), {
+    params: Promise.resolve({}),
+  });
+  expect(await response.text()).toMatchInlineSnapshot(`"ok"`);
+});
+
+import.meta.vitest?.test("a failed route import stays isolated to its loader", async ({ expect }) => {
+  const failingLoader = createRouteMethodsLoader("/failing", DEFAULT_ROUTE_MAX_DURATION_SECONDS, async () => {
+    throw new Error("route import failed");
+  });
+  const healthyLoader = createRouteMethodsLoader("/healthy", DEFAULT_ROUTE_MAX_DURATION_SECONDS, async () => ({
+    GET: async () => new Response("healthy"),
+  }));
+
+  await expect(failingLoader()).rejects.toThrowErrorMatchingInlineSnapshot(`
+    [Error: route import failed]
+  `);
+  expect((await healthyLoader()).has("GET")).toBe(true);
+});
