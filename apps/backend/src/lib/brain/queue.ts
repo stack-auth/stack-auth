@@ -1,9 +1,28 @@
 import { globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
+import type { Prisma } from "@/generated/prisma/client";
 import type { BrainQueueItemStatus } from "@hexclave/shared/dist/interface/brain";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { ensureBrainRow } from "./ensure";
 
 const DEFAULT_CLAIM_LEASE_MS = 5 * 60 * 1000;
+export const BRAIN_QUEUE_MAX_ATTEMPTS = 10;
+
+export function getBrainQueueClaimOwnershipWhere(options: {
+  tenancyId: string,
+  claims: Array<{ id: string, claimLeaseToken: string }>,
+  now: Date,
+}): Prisma.BrainQueueItemWhereInput {
+  return {
+    tenancyId: options.tenancyId,
+    status: "CLAIMED",
+    claimLeaseUntil: { gt: options.now },
+    OR: options.claims.map((claim) => ({
+      id: claim.id,
+      claimLeaseToken: claim.claimLeaseToken,
+    })),
+  };
+}
 
 export type ListBrainQueueOptions = {
   tenancyId: string,
@@ -76,11 +95,46 @@ export async function claimBrainQueueItems(
   claimLeaseToken: string,
 }>> {
   await ensureBrainRow(client, options.tenancyId);
-  const limit = Math.min(Math.max(options.limit ?? 10, 1), 50);
+  // JavaScript queue runs process bounded batches in one sandbox invocation.
+  // Keep a hard ceiling so a model cannot load an unbounded queue into memory.
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 200);
+  if (options.ids != null && options.ids.length > 200) {
+    throw new HexclaveAssertionError("Brain queue claim exceeded the item limit", {
+      count: options.ids.length,
+    });
+  }
   const leaseMs = options.leaseMs ?? DEFAULT_CLAIM_LEASE_MS;
   const leaseToken = generateUuid();
   const now = new Date();
   const leaseUntil = new Date(now.getTime() + leaseMs);
+
+  // Dead-letter repeatedly failing work before selecting another attempt.
+  // A human retry resets attempts below, making that recovery explicit.
+  await client.$executeRaw`
+    WITH exhausted AS (
+      SELECT "tenancyId", "id"
+      FROM "BrainQueueItem"
+      WHERE "tenancyId" = ${options.tenancyId}::uuid
+        AND "attempts" >= ${BRAIN_QUEUE_MAX_ATTEMPTS}
+        AND (
+          ("status" = 'QUEUED' AND "availableAt" <= ${now})
+          OR ("status" = 'CLAIMED' AND "claimLeaseUntil" IS NOT NULL AND "claimLeaseUntil" < ${now})
+        )
+      ORDER BY "availableAt" ASC, "createdAt" ASC, "id" ASC
+      LIMIT 200
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE "BrainQueueItem" AS q
+    SET
+      "status" = 'FAILED',
+      "lastError" = ${`Brain queue item exceeded ${BRAIN_QUEUE_MAX_ATTEMPTS} attempts`},
+      "claimLeaseUntil" = NULL,
+      "claimLeaseToken" = NULL,
+      "updatedAt" = ${now}
+    FROM exhausted
+    WHERE q."tenancyId" = exhausted."tenancyId"
+      AND q."id" = exhausted."id"
+  `;
 
   // Claim by explicit IDs when provided; otherwise take the oldest due items.
   const claimed = options.ids != null && options.ids.length > 0
@@ -108,6 +162,7 @@ export async function claimBrainQueueItems(
         FROM "BrainQueueItem" AS c
         WHERE c."tenancyId" = ${options.tenancyId}::uuid
           AND c."id" = ANY(${options.ids}::uuid[])
+          AND c."attempts" < ${BRAIN_QUEUE_MAX_ATTEMPTS}
           AND (
             c."status" = 'QUEUED'
             OR (c."status" = 'CLAIMED' AND c."claimLeaseUntil" IS NOT NULL AND c."claimLeaseUntil" < ${now})
@@ -143,6 +198,7 @@ export async function claimBrainQueueItems(
         FROM "BrainQueueItem" AS c
         WHERE c."tenancyId" = ${options.tenancyId}::uuid
           AND c."availableAt" <= ${now}
+          AND c."attempts" < ${BRAIN_QUEUE_MAX_ATTEMPTS}
           AND (
             c."status" = 'QUEUED'
             OR (c."status" = 'CLAIMED' AND c."claimLeaseUntil" IS NOT NULL AND c."claimLeaseUntil" < ${now})
@@ -163,17 +219,13 @@ export async function acknowledgeBrainQueueItems(
   client: PrismaClientTransaction,
   options: {
     tenancyId: string,
-    ids: string[],
+    claims: Array<{ id: string, claimLeaseToken: string }>,
   },
 ): Promise<number> {
-  if (options.ids.length === 0) return 0;
+  if (options.claims.length === 0) return 0;
   const now = new Date();
   const result = await client.brainQueueItem.updateMany({
-    where: {
-      tenancyId: options.tenancyId,
-      id: { in: options.ids },
-      status: "CLAIMED",
-    },
+    where: getBrainQueueClaimOwnershipWhere({ ...options, now }),
     data: {
       status: "COMPLETED",
       completedAt: now,
@@ -189,24 +241,23 @@ export async function releaseBrainQueueItems(
   client: PrismaClientTransaction,
   options: {
     tenancyId: string,
-    ids: string[],
+    claims: Array<{ id: string, claimLeaseToken: string }>,
     error?: string | null,
     /** When true, mark FAILED; otherwise re-queue with backoff. */
     fail?: boolean,
     retryDelayMs?: number,
+    /** Undo the claim's attempt increment when no processing was attempted. */
+    undoClaimAttempt?: boolean,
   },
 ): Promise<number> {
-  if (options.ids.length === 0) return 0;
+  if (options.claims.length === 0) return 0;
   const now = new Date();
   const retryAt = new Date(now.getTime() + (options.retryDelayMs ?? 30_000));
+  const claimOwnershipWhere = getBrainQueueClaimOwnershipWhere({ ...options, now });
 
   if (options.fail) {
     const result = await client.brainQueueItem.updateMany({
-      where: {
-        tenancyId: options.tenancyId,
-        id: { in: options.ids },
-        status: { in: ["CLAIMED", "QUEUED"] },
-      },
+      where: claimOwnershipWhere,
       data: {
         status: "FAILED",
         lastError: options.error ?? "Released as failed",
@@ -219,17 +270,14 @@ export async function releaseBrainQueueItems(
   }
 
   const result = await client.brainQueueItem.updateMany({
-    where: {
-      tenancyId: options.tenancyId,
-      id: { in: options.ids },
-      status: "CLAIMED",
-    },
+    where: claimOwnershipWhere,
     data: {
       status: "QUEUED",
       lastError: options.error ?? null,
       claimLeaseUntil: null,
       claimLeaseToken: null,
       availableAt: retryAt,
+      ...(options.undoClaimAttempt ? { attempts: { decrement: 1 } } : {}),
     },
   });
   return result.count;
@@ -247,6 +295,8 @@ export async function requeueBrainQueueItemsByClaimLease(
     claimLeaseTokens: string[],
     error: string,
     retryDelayMs?: number,
+    /** Undo the claim's attempt increment when the script intentionally skipped it. */
+    undoClaimAttempt?: boolean,
   },
 ): Promise<number> {
   if (options.claimLeaseTokens.length === 0) return 0;
@@ -263,6 +313,7 @@ export async function requeueBrainQueueItemsByClaimLease(
       claimLeaseUntil: null,
       claimLeaseToken: null,
       availableAt: new Date(now.getTime() + (options.retryDelayMs ?? 15_000)),
+      ...(options.undoClaimAttempt ? { attempts: { decrement: 1 } } : {}),
     },
   });
   return result.count;
@@ -315,6 +366,7 @@ export async function retryFailedBrainQueueItems(
       lastError: null,
       claimLeaseUntil: null,
       claimLeaseToken: null,
+      attempts: 0,
     },
   });
   await client.brain.updateMany({

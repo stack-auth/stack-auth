@@ -6,7 +6,7 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { ModelMessage } from "ai";
 import { ensureBrainRow } from "./ensure";
 import { isBrainEnabled } from "./events";
-import { generateBrainTurn } from "./generate";
+import { generateBrainTurn, getRequestedBrainToolForTurn } from "./generate";
 import {
   appendBrainMessages,
   interruptStaleBrainToolTraces,
@@ -240,6 +240,18 @@ async function runBrainTurn(claimed: ClaimedBrain, tenancy: Tenancy): Promise<{
   const timeoutId = setTimeout(() => controller.abort(), BRAIN_TURN_TIMEOUT_MS);
   let generation: Awaited<ReturnType<typeof generateBrainTurn>>;
   try {
+    // A hidden queue wake is appended after any pending human message. Select
+    // forced tools from the visible transcript when a reply is owed so the
+    // later wake cannot replace an explicit analytics/config request. A
+    // queue-only turn deterministically starts with the JavaScript workspace.
+    const requestedTool = getRequestedBrainToolForTurn({
+      messages: modelMessages,
+      visibleMessages: brainMessagesToModelMessages(
+        messages.filter((message) => message.visibility === "visible"),
+      ),
+      needsHumanReply,
+      pendingCount,
+    });
     generation = await generateBrainTurn({
       tenancyId: claimed.tenancyId,
       projectId: tenancy.project.id,
@@ -247,6 +259,7 @@ async function runBrainTurn(claimed: ClaimedBrain, tenancy: Tenancy): Promise<{
       messages: modelMessages,
       summaryText,
       abortSignal: controller.signal,
+      requestedTool,
     });
   } finally {
     clearTimeout(timeoutId);

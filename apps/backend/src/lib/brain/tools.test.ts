@@ -15,7 +15,6 @@ const context = {
   projectId: "00000000-0000-0000-0000-000000000002",
   runLeaseToken: "00000000-0000-0000-0000-000000000004",
   claimedQueueItems: new Map<string, string>(),
-  claimAttempted: false,
 };
 
 const runningTrace = {
@@ -87,12 +86,9 @@ describe("getBrainTools", () => {
   it("includes queue, analytics, and project config tools", async () => {
     const tools = await getBrainTools(context);
     expect(Object.keys(tools).sort()).toEqual([
-      "acknowledgeBrainQueueItems",
-      "claimBrainQueueItems",
-      "listBrainQueueItems",
+      "executeBrainJavascript",
       "queryAnalytics",
       "readBranchConfig",
-      "releaseBrainQueueItems",
     ]);
   });
 });

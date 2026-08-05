@@ -5,6 +5,9 @@ import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/er
 import { ensureBrainRow } from "./ensure";
 
 export type BrainMessageContent = Prisma.InputJsonValue;
+export const BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY = "brain-automation-memory";
+
+export type BrainAutomationMemory = Record<string, unknown>;
 
 export type AppendBrainMessageInput = {
   role: "user" | "assistant" | "tool" | "system",
@@ -53,6 +56,83 @@ export async function updateBrainMessageContent(options: {
     },
   });
   return result.count === 1;
+}
+
+function automationMemoryFromContent(content: unknown): BrainAutomationMemory {
+  if (
+    content == null
+    || typeof content !== "object"
+    || Array.isArray(content)
+    || !("type" in content)
+    || content.type !== "automation-memory"
+    || !("memory" in content)
+    || content.memory == null
+    || typeof content.memory !== "object"
+    || Array.isArray(content.memory)
+  ) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(content.memory));
+}
+
+export async function loadBrainAutomationMemory(tenancyId: string): Promise<BrainAutomationMemory> {
+  const message = await globalPrismaClient.brainMessage.findFirst({
+    where: {
+      tenancyId,
+      idempotencyKey: BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY,
+      role: "system",
+    },
+    select: { content: true },
+  });
+  return automationMemoryFromContent(message?.content);
+}
+
+export async function saveBrainAutomationMemory(
+  tx: PrismaClientTransaction,
+  options: {
+    tenancyId: string,
+    runLeaseToken: string,
+    memory: BrainAutomationMemory,
+  },
+): Promise<void> {
+  const content = {
+    type: "automation-memory",
+    memory: options.memory,
+  };
+  const existing = await tx.brainMessage.findFirst({
+    where: {
+      tenancyId: options.tenancyId,
+      idempotencyKey: BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY,
+      role: "system",
+    },
+    select: { id: true },
+  });
+  if (existing == null) {
+    await appendBrainMessages(tx, options.tenancyId, [{
+      role: "system",
+      content,
+      visibility: "hidden",
+      idempotencyKey: BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY,
+    }]);
+    return;
+  }
+  const updated = await tx.brainMessage.updateMany({
+    where: {
+      tenancyId: options.tenancyId,
+      id: existing.id,
+      role: "system",
+      brain: {
+        runState: "RUNNING",
+        runLeaseToken: options.runLeaseToken,
+      },
+    },
+    data: { content: toInputJsonValue(content) },
+  });
+  if (updated.count !== 1) {
+    throw new HexclaveAssertionError("Brain lease lost while saving automation memory", {
+      tenancyId: options.tenancyId,
+    });
+  }
 }
 
 export type BrainToolTrace = {
@@ -363,21 +443,40 @@ export async function loadBrainModelContext(tenancyId: string, recentLimit = 40)
   }
 
   const summaryThrough = brain.summaryThroughPosition ?? -1;
-  const newestMessages = await globalPrismaClient.brainMessage.findMany({
-    where: {
-      tenancyId,
-      position: { gt: summaryThrough },
-      // Tool activity rows are a live UI execution trace. The model already
-      // receives tool calls/results through the AI SDK within the active turn,
-      // and replaying these UI-only rows would produce invalid tool messages.
-      role: { not: "tool" },
-    },
-    orderBy: { position: "desc" },
-    take: recentLimit,
-  });
+  const [automationMemory, newestMessages] = await Promise.all([
+    globalPrismaClient.brainMessage.findFirst({
+      where: {
+        tenancyId,
+        idempotencyKey: BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY,
+        role: "system",
+      },
+    }),
+    globalPrismaClient.brainMessage.findMany({
+      where: {
+        tenancyId,
+        position: { gt: summaryThrough },
+        // Tool activity rows are a live UI execution trace. The model already
+        // receives tool calls/results through the AI SDK within the active turn,
+        // and replaying these UI-only rows would produce invalid tool messages.
+        role: { not: "tool" },
+        // SQL `NOT (idempotencyKey = value)` does not match NULL, which is the
+        // idempotency key of ordinary conversation messages. Spell out NULL so
+        // excluding the memory row never empties the whole model transcript.
+        OR: [
+          { idempotencyKey: null },
+          { idempotencyKey: { not: BRAIN_AUTOMATION_MEMORY_IDEMPOTENCY_KEY } },
+        ],
+      },
+      orderBy: { position: "desc" },
+      take: recentLimit,
+    }),
+  ]);
 
   return {
     summaryText: brain.summaryText,
-    messages: newestMessages.reverse(),
+    messages: [
+      ...(automationMemory == null ? [] : [automationMemory]),
+      ...newestMessages.reverse(),
+    ],
   };
 }

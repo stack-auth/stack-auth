@@ -17,10 +17,7 @@ export type BrainGenerateResult = {
 export type BrainToolName =
   | "queryAnalytics"
   | "readBranchConfig"
-  | "listBrainQueueItems"
-  | "claimBrainQueueItems"
-  | "acknowledgeBrainQueueItems"
-  | "releaseBrainQueueItems";
+  | "executeBrainJavascript";
 
 function modelMessageText(message: ModelMessage): string {
   if (typeof message.content === "string") {
@@ -60,19 +57,33 @@ export function getRequestedBrainTool(messages: ModelMessage[]): BrainToolName |
   if (text.includes("config") || text.includes("configuration")) {
     return "readBranchConfig";
   }
-  if (text.includes("acknowledge") || text.includes("mark") && text.includes("completed")) {
-    return "acknowledgeBrainQueueItems";
-  }
-  if (text.includes("release") || text.includes("retry") && text.includes("queue")) {
-    return "releaseBrainQueueItems";
-  }
-  if (text.includes("claim") || text.includes("process") && text.includes("queue")) {
-    return "claimBrainQueueItems";
-  }
-  if (text.includes("queue") || text.includes("queue item")) {
-    return "listBrainQueueItems";
+  if (
+    text.includes("queue")
+    || text.includes("queue item")
+    || text.includes("acknowledge")
+    || text.includes("claim")
+    || text.includes("release")
+    || text.includes("automation")
+    || text.includes("javascript")
+  ) {
+    return "executeBrainJavascript";
   }
   return null;
+}
+
+export function getRequestedBrainToolForTurn(options: {
+  messages: ModelMessage[],
+  visibleMessages: ModelMessage[],
+  needsHumanReply: boolean,
+  pendingCount: number,
+}): BrainToolName | null {
+  if (options.needsHumanReply) {
+    return getRequestedBrainTool(options.visibleMessages);
+  }
+  if (options.pendingCount > 0) {
+    return "executeBrainJavascript";
+  }
+  return getRequestedBrainTool(options.messages);
 }
 
 /**
@@ -88,6 +99,7 @@ export async function generateBrainTurn(options: {
   summaryText?: string | null,
   stepLimit?: number,
   abortSignal?: AbortSignal,
+  requestedTool?: BrainToolName | null,
 }): Promise<BrainGenerateResult> {
   // Use the authenticated direct key only when explicitly configured. Otherwise
   // go through the local AI proxy (createOpenRouterProvider) — the shared
@@ -100,10 +112,11 @@ export async function generateBrainTurn(options: {
     projectId: options.projectId,
     runLeaseToken: options.runLeaseToken,
     claimedQueueItems: new Map(),
-    claimAttempted: false,
   };
   const tools: ToolSet = await getBrainTools(toolContext);
-  const requestedTool = getRequestedBrainTool(options.messages);
+  const requestedTool = options.requestedTool === undefined
+    ? getRequestedBrainTool(options.messages)
+    : options.requestedTool;
 
   let system = getBrainSystemPrompt({ projectId: options.projectId });
   if (options.summaryText != null && options.summaryText.length > 0) {
@@ -119,20 +132,6 @@ export async function generateBrainTurn(options: {
         tools,
         abortSignal: options.abortSignal,
         prepareStep: ({ stepNumber }) => {
-          // Claiming is a one-way transition for the turn. Repeated claims
-          // cause the model to consume all steps retrying an already-owned
-          // item, so subsequent steps must acknowledge or release it.
-          if (toolContext.claimAttempted) {
-            return {
-              activeTools: [
-                "queryAnalytics",
-                "readBranchConfig",
-                "listBrainQueueItems",
-                "acknowledgeBrainQueueItems",
-                "releaseBrainQueueItems",
-              ],
-            };
-          }
           if (requestedTool != null && stepNumber === 0) {
             return { toolChoice: { type: "tool", toolName: requestedTool } };
           }
