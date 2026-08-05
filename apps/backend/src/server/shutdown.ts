@@ -6,6 +6,17 @@ export type BackendShutdownDependencies = {
   log: (event: BackendShutdownLogEvent) => void,
 };
 
+// Cloud Run and Docker commonly allow ten seconds between SIGTERM and SIGKILL.
+// Exit one second earlier so the process, rather than the platform, owns the
+// terminal log and exit code when an in-flight request or dependency hangs.
+export const backendShutdownBudget = {
+  backgroundTasksTimeoutMs: 6000,
+  databaseTimeoutMs: 1000,
+  instrumentationTimeoutMs: 1000,
+  hardExitTimeoutMs: 9000,
+  platformGracePeriodMs: 10000,
+};
+
 export type BackendShutdownLogEvent = {
   event: "backend.shutdown.started" | "backend.shutdown.completed" | "backend.shutdown.failed",
   signal: NodeJS.Signals,
@@ -17,6 +28,26 @@ type ShutdownStep = {
   name: string,
   run: () => Promise<unknown>,
 };
+
+export async function runShutdownOperationWithTimeout<T>(
+  operationName: string,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${operationName} did not complete within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(), timeoutPromise]);
+  } finally {
+    if (timeout != null) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 async function runShutdownStep(step: ShutdownStep) {
   const [result] = await Promise.allSettled([Promise.resolve().then(step.run)]);

@@ -17,21 +17,15 @@ function generateRouteModules(routes: Awaited<ReturnType<typeof SmartRouter.list
     .filter(route => route.isRoute && /\/route\.(ts|tsx|js|jsx)$/.test(route.filePath))
     .sort((a, b) => stringCompare(a.normalizedPath, b.normalizedPath) || stringCompare(a.filePath, b.filePath));
 
-  const imports = routeFiles.map((route, index) => {
-    return `import * as r${index} from ${JSON.stringify(routeFilePathToImportPath(route.filePath))};`;
-  });
-
-  const entries = routeFiles.map((route, index) => {
-    return `  { normalizedPath: ${JSON.stringify(route.normalizedPath)}, module: r${index} },`;
+  const entries = routeFiles.map((route) => {
+    return `  { normalizedPath: ${JSON.stringify(route.normalizedPath)}, load: async () => await import(${JSON.stringify(routeFilePathToImportPath(route.filePath))}) },`;
   });
 
   return `import type { UnknownRouteModule } from "@/server/registry";
 
-${imports.join("\n")}
-
 export const httpMethodNames = ${JSON.stringify(httpMethodNames)} as const;
 
-export const routeModules: readonly { normalizedPath: string, module: UnknownRouteModule }[] = [
+export const routeModules: readonly { normalizedPath: string, load: () => Promise<UnknownRouteModule> }[] = [
 ${entries.join("\n")}
 ];
 `;

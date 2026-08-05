@@ -65,10 +65,14 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   const requestContext = event.contexts?.["stack-request"];
   const requestId = requestContext?.requestId;
   const requestMethod = requestContext?.method;
+  // `route` is the matched route pattern (e.g. `/api/latest/users/[user_id]`), never the
+  // concrete path — same safety rationale as the http.route span attribute above.
+  const requestRoute = requestContext?.route;
   const safeRequestContext = typeof requestId === "string"
     ? {
       requestId,
       ...(typeof requestMethod === "string" ? { method: requestMethod } : {}),
+      ...(typeof requestRoute === "string" ? { route: requestRoute } : {}),
     }
     : undefined;
   if (traceContext != null) {

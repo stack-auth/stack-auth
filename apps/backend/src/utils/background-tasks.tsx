@@ -2,24 +2,24 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
-// Track on every runtime. Vercel's waitUntil owns function lifetime, while this
-// set gives shutdown and the test-only flush endpoint a deterministic drain.
+// Serverful runtimes use this set for shutdown and the test-only flush endpoint.
+// Vercel lifetime is owned separately by every invocation's native waitUntil.
 const inFlightPromises = new Set<Promise<unknown>>();
 
 function waitUntilImpl(promise: Promise<unknown>) {
-  if (inFlightPromises.has(promise)) {
+  if (getEnvVariable("VERCEL", "") !== "") {
+    // The same promise can be registered by separate Fluid invocations. Each
+    // invocation needs its own waitUntil call, so do not globally deduplicate or
+    // retain Vercel tasks in the serverful shutdown set.
+    const { waitUntil } = require("@vercel/functions") as typeof import("@vercel/functions");
+    waitUntil(promise);
     return;
   }
 
+  if (inFlightPromises.has(promise)) return;
   inFlightPromises.add(promise);
   const cleanup = promise.finally(() => inFlightPromises.delete(promise));
   ignoreUnhandledRejection(cleanup);
-
-  if (getEnvVariable("VERCEL", "") !== "") {
-    // On Vercel, use the native waitUntil to keep the function alive
-    const { waitUntil } = require("@vercel/functions") as typeof import("@vercel/functions");
-    waitUntil(promise);
-  }
 }
 
 export function runAsynchronouslyAndWaitUntil<T>(promiseOrFunction: Promise<T> | (() => Promise<T>)) {

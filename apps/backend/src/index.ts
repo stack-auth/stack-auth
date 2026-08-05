@@ -11,4 +11,10 @@ import "elysia";
 // bundling, so dist/vercel.mjs (the no-listen entry; Vercel owns the listener) exists by this point.
 import app from "../dist/vercel.mjs";
 
+// Vercel's native Elysia builder delegates to the Node builder, which statically
+// reads this exact exported object. Its parser requires a numeric literal here.
+export const config = {
+  maxDuration: 800,
+};
+
 export default app;

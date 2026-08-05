@@ -29,6 +29,7 @@ describe("sanitizeBackendSentryEvent", () => {
         "stack-request": {
           requestId: "request-123",
           method: "POST",
+          route: "/api/latest/users/[user_id]",
           authorization: "Bearer secret",
         },
         response: {
@@ -80,6 +81,7 @@ describe("sanitizeBackendSentryEvent", () => {
           "stack-request": {
             "method": "POST",
             "requestId": "request-123",
+            "route": "/api/latest/users/[user_id]",
           },
           "trace": {
             "data": {

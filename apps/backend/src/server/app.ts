@@ -3,12 +3,15 @@ import { serializeSetCookie } from "@/lib/runtime/headers";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
 import { node } from "@elysia/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { trace } from "@opentelemetry/api";
 import { Elysia } from "elysia";
 import { createBackendRequest } from "./backend-request";
+import { compressResponse } from "./compression";
+import { withVercelCronMonitor } from "./cron-monitor";
 import { handleUncaughtBackendError } from "./error-handler";
 import { getCorsHeadersInit, runRequestPipeline } from "./middleware";
 import { createRequestCompletionLog } from "./request-log";
-import { MalformedRouteParamError, matchRoute } from "./registry";
+import { MalformedRouteParamError, matchRoute, type RouteMethods } from "./registry";
 
 const globalSecurityHeaders = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -37,6 +40,9 @@ export const app = new Elysia({
     const pathname = new URL(request.url).pathname;
     requestLogPaths.set(request, staticRequestLogPaths.has(pathname) ? pathname : "<unmatched>");
   })
+  .mapResponse(({ request, responseValue }) => responseValue instanceof Response
+    ? compressResponse(request, responseValue)
+    : undefined)
   .onAfterResponse(({ request, response, set }) => {
     const startedAt = requestStartTimes.get(request);
     if (shouldLogDevelopmentRequests) {
@@ -87,7 +93,7 @@ async function dispatch(request: Request) {
 
   let match;
   try {
-    match = matchRoute(pipeline.dispatchPath);
+    match = await matchRoute(pipeline.dispatchPath);
   } catch (error) {
     if (error instanceof MalformedRouteParamError) {
       return withResponseHeaders(new Response("Bad Request", { status: 400 }), pipeline.corsHeadersInit);
@@ -105,66 +111,110 @@ async function dispatch(request: Request) {
   requestLogPaths.set(request, match.normalizedPath);
 
   const method = request.method.toUpperCase();
-  if (!isHttpMethod(method)) {
-    return withResponseHeaders(new Response(null, {
-      status: 405,
-    }), pipeline.corsHeadersInit);
-  }
-  const handler = match.methods.get(method) ?? (method === "HEAD" ? match.methods.get("GET") : undefined);
-  if (handler == null) {
-    return withResponseHeaders(new Response(null, {
-      status: 405,
-    }), pipeline.corsHeadersInit);
-  }
-
-  const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
+  // Sentry's Node HTTP integration owns the incoming request span. Elysia is not
+  // one of Sentry's framework integrations, so attach the matched route pattern
+  // here instead of registering a second OpenTelemetry provider through Elysia's
+  // plugin. The normalized path is safe; the concrete path may contain customer IDs.
+  const requestSpan = trace.getActiveSpan();
+  requestSpan?.updateName(`${method} ${match.normalizedPath}`);
+  requestSpan?.setAttribute("http.request.method", method);
+  requestSpan?.setAttribute("http.route", match.normalizedPath);
   const context: RequestContext = {
+    abortSignal: request.signal,
     headers: pipeline.mergedHeaders,
     incomingCookies: parseCookieHeader(pipeline.mergedHeaders.get("cookie")),
     pendingSetCookies: [],
     deletedCookies: [],
+    normalizedPath: match.normalizedPath,
   };
 
-  const response = await requestContextALS.run(context, async () => {
-    try {
-      return await handler(backendRequest, {
-        params: Promise.resolve(match.params),
-      });
-    } catch (error) {
-      if (isRedirectError(error)) {
-        return new Response(null, {
-          status: error.redirectStatus,
-          headers: {
-            Location: error.redirectUrl,
-          },
-        });
-      }
-      throw error;
+  return await requestContextALS.run(context, async () => {
+    const methods = match.methods;
+    if (!isHttpMethod(method)) {
+      return withResponseHeaders(createMethodNotAllowedResponse(methods), pipeline.corsHeadersInit);
     }
+    const handler = methods.get(method) ?? (method === "HEAD" ? methods.get("GET") : undefined);
+    if (handler == null) {
+      return withResponseHeaders(createMethodNotAllowedResponse(methods), pipeline.corsHeadersInit);
+    }
+
+    const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
+    const response = await withVercelCronMonitor(request, match.normalizedPath, async () => {
+      try {
+        return await handler(backendRequest, {
+          params: Promise.resolve(match.params),
+        });
+      } catch (error) {
+        if (isRedirectError(error)) {
+          return new Response(null, {
+            status: error.redirectStatus,
+            headers: {
+              Location: error.redirectUrl,
+            },
+          });
+        }
+        throw error;
+      }
+    });
+
+    await discardHeadResponseBody(method, response);
+    const finalResponse = method === "HEAD" ? new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    }) : response;
+
+    for (const cookie of context.pendingSetCookies) {
+      finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
+    }
+    for (const cookie of context.deletedCookies) {
+      finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
+    }
+    return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
   });
+}
 
-  const finalResponse = method === "HEAD" ? new Response(null, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  }) : response;
-
-  for (const cookie of context.pendingSetCookies) {
-    finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
+async function discardHeadResponseBody(method: string, response: Response): Promise<void> {
+  if (method === "HEAD" && response.body != null && !response.body.locked) {
+    await Promise.allSettled([response.body.cancel()]);
   }
-  for (const cookie of context.deletedCookies) {
-    finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
-  }
-  return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
 }
 
 function getLoggedResponseStatus(response: unknown, fallbackStatus: number | string | undefined) {
   return response instanceof Response ? response.status : fallbackStatus;
 }
 
+function createMethodNotAllowedResponse(methods: RouteMethods) {
+  const allowedMethods = httpMethodNames.filter((method) => methods.has(method)
+    || (method === "HEAD" && methods.has("GET")));
+  return new Response(null, {
+    status: 405,
+    headers: {
+      Allow: allowedMethods.join(", "),
+    },
+  });
+}
+
 import.meta.vitest?.test("development logging uses the returned Response status", ({ expect }) => {
   expect(getLoggedResponseStatus(new Response(null, { status: 404 }), 200)).toBe(404);
   expect(getLoggedResponseStatus("response body", 201)).toBe(201);
+});
+
+import.meta.vitest?.test("the Elysia response mapper compresses direct Node responses", async ({ expect }) => {
+  const { gunzipSync } = await import("node:zlib");
+  const response = await app.handle(new Request("http://localhost/", {
+    headers: { "accept-encoding": "gzip" },
+  }));
+
+  expect(response.headers.get("content-encoding")).toBe("gzip");
+  expect(gunzipSync(Buffer.from(await response.arrayBuffer())).toString()).toContain("Welcome to Hexclave's API endpoint");
+});
+
+import.meta.vitest?.test("HEAD responses remain usable when their source body is locked", async ({ expect }) => {
+  const response = new Response("body");
+  const reader = response.body?.getReader();
+  await expect(discardHeadResponseBody("HEAD", response)).resolves.toBeUndefined();
+  await reader?.cancel();
 });
 
 function isRedirectError(error: unknown): error is { redirectStatus: 307 | 308, redirectUrl: string } {
@@ -213,16 +263,20 @@ import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", 
   vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
 
   try {
-    const [notFound, methodNotAllowed] = await Promise.all([
+    const [notFound, methodNotAllowed, unknownMethod] = await Promise.all([
       app.handle(new Request("http://localhost/api/latest/this-route-does-not-exist")),
       app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
         method: "POST",
+      })),
+      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
+        method: "BREW",
       })),
     ]);
 
     expect([
       { status: notFound.status, allowOrigin: notFound.headers.get("access-control-allow-origin") },
-      { status: methodNotAllowed.status, allowOrigin: methodNotAllowed.headers.get("access-control-allow-origin") },
+      { status: methodNotAllowed.status, allow: methodNotAllowed.headers.get("allow"), allowOrigin: methodNotAllowed.headers.get("access-control-allow-origin") },
+      { status: unknownMethod.status, allow: unknownMethod.headers.get("allow"), allowOrigin: unknownMethod.headers.get("access-control-allow-origin") },
     ]).toMatchInlineSnapshot(`
       [
         {
@@ -230,6 +284,12 @@ import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", 
           "status": 404,
         },
         {
+          "allow": "GET, HEAD",
+          "allowOrigin": "*",
+          "status": 405,
+        },
+        {
+          "allow": "GET, HEAD",
           "allowOrigin": "*",
           "status": 405,
         },
