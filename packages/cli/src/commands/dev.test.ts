@@ -344,4 +344,19 @@ describe("killLocalDashboard", () => {
     expect(sigterm).toHaveLength(1);
     expect(sigkill).toHaveLength(0);
   });
+
+  it("treats a non-2xx response as a live dashboard until the port stops responding", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM")).toHaveLength(1);
+    expect(killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL")).toHaveLength(0);
+  });
 });

@@ -1,3 +1,6 @@
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { CliError } from "./errors.js";
+
 export type ConfigSyncEventBase = {
   config_file_path: string,
   created_at_millis: number,
@@ -23,6 +26,7 @@ export const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND
 const LOG_PREFIX = "[Hexclave] ";
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
+const DASHBOARD_HEALTH_PROBE_TIMEOUT_MS = 2_000;
 
 export function dashboardEnvWithStatePath(env: NodeJS.ProcessEnv, statePath: string): NodeJS.ProcessEnv {
   return {
@@ -79,8 +83,12 @@ export function processExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    return isErrnoException(error) && error.code === "EPERM";
   }
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && typeof error.code === "string";
 }
 
 function signalDashboardProcess(pid: number, signal: NodeJS.Signals): void {
@@ -89,7 +97,7 @@ function signalDashboardProcess(pid: number, signal: NodeJS.Signals): void {
       process.kill(-pid, signal);
       return;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      if (!isErrnoException(error) || error.code !== "ESRCH") throw error;
     }
   }
   process.kill(pid, signal);
@@ -136,10 +144,20 @@ export function logConfigSyncEvents(response: HeartbeatResponse): void {
 }
 
 async function isDashboardReachable(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DASHBOARD_HEALTH_PROBE_TIMEOUT_MS);
   try {
-    return (await fetch(`${url}/api/development-environment/health`, { headers: { Accept: "application/json" } })).ok;
-  } catch {
-    return false;
+    // This probe checks liveness for shutdown, so any HTTP response means the port is still bound.
+    await fetch(urlString`${url}/api/development-environment/health`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof Error) return false;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -150,8 +168,7 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   try {
     signalDashboardProcess(pid, "SIGTERM");
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ESRCH" || code === "EPERM") return;
+    if (isErrnoException(error) && (error.code === "ESRCH" || error.code === "EPERM")) return;
     throw error;
   }
   const startedAt = performance.now();
@@ -161,12 +178,15 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   }
   try {
     signalDashboardProcess(pid, "SIGKILL");
-  } catch {
-    // best-effort
+  } catch (error) {
+    if (!isErrnoException(error) || error.code !== "ESRCH") throw error;
   }
   const killDeadline = performance.now() + DASHBOARD_FORCE_STOP_TIMEOUT_MS;
   while (performance.now() < killDeadline) {
     if (!(await isDashboardReachable(url))) return;
     await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  if (await isDashboardReachable(url)) {
+    throw new CliError(`Failed to stop the existing Hexclave dashboard on ${url} (pid ${pid}).`);
   }
 }
