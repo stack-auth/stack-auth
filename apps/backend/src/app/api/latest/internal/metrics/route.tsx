@@ -81,12 +81,15 @@ async function loadUsersByCountry(tenancy: Tenancy, now: Date, includeAnonymous:
         country_code,
         count() AS userCount
       FROM (
+        -- Only the per-country counts leave this query, so the per-user group
+        -- key can be a hash: one row per distinct user costs 8 bytes instead of
+        -- a 36-char uuid, which is what kept this within the metrics memory
+        -- limit on projects with hundreds of thousands of monthly users.
         SELECT
-          user_id,
           argMax(cc, event_at) AS country_code
         FROM (
           SELECT
-            user_id,
+            sipHash64(user_id) AS user_hash,
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
             coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
@@ -100,7 +103,7 @@ async function loadUsersByCountry(tenancy: Tenancy, now: Date, includeAnonymous:
         )
         WHERE cc IS NOT NULL
           AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
-        GROUP BY user_id
+        GROUP BY user_hash
       )
       WHERE country_code IS NOT NULL
       GROUP BY country_code
