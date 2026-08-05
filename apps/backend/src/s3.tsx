@@ -145,8 +145,12 @@ async function awaitS3Operation<T>(operation: Promise<T>, signal: AbortSignal | 
   } catch (error) {
     // AWS wraps request cancellation in a provider-specific AbortError. Keep
     // the originating reason so request and explicit cleanup callers can
-    // distinguish their own cancellation from an unrelated S3 failure.
-    signal?.throwIfAborted();
+    // distinguish their own cancellation from an unrelated S3 failure. The
+    // name guard matters when cancellation races a real provider error: that
+    // error and its S3 status metadata must remain intact.
+    if (error instanceof Error && error.name === "AbortError") {
+      signal?.throwIfAborted();
+    }
     throw error;
   }
 }
@@ -290,12 +294,20 @@ import.meta.vitest?.test("S3 body buffering cancels immediately with the client 
 import.meta.vitest?.test("S3 operation failures preserve the originating cancellation reason", async ({ expect }) => {
   const controller = new AbortController();
   const cancellation = new Error("client disconnected");
+  const sdkAbortError = new Error("AWS SDK abort wrapper");
+  sdkAbortError.name = "AbortError";
   controller.abort(cancellation);
 
   await expect(awaitS3Operation(
-    Promise.reject(new Error("AWS SDK abort wrapper")),
+    Promise.reject(sdkAbortError),
     controller.signal,
   )).rejects.toBe(cancellation);
+
+  const unrelatedS3Error = new Error("S3 service unavailable");
+  await expect(awaitS3Operation(
+    Promise.reject(unrelatedS3Error),
+    controller.signal,
+  )).rejects.toBe(unrelatedS3Error);
 });
 
 async function uploadBase64Image({
