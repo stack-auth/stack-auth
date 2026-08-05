@@ -1,11 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "elysia",
-  "functions": {
-    "src/index.ts": {
-      "maxDuration": 800
-    }
-  },
   "crons": [
     {
       "path": "/api/latest/internal/email-queue-step",
