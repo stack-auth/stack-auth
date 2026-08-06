@@ -18,6 +18,19 @@ const safeSpanAttributeNames = new Set([
   "stack.smart-request.client-version.version",
 ]);
 
+// These names are code-owned constants from the request pipeline. Keep this list
+// default-deny: other custom span names may interpolate customer data (for example,
+// the email sender used to include its recipient in the description).
+const safeApplicationSpanDescriptions = new Set([
+  "STACK: handling API request",
+  "STACK: creating smart request",
+  "STACK: smart request parseAuth",
+  "STACK: validating smart request",
+  "STACK: calling smart route handler callback",
+  "STACK: validating smart response",
+  "STACK: creating HTTP response from smart response",
+]);
+
 type BackendSentrySpan = NonNullable<Event["spans"]>[number];
 
 function getSafeSpanData(data: BackendSentrySpan["data"]): BackendSentrySpan["data"] {
@@ -26,8 +39,37 @@ function getSafeSpanData(data: BackendSentrySpan["data"]): BackendSentrySpan["da
   );
 }
 
+function getSafeRequestDescription(method: unknown, route: unknown): string | undefined {
+  if (typeof method !== "string" || !/^[A-Z]+$/.test(method)) {
+    return undefined;
+  }
+  if (
+    typeof route !== "string"
+    || (route !== "<unmatched>" && !route.startsWith("/"))
+    || route.length > 500
+    || route.includes("?")
+    || route.includes("#")
+    || route.includes("://")
+  ) {
+    return undefined;
+  }
+  return `${method} ${route}`;
+}
+
 export function sanitizeBackendSentrySpan(span: BackendSentrySpan): BackendSentrySpan {
-  span.description = undefined;
+  // @sentry/node runs beforeSendSpan for the segment/root span as well as its
+  // children. For a transaction, the SDK converts event.transaction into this
+  // description and then converts it back after the hook; clearing it therefore
+  // erases the transaction name entirely. Rebuild request names only from the
+  // normalized route pattern, and preserve a small audited set of application
+  // span names. Database statements, outbound URLs, and arbitrary custom names
+  // remain stripped.
+  span.description = getSafeRequestDescription(
+    span.data["http.request.method"],
+    span.data["http.route"],
+  ) ?? (span.description != null && safeApplicationSpanDescriptions.has(span.description)
+      ? span.description
+      : undefined);
   span.data = getSafeSpanData(span.data);
   return span;
 }
@@ -45,9 +87,6 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   }
   event.user = undefined;
   event.tags = undefined;
-  if (event.transaction != null) {
-    event.transaction = "backend.request";
-  }
 
   const location = event.extra?.location;
   event.extra = typeof location === "string" ? { location } : undefined;
@@ -68,6 +107,36 @@ export function sanitizeBackendSentryEvent<T extends Event>(event: T): T {
   // `route` is the matched route pattern (e.g. `/api/latest/users/[user_id]`), never the
   // concrete path — same safety rationale as the http.route span attribute above.
   const requestRoute = requestContext?.route;
+  const safeRequestDescription = getSafeRequestDescription(requestMethod, requestRoute);
+  const safeTraceDescription = getSafeRequestDescription(
+    traceContext?.data?.["http.request.method"],
+    traceContext?.data?.["http.route"],
+  );
+  // Sentry retains request.method even when its Node HTTP finalizer discards a
+  // custom route on Elysia middleware short-circuits. A fixed placeholder keeps
+  // those transactions identifiable without admitting any part of the URL.
+  const safeUnmatchedDescription = getSafeRequestDescription(event.request?.method, "<unmatched>");
+  if (
+    traceContext != null
+    && safeRequestDescription == null
+    && safeTraceDescription == null
+    && safeUnmatchedDescription != null
+    && typeof event.request?.method === "string"
+  ) {
+    traceContext.data = {
+      ...(traceContext.data ?? {}),
+      "http.request.method": event.request.method,
+      "http.route": "<unmatched>",
+    };
+  }
+  const safeTransactionDescription = safeRequestDescription
+    ?? safeTraceDescription
+    ?? safeUnmatchedDescription;
+  if (safeTransactionDescription != null) {
+    event.transaction = safeTransactionDescription;
+  } else if (event.transaction != null) {
+    event.transaction = "backend.request";
+  }
   const safeRequestContext = typeof requestId === "string"
     ? {
       requestId,
