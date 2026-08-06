@@ -22,10 +22,14 @@ describe("bulldozer whole-database serialization compatibility", () => {
   for (const version of ["db-v0", "db-v1"] as const) {
     it(`reads the entire database from golden fixture ${version} with the current code`, async () => {
       const fixture = loadFixture(version);
+      const db = restoreBulldozerDatabase(fixture);
+      const readModel = await computeReadModel(db);
+      const readableTableIds = new Set(readModel.map(table => table.tableId));
       // Deserializing the whole persisted database and re-reading every table must reproduce exactly
-      // the logical state its writer observed — including the v0 path where augmentations are
-      // recomputed, not trusted.
-      expect(await computeReadModel(restoreBulldozerDatabase(fixture))).toEqual(fixture.readModel);
+      // the readable logical state its writer observed — including the v0 path where augmentations
+      // are recomputed, not trusted. Stateless Sort and count-only GroupBy intentionally have no
+      // row-listing read model.
+      expect(readModel).toEqual(fixture.readModel.filter(table => readableTableIds.has(table.tableId)));
     });
 
     it(`mutates a database loaded from golden fixture ${version} into valid current-format state`, async () => {
@@ -40,10 +44,37 @@ describe("bulldozer whole-database serialization compatibility", () => {
       );
       const { snapshot } = await db.getSnapshot();
       const rows = [];
-      for await (const row of snapshot.listRowsInGroup({ tableId: "entriesByAccount", groupKey: "acct-alice", range: {} })) {
+      for await (const row of snapshot.listRowsInGroup({ tableId: "accountEntriesRunningExposure", groupKey: "acct-alice", range: {} })) {
         rows.push(row.rowIdentifier);
       }
       expect(rows).toContain("entry-900");
+    });
+
+    it(`removes the last legacy GroupBy rows and their group in golden fixture ${version}`, async () => {
+      const db = restoreBulldozerDatabase(loadFixture(version));
+      await db.withSnapshotReplicated(async snapshot => {
+        for (const rowIdentifier of ["entry-001", "entry-002", "entry-006"]) {
+          snapshot = (await snapshot.setOrDeleteRow({
+            tableId: "ledgerEntries",
+            rowIdentifier,
+            newRowData: undefined,
+          })).newSnapshot;
+        }
+        return snapshot;
+      });
+
+      const { snapshot } = await db.getSnapshot();
+      const accountGroups = [];
+      for await (const group of snapshot.listGroups({ tableId: "entriesByAccount", range: {} })) {
+        accountGroups.push(group.groupKey);
+      }
+      expect(accountGroups).not.toContain("acct-alice");
+
+      const runningExposureRows = [];
+      for await (const row of snapshot.listRowsInGroup({ tableId: "accountEntriesRunningExposure", groupKey: "acct-alice", range: {} })) {
+        runningExposureRows.push(row);
+      }
+      expect(runningExposureRows).toEqual([]);
     });
   }
 });

@@ -14,6 +14,7 @@ import {
   defineFilterTable,
   defineFlatMapTable,
   defineMapTable,
+  defineMaterializeTable,
   defineSortTable,
   defineStoredTable,
 } from "../../databases/bulldozer/index.js";
@@ -612,6 +613,45 @@ const compareLedgerSortKeys = (a: PiledriverObject, b: PiledriverObject) => {
     || stringCompare(left.id, right.id);
 };
 
+export const splitItemQuantityChangeWithExpiry = (rowData: PiledriverObject): PiledriverObject[] => {
+  const entry = rowObject<{ type: string, index: number, txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresWhen?: number | string | null, stampedExpiresAtMillis?: number | null, adjustedTransactionId?: string, adjustedEntryIndex?: number }>(rowData);
+  const base = { txnId: entry.txnId, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId };
+  // The id under which a grant entry is pushed into the ledger, and which an expiry references
+  // to drop that exact grant. It matches the granting item-quantity-change entry's identity:
+  // for absolute expiries that's this entry itself; for subscription/repeat expiries the
+  // item-quantity-expire entry carries the granting entry's (adjustedTransactionId, index).
+  const grantId = `${entry.txnId}:${entry.index}`;
+  // An expiry drops the specific grant it belongs to (clamped to whatever remains of it). We
+  // model it as an explicit expire marker carrying the target grant's id — NOT as a negative
+  // change — so the ledger never applies it as a cross-grant, debt-creating deduction.
+  if (entry.type === "item-quantity-expire") {
+    return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: 0, expiresAtMillis: null, expireGrantId: `${entry.adjustedTransactionId}:${entry.adjustedEntryIndex}` })];
+  }
+  if (entry.type === "compacted-item-quantity-change") return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
+  if (entry.type !== "item-quantity-change") return [];
+  // A deduction applies immediately and permanently, and never needs an id (nothing expires it).
+  if (entry.quantity < 0) {
+    return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
+  }
+  // A subscription/one-time-purchase grant (`expiresWhen` is a string) carries its stamped
+  // expiry so the ledger ranks it soonest-first; the id-referencing expire marker that actually
+  // drops it is emitted separately from the transaction's item-quantity-expire entries.
+  if (typeof entry.expiresWhen === "string") {
+    return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.stampedExpiresAtMillis ?? null, grantId })];
+  }
+  // A grant with no expiry applies permanently. It gets an id anyway (harmless — nothing expires it).
+  if (typeof entry.expiresWhen !== "number") {
+    return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId })];
+  }
+  // A manual grant with an absolute expiry: grant row + a synthesized expire marker for it. If
+  // the grant expires at or before the moment it's granted it's already expired — emit nothing.
+  if (entry.expiresWhen <= entry.txnEffectiveAtMillis) return [];
+  return [
+    toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.expiresWhen, grantId }),
+    toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.expiresWhen, quantity: 0, expiresAtMillis: null, expireGrantId: grantId }),
+  ];
+};
+
 // Exclusive upper bound (for `range.lt`) that selects every item-quantities ledger row effective at
 // or before `asOfMillis` in a reverse seek. txnEffectiveAtMillis is the primary sort component and is
 // always a whole millisecond (Date.now(), Stripe/created timestamps, and reset boundaries are all
@@ -1089,44 +1129,7 @@ export function createPaymentsSchema() {
       },
     }), { input: "payments-product-entries-sorted" }),
 
-    table("payments-split-item-changes-with-expiry", defineFlatMapTable(row => {
-      const entry = rowObject<{ type: string, index: number, txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresWhen?: number | string | null, stampedExpiresAtMillis?: number | null, adjustedTransactionId?: string, adjustedEntryIndex?: number }>(row.rowData);
-      const base = { txnId: entry.txnId, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId };
-      // The id under which a grant entry is pushed into the ledger, and which an expiry references
-      // to drop that exact grant. It matches the granting item-quantity-change entry's identity:
-      // for absolute expiries that's this entry itself; for subscription/repeat expiries the
-      // item-quantity-expire entry carries the granting entry's (adjustedTransactionId, index).
-      const grantId = `${entry.txnId}:${entry.index}`;
-      // An expiry drops the specific grant it belongs to (clamped to whatever remains of it). We
-      // model it as an explicit expire marker carrying the target grant's id — NOT as a negative
-      // change — so the ledger never applies it as a cross-grant, debt-creating deduction.
-      if (entry.type === "item-quantity-expire") {
-        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: 0, expiresAtMillis: null, expireGrantId: `${entry.adjustedTransactionId}:${entry.adjustedEntryIndex}` })];
-      }
-      if (entry.type === "compacted-item-quantity-change") return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
-      if (entry.type !== "item-quantity-change") return [];
-      // A deduction applies immediately and permanently, and never needs an id (nothing expires it).
-      if (entry.quantity < 0) {
-        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
-      }
-      // A subscription/one-time-purchase grant (`expiresWhen` is a string) carries its stamped
-      // expiry so the ledger ranks it soonest-first; the id-referencing expire marker that actually
-      // drops it is emitted separately from the transaction's item-quantity-expire entries.
-      if (typeof entry.expiresWhen === "string") {
-        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.stampedExpiresAtMillis ?? null, grantId })];
-      }
-      // A grant with no expiry applies permanently. It gets an id anyway (harmless — nothing expires it).
-      if (typeof entry.expiresWhen !== "number") {
-        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId })];
-      }
-      // A manual grant with an absolute expiry: grant row + a synthesized expire marker for it. If
-      // the grant expires at or before the moment it's granted it's already expired — emit nothing.
-      if (entry.expiresWhen <= entry.txnEffectiveAtMillis) return [];
-      return [
-        toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.expiresWhen, grantId }),
-        toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.expiresWhen, quantity: 0, expiresAtMillis: null, expireGrantId: grantId }),
-      ];
-    }), { input: "payments-compacted-transaction-entries" }),
+    table("payments-split-item-changes-with-expiry", defineFlatMapTable(row => splitItemQuantityChangeWithExpiry(row.rowData)), { input: "payments-compacted-transaction-entries" }),
     table("payments-changes-sorted-for-ledger", defineSortTable({
       sortKeyExtractor: ledgerSortKey,
       sortKeyComparator: compareLedgerSortKeys,
@@ -1187,12 +1190,21 @@ export function createPaymentsSchema() {
         return { newState: toPiledriverObject(next), newRowData: toPiledriverObject({ subscriptions: next, tenancyId: sub.tenancyId, customerType: sub.customerType, customerId: sub.customerId }) };
       },
     }), { input: "payments-subscriptions-sorted" }),
+  ], [
+    // GroupBy and Sort intentionally retain no row payloads. These explicit read models preserve
+    // the two transaction query paths that need listRowsInGroup without materializing every index.
+    table("payments-transactions-by-customer-materialized", defineMaterializeTable(), {
+      input: "payments-transactions-by-customer",
+    }),
+    table("payments-transactions-by-tenancy-sorted-materialized", defineMaterializeTable(), {
+      input: "payments-transactions-by-tenancy-sorted",
+    }),
   ]];
 
-  // Only looks at migrations[0], so this assumes one migration batch. Rebuild from all
-  // migrations if we ever add a second. Also, replacing "-" with "_" would clash if two
-  // table ids differed only by that — fine today since ids only use "-".
-  const tableIds = Object.fromEntries(migrations[0].map(step => [step.tableId.replaceAll("-", "_"), step.tableId]));
+  const allTables = migrations.flat();
+  // Replacing "-" with "_" would clash if two table ids differed only by that — fine today since
+  // ids only use "-".
+  const tableIds = Object.fromEntries(allTables.map(step => [step.tableId.replaceAll("-", "_"), step.tableId]));
   return {
     migrations,
     tableIds,
@@ -1208,8 +1220,8 @@ export function createPaymentsSchema() {
     itemGrantRepeatEvents: "payments-item-grant-repeat-events",
     oneTimePurchaseEvents: "payments-one-time-purchase-events",
     manualItemQuantityChangeEvents: "payments-manual-item-quantity-change-events",
-    transactions: "payments-transactions-by-customer",
-    transactionsByTenancy: "payments-transactions-by-tenancy-sorted",
+    transactions: "payments-transactions-by-customer-materialized",
+    transactionsByTenancy: "payments-transactions-by-tenancy-sorted-materialized",
     transactionEntries: "payments-transaction-entries",
     compactedTransactionEntries: "payments-compacted-transaction-entries",
     productGrantEntries: "payments-entries-product-grant",
@@ -1223,7 +1235,7 @@ export function createPaymentsSchema() {
     splitChanges: "payments-split-item-changes-with-expiry",
     itemQuantities: "payments-item-quantities",
     subscriptionMapByCustomer: "payments-subscription-map-by-customer",
-    _allTables: migrations[0], // migrations[0] only — see note above tableIds.
+    _allTables: allTables,
   };
 }
 

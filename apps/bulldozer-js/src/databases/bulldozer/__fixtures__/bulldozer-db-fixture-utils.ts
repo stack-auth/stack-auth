@@ -98,16 +98,21 @@ export async function computeReadModel(db: BulldozerDatabase): Promise<Bulldozer
   const readModel: BulldozerReadModel = [];
   for (const tableId of tables) {
     const groups: ReadModelGroup[] = [];
-    for (const { groupKey } of await collect(snapshot.listGroups({ tableId, range: {} }))) {
-      const rows: ReadModelRow[] = [];
-      for (const row of await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))) {
-        rows.push({
-          rowIdentifier: row.rowIdentifier,
-          rowSortKey: await resolveHeap(row.rowSortKey),
-          rowData: await resolveHeap(row.rowData),
-        });
+    try {
+      for (const { groupKey } of await collect(snapshot.listGroups({ tableId, range: {} }))) {
+        const rows: ReadModelRow[] = [];
+        for (const row of await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))) {
+          rows.push({
+            rowIdentifier: row.rowIdentifier,
+            rowSortKey: await resolveHeap(row.rowSortKey),
+            rowData: await resolveHeap(row.rowData),
+          });
+        }
+        groups.push({ groupKey: await resolveHeap(groupKey), rows });
       }
-      groups.push({ groupKey: await resolveHeap(groupKey), rows });
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("does not support listing rows")) throw error;
+      continue;
     }
     readModel.push({ tableId, groups });
   }

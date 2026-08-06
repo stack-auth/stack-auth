@@ -590,6 +590,7 @@ describe("Bulldozer", () => {
     let snapshot = await initializedSnapshot([[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "grouped", table: groupByParity, inputTables: { input: "store" } },
+      { type: "initTable", tableId: "groupedMaterialized", table: defineMaterializeTable(), inputTables: { input: "grouped" } },
     ]]);
 
     snapshot = await set(snapshot, "store", "a", 1);
@@ -598,10 +599,11 @@ describe("Bulldozer", () => {
       { groupKey: "even" },
       { groupKey: "odd" },
     ]);
-    expect(await rows(snapshot, "grouped", {}, "odd")).toEqual([
+    await expect(collect(snapshot.listRowsInGroup({ tableId: "grouped", groupKey: "odd", range: {} }))).rejects.toThrow("does not support listing rows");
+    expect(await rows(snapshot, "groupedMaterialized", {}, "odd")).toEqual([
       { groupKey: "odd", rowIdentifier: "a", rowSortKey: null, rowData: 1 },
     ]);
-    expect(await rows(snapshot, "grouped", {}, "even")).toEqual([
+    expect(await rows(snapshot, "groupedMaterialized", {}, "even")).toEqual([
       { groupKey: "even", rowIdentifier: "b", rowSortKey: null, rowData: 2 },
     ]);
 
@@ -609,7 +611,7 @@ describe("Bulldozer", () => {
     expect(await collect(snapshot.listGroups({ tableId: "grouped", range: {} }))).toEqual([
       { groupKey: "even" },
     ]);
-    expect(await rows(snapshot, "grouped", {}, "even")).toEqual([
+    expect(await rows(snapshot, "groupedMaterialized", {}, "even")).toEqual([
       { groupKey: "even", rowIdentifier: "a", rowSortKey: null, rowData: 4 },
       { groupKey: "even", rowIdentifier: "b", rowSortKey: null, rowData: 2 },
     ]);
@@ -735,8 +737,11 @@ describe("Bulldozer", () => {
       { type: "initTable", tableId: "mapped", table: defineMapTable(row => Number(row.rowData) * 10), inputTables: { input: "store" } },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => [row.rowData, Number(row.rowData) + 100]), inputTables: { input: "store" } },
       { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => Number(row.rowData), sortKeyComparator: (a, b) => Number(a) - Number(b) }), inputTables: { input: "store" } },
+      { type: "initTable", tableId: "sortedMaterialized", table: defineMaterializeTable(), inputTables: { input: "sorted" } },
       { type: "initTable", tableId: "concat", table: defineConcatTable(), inputTables: { a: "sorted", b: "flat" } },
+      { type: "initTable", tableId: "concatMaterialized", table: defineMaterializeTable(), inputTables: { input: "concat" } },
     ]]);
+    await expect(collect(snapshot.listRowsInGroup({ tableId: "sorted", groupKey: null, range: {} }))).rejects.toThrow("does not support listing rows");
     snapshot = await set(snapshot, "store", "a", 1);
     snapshot = await set(snapshot, "store", "b", 2);
     snapshot = await set(snapshot, "store", "c", 3);
@@ -748,13 +753,13 @@ describe("Bulldozer", () => {
       { groupKey: null, rowIdentifier: JSON.stringify(["c", 1]), rowSortKey: [null, 1], rowData: 103 },
       { groupKey: null, rowIdentifier: JSON.stringify(["c", 0]), rowSortKey: [null, 0], rowData: 3 },
     ]);
-    expect(await collect(snapshot.listRowsInGroup({ tableId: "sorted", groupKey: null, range: { gte: 2, reverse: true } }))).toEqual([
+    expect(await collect(snapshot.listRowsInGroup({ tableId: "sortedMaterialized", groupKey: null, range: { gte: 2, reverse: true } }))).toEqual([
       { groupKey: null, rowIdentifier: "c", rowSortKey: 3, rowData: 3 },
       { groupKey: null, rowIdentifier: "b", rowSortKey: 2, rowData: 2 },
     ]);
-    expect(await collect(snapshot.listRowsInGroup({ tableId: "concat", groupKey: null, range: { reverse: true, limit: 2 } }))).toEqual([
+    expect(await collect(snapshot.listRowsInGroup({ tableId: "concatMaterialized", groupKey: null, range: { reverse: true, limit: 2 } }))).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 1])]), rowSortKey: [1, [null, 1]], rowData: 103 },
-      { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 0])]), rowSortKey: [1, [null, 0]], rowData: 3 },
+      { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["b", 1])]), rowSortKey: [1, [null, 1]], rowData: 102 },
     ]);
   });
 
@@ -1212,10 +1217,11 @@ describe("Bulldozer", () => {
     let snapshot = await initializedSnapshot([[
       { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
       { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => Number(row.rowData), sortKeyComparator: (a, b) => Number(a) - Number(b) }), inputTables: { input: "store" } },
+      { type: "initTable", tableId: "sortedMaterialized", table: defineMaterializeTable(), inputTables: { input: "sorted" } },
       { type: "initTable", tableId: "flat", table: defineFlatMapTable(row => {
         mapperCalls++;
         return [row.rowData, Number(row.rowData) + 10];
-      }), inputTables: { input: "sorted" } },
+      }), inputTables: { input: "sortedMaterialized" } },
     ]]);
     for (const value of [1, 2, 3, 4]) snapshot = await set(snapshot, "store", `r${value}`, value);
 
