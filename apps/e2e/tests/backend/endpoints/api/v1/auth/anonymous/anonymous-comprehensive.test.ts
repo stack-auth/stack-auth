@@ -82,6 +82,15 @@ it("JWKS endpoint includes anonymous/restricted keys when requested", async ({ e
   const allKeys = anonymousJwks.body.keys;
   expect(allKeys).toHaveLength(6);
 
+  // The anonymous issuer has no query parameters, so consumers can resolve its
+  // issuer-relative JWKS alias and still receive the anonymous and restricted keys.
+  const anonymousIssuerJwks = await niceBackendFetch(`/api/v1/projects-anonymous-users/${project.projectId}/.well-known/jwks.json`, {
+    method: "GET",
+    accessType: null,
+  });
+  expect(anonymousIssuerJwks.status).toBe(200);
+  expect(anonymousIssuerJwks.body).toEqual(anonymousJwks.body);
+
   // Check that the kids are different
   const kids = allKeys.map((key: any) => key.kid);
   expect(new Set(kids).size).toBe(6);
