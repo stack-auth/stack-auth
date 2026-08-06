@@ -1,0 +1,38 @@
+apps/backend/src/server/app.ts
+  s_93643638a465b3::t_1dffc039e731c6 7,43-44,116,179-189
+  s_93643638a465b3::t_b52fe470c80717 87
+  s_93643638a465b3::t_b541b0a781bb23 190-191
+apps/backend/src/sentry-scrubbing.ts
+  s_93643638a465b3::t_9f4db83b9f0d6d 71-72
+  s_93643638a465b3::t_1dffc039e731c6 21-26,28-33,42-47,49-58,60-70,139
+  s_93643638a465b3::t_d8de2452756510 110,119-120,125-127,130-131
+  s_93643638a465b3::t_74a24d41258fda 111-118,121-124,128-129
+  s_93643638a465b3::t_91e93fa665ae8c 132-138
+  s_93643638a465b3::t_da8f5e040275ae 48
+  s_93643638a465b3::t_abb9f393b27b9b 27
+apps/backend/src/sentry-scrubbing.test.ts
+  s_93643638a465b3::t_1a072a61fb41e9 58,107,109,144
+  s_93643638a465b3::t_d8de2452756510 173,183-192
+  s_93643638a465b3::t_e3109bd2a60215 166,178-179
+  s_93643638a465b3::t_a81e9849b630ba 127,145
+  s_93643638a465b3::t_292b8ffeaed1a6 167-170,182,195
+  s_93643638a465b3::t_1dffc039e731c6 116,123-126,128-143,146-162
+  s_93643638a465b3::t_2822a04c4e9c34 193-194
+  s_93643638a465b3::t_da8f5e040275ae 163-165,171-172,174-177,180-181,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1fbc30846e3d5955f2db384a5640406890d11f1b",
+  "prompts": {},
+  "sessions": {
+    "s_93643638a465b3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd7e0-bf22-7d81-93c5-ceb425031819",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
