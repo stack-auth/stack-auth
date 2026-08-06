@@ -162,6 +162,45 @@ describe("sanitizeBackendSentryEvent", () => {
     expect(result.transaction).toBe("backend.request");
   });
 
+  it("does not use unsupported extension methods in request descriptions", () => {
+    const event: Event = {
+      request: {
+        method: "BREW",
+      },
+      transaction: "BREW /api/latest/users",
+      contexts: {
+        trace: {
+          data: {
+            "http.request.method": "BREW",
+            "http.route": "/api/latest/users",
+          },
+          span_id: "0123456789abcdef",
+          trace_id: "0123456789abcdef0123456789abcdef",
+        },
+      },
+      spans: [{
+        data: {
+          "http.request.method": "BREW",
+          "http.route": "/api/latest/users",
+        },
+        description: "BREW /api/latest/users",
+        span_id: "0123456789abcdef",
+        start_timestamp: 1,
+        trace_id: "0123456789abcdef0123456789abcdef",
+      }],
+    };
+
+    const result = sanitizeBackendSentryEvent(event);
+
+    expect({
+      spanDescription: result.spans?.[0]?.description,
+      transaction: result.transaction,
+    }).toEqual({
+      spanDescription: undefined,
+      transaction: "backend.request",
+    });
+  });
+
   it("retains a fixed placeholder for requests that finish before route matching", () => {
     const event: Event = {
       request: {

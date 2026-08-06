@@ -1,4 +1,7 @@
+import { httpMethodNames } from "@/generated/route-modules";
 import type { Event } from "@sentry/node";
+
+const knownHttpMethods = new Set<string>(httpMethodNames);
 
 const safeSpanAttributeNames = new Set([
   "sentry.op",
@@ -40,7 +43,7 @@ function getSafeSpanData(data: BackendSentrySpan["data"]): BackendSentrySpan["da
 }
 
 function getSafeRequestDescription(method: unknown, route: unknown): string | undefined {
-  if (typeof method !== "string" || !/^[A-Z]+$/.test(method)) {
+  if (typeof method !== "string" || !knownHttpMethods.has(method)) {
     return undefined;
   }
   if (

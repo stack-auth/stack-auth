@@ -113,7 +113,9 @@ async function dispatch(request: Request) {
   // one of Sentry's framework integrations, so attach the matched route pattern
   // here instead of registering a second OpenTelemetry provider through Elysia's
   // plugin. The normalized path is safe; the concrete path may contain customer IDs.
-  updateRequestSpanName(method, match.normalizedPath);
+  if (isHttpMethod(method)) {
+    updateRequestSpanName(method, match.normalizedPath);
+  }
   const context: RequestContext = {
     abortSignal: request.signal,
     headers: pipeline.mergedHeaders,
@@ -176,7 +178,7 @@ async function dispatch(request: Request) {
   });
 }
 
-function updateRequestSpanName(method: string, normalizedPath: string) {
+function updateRequestSpanName(method: typeof httpMethodNames[number], normalizedPath: string) {
   const requestSpan = trace.getActiveSpan();
   if (requestSpan == null) {
     return;
