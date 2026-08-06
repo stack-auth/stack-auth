@@ -1,5 +1,5 @@
 import { httpMethodNames, routeModules } from "@/generated/route-modules";
-import { SmartRouter } from "@/smart-router";
+import { RoutePatternIndex } from "./route-pattern-index";
 
 type HttpMethod = typeof httpMethodNames[number];
 type RouteParams = Record<string, string | string[]>;
@@ -12,7 +12,6 @@ export type RouteMethods = Map<HttpMethod, RouteHandler>;
 type RouteEntry = {
   loadMethods: () => Promise<RouteMethods>,
   normalizedPath: string,
-  specificity: number[],
 };
 
 type RouteMatch = {
@@ -22,27 +21,38 @@ type RouteMatch = {
 };
 
 const routeRegistry = buildRouteRegistry();
+const routePatternIndex = new RoutePatternIndex(routeRegistry, (entry) => entry.normalizedPath);
 
 export async function matchRoute(dispatchPath: string): Promise<RouteMatch | undefined> {
-  return await findRouteMatch(dispatchPath, routeRegistry);
+  return await findRouteMatch(dispatchPath, routePatternIndex);
 }
 
-async function findRouteMatch(dispatchPath: string, entries: RouteEntry[]): Promise<RouteMatch | undefined> {
-  for (const entry of entries) {
-    const params = SmartRouter.matchNormalizedPath(dispatchPath, entry.normalizedPath);
-    if (params !== false) {
-      const methods = await entry.loadMethods();
-      if (methods.size === 0) {
-        continue;
-      }
-      return {
-        methods,
-        normalizedPath: entry.normalizedPath,
-        params: decodeRouteParams(params),
-      };
+async function findRouteMatch(dispatchPath: string, index: RoutePatternIndex<RouteEntry>): Promise<RouteMatch | undefined> {
+  for (const entry of index.getStaticMatches(dispatchPath) ?? []) {
+    const match = await loadRouteMatch(entry, {});
+    if (match != null) {
+      return match;
+    }
+  }
+  for (const { params, value } of index.getDynamicMatches(dispatchPath)) {
+    const match = await loadRouteMatch(value, params);
+    if (match != null) {
+      return match;
     }
   }
   return undefined;
+}
+
+async function loadRouteMatch(entry: RouteEntry, params: Record<string, string | string[]>): Promise<RouteMatch | undefined> {
+  const methods = await entry.loadMethods();
+  if (methods.size === 0) {
+    return undefined;
+  }
+  return {
+    methods,
+    normalizedPath: entry.normalizedPath,
+    params: decodeRouteParams(params),
+  };
 }
 
 export class MalformedRouteParamError extends Error {
@@ -75,10 +85,8 @@ function buildRouteRegistry() {
       return {
         loadMethods: createRouteMethodsLoader(route.normalizedPath, route.load),
         normalizedPath: route.normalizedPath,
-        specificity: getSpecificity(route.normalizedPath),
       };
-    })
-    .sort(compareRouteEntries);
+    });
 }
 
 function createRouteMethodsLoader(
@@ -115,36 +123,6 @@ function createRouteHandler(normalizedPath: string, method: HttpMethod, handler:
     }
     throw new Error(`Route ${normalizedPath} ${method} did not return a Response`);
   };
-}
-
-function compareRouteEntries(a: RouteEntry, b: RouteEntry) {
-  const maxLength = Math.max(a.specificity.length, b.specificity.length);
-  for (let i = 0; i < maxLength; i++) {
-    const diff = (b.specificity[i] ?? 0) - (a.specificity[i] ?? 0);
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-  return stringCompare(a.normalizedPath, b.normalizedPath);
-}
-
-function getSpecificity(normalizedPath: string) {
-  return normalizedPath.split("/").filter(Boolean).map((segment) => {
-    if (segment.startsWith("[[...") && segment.endsWith("]]")) {
-      return 0;
-    }
-    if (segment.startsWith("[...") && segment.endsWith("]")) {
-      return 1;
-    }
-    if (segment.startsWith("[") && segment.endsWith("]")) {
-      return 2;
-    }
-    return 3;
-  });
-}
-
-function stringCompare(a: string, b: string) {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 import.meta.vitest?.test("route modules are loaded lazily and only once", async ({ expect }) => {
@@ -184,19 +162,29 @@ import.meta.vitest?.test("a failed route import stays isolated to its loader", a
   expect((await healthyLoader()).has("GET")).toBe(true);
 });
 
+import.meta.vitest?.test("a generated static API route resolves through the indexed registry", async ({ expect }) => {
+  const match = await matchRoute("/api/latest/users/me");
+
+  expect({
+    hasGetHandler: match?.methods.has("GET"),
+    normalizedPath: match?.normalizedPath,
+  }).toEqual({
+    hasGetHandler: true,
+    normalizedPath: "/api/latest/users/me",
+  });
+});
+
 import.meta.vitest?.test("an empty specific route does not shadow a valid fallback route", async ({ expect }) => {
-  const match = await findRouteMatch("/test/value", [
+  const match = await findRouteMatch("/test/value", new RoutePatternIndex([
     {
       loadMethods: async () => new Map(),
       normalizedPath: "/test/[id]",
-      specificity: getSpecificity("/test/[id]"),
     },
     {
       loadMethods: async () => new Map([["GET", async () => new Response("fallback")]]),
       normalizedPath: "/test/[...path]",
-      specificity: getSpecificity("/test/[...path]"),
     },
-  ]);
+  ], (entry) => entry.normalizedPath));
 
   expect(match?.normalizedPath).toBe("/test/[...path]");
 });

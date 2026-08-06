@@ -1,12 +1,23 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
-import { SmartRouter } from "@/smart-router";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { RoutePatternIndex } from "./route-pattern-index";
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
 const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
 const devRateLimitMarks: number[] = [];
+const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
+for (const version of apiVersions) {
+  if (version.migrationFolder == null) {
+    continue;
+  }
+  const migrationFolder = version.migrationFolder;
+  migrationRouteIndexes.set(migrationFolder, new RoutePatternIndex(
+    routes.filter((route) => (route.normalizedPath + "/").startsWith(migrationFolder + "/")),
+    (route) => route.normalizedPath,
+  ));
+}
 
 const corsAllowedRequestHeaders = [
   "content-type",
@@ -311,13 +322,13 @@ function getDispatchPath(originalPathname: string) {
     if ((pathname + "/").startsWith(version.servedRoute + "/")) {
       const nextPathname = pathname.replace(version.servedRoute, nextVersion.servedRoute);
       const migrationPathname = nextPathname.replace(nextVersion.servedRoute, nextVersion.migrationFolder);
-      for (const route of routes) {
-        if (nextVersion.migrationFolder && (route.normalizedPath + "/").startsWith(nextVersion.migrationFolder + "/")) {
-          if (SmartRouter.matchNormalizedPath(migrationPathname, route.normalizedPath)) {
-            pathname = migrationPathname;
-            break outer;
-          }
-        }
+      const migrationRouteIndex = migrationRouteIndexes.get(nextVersion.migrationFolder);
+      if (migrationRouteIndex == null) {
+        throw new Error(`No route index found for migration folder ${JSON.stringify(nextVersion.migrationFolder)}`);
+      }
+      if (migrationRouteIndex.hasMatch(migrationPathname)) {
+        pathname = migrationPathname;
+        break outer;
       }
       pathname = nextPathname;
     }
