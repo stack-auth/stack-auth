@@ -1,0 +1,23 @@
+apps/backend/src/sentry-scrubbing.test.ts
+  s_fd23e7c5bda127::t_ca7471a4b39174 165-203
+apps/backend/src/server/app.ts
+  s_fd23e7c5bda127::t_8fba9b8af8a8db 116-118,181
+apps/backend/src/sentry-scrubbing.ts
+  s_fd23e7c5bda127::t_8fba9b8af8a8db 1,4-5,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "be055a6f0c403b51713d3781354a1c3e0cf49c5d",
+  "prompts": {},
+  "sessions": {
+    "s_fd23e7c5bda127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd803-3cea-7d62-ad17-059767f952a4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
