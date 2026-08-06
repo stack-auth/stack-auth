@@ -18,8 +18,9 @@ function loadFixture(name: string): BulldozerDbDump {
 }
 
 describe("bulldozer whole-database serialization compatibility", () => {
-  // v0 = pre-versioning nodes (no `version`/`entryAugmentations`); v1 = current format.
-  for (const version of ["db-v0", "db-v1"] as const) {
+  // v0 = pre-versioning tree nodes; v1 = materialized Sort/GroupBy; v2 = stateless Sort and
+  // count-only GroupBy.
+  for (const version of ["db-v0", "db-v1", "db-v2"] as const) {
     it(`reads the entire database from golden fixture ${version} with the current code`, async () => {
       const fixture = loadFixture(version);
       const db = restoreBulldozerDatabase(fixture);
@@ -50,7 +51,7 @@ describe("bulldozer whole-database serialization compatibility", () => {
       expect(rows).toContain("entry-900");
     });
 
-    it(`removes the last legacy GroupBy rows and their group in golden fixture ${version}`, async () => {
+    it(`removes the final GroupBy rows and their group in golden fixture ${version}`, async () => {
       const db = restoreBulldozerDatabase(loadFixture(version));
       await db.withSnapshotReplicated(async snapshot => {
         for (const rowIdentifier of ["entry-001", "entry-002", "entry-006"]) {
