@@ -1,11 +1,11 @@
-// this exists as an alias for OIDC discovery, because the `iss` field in the JWT does not support query params
-// redirect to projects/.well-known/[...route]?include_anonymous=true
+// Anonymous JWTs use a distinct issuer URL without query parameters. This alias gives
+// consumers an issuer-relative JWKS URL while reusing the canonical project endpoint.
 
 import { yupNever, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { redirect } from "@/lib/runtime/navigation";
-import { createSmartRouteHandler } from "../../../../../../route-handlers/smart-route-handler";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 
-const handler = createSmartRouteHandler({
+export const GET = createSmartRouteHandler({
   metadata: {
     hidden: true,
   },
@@ -20,9 +20,3 @@ const handler = createSmartRouteHandler({
     redirect(url.toString());
   },
 });
-
-export const GET = handler;
-export const POST = handler;
-export const PUT = handler;
-export const PATCH = handler;
-export const DELETE = handler;
