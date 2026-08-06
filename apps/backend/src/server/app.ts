@@ -2,7 +2,7 @@ import { httpMethodNames } from "@/generated/route-modules";
 import { serializeSetCookie } from "@/lib/runtime/headers";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
 import { node } from "@elysia/node";
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { trace } from "@opentelemetry/api";
 import { Elysia } from "elysia";
 import { gunzipSync } from "node:zlib";
@@ -73,13 +73,8 @@ export const app = new Elysia({
   .get("/dev-stats", () => getNodeEnvironment() === "development"
     ? htmlResponse(devStatsHtml())
     : htmlResponse("<div>404 Not Found</div>", 404))
-  .get("/health/error-handler-debug", () => isObservabilityDebugRouteAvailable()
-    ? htmlResponse(errorHandlerDebugHtml())
-    : htmlResponse("<div>404 Not Found</div>", 404))
+  .get("/health/error-handler-debug", () => htmlResponse(errorHandlerDebugHtml()))
   .get("/health/error-handler-debug/endpoint", () => {
-    if (!isObservabilityDebugRouteAvailable()) {
-      return htmlResponse("<div>404 Not Found</div>", 404);
-    }
     throw new Error("Server observability debug error thrown successfully!");
   })
   .all("/*", async ({ request }) => await dispatch(request), {
@@ -289,10 +284,17 @@ function htmlResponse(body: string, status = 200) {
   }));
 }
 
-function isObservabilityDebugRouteAvailable() {
-  return getNodeEnvironment() !== "production"
-    || getEnvVariable("VERCEL_ENV", "") === "preview";
-}
+import.meta.vitest?.test("the observability debug page is publicly available", async ({ expect }) => {
+  const response = await app.handle(new Request("http://localhost/health/error-handler-debug"));
+
+  expect({
+    status: response.status,
+    body: await response.text(),
+  }).toMatchObject({
+    status: 200,
+    body: expect.stringContaining("Backend error debug"),
+  });
+});
 
 import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", async ({ expect }) => {
   const { vi } = import.meta.vitest!;
