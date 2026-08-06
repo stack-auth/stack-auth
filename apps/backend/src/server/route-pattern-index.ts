@@ -30,9 +30,10 @@ export class RoutePatternIndex<T> {
       const pattern = getPattern(value);
       const segments = compileRoutePattern(pattern);
       if (segments == null) {
-        const existing = this.staticPatterns.get(pattern);
+        const normalizedPattern = normalizePathname(pattern);
+        const existing = this.staticPatterns.get(normalizedPattern);
         if (existing == null) {
-          this.staticPatterns.set(pattern, [value]);
+          this.staticPatterns.set(normalizedPattern, [value]);
         } else {
           existing.push(value);
         }
@@ -112,14 +113,14 @@ function matchRouteSegments(
 
   for (const segment of patternSegments) {
     if (segment.type === "optional-catch-all") {
-      params[segment.name] = pathSegments.slice(pathIndex);
+      setRouteParam(params, segment.name, pathSegments.slice(pathIndex));
       return params;
     }
     if (segment.type === "catch-all") {
       if (pathIndex >= pathSegments.length) {
         return undefined;
       }
-      params[segment.name] = pathSegments.slice(pathIndex);
+      setRouteParam(params, segment.name, pathSegments.slice(pathIndex));
       return params;
     }
 
@@ -132,12 +133,21 @@ function matchRouteSegments(
         return undefined;
       }
     } else {
-      params[segment.name] = pathSegment;
+      setRouteParam(params, segment.name, pathSegment);
     }
     pathIndex++;
   }
 
   return pathIndex === pathSegments.length ? params : undefined;
+}
+
+function setRouteParam(params: Record<string, string | string[]>, name: string, value: string | string[]): void {
+  Object.defineProperty(params, name, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 function normalizePathname(pathname: string): string {

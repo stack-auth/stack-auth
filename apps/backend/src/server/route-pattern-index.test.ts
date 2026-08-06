@@ -14,6 +14,16 @@ describe("RoutePatternIndex", () => {
     ]);
   });
 
+  it("matches a normalized pathname against a static pattern with a trailing slash", () => {
+    const index = new RoutePatternIndex([
+      "/api/users/",
+    ], (pattern) => pattern);
+
+    expect(index.getStaticMatches("/api/users")).toEqual([
+      "/api/users/",
+    ]);
+  });
+
   it("matches dynamic and catch-all routes with Next-compatible precedence and params", () => {
     const index = new RoutePatternIndex([
       "/api/[...notFoundPath]",
@@ -28,6 +38,32 @@ describe("RoutePatternIndex", () => {
       {
         params: { notFoundPath: ["latest", "users", "user-123"] },
         value: "/api/[...notFoundPath]",
+      },
+    ]);
+  });
+
+  it("keeps __proto__ route parameters as own enumerable properties", () => {
+    const index = new RoutePatternIndex([
+      "/api/[__proto__]",
+      "/files/[[...__proto__]]",
+    ], (pattern) => pattern);
+
+    expect(index.getDynamicMatches("/api/user-123").map(({ params }) => ({
+      entries: Object.entries(params),
+      hasDefaultPrototype: Object.getPrototypeOf(params) === Object.prototype,
+    }))).toEqual([
+      {
+        entries: [["__proto__", "user-123"]],
+        hasDefaultPrototype: true,
+      },
+    ]);
+    expect(index.getDynamicMatches("/files/a/b").map(({ params }) => ({
+      entries: Object.entries(params),
+      hasDefaultPrototype: Object.getPrototypeOf(params) === Object.prototype,
+    }))).toEqual([
+      {
+        entries: [["__proto__", ["a", "b"]]],
+        hasDefaultPrototype: true,
       },
     ]);
   });
