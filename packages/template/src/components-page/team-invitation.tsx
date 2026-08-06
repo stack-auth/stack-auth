@@ -1,7 +1,6 @@
 'use client';
 
 import { KnownErrors } from "@hexclave/shared";
-import { cacheFunction } from "@hexclave/shared/dist/utils/caches";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { use } from "@hexclave/shared/dist/utils/react";
 import { Typography } from "@hexclave/ui";
@@ -9,21 +8,24 @@ import React from "react";
 import { MessageCard, StackClientApp, useStackApp, useUser } from "..";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 import { useTranslation } from "../lib/translations";
+import { cacheTeamInvitationOperation } from "./team-invitation-cache";
 
-const cachedVerifyInvitation = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+// Both endpoints inspect the current account, so the session must participate in
+// the key even though the SDK app object and invitation code are otherwise stable.
+const cachedVerifyInvitation = cacheTeamInvitationOperation(async (hexclaveApp: StackClientApp<true>, code: string) => {
   return await hexclaveApp.verifyTeamInvitationCode(code);
 });
 
-const cachedGetInvitationDetails = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+const cachedGetInvitationDetails = cacheTeamInvitationOperation(async (hexclaveApp: StackClientApp<true>, code: string) => {
   return await hexclaveApp.getTeamInvitationDetails(code);
 });
 
-function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<string, string> }) {
+function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<string, string>, session: object }) {
   const { t } = useTranslation();
   const hexclaveApp = useStackApp();
   const [success, setSuccess] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const details = use(cachedGetInvitationDetails(hexclaveApp, props.searchParams.code || ''));
+  const details = use(cachedGetInvitationDetails(hexclaveApp, props.session, props.searchParams.code || ''));
 
   if (errorMessage || details.status === 'error') {
     return (
@@ -126,7 +128,7 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
     );
   }
 
-  const verificationResult = use(cachedVerifyInvitation(hexclaveApp, searchParams.code || ''));
+  const verificationResult = use(cachedVerifyInvitation(hexclaveApp, user._internalSession, searchParams.code || ''));
 
   if (verificationResult.status === 'error') {
     const error = verificationResult.error;
@@ -141,5 +143,12 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
     }
   }
 
-  return <TeamInvitationInner fullPage={fullPage} searchParams={searchParams} />;
+  return (
+    <TeamInvitationInner
+      key={user.id}
+      fullPage={fullPage}
+      searchParams={searchParams}
+      session={user._internalSession}
+    />
+  );
 };

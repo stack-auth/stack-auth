@@ -32,6 +32,7 @@ it("password sign-in should work with normalized email when account was created 
 
   backendContext.set({ mailbox: createMailbox(uppercaseEmail) });
   const signUpRes = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password,
   });
   expect(signUpRes.signUpResponse.status).toBe(200);
@@ -68,6 +69,7 @@ it("password sign-in should work with unnormalized email when account was create
 
   backendContext.set({ mailbox: createMailbox(normalizedEmail) });
   const signUpRes = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password,
   });
   expect(signUpRes.signUpResponse.status).toBe(200);
@@ -153,6 +155,7 @@ it("password reset should work with normalized email when account was created wi
 
   backendContext.set({ mailbox: createMailbox(uppercaseEmail) });
   const signUpRes = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password,
   });
   expect(signUpRes.signUpResponse.status).toBe(200);
@@ -228,6 +231,7 @@ it("password reset should work with unnormalized email when account was created 
 
   backendContext.set({ mailbox: createMailbox(normalizedEmail) });
   const signUpRes = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password,
   });
   expect(signUpRes.signUpResponse.status).toBe(200);
@@ -297,6 +301,7 @@ it("should not allow duplicate accounts with same normalized email", async ({ ex
 
   backendContext.set({ mailbox: createMailbox(email1) });
   const signUpRes1 = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password: password1,
   });
   expect(signUpRes1.signUpResponse.status).toBe(200);
@@ -351,6 +356,7 @@ it("case-insensitive email should work for sign in even with mixed case variatio
   // Create account
   backendContext.set({ mailbox: createMailbox(baseEmail) });
   const signUpRes = await Auth.Password.signUpWithEmail({
+    noWaitForEmail: true,
     password,
   });
   expect(signUpRes.signUpResponse.status).toBe(200);

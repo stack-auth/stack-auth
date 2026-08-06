@@ -150,7 +150,7 @@ it("non-anonymous user sign-up creates new account (does not upgrade)", async ({
   await Project.createAndSwitch();
 
   // Create a regular user
-  const firstUser = await Auth.Password.signUpWithEmail();
+  const firstUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const firstUserId = firstUser.userId;
   const firstAccessToken = firstUser.signUpResponse.body.access_token;
 
@@ -227,7 +227,7 @@ it("non-anonymous user sign-up creates new account (does not upgrade)", async ({
 
 it("signing in to an existing account while logged in as anonymous does not upgrade the user", async ({ expect }) => {
   const password = "TestPassword123!";
-  const { userId: existingUserId } = await Auth.Password.signUpWithEmail({ password });
+  const { userId: existingUserId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password });
   await Auth.signOut();
 
   const { accessToken: anonAccessToken, userId: anonUserId } = await Auth.Anonymous.signUp();
@@ -507,7 +507,7 @@ it("cannot upgrade anonymous user to email that already exists", async ({ expect
   // Create a regular user with an email
   await bumpEmailAddress();
   const existingEmail = backendContext.value.mailbox.emailAddress;
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Create an anonymous user
   const anonSignUp = await Auth.Anonymous.signUp();

@@ -1,4 +1,5 @@
 import { VerificationCodeType } from "@/generated/prisma/client";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
@@ -83,6 +84,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   method: yupObject({
     email: emailSchema.defined(),
   }),
+  complianceSignInAttempt: true,
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
@@ -142,6 +144,8 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         branchId: tenancy.branchId,
         userId: user.id,
         isNewUser,
+        method: "otp",
+        email,
       });
     }
 
@@ -149,6 +153,12 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       tenancy,
       projectUserId: user.id,
       apiUrl,
+    });
+    logSignInAttemptInBackground(tenancy, {
+      outcome: "success",
+      method: "otp",
+      email,
+      userId: user.id,
     });
 
     return {

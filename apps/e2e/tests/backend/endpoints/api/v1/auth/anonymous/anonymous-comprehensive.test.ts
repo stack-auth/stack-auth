@@ -39,7 +39,7 @@ it("anonymous JWT has different kid and role", async ({ expect }) => {
   expect(header.kid).toBeTruthy();
 
   // The kid should be different from regular users
-  const regularSignUp = await Auth.Password.signUpWithEmail();
+  const regularSignUp = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const regularToken = regularSignUp.signUpResponse.body.access_token;
   const [regularHeader] = regularToken.split('.').slice(0, 1).map((part: string) =>
     JSON.parse(Buffer.from(part, 'base64url').toString())
@@ -81,6 +81,15 @@ it("JWKS endpoint includes anonymous/restricted keys when requested", async ({ e
   expect(anonymousJwks.status).toBe(200);
   const allKeys = anonymousJwks.body.keys;
   expect(allKeys).toHaveLength(6);
+
+  // The anonymous issuer has no query parameters, so consumers can resolve its
+  // issuer-relative JWKS alias and still receive the anonymous and restricted keys.
+  const anonymousIssuerJwks = await niceBackendFetch(`/api/v1/projects-anonymous-users/${project.projectId}/.well-known/jwks.json`, {
+    method: "GET",
+    accessType: null,
+  });
+  expect(anonymousIssuerJwks.status).toBe(200);
+  expect(anonymousIssuerJwks.body).toEqual(anonymousJwks.body);
 
   // Check that the kids are different
   const kids = allKeys.map((key: any) => key.kid);
@@ -149,7 +158,8 @@ it("list users excludes anonymous users by default", async ({ expect }) => {
   await Auth.Anonymous.signUp();
 
   // Create a regular user
-  await Auth.Password.signUpWithEmail();
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // List users without include_anonymous
   const listRes = await niceBackendFetch("/api/v1/users", {
@@ -172,7 +182,8 @@ it("list users includes anonymous users when requested", async ({ expect }) => {
 
   // Create a regular user
   await bumpEmailAddress();
-  await Auth.Password.signUpWithEmail();
+  // Email delivery is queue-driven and can take tens of seconds in dev/CI; this test only needs the user record.
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // List users with include_anonymous=true
   const listRes = await niceBackendFetch("/api/v1/users?include_anonymous=true", {
@@ -257,7 +268,7 @@ it("search users excludes anonymous users by default", async ({ expect }) => {
 
   // Create a regular user
   await Auth.signOut();
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Search for users with query matching anonymous user
   const searchRes = await niceBackendFetch("/api/v1/users?query=Unique", {

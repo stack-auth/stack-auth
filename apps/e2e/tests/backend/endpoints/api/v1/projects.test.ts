@@ -1234,12 +1234,12 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
         "details": {
           "message": deindent\`
             Request validation failed on PATCH /api/v1/internal/projects/current:
-              - body.config.oauth_providers[0].client_secret must not be empty
+              - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
           \`,
         },
         "error": deindent\`
           Request validation failed on PATCH /api/v1/internal/projects/current:
-            - body.config.oauth_providers[0].client_secret must not be empty
+            - client_secret is required for standard providers, unless the provider is apple with all Apple key credentials set
         \`,
       },
       "headers": Headers {
@@ -1614,7 +1614,7 @@ it("should increment and decrement userCount when a user is added to a project",
 
 
   // Create a new user in the project
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // The metrics endpoint reads from ClickHouse (eventual consistency).
   // Poll until the new user is visible.
