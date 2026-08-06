@@ -4,6 +4,7 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { node } from "@elysia/node";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { trace } from "@opentelemetry/api";
+import * as Sentry from "@sentry/node";
 import { Elysia } from "elysia";
 import { gunzipSync } from "node:zlib";
 import { createBackendRequest } from "./backend-request";
@@ -39,7 +40,8 @@ export const app = new Elysia({
   .onRequest(({ request }) => {
     requestStartTimes.set(request, performance.now());
     const pathname = new URL(request.url).pathname;
-    requestLogPaths.set(request, staticRequestLogPaths.has(pathname) ? pathname : "<unmatched>");
+    const staticRequestPath = staticRequestLogPaths.has(pathname) ? pathname : undefined;
+    requestLogPaths.set(request, staticRequestPath ?? "<unmatched>");
   })
   .mapResponse(({ request, responseValue }) => responseValue instanceof Response
     ? compressResponse(request, responseValue)
@@ -82,6 +84,7 @@ export const app = new Elysia({
   });
 
 async function dispatch(request: Request) {
+  const method = request.method.toUpperCase();
   const pipeline = await runRequestPipeline(request);
   if (pipeline.shortCircuitResponse != null) {
     return withResponseHeaders(pipeline.shortCircuitResponse, pipeline.corsHeadersInit);
@@ -106,15 +109,13 @@ async function dispatch(request: Request) {
   }
   requestLogPaths.set(request, match.normalizedPath);
 
-  const method = request.method.toUpperCase();
   // Sentry's Node HTTP integration owns the incoming request span. Elysia is not
   // one of Sentry's framework integrations, so attach the matched route pattern
   // here instead of registering a second OpenTelemetry provider through Elysia's
   // plugin. The normalized path is safe; the concrete path may contain customer IDs.
-  const requestSpan = trace.getActiveSpan();
-  requestSpan?.updateName(`${method} ${match.normalizedPath}`);
-  requestSpan?.setAttribute("http.request.method", method);
-  requestSpan?.setAttribute("http.route", match.normalizedPath);
+  if (isHttpMethod(method)) {
+    updateRequestSpanName(method, match.normalizedPath);
+  }
   const context: RequestContext = {
     abortSignal: request.signal,
     headers: pipeline.mergedHeaders,
@@ -175,6 +176,19 @@ async function dispatch(request: Request) {
     }
     return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
   });
+}
+
+function updateRequestSpanName(method: typeof httpMethodNames[number], normalizedPath: string) {
+  const requestSpan = trace.getActiveSpan();
+  if (requestSpan == null) {
+    return;
+  }
+  // Raw OpenTelemetry updateName() can be overwritten when Sentry finalizes an
+  // http.server span. This helper also marks the normalized, non-customer path as
+  // an authoritative custom name so the beforeSend scrubber can retain it.
+  Sentry.updateSpanName(requestSpan, `${method} ${normalizedPath}`);
+  requestSpan.setAttribute("http.request.method", method);
+  requestSpan.setAttribute("http.route", normalizedPath);
 }
 
 async function discardHeadResponseBody(method: string, response: Response): Promise<void> {
