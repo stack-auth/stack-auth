@@ -86,8 +86,24 @@ export type DeploymentServiceDefinition = {
   // service is NOT built from a Dockerfile — the remote builder auto-detects
   // the build with Railpack (https://railpack.com) instead.
   dockerfile_path?: string | undefined,
+  // A persistent disk mounted into the container. Absent = the container
+  // filesystem is entirely ephemeral (the default). Requires
+  // `max_instances: 1`: the underlying Fly volume is local NVMe on a single
+  // host and attaches to at most one instance, so a fleet would give each
+  // instance its own unreplicated copy rather than shared storage.
+  volume?: DeploymentVolumeDefinition | undefined,
   env: Record<string, DeploymentEnvVarDefinition>,
 };
+
+// `path` is where the disk is mounted inside the container; `size_gb` is the
+// provisioned size, which can be grown on a later deploy but never shrunk.
+export type DeploymentVolumeDefinition = {
+  path: string,
+  size_gb: number,
+};
+
+export const MIN_VOLUME_SIZE_GB = 1;
+export const MAX_VOLUME_SIZE_GB = 500;
 
 export const deploymentEnvVarSchema = yupObject({
   type: yupString().oneOf(["secret", "connection"]).optional(),
@@ -145,6 +161,33 @@ export const deploymentServiceDefinitionSchema = yupObject({
       return effectiveMax >= minInstances;
     }),
   root_directory: yupString().optional(),
+  // Persistent disk. The rules here must be AT LEAST as strict as Marshal's
+  // validateServiceSpec so nothing reaches the runtime that it would reject
+  // after an upload has already been consumed.
+  volume: yupObject({
+    // A normalized ABSOLUTE mount point. Relative paths are ambiguous against
+    // the image's WORKDIR, and mounting over "/" would shadow the whole image.
+    path: yupString().defined().max(512)
+      // `path` is `.defined()`, so unlike the optional `dockerfile_path` above
+      // there is no undefined case to let through here.
+      .test("absolute-path", 'volume.path must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters', (value) =>
+        value.startsWith("/")
+        && value !== "/"
+        && !value.endsWith("/")
+        && !value.includes("\\")
+        // eslint-disable-next-line no-control-regex
+        && !/[\x00-\x1f]/.test(value)
+        && value.split("/").slice(1).every((segment) => segment !== "" && segment !== "." && segment !== "..")),
+    size_gb: yupNumber().integer().min(MIN_VOLUME_SIZE_GB).max(MAX_VOLUME_SIZE_GB).defined(),
+  }).optional().default(undefined)
+    // Compares the EFFECTIVE max (same defaulting as `max_instances` above), so
+    // `min_instances: 2` with no explicit max is caught too.
+    .test("volume-requires-single-instance", "a service with a volume must have max_instances: 1 — a volume is local disk on one host and can only be attached to a single instance", function (value) {
+      if (value === undefined) return true;
+      const parent = this.parent as { min_instances?: number, max_instances?: number };
+      const effectiveMax = parent.max_instances ?? Math.max(parent.min_instances ?? 0, 1);
+      return effectiveMax === 1;
+    }),
   // Optional Dockerfile location relative to root_directory; absent = Railpack
   // auto-detected build. Must stay inside the packaged source — it flows into
   // the remote builder as a path within the source tarball. The rules here
@@ -192,6 +235,38 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
       API_INTERNAL_URL: { type: "connection", value: "api.internalUrl" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a volume on a single-instance service", async ({ expect }) => {
+  // Explicit 1/1 (serverful) and the default 0/1 (scales to zero, volume kept
+  // across the stop) are both single-instance and therefore both valid.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, min_instances: 1, max_instances: 1,
+    volume: { path: "/data", size_gb: 10 }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "container", port: 3000, volume: { path: "/var/lib/app/data", size_gb: 1 }, env: {},
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects volumes that cannot work", async ({ expect }) => {
+  for (const scaling of [{ max_instances: 2 }, { min_instances: 2 }, { min_instances: 0, max_instances: 3 }]) {
+    await expect(deploymentServiceDefinitionSchema.validate({
+      type: "container", port: 3000, ...scaling, volume: { path: "/data", size_gb: 1 }, env: {},
+    }, { abortEarly: false })).rejects.toThrow(/must have max_instances: 1/);
+  }
+  for (const badPath of ["data", "/", "/data/", "/data/../etc", "/data/./x", "/da\\ta", "/da\u0000ta"]) {
+    await expect(deploymentServiceDefinitionSchema.validate({
+      type: "container", port: 3000, volume: { path: badPath, size_gb: 1 }, env: {},
+    }, { abortEarly: false })).rejects.toThrow(/normalized absolute path/);
+  }
+  // Anchored to the size field: a bare toThrow() would still pass if the size
+  // bounds regressed and some unrelated rule happened to reject the shape.
+  for (const badSize of [0, -1, 501, 1.5]) {
+    await expect(deploymentServiceDefinitionSchema.validate({
+      type: "container", port: 3000, volume: { path: "/data", size_gb: badSize }, env: {},
+    }, { abortEarly: false })).rejects.toThrow(/size_gb/);
+  }
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects invalid shapes", async ({ expect }) => {

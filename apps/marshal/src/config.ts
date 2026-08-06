@@ -120,6 +120,13 @@ export function resolveNamespaceOrg(_ns: string): { orgSlug: string, token: stri
 
 // Runtime policy (deliberately NOT part of the service spec or the revision hash).
 export const MAX_INSTANCES_CAP = 5;
+// Fly volume bounds: 1 GB is the platform default/minimum, 500 GB the maximum.
+export const MIN_VOLUME_SIZE_GB = 1;
+export const MAX_VOLUME_SIZE_GB = 500;
+// One volume per service (Fly allows at most one mount per machine, and a service with a
+// volume is pinned to a single machine). The name is constant because the Fly app is
+// already per-service — see naming.ts. Fly volume names are alnum + underscore, <= 30 chars.
+export const VOLUME_NAME = "hexclave_data";
 export const MACHINE_GUEST = { cpu_kind: "shared", cpus: 1, memory_mb: 512 };
 export const BUILDER_GUEST = { cpu_kind: "shared", cpus: 2, memory_mb: 2048 };
 // Railpack builds get a bigger machine: every builder is ephemeral (no image cache), the

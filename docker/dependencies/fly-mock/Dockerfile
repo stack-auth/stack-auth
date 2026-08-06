@@ -28,6 +28,7 @@ import http from "node:http";
 const EXPECTED_TOKEN = "mock_hexclave_fly_key";
 
 let machineCounter = 0;
+let volumeCounter = 0;
 let ipCounter = 0;
 let certCounter = 0;
 // Seed from the real clock: Marshal's log cursor is `sinceMillis * 1e6` from wall-clock time,
@@ -52,11 +53,48 @@ function makeApp(name, orgSlug, network) {
     network: network ?? "default",
     status: "deployed",
     machinesById: new Map(),
+    volumesById: new Map(),
     certsByHostname: new Map(),
     sharedIpv4: null,
     dedicatedIps: [],
     logs: [],
   };
+}
+
+// --- Volume attachment ------------------------------------------------------
+// A Fly volume is claimed by at most one machine at a time. These three helpers
+// keep `attached_machine_id` honest so the mock reproduces the 412 that real Fly
+// returns for a double claim, rather than silently allowing a fleet to share a disk.
+
+function mountedVolumeIds(config) {
+  return (config?.mounts ?? []).map((mount) => mount.volume).filter((id) => typeof id === "string");
+}
+
+// Returns an error body when `config` claims a volume held by a DIFFERENT
+// machine, otherwise null. `selfMachineId` is the machine doing the claiming
+// (null when it doesn't exist yet), whose own claims are always allowed.
+function claimVolumesOrError(app, config, selfMachineId) {
+  for (const volumeId of mountedVolumeIds(config)) {
+    const volume = app.volumesById.get(volumeId);
+    if (!volume) return { error: `failed_precondition: volume ${volumeId} not found` };
+    if (volume.attached_machine_id !== null && volume.attached_machine_id !== selfMachineId) {
+      return { error: `failed_precondition: volume already claimed by machine ${volume.attached_machine_id}` };
+    }
+  }
+  return null;
+}
+
+function attachVolumes(app, machine) {
+  for (const volumeId of mountedVolumeIds(machine.config)) {
+    const volume = app.volumesById.get(volumeId);
+    if (volume) volume.attached_machine_id = machine.id;
+  }
+}
+
+function detachVolumes(app, machineId) {
+  for (const volume of app.volumesById.values()) {
+    if (volume.attached_machine_id === machineId) volume.attached_machine_id = null;
+  }
 }
 
 function appendLog(app, message, { instance = null, provider = "runner", level = "info" } = {}) {
@@ -224,7 +262,9 @@ async function handleRequest(req, res) {
           image: machine.config.image,
           metadata: machine.config.metadata ?? {},
           env: machine.config.env ?? {},
+          mounts: machine.config.mounts ?? [],
         })),
+        volumes: [...app.volumesById.values()],
         certificates: [...app.certsByHostname.values()].map(certJson),
       })),
     });
@@ -239,6 +279,7 @@ async function handleRequest(req, res) {
       sharedIpv4: app.sharedIpv4,
       dedicatedIps: app.dedicatedIps,
       machines: [...app.machinesById.values()].map(machineJson),
+      volumes: [...app.volumesById.values()],
       certificates: [...app.certsByHostname.values()].map(certJson),
     });
   }
@@ -306,11 +347,55 @@ async function handleRequest(req, res) {
     return sendJson(res, 404, { error: "App not found" });
   }
 
+  // Volumes. Real Fly answers a create with 201 (not 200) and rejects a shrink,
+  // so the mock does both — those are exactly the behaviours Marshal codes against.
+  if (subPath === "/volumes" && req.method === "GET") {
+    return sendJson(res, 200, [...app.volumesById.values()]);
+  }
+  if (subPath === "/volumes" && req.method === "POST") {
+    const body = JSON.parse(rawBody);
+    const volume = {
+      id: `vol_mock${String(++volumeCounter).padStart(10, "0")}`,
+      name: body.name ?? `volume-${volumeCounter}`,
+      state: "created",
+      size_gb: body.size_gb ?? 1,
+      region: body.region ?? "mock",
+      attached_machine_id: null,
+    };
+    app.volumesById.set(volume.id, volume);
+    appendLog(app, `Volume ${volume.name} created (${volume.size_gb}GB)`);
+    return sendJson(res, 201, volume);
+  }
+  const volumeMatch = /^\/volumes\/([^/]+)(\/.*)?$/.exec(subPath);
+  if (volumeMatch) {
+    const volume = app.volumesById.get(volumeMatch[1]);
+    const volumeSub = volumeMatch[2] ?? "";
+    if (!volume) return sendJson(res, 404, { error: "Volume not found" });
+    if (volumeSub === "" && req.method === "GET") {
+      return sendJson(res, 200, volume);
+    }
+    if (volumeSub === "/extend" && req.method === "PUT") {
+      const body = JSON.parse(rawBody);
+      const sizeGb = body.size_gb ?? volume.size_gb;
+      if (sizeGb <= volume.size_gb) {
+        return sendJson(res, 400, { error: `Invalid volume size - Specified volume size must be greater than ${volume.size_gb}` });
+      }
+      volume.size_gb = sizeGb;
+      appendLog(app, `Volume ${volume.name} extended to ${volume.size_gb}GB`);
+      return sendJson(res, 200, { volume });
+    }
+  }
+
   if (subPath === "/machines" && req.method === "GET") {
     return sendJson(res, 200, [...app.machinesById.values()].map(machineJson));
   }
   if (subPath === "/machines" && req.method === "POST") {
     const body = JSON.parse(rawBody);
+    // A volume attaches to at most one machine — real Fly answers a second
+    // claim with 412 (smoke-verified). Mirrored so a bug that tries to build a
+    // volume-backed fleet fails here instead of only in production.
+    const claim = claimVolumesOrError(app, body.config, null);
+    if (claim) return sendJson(res, 412, claim);
     const machine = {
       id: `mock${String(++machineCounter).padStart(10, "0")}`,
       name: body.name ?? `machine-${machineCounter}`,
@@ -320,6 +405,7 @@ async function handleRequest(req, res) {
       config: body.config ?? {},
       updates: 1,
     };
+    attachVolumes(app, machine);
     app.machinesById.set(machine.id, machine);
     appendLog(app, `Machine created with image ${machine.config.image ?? "unknown"}`, { instance: machine.id });
     appendLog(app, `Machine started`, { instance: machine.id });
@@ -337,13 +423,33 @@ async function handleRequest(req, res) {
     }
     if (machineSub === "" && req.method === "POST") {
       const body = JSON.parse(rawBody);
+      // A machine's MOUNT SET cannot be changed in place. Fly places a machine on its
+      // volume's host, so an already-placed machine cannot adopt a volume created
+      // afterwards — real Fly answers `400 invalid_argument: volume does not exist`
+      // even once the volume is listed and `created` (verified against real Fly).
+      // Reproduced here so the callers' destroy-and-recreate path is exercised by CI
+      // instead of only discovered in production.
+      const before = mountedVolumeIds(machine.config).slice().sort().join(",");
+      const after = mountedVolumeIds(body.config).slice().sort().join(",");
+      if (before !== after) {
+        return sendJson(res, 400, { error: "invalid_argument: volume does not exist" });
+      }
+      // Re-claiming the volume this machine already holds is fine (that is what
+      // every re-apply does); claiming one held by another machine is not.
+      const claim = claimVolumesOrError(app, body.config, machine.id);
+      if (claim) return sendJson(res, 412, claim);
+      detachVolumes(app, machine.id);
       machine.config = body.config ?? machine.config;
+      attachVolumes(app, machine);
       machine.state = "started";
       machine.instanceId = `inst-${machine.id}-${++machine.updates}`;
       appendLog(app, `Machine updated to image ${machine.config.image ?? "unknown"}`, { instance: machine.id });
       return sendJson(res, 200, machineJson(machine));
     }
     if (machineSub === "" && req.method === "DELETE") {
+      // The volume OUTLIVES the machine and becomes unattached (smoke-verified);
+      // only destroying the app takes volumes with it.
+      detachVolumes(app, machine.id);
       app.machinesById.delete(machine.id);
       appendLog(app, `Machine destroyed`, { instance: machine.id });
       return sendJson(res, 200, {});

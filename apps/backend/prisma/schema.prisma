@@ -1721,6 +1721,21 @@ model DeploymentService {
   // The Dockerfile to build from, relative to rootDirectory. Null = no
   // Dockerfile: the remote builder auto-detects the build with Railpack.
   dockerfilePath String?
+  // Persistent disk. Both null = no volume, i.e. an entirely ephemeral
+  // container filesystem (the default). A service with a volume is necessarily
+  // single-instance (maxInstances 1): the underlying Fly volume is local NVMe
+  // on one host and attaches to at most one machine. volumeSizeGb is
+  // grow-only — Fly rejects a shrink, and shrinking would mean destroying
+  // tenant data.
+  //
+  // These two are a PAIR and are always written together. Two CHECK constraints
+  // enforce that in the database (both null or both set, and size within Fly's
+  // 1–500 GB range) — see the 20260806000000_deployment_service_volumes
+  // migration. Prisma cannot express CHECK constraints, so they live only in
+  // the migration SQL and are invisible here; a `prisma db push` would drop
+  // them.
+  volumePath   String?
+  volumeSizeGb Int?
   // Note there is deliberately no dev command here: `devCommand` in the config
   // file's `services` export is consumed locally by `hexclave dev
   // --service-id`, and the backend never acts on it, so storing it would only

@@ -34,9 +34,12 @@ import {
   DEPLOYMENT_ENV_VAR_KEY_REGEX,
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
+  MAX_VOLUME_SIZE_GB,
+  MIN_VOLUME_SIZE_GB,
   SERVICE_OUTPUT_KEYS,
   type DeploymentEnvVarDefinition,
   type DeploymentServiceDefinition,
+  type DeploymentVolumeDefinition,
   type HexclaveOutputKey,
 } from "@hexclave/shared/dist/deployments";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
@@ -215,8 +218,9 @@ export type EvaluatedServices = {
 
 const KNOWN_SERVICE_FIELDS = new Set([
   "type", "port", "minInstances", "maxInstances",
-  "rootDirectory", "dockerfilePath", "devCommand", "env",
+  "rootDirectory", "dockerfilePath", "devCommand", "volume", "env",
 ]);
+const KNOWN_VOLUME_FIELDS = new Set(["path", "size"]);
 
 function readOptionalIntegerField(record: Record<string, unknown>, serviceId: string, field: string): number | undefined {
   const value = record[field];
@@ -234,6 +238,48 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
     throw new CliError(`services.${serviceId}.${field} must be a string.`);
   }
   return value;
+}
+
+/**
+ * Evaluates the optional `volume: { path, size }` field. Author-facing `size`
+ * is GB and becomes `size_gb` on the wire; the mount path must be absolute and
+ * normalized so it is unambiguous against the image's WORKDIR.
+ */
+function evaluateVolume(serviceId: string, volumeRaw: unknown): DeploymentVolumeDefinition | undefined {
+  if (volumeRaw === undefined || volumeRaw === null) return undefined;
+  if (typeof volumeRaw !== "object" || Array.isArray(volumeRaw)) {
+    throw new CliError(`services.${serviceId}.volume must be an object, e.g. \`volume: { path: "/data", size: 10 }\`.`);
+  }
+  const record = volumeRaw as Record<string, unknown>;
+  for (const field of Object.keys(record)) {
+    if (!KNOWN_VOLUME_FIELDS.has(field)) {
+      throw new CliError(`services.${serviceId}.volume has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_VOLUME_FIELDS].join(", ")}.`);
+    }
+  }
+
+  const volumePath = record.path;
+  if (typeof volumePath !== "string" || volumePath === "") {
+    throw new CliError(`services.${serviceId}.volume.path is required and must be the absolute path the disk is mounted at inside the container, e.g. "/data".`);
+  }
+  if (volumePath.length > 512
+    || !volumePath.startsWith("/")
+    || volumePath === "/"
+    || volumePath.endsWith("/")
+    || volumePath.includes("\\")
+    // eslint-disable-next-line no-control-regex
+    || /[\x00-\x1f]/.test(volumePath)
+    || volumePath.split("/").slice(1).some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new CliError(`services.${serviceId}.volume.path must be a normalized absolute path inside the container (got ${JSON.stringify(volumePath)}). Use something like "/data" — no trailing slash, no "." or ".." segments.`);
+  }
+
+  const size = record.size;
+  if (typeof size !== "number" || !Number.isInteger(size)) {
+    throw new CliError(`services.${serviceId}.volume.size is required and must be a whole number of gigabytes, e.g. \`size: 10\`.`);
+  }
+  if (size < MIN_VOLUME_SIZE_GB || size > MAX_VOLUME_SIZE_GB) {
+    throw new CliError(`services.${serviceId}.volume.size must be between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB} GB (got ${size}).`);
+  }
+  return { path: volumePath, size_gb: size };
 }
 
 function evaluateEnvRecord(serviceId: string, envRaw: unknown): Record<string, EvaluatedEnvVarValue> {
@@ -395,6 +441,18 @@ export function evaluateServicesFunction(options: {
       throw new CliError(`services.${serviceId}.maxInstances (${maxInstances}) must be at least minInstances (${minInstances}).`);
     }
 
+    // A volume is local disk on a single host and attaches to at most one
+    // instance, so the service must be single-instance. Compare the EFFECTIVE
+    // max (max defaults up to min, else 1) so `minInstances: 2` with no
+    // explicit max is caught here too.
+    const volume = evaluateVolume(serviceId, record.volume);
+    if (volume !== undefined) {
+      const effectiveMaxInstances = maxInstances ?? Math.max(minInstances ?? 0, 1);
+      if (effectiveMaxInstances !== 1) {
+        throw new CliError(`services.${serviceId} has a volume, so it must run as a single instance, but its effective maxInstances is ${effectiveMaxInstances}. A volume is a disk on one machine — it cannot be shared between instances, so each one would get its own separate copy. Set \`maxInstances: 1\` (with \`minInstances\` 0 or 1), or remove the volume and keep state in a database or object storage instead.`);
+      }
+    }
+
     const env = evaluateEnvRecord(serviceId, record.env);
     // Read (and type-checked) but deliberately NOT part of `definition`: the
     // dev command is only ever run locally by `hexclave dev --service-id`, so
@@ -413,6 +471,8 @@ export function evaluateServicesFunction(options: {
         root_directory: relativeRootDirectory === "" ? "." : relativeRootDirectory.split(path.sep).join("/"),
         // Root-directory-relative posix path; absent = Railpack auto-detection.
         dockerfile_path: dockerfilePath,
+        // Absent = the container filesystem is entirely ephemeral.
+        volume,
         env: serializeEnvForWire(env),
       },
       env,

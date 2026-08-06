@@ -28,6 +28,7 @@
 // deliberately out of scope for now; an auto-cleanup layer (or an explicit
 // prune command) is planned to cover it.
 
+import { getPlanIdForProjectOrNull } from "@/lib/plan-entitlements";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
@@ -129,6 +130,8 @@ export function definitionFromServiceRow(row: {
   maxInstances: number | null,
   rootDirectory: string | null,
   dockerfilePath: string | null,
+  volumePath: string | null,
+  volumeSizeGb: number | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
   return {
@@ -143,6 +146,12 @@ export function definitionFromServiceRow(row: {
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
     dockerfile_path: row.dockerfilePath ?? undefined,
+    // The columns are written as a pair, so a row with only one of them set is
+    // corrupt rather than merely partial — treat it as "no volume" instead of
+    // synthesizing a definition with a made-up path or size.
+    volume: row.volumePath !== null && row.volumeSizeGb !== null
+      ? { path: row.volumePath, size_gb: row.volumeSizeGb }
+      : undefined,
     env: parseStoredEnv(row.env, row.serviceId),
   };
 }
@@ -177,7 +186,97 @@ export async function getServiceRowOrThrow(prisma: PrismaClientTransaction, tena
  * absent from `services` are left untouched (see the KNOWN GAP note at the
  * top of this file).
  */
+/**
+ * Always-on instances (`minInstances > 0`) are a paid capability: they hold a
+ * machine up around the clock instead of scaling to zero between requests.
+ * Free-plan teams may still deploy — they just have to let their services
+ * scale to zero.
+ *
+ * Called from BOTH doors, and it has to be:
+ *
+ *   - The definition sync is the first server call `hexclave deploy` makes, so
+ *     checking there fails before any source is packaged or uploaded and puts
+ *     the message at the top of the deploy output. That is UX, not a boundary:
+ *     the sync is skippable by anyone calling the API directly.
+ *   - The deploy POST is the actual entitlement boundary. It accepts any stored
+ *     definition whose `definition_sync_id` still matches, so without a recheck
+ *     a team could sync while paid, downgrade, and keep deploying always-on
+ *     machines with the old sync id — and, more mundanely, any Free project
+ *     that already had `min_instances > 0` stored before this gate shipped
+ *     would keep deploying it forever.
+ *
+ * `volume` is deliberately NOT gated: persistent disks are available on every
+ * plan for now. That is a pricing decision, not an oversight — revisit it
+ * together with any per-plan storage quota.
+ *
+ * FUTURE: this gates new DEPLOYS, not machines already running. A team can
+ * subscribe, deploy always-on services, cancel, and keep those machines
+ * indefinitely, since they never need to re-deploy. Closing that needs a
+ * downgrade-time sweep that rescales running services, which belongs with the
+ * billing lifecycle rather than here.
+ */
+export async function assertMinInstancesAllowedByPlan(tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
+  const offending = Object.entries(services)
+    .filter(([, definition]) => (definition.min_instances ?? 0) > 0)
+    .map(([serviceId]) => serviceId)
+    .sort(stringCompare);
+  if (offending.length === 0) return;
+
+  // Null = this project isn't plan-gated at all (self-hosted, or plan limits
+  // disabled) or the plan couldn't be read. All of those must fail open —
+  // deploying can't depend on the billing store being reachable.
+  if (await getPlanIdForProjectOrNull(tenancy.project) !== "free") return;
+
+  // The CLI truncates the surfaced message at 1000 chars, and the remedy comes
+  // last — so cap the list rather than let a config with many long service ids
+  // push the actionable half off the end.
+  const shown = offending.slice(0, 5).map((serviceId) => `\`${serviceId}\``);
+  const list = offending.length > shown.length
+    ? `${shown.join(", ")}, and ${offending.length - shown.length} more`
+    : shown.join(", ");
+  throw new StatusError(400, [
+    `Always-on instances are not available on the Free plan, but ${offending.length === 1 ? `service ${list} sets` : `services ${list} set`} \`minInstances\` above 0.`,
+    "",
+    "Either:",
+    `  - set \`minInstances: 0\` (or remove it) on ${offending.length === 1 ? "that service" : "those services"} in your \`services\` export — ${offending.length === 1 ? "it will" : "they will"} scale to zero when idle and cold-start on the next request; or`,
+    "  - upgrade your plan at https://app.hexclave.com to keep instances always on.",
+  ].join("\n"));
+}
+
+/**
+ * Rejects a sync that would shrink a volume, BEFORE anything is packaged or
+ * uploaded.
+ *
+ * Volumes are grow-only (Fly refuses a shrink, and shrinking would destroy
+ * tenant data). Marshal enforces that too, but only at apply time — by then
+ * `hexclave deploy` has already built the tarball, consumed an upload slot, and
+ * started a run, so the author gets the error at the worst possible moment. The
+ * previously synced size is right here in the row, so catch it at the door.
+ *
+ * Marshal's check stays as the backstop: this column can drift from the disk's
+ * real size (a sync that succeeded followed by an apply that never converged),
+ * and only the runtime knows what Fly actually has.
+ */
+async function assertNoVolumeShrink(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>): Promise<void> {
+  const existingRows = await prisma.deploymentService.findMany({
+    where: { tenancyId: tenancy.id, serviceId: { in: Object.keys(services) } },
+    select: { serviceId: true, volumeSizeGb: true },
+  });
+  const previousSizeGb = new Map(existingRows.map((row) => [row.serviceId, row.volumeSizeGb]));
+  for (const [serviceId, definition] of Object.entries(services)) {
+    const previous = previousSizeGb.get(serviceId) ?? null;
+    const next = definition.volume?.size_gb ?? null;
+    if (previous === null || next === null || next >= previous) continue;
+    throw new StatusError(400, [
+      `Service \`${serviceId}\` already has a ${previous}GB volume, which cannot be shrunk to ${next}GB — disks can only grow.`,
+      "",
+      `Set its \`volume.size\` back to at least ${previous}, or remove \`volume\` from the service to detach the disk (the data is kept either way).`,
+    ].join("\n"));
+  }
+}
+
 export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
+  await assertNoVolumeShrink(prisma, tenancy, services);
   for (const [serviceId, definition] of Object.entries(services)) {
     const definitionColumns = {
       definitionSyncedAt: new Date(),
@@ -187,6 +286,11 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
       dockerfilePath: definition.dockerfile_path ?? null,
+      // Written as a pair: a definition that drops `volume` must clear BOTH
+      // columns, or a stale half would keep mounting a disk the config no
+      // longer declares.
+      volumePath: definition.volume?.path ?? null,
+      volumeSizeGb: definition.volume?.size_gb ?? null,
       // The yup-validated env may contain explicit `undefined` fields, which
       // aren't valid JSON values; filter each entry at this boundary. Spelled
       // out field-by-field so the result is a Prisma-storable entry array
@@ -609,6 +713,9 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
       // keeps the spec self-consistent regardless.
       max_instances: definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
       port: definition.port,
+      // Absent = ephemeral container filesystem. Marshal re-validates that a
+      // volume implies max_instances === 1.
+      ...(definition.volume !== undefined ? { volume: definition.volume } : {}),
     },
     // dockerfile_path only matters when there is something to build; absent =
     // the builder auto-detects the build with Railpack.
@@ -888,6 +995,8 @@ export type DeploymentServiceApiShape = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // Null = no persistent disk (an ephemeral container filesystem).
+  volume: { path: string, size_gb: number } | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   // Whether any run ever reached READY; the dashboard keeps its "deploy your
@@ -1058,6 +1167,7 @@ export async function serviceToApiShape(options: {
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,
     dockerfile_path: row.dockerfilePath,
+    volume: definition.volume ?? null,
     provisioned: row.provisionedAt != null,
     status,
     has_successful_deploy: hasSuccessfulDeploy,

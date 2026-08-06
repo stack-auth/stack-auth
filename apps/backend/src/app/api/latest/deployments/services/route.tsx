@@ -1,4 +1,4 @@
-import { HEXCLAVE_SERVICE_ID, listServiceRows, serviceToApiShape, syncServiceDefinitions } from "@/lib/deployments";
+import { HEXCLAVE_SERVICE_ID, assertMinInstancesAllowedByPlan, listServiceRows, serviceToApiShape, syncServiceDefinitions } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { deploymentServiceDefinitionSchema } from "@hexclave/shared/dist/deployments";
@@ -74,6 +74,7 @@ export const PUT = createSmartRouteHandler({
     if (Object.keys(body.services).length === 0) {
       throw new StatusError(400, "The services record must contain at least one service. (Nothing to sync — the config file's `services` export is empty.)");
     }
+    await assertMinInstancesAllowedByPlan(auth.tenancy, body.services);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const syncId = randomUUID();
     await syncServiceDefinitions(prisma, auth.tenancy, body.services, syncId);

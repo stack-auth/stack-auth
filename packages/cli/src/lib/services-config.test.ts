@@ -186,6 +186,58 @@ describe("evaluateServicesFunction (deploy mode)", () => {
   });
 });
 
+describe("volumes", () => {
+  function web(service: Record<string, unknown>) {
+    return () => ({ web: { type: "container", port: 3000, env: {}, ...service } });
+  }
+
+  it("serializes a volume into the wire shape, converting size to size_gb", () => {
+    const { services } = evaluate(web({ volume: { path: "/data", size: 10 } }));
+    expect(services.get("web")?.definition.volume).toEqual({ path: "/data", size_gb: 10 });
+  });
+
+  it("leaves the volume absent when it is not declared", () => {
+    const { services } = evaluate(web({}));
+    expect(services.get("web")?.definition.volume).toBeUndefined();
+  });
+
+  it("allows minInstances 0 or 1 alongside a volume", () => {
+    // Scale-to-zero is fine: a stopped machine keeps its volume and Fly Proxy
+    // autostarts it with the disk intact (smoke-verified in
+    // real Fly, ~1.7s cold start with the disk intact).
+    expect(() => evaluate(web({ minInstances: 0, maxInstances: 1, volume: { path: "/data", size: 1 } }))).not.toThrow();
+    expect(() => evaluate(web({ minInstances: 1, maxInstances: 1, volume: { path: "/data", size: 1 } }))).not.toThrow();
+  });
+
+  it("rejects a volume on a service that can run more than one instance", () => {
+    expect(() => evaluate(web({ maxInstances: 2, volume: { path: "/data", size: 1 } })))
+      .toThrow("its effective maxInstances is 2");
+    // maxInstances defaults up to minInstances, so min alone is caught too.
+    expect(() => evaluate(web({ minInstances: 3, volume: { path: "/data", size: 1 } })))
+      .toThrow("its effective maxInstances is 3");
+  });
+
+  it("rejects mount paths that are not normalized absolute paths", () => {
+    for (const volumePath of ["data", "/", "/data/", "/data/../etc", "/da\\ta"]) {
+      expect(() => evaluate(web({ volume: { path: volumePath, size: 1 } })), `path ${JSON.stringify(volumePath)}`)
+        .toThrow("must be a normalized absolute path inside the container");
+    }
+  });
+
+  it("rejects sizes outside the supported range and non-integer sizes", () => {
+    expect(() => evaluate(web({ volume: { path: "/data", size: 0 } }))).toThrow("must be between 1 and 500 GB");
+    expect(() => evaluate(web({ volume: { path: "/data", size: 501 } }))).toThrow("must be between 1 and 500 GB");
+    expect(() => evaluate(web({ volume: { path: "/data", size: 1.5 } }))).toThrow("whole number of gigabytes");
+  });
+
+  it("rejects a missing path or size, and unknown volume fields", () => {
+    expect(() => evaluate(web({ volume: { size: 1 } }))).toThrow("services.web.volume.path is required");
+    expect(() => evaluate(web({ volume: { path: "/data" } }))).toThrow("services.web.volume.size is required");
+    expect(() => evaluate(web({ volume: { path: "/data", size: 1, sizeGb: 2 } }))).toThrow('unknown field "sizeGb"');
+    expect(() => evaluate(web({ volume: "10gb" }))).toThrow("services.web.volume must be an object");
+  });
+});
+
 describe("collectSecretDefaults", () => {
   function webServiceWithEnv(servicesExport: unknown) {
     const { services } = evaluate(servicesExport);

@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import { computeWebhookToken, type Builder } from "./builds.js";
-import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_UPLOAD_BYTES, SOFT_CONCURRENCY_LIMIT, getConfig, resolveNamespaceOrg } from "./config.js";
+import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_UPLOAD_BYTES, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_NAME, getConfig, resolveNamespaceOrg } from "./config.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
-import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine } from "./fly/client.js";
+import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
 import { redactSecrets } from "./redact.js";
 import { computeRevision } from "./revision.js";
 import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
-import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec } from "./types.js";
+import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
 export const SERVICE_TYPE_CONTAINER = "container";
@@ -53,6 +53,30 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (maxInstances > MAX_INSTANCES_CAP) throw badRequest(`config.max_instances must be <= ${MAX_INSTANCES_CAP}`);
   if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw badRequest("config.port must be a valid port number");
 
+  // A Fly volume attaches to at most one machine, so a volume-backed service cannot have a
+  // fleet: max_instances must be exactly 1. min_instances 0 is still fine — a stopped
+  // machine keeps its volume and autostarts with it (smoke-verified).
+  let volume: VolumeConfig | undefined;
+  if (config.volume !== undefined && config.volume !== null) {
+    const volumeRecord = asRecord(config.volume);
+    if (volumeRecord === null) throw badRequest("config.volume must be an object of { path, size_gb }");
+    const volumePath = volumeRecord.path;
+    const sizeGb = volumeRecord.size_gb;
+    if (typeof volumePath !== "string" || volumePath === "" || volumePath.length > 512) throw badRequest("config.volume.path must be a non-empty string of at most 512 characters");
+    // The path becomes a mount point inside the container. Require a normalized ABSOLUTE
+    // path: relative or dot-laden paths are ambiguous against the image's WORKDIR, and
+    // mounting over "/" would shadow the whole image.
+    // eslint-disable-next-line no-control-regex
+    if (!volumePath.startsWith("/") || volumePath === "/" || volumePath.endsWith("/") || volumePath.includes("\\") || /[\x00-\x1f]/.test(volumePath) || volumePath.split("/").slice(1).some((segment) => segment === "" || segment === "." || segment === "..")) {
+      throw badRequest('config.volume.path must be a normalized absolute path inside the container (e.g. "/data") — no trailing slash, no "." or ".." segments, no backslashes or control characters');
+    }
+    if (typeof sizeGb !== "number" || !Number.isInteger(sizeGb) || sizeGb < MIN_VOLUME_SIZE_GB || sizeGb > MAX_VOLUME_SIZE_GB) {
+      throw badRequest(`config.volume.size_gb must be an integer between ${MIN_VOLUME_SIZE_GB} and ${MAX_VOLUME_SIZE_GB}`);
+    }
+    if (maxInstances !== 1) throw badRequest("config.max_instances must be 1 when config.volume is set (a Fly volume can only be attached to one instance)");
+    volume = { path: volumePath, size_gb: sizeGb };
+  }
+
   const source = asRecord(record.source);
   if (source === null) throw badRequest("source is required");
   const hasUploadId = typeof source.upload_id === "string" && source.upload_id !== "";
@@ -93,7 +117,10 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   }
 
   return {
-    config: { min_instances: minInstances, max_instances: maxInstances, port: port },
+    // Key order is canonical here too (see the source note below). `volume` is only present
+    // when set, so a volumeless spec hashes exactly as it did before this field existed —
+    // computeRevision mirrors that same conditional spread.
+    config: { min_instances: minInstances, max_instances: maxInstances, port: port, ...(volume !== undefined ? { volume } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: hasUploadId
@@ -196,12 +223,21 @@ function machineConfigForSlot(options: {
   key: string,
   slot: number,
   env: Record<string, string>,
+  volumeId: string | null,
 }): Record<string, unknown> {
   const pinned = options.slot < pinnedMachineCount(options.spec);
+  const volume = options.spec.config.volume;
   const config = {
     image: options.imageRef,
     guest: MACHINE_GUEST,
     env: options.env,
+    // Only slot 0 can carry the volume, and a volume-backed spec is single-slot anyway
+    // (max_instances === 1, enforced in validateServiceSpec). The volume id is part of the
+    // hashed config on purpose: if the volume were ever replaced, the machine must roll onto
+    // the new one rather than silently keep the old mount.
+    ...(volume !== undefined && options.volumeId !== null && options.slot === 0
+      ? { mounts: [{ volume: options.volumeId, path: volume.path }] }
+      : {}),
     metadata: {
       hexclave_ns: options.ns,
       hexclave_key: options.key,
@@ -231,6 +267,79 @@ function machineConfigForSlot(options: {
   return { ...config, metadata: { ...config.metadata, hexclave_config_hash: hash } };
 }
 
+// Fly does NOT enforce unique volume names within an app, and nothing serializes concurrent
+// applies (applyServiceSpec and completeBuild can both be inside applyMachines at once), so a
+// create race can leave two volumes called VOLUME_NAME. These two helpers make the choice
+// DETERMINISTIC — the currently-attached one first, then the oldest id — so every apply, on
+// every call, converges on the same disk. Choosing arbitrarily is the dangerous case: it
+// would roll the machine onto the other volume and the service would come up with an empty
+// disk, which reads to the tenant as total data loss. Volumes that are being destroyed can
+// never be mounted, so they are never candidates.
+export function candidateVolumes(volumes: FlyVolume[]): FlyVolume[] {
+  return volumes
+    .filter((candidate) => candidate.name === VOLUME_NAME && candidate.state !== "destroying" && candidate.state !== "pending_destruction")
+    .sort((a, b) => {
+      if ((a.attached_machine_id !== null) !== (b.attached_machine_id !== null)) return a.attached_machine_id !== null ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+}
+
+export function selectCanonicalVolume(volumes: FlyVolume[]): FlyVolume | null {
+  const candidates = candidateVolumes(volumes);
+  return candidates.length === 0 ? null : candidates[0];
+}
+
+// Idempotently brings the service's single volume to the configured size, returning its id.
+// Created BEFORE any machine: Fly places a machine on its volume's host, and creating the
+// machine first would usually land it on a different host (then the mount fails).
+async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfig): Promise<string> {
+  const config = getConfig();
+  const candidates = candidateVolumes(await fly.listVolumes(appName));
+  if (candidates.length === 0) {
+    const created = await fly.createVolume(appName, { name: VOLUME_NAME, region: config.fly.region, size_gb: volume.size_gb });
+    await fly.waitForVolumeListed(appName, created.id);
+    // Re-list and re-select rather than trusting our own create. Two concurrent
+    // applies can both see an empty list and both create a volume (Fly does not
+    // enforce unique names), and if each then mounted the disk it made, the service
+    // would come up as two machines backed by DIVERGENT data — writes split across
+    // two disks, unmergeable. Re-selecting with the same deterministic rule makes
+    // both applies converge on one canonical volume; the loser's create is orphaned
+    // (logged below), and whichever apply gets there second is refused by Fly's
+    // "volume already claimed" 412 instead of silently diverging.
+    const canonical = selectCanonicalVolume(await fly.listVolumes(appName));
+    if (canonical === null) return created.id; // list raced the create; ours is all we know of
+    if (canonical.id !== created.id) {
+      console.error(`volume create race on ${appName}: adopted ${canonical.id}, orphaning ${created.id} (needs manual cleanup)`);
+      // The orphan may be smaller than requested; the adopted one still has to grow.
+      if (volume.size_gb > canonical.size_gb) await fly.extendVolume(appName, canonical.id, volume.size_gb);
+    }
+    return canonical.id;
+  }
+  const existing = candidates[0];
+  if (volume.size_gb > existing.size_gb) {
+    await fly.extendVolume(appName, existing.id, volume.size_gb);
+  } else if (volume.size_gb < existing.size_gb) {
+    // Fly volumes are grow-only, and shrinking would mean destroying tenant data. Fail the
+    // deploy rather than silently ignoring the requested size: a no-op here would leave the
+    // config claiming a size the service does not have and the tenant billed for the larger
+    // disk, with nothing anywhere reporting the divergence.
+    throw badRequest(
+      `the volume is already ${existing.size_gb}GB and cannot be shrunk to ${volume.size_gb}GB (disks can only grow). `
+      + `Set the volume size back to at least ${existing.size_gb}GB, or remove the volume from this service and redeploy to detach it — the existing disk is kept either way.`,
+    );
+  }
+  return existing.id;
+}
+
+// Mount sets are compared by (volume id, path), order-insensitively. Any difference means
+// the machine has to be recreated rather than updated — see the call site.
+function mountsDiffer(a: { volume: string, path: string }[], b: { volume: string, path: string }[]): boolean {
+  if (a.length !== b.length) return true;
+  const key = (mount: { volume: string, path: string }) => `${mount.volume}\u0000${mount.path}`;
+  const inA = new Set(a.map(key));
+  return b.some((mount) => !inA.has(key(mount)));
+}
+
 async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: string, env: Record<string, string>): Promise<void> {
   const config = getConfig();
   const appName = appNameForService(config.envId, stored.ns, stored.key);
@@ -238,9 +347,12 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
   await fly.ensureApp(appName, network);
   await fly.ensureFlycastIp(appName, network);
 
+  const volume = stored.spec.config.volume;
+  const volumeId = volume === undefined ? null : await ensureVolume(fly, appName, volume);
+
   const machines = await fly.listMachines(appName);
   const bySlot = new Map<number, FlyMachine>();
-  const extras: FlyMachine[] = [];
+  let extras: FlyMachine[] = [];
   for (const machine of machines) {
     const slot = Number(machine.config.metadata?.hexclave_slot);
     if (Number.isInteger(slot) && slot >= 0 && !bySlot.has(slot)) {
@@ -250,14 +362,43 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     }
   }
 
+  // A volume can only be claimed by one machine, so any leftover machine still holding it
+  // must go BEFORE the slot loop tries to mount it — otherwise slot 0's create/update gets
+  // Fly's 412 "volume already claimed", applyMachines throws before reaching the destroy
+  // loop below, and every retry reproduces it identically (a permanently wedged service).
+  // Scoped to claim-holders only: reordering the whole destroy loop would break the rolling
+  // guarantee documented below.
+  if (volumeId !== null) {
+    const holdsVolume = (machine: FlyMachine) => (machine.config.mounts ?? []).some((mount) => mount.volume === volumeId);
+    const claimHolders = extras.filter(holdsVolume);
+    for (const machine of claimHolders) {
+      await fly.destroyMachine(appName, machine.id);
+    }
+    extras = extras.filter((machine) => !holdsVolume(machine));
+  }
+
   const count = desiredMachineCount(stored.spec);
   // Rolling, one machine at a time with a started-wait between (deploy decision #6): a bad
   // image fails on slot 0 and leaves the rest serving the old revision.
   for (let slot = 0; slot < count; slot++) {
-    const desired = machineConfigForSlot({ imageRef, spec: stored.spec, revision: stored.revision, ns: stored.ns, key: stored.key, slot, env });
+    const desired = machineConfigForSlot({ imageRef, spec: stored.spec, revision: stored.revision, ns: stored.ns, key: stored.key, slot, env, volumeId });
     const desiredHash = (desired.metadata as Record<string, string>).hexclave_config_hash;
-    const existing = bySlot.get(slot);
+    let existing = bySlot.get(slot);
     bySlot.delete(slot);
+
+    // A machine's MOUNTS cannot be changed in place. Fly places a machine on its volume's
+    // host, so an already-placed machine can't adopt a volume that was created afterwards:
+    // real Fly rejects the update with `400 invalid_argument: volume does not exist`, even
+    // once the volume is listed and `created` (verified against real Fly). Left to
+    // the update path, adding a volume to a deployed service would fail identically on every
+    // retry and wedge it forever. Destroy first so the branch below recreates it on the
+    // volume's host. Detaching is recreated too: the reverse transition is equally unproven,
+    // and the volume itself always survives (smoke Q3a).
+    if (existing !== undefined && mountsDiffer(existing.config.mounts ?? [], desired.mounts as { volume: string, path: string }[] | undefined ?? [])) {
+      await fly.destroyMachine(appName, existing.id);
+      existing = undefined;
+    }
+
     const existingStarted = existing !== undefined && (existing.state === "started" || existing.state === "starting");
     // Config-hash match short-circuits — but only when the machine is actually up. A pinned
     // (autostop:"off") slot that crash-looped to `stopped` will never be restarted by Fly
@@ -836,8 +977,16 @@ export async function deleteService(ns: string, key: string): Promise<void> {
       await releaseDomainClaim(claim);
     }
   }
-  // force=true kills machines and releases IPs in one call; recoverable by re-applying the
-  // spec. Build history is intentionally kept (it's namespaced under builds/<ns>/<key>/).
+  // force=true kills machines and releases IPs in one call. Build history is intentionally
+  // kept (it's namespaced under builds/<ns>/<key>/).
+  //
+  // DANGER: this is NO LONGER fully recoverable by re-applying the spec. Destroying the app
+  // destroys its VOLUMES with it (smoke-verified against real Fly), so deleting a
+  // volume-backed service is irreversible tenant-data loss. Nothing reaches this today — the
+  // backend exposes no service-delete route, and MarshalClient.deleteService has no callers —
+  // but before any delete path ships, this must either detach and keep the volume (destroy the
+  // machines and release the claims without destroying the app) or require an explicit
+  // destructive-delete acknowledgement from the caller.
   await fly.deleteApp(appName);
   await deleteSpec(ns, key);
 }

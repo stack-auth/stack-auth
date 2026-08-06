@@ -28,6 +28,7 @@ export type FlyMachine = {
     image: string,
     env?: Record<string, string>,
     metadata?: Record<string, string>,
+    mounts?: { volume: string, path: string }[],
     [key: string]: unknown,
   },
 };
@@ -54,6 +55,15 @@ export type FlyCertificate = {
   dnsValidationTarget: string,
   isApex: boolean,
   issued: { nodes: { type: string, expiresAt: string }[] },
+};
+
+export type FlyVolume = {
+  id: string,
+  name: string,
+  state: string,
+  size_gb: number,
+  region: string,
+  attached_machine_id: string | null,
 };
 
 export type FlyAppIps = {
@@ -227,6 +237,49 @@ export class FlyClient {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Volumes
+  //
+  // Smoke-verified against real Fly: a volume outlives machine destroy and
+  // re-attaches to a new machine, but `DELETE /apps/{app}?force=true` destroys it with the
+  // app. Creates answer 201, not 200.
+
+  async listVolumes(app: string): Promise<FlyVolume[]> {
+    return await this.fetchMachinesApi<FlyVolume[]>(`/apps/${app}/volumes`, { allow404: true }) ?? [];
+  }
+
+  async createVolume(app: string, body: { name: string, region: string, size_gb: number }): Promise<FlyVolume> {
+    const volume = await this.fetchMachinesApi<FlyVolume>(`/apps/${app}/volumes`, { method: "POST", body });
+    // The id is asserted, not just null-checked: without it the caller builds
+    // `mounts: [{ volume: undefined, path }]`, whose `volume` key vanishes under
+    // JSON.stringify, and Fly answers the machine create with a baffling error instead.
+    if (volume === null || typeof volume.id !== "string" || volume.id === "") {
+      throw new FlyApiError(500, `machines POST /apps/${app}/volumes`, "volume create response had no id");
+    }
+    return volume;
+  }
+
+  // A create can answer 201 before the volume is listable. Mounting one that Fly hasn't
+  // surfaced yet fails with "volume does not exist", which on the add-a-volume path would
+  // land AFTER the old machine was destroyed — i.e. downtime until a later reconcile.
+  // Smoke runs have always seen it ready on the first poll, so this normally costs one
+  // extra list; the bounded loop is insurance, not an expected wait.
+  async waitForVolumeListed(app: string, volumeId: string, options?: { attempts?: number, delayMillis?: number }): Promise<void> {
+    const attempts = options?.attempts ?? 10;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const volumes = await this.listVolumes(app);
+      if (volumes.some((volume) => volume.id === volumeId && volume.state !== "creating")) return;
+      await new Promise((resolve) => setTimeout(resolve, options?.delayMillis ?? 1000));
+    }
+    // Don't throw: the machine create below is the real arbiter, and its error names the
+    // actual problem. Failing here would turn a slow list into a failed deploy.
+  }
+
+  // Grow-only. Fly rejects a smaller size; callers reject it earlier with a better message.
+  async extendVolume(app: string, volumeId: string, sizeGb: number): Promise<void> {
+    await this.fetchMachinesApi(`/apps/${app}/volumes/${volumeId}/extend`, { method: "PUT", body: { size_gb: sizeGb } });
   }
 
   // -------------------------------------------------------------------------

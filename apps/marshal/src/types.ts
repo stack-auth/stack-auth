@@ -13,6 +13,15 @@ export type EnvValue =
   | { value: string }
   | { ref: string }; // "<service_key>.<output_key>"
 
+// A persistent disk mounted into the container. Fly volumes are a slice of local NVMe on
+// ONE host: a volume attaches to at most one machine and a machine mounts at most one
+// volume, so a service with a volume is necessarily single-instance (max_instances: 1 —
+// enforced in validateServiceSpec). size_gb is grow-only; Fly rejects a shrink.
+export type VolumeConfig = {
+  path: string, // absolute, normalized mount point inside the container
+  size_gb: number,
+};
+
 // 1/1 → serverful (one always-on instance, no cold starts). Anything else → serverless,
 // scaling between bounds; min_instances: 0 scales to zero, cold-starts on next request.
 export type ContainerConfig = {
@@ -20,6 +29,8 @@ export type ContainerConfig = {
   max_instances: number, // >= min_instances; v1 cap: 5
   // The single HTTP port the container listens on. Readiness = port accepts connections.
   port: number,
+  // Absent = the container filesystem is entirely ephemeral.
+  volume?: VolumeConfig,
 };
 
 export type ServiceSpec = {

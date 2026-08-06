@@ -1,4 +1,4 @@
-import { HEXCLAVE_SERVICE_ID, definitionFromServiceRow, encryptDeploymentRedactionSecrets, getServiceRowOrThrow, resolveEnvVars, startDeployment } from "@/lib/deployments";
+import { HEXCLAVE_SERVICE_ID, assertMinInstancesAllowedByPlan, definitionFromServiceRow, encryptDeploymentRedactionSecrets, getServiceRowOrThrow, resolveEnvVars, startDeployment } from "@/lib/deployments";
 import { getMarshalDeploymentsConfigOrNull } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -73,6 +73,13 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} has no container port in its stored definition. Re-sync with an up-to-date CLI (\`hexclave deploy\`).`);
     }
     const definition = definitionFromServiceRow(row);
+
+    // Re-check the plan against the STORED definition. The sync route checks
+    // too, but only as CLI UX — this is the actual entitlement boundary, since
+    // a stored definition can outlive the plan that was allowed to create it
+    // (a downgrade, or a row synced before the gate existed). Runs before
+    // secrets are resolved or the upload is consumed.
+    await assertMinInstancesAllowedByPlan(auth.tenancy, { [params.service_id]: definition });
 
     // Resolve env vars BEFORE consuming the upload: a missing secret or a
     // dangling connection must not spend the upload.

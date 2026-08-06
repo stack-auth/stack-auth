@@ -82,6 +82,9 @@ export type MarshalServiceSpec = {
     min_instances: number,
     max_instances: number,
     port: number,
+    // Persistent disk mounted into the container; absent = ephemeral
+    // filesystem. Marshal requires max_instances === 1 when it is set.
+    volume?: { path: string, size_gb: number },
   },
   // dockerfile_path is relative to the tarball root; absent = the builder
   // auto-detects the build with Railpack.

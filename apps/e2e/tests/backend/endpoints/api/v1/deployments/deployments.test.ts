@@ -101,7 +101,8 @@ async function pollRunToStatus(runId: string, wantedStatus: "ready" | "error"): 
 
 type MockApp = {
   name: string,
-  machines: { id: string, image: string, metadata: Record<string, string>, env: Record<string, string> }[],
+  machines: { id: string, image: string, metadata: Record<string, string>, env: Record<string, string>, mounts: { volume: string, path: string }[] }[],
+  volumes: { id: string, name: string, size_gb: number, attached_machine_id: string | null }[],
   certificates: { hostname: string, clientStatus: string }[],
 };
 
@@ -191,7 +192,9 @@ describe("definition sync", () => {
       api: {
         type: "container",
         port: 8080,
-        min_instances: 1,
+        // min_instances stays 0: this project's billing team is on the Free
+        // plan, where always-on instances are rejected by the sync route.
+        min_instances: 0,
         max_instances: 3,
         root_directory: "api",
         env: {
@@ -209,7 +212,7 @@ describe("definition sync", () => {
       id: "api",
       type: "container",
       port: 8080,
-      min_instances: 1,
+      min_instances: 0,
       max_instances: 3,
       root_directory: "api",
       provisioned: false,
@@ -227,6 +230,146 @@ describe("definition sync", () => {
 
     const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
     expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api"]);
+  });
+
+  it("rejects always-on instances on the Free plan, naming the offending services", async ({ expect }) => {
+    // A project created through the internal projects API is owned by a billing
+    // team that starts on the Free plan (Project.create waits for that
+    // entitlement), so this exercises the gate's POSITIVE path — unlike the
+    // other tests here, whose projects have no owner team and are never gated.
+    const { createProjectResponse } = await Project.createAndSwitch();
+    expect(createProjectResponse.body.owner_team_id).toEqual(expect.any(String));
+
+    // The gate deliberately respects the same HEXCLAVE_DISABLE_PLAN_LIMITS
+    // switch as every other Hexclave plan limit, and local `.env.local` files
+    // commonly set it. Read what the backend actually does rather than assuming
+    // — otherwise this test silently means the opposite thing on a dev machine.
+    const planUsage = await niceBackendFetch("/api/v1/internal/plan-usage", { accessType: "admin" });
+    const enforced = (planUsage.body as any)?.are_plan_limits_enforced !== false;
+
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        services: {
+          web: { type: "container", port: 3000, min_instances: 1, env: {} },
+          worker: { type: "container", port: 3001, min_instances: 2, max_instances: 3, env: {} },
+          idle: { type: "container", port: 3002, env: {} },
+        },
+      },
+    });
+
+    if (!enforced) {
+      // Plan limits off: the gate must fail OPEN, not half-apply.
+      expect(response.status).toBe(200);
+      return;
+    }
+
+    expect(response.status).toBe(400);
+    const message = JSON.stringify(response.body);
+    expect(message).toContain("Free plan");
+    // Names every offending service, and only those. Matched with backticks
+    // because the message's own prose contains the bare word "idle".
+    expect(message).toContain("`web`");
+    expect(message).toContain("`worker`");
+    expect(message).not.toContain("`idle`");
+
+    // Nothing was written: the gate runs before the upsert.
+    const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
+    expect((listResponse.body as any).items).toEqual([]);
+
+    // The same services scale-to-zero sync fine.
+    const accepted = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        services: {
+          web: { type: "container", port: 3000, min_instances: 0, max_instances: 3, env: {} },
+          worker: { type: "container", port: 3001, env: {} },
+        },
+      },
+    });
+    expect(accepted.status).toBe(200);
+  });
+
+  it("stores a volume and surfaces it on the service", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("vol");
+    await syncServices({
+      [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, volume: { path: "/data", size_gb: 10 }, env: {} },
+    });
+    const getResponse = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect(getResponse.status).toBe(200);
+    expect((getResponse.body as any).volume).toEqual({ path: "/data", size_gb: 10 });
+
+    // Re-syncing without the volume must clear BOTH columns, not leave a
+    // half-written pair that would keep mounting a disk the config dropped.
+    await syncServices({ [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, env: {} } });
+    const afterRemoval = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect((afterRemoval.body as any).volume).toBe(null);
+  });
+
+  it("rejects shrinking a volume at sync time, before anything is uploaded", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("shrink");
+    const definition = (sizeGb: number) => ({
+      [serviceId]: { type: "container", port: 3000, max_instances: 1, volume: { path: "/data", size_gb: sizeGb }, env: {} },
+    });
+    await syncServices(definition(10));
+
+    // Growing is fine; shrinking must fail HERE rather than at apply time, when
+    // the CLI has already packaged and uploaded the source.
+    await syncServices(definition(20));
+    const shrunk = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin", body: { services: definition(5) },
+    });
+    expect(shrunk.status).toBe(400);
+    expect(JSON.stringify(shrunk.body)).toContain("cannot be shrunk");
+
+    // The rejected sync wrote nothing — the stored size is still the grown one.
+    const read = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect((read.body as any).volume).toEqual({ path: "/data", size_gb: 20 });
+
+    // Detaching entirely is always allowed, whatever the size.
+    const detached = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT", accessType: "admin",
+      body: { services: { [serviceId]: { type: "container", port: 3000, max_instances: 1, env: {} } } },
+    });
+    expect(detached.status).toBe(200);
+  });
+
+  it("rejects a volume on a service that could run more than one instance", async ({ expect }) => {
+    await Project.createAndSwitch();
+    // A Fly volume attaches to one machine, so a fleet would silently give each
+    // instance its own separate disk.
+    const response = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "container", port: 3000, max_instances: 2, volume: { path: "/data", size_gb: 1 }, env: {} } } },
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("max_instances: 1");
+
+    // min_instances alone defaults max up to it, so it must be caught too.
+    const minOnly = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { web: { type: "container", port: 3000, min_instances: 2, volume: { path: "/data", size_gb: 1 }, env: {} } } },
+    });
+    expect(minOnly.status).toBe(400);
+  });
+
+  it("rejects a volume mount path that is not a normalized absolute path", async ({ expect }) => {
+    await Project.createAndSwitch();
+    for (const path of ["data", "/", "/data/../etc"]) {
+      const response = await niceBackendFetch("/api/v1/deployments/services", {
+        method: "PUT",
+        accessType: "admin",
+        body: { services: { web: { type: "container", port: 3000, volume: { path, size_gb: 1 }, env: {} } } },
+      });
+      expect(response.status, `path ${JSON.stringify(path)}`).toBe(400);
+      expect(JSON.stringify(response.body)).toContain("volume.path");
+    }
   });
 
   it("stores dockerfile_path and rejects one escaping the source root", async ({ expect }) => {
@@ -439,6 +582,72 @@ describe("deploys against the Marshal runtime", () => {
     expect(logsText).toContain("PLAIN_VAR=plain-value"); // non-secret value passes through
     expect(logsText).toContain("<redacted>"); // the secret was actually redacted, not just absent
     expect(logsText).not.toContain("sk-secret-value-123");
+  });
+
+  it("provisions a volume and mounts it on the machine", { timeout: 120_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("vol");
+    // min_instances 0 (Free-plan projects can't pin instances) — a volume works
+    // fine with scale-to-zero: the disk comes back with the machine.
+    const { uploadId, definitionSyncId } = await syncServiceAndUpload(serviceId, {
+      min_instances: 0,
+      max_instances: 1,
+      volume: { path: "/data", size_gb: 3 },
+    });
+    await pollRunToStatus(await startDeploy(serviceId, uploadId, definitionSyncId), "ready");
+
+    const app = await findMockApp(serviceId, 1);
+    expect(app.volumes).toHaveLength(1);
+    expect(app.volumes[0]).toMatchObject({ name: "hexclave_data", size_gb: 3 });
+    // The machine mounts that exact volume at the configured path.
+    expect(app.machines[0].mounts).toEqual([{ volume: app.volumes[0].id, path: "/data" }]);
+    expect(app.volumes[0].attached_machine_id).toBe(app.machines[0].id);
+
+    // Growing the volume reuses the SAME volume rather than creating a second
+    // one — the disk (and its data) must survive the redeploy.
+    const grownSyncId = await syncServices({
+      [serviceId]: { type: "container", port: 3000, min_instances: 0, max_instances: 1, volume: { path: "/data", size_gb: 5 }, env: {} },
+    });
+    const { uploadId: grownUploadId } = await createUpload();
+    await pollRunToStatus(await startDeploy(serviceId, grownUploadId, grownSyncId), "ready");
+
+    const grownApp = await findMockApp(serviceId, 1);
+    expect(grownApp.volumes).toHaveLength(1);
+    expect(grownApp.volumes[0].id).toBe(app.volumes[0].id);
+    expect(grownApp.volumes[0].size_gb).toBe(5);
+  });
+
+  it("adds a volume to an already-deployed service by recreating the machine", { timeout: 180_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("voladd");
+
+    // Deploy WITHOUT a volume first — the ordinary stateless case.
+    const first = await syncServiceAndUpload(serviceId, { min_instances: 0, max_instances: 1 });
+    await pollRunToStatus(await startDeploy(serviceId, first.uploadId, first.definitionSyncId), "ready");
+    const before = await findMockApp(serviceId, 1);
+    expect(before.volumes).toHaveLength(0);
+    expect(before.machines[0].mounts).toEqual([]);
+    const originalMachineId = before.machines[0].id;
+
+    // Now add a volume. A machine's mounts cannot change in place — Fly places a
+    // machine on its volume's host, and rejects an update that introduces a mount
+    // on an already-placed machine (the mock reproduces that 400). So this must
+    // provision the volume and RECREATE the machine, not update it. Before the
+    // recreate path existed this deploy failed and every retry failed identically.
+    const second = await syncServiceAndUpload(serviceId, {
+      min_instances: 0,
+      max_instances: 1,
+      volume: { path: "/data", size_gb: 2 },
+    });
+    await pollRunToStatus(await startDeploy(serviceId, second.uploadId, second.definitionSyncId), "ready");
+
+    const after = await findMockApp(serviceId, 1);
+    expect(after.volumes).toHaveLength(1);
+    expect(after.volumes[0]).toMatchObject({ name: "hexclave_data", size_gb: 2 });
+    expect(after.machines[0].mounts).toEqual([{ volume: after.volumes[0].id, path: "/data" }]);
+    // A NEW machine, on the volume's host — not the original one updated in place.
+    expect(after.machines[0].id).not.toBe(originalMachineId);
+    expect(after.machines).toHaveLength(1);
   });
 
   it("marks the run failed and reports blocked when a `url` connection has no verified domain", { timeout: 120_000 }, async ({ expect }) => {

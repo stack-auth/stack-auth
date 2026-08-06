@@ -85,6 +85,10 @@ export type AdminDeploymentServiceJson = {
   root_directory: string | null,
   // Null = built with Railpack auto-detection rather than a Dockerfile.
   dockerfile_path: string | null,
+  // Null = no persistent disk (an ephemeral container filesystem). Mirrors
+  // DeploymentServiceApiShape in apps/backend/src/lib/deployments — the two are
+  // hand-maintained duplicates, so they must be edited together.
+  volume: { path: string, size_gb: number } | null,
   provisioned: boolean,
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
