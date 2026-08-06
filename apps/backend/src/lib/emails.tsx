@@ -67,12 +67,6 @@ export async function sendEmailToMany(options: {
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
   });
-
-  if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
-    // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
-    // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
-    runAsynchronouslyAndWaitUntil(runEmailQueueStep());
-  }
 }
 
 export async function sendEmailFromDefaultTemplate(options: {

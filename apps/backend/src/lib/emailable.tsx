@@ -1,5 +1,5 @@
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import createEmailableClient from "emailable";
@@ -79,7 +79,7 @@ export async function checkEmailWithEmailable(
   },
 ): Promise<EmailableCheckResult> {
   try {
-    const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+    const apiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "") || throwErr("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
     const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
 
     if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
@@ -87,15 +87,7 @@ export async function checkEmailWithEmailable(
       return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
     }
 
-    if (!rawApiKey) {
-      if (["development", "test"].includes(getNodeEnvironment())) {
-        return { status: "deliverable", emailableScore: null };
-      }
-      throw new HexclaveAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
-    }
-
-    const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
-    if (!apiKey) {
+    if (apiKey === "disable_email_validation") {
       return { status: "deliverable", emailableScore: null };
     }
 
