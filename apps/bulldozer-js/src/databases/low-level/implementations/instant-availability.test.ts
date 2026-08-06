@@ -10,6 +10,7 @@ const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.
 
 function createSlowSetDatabase() {
   const releaseSets: Array<() => void> = [];
+  const rejectSets: Array<(error: Error) => void> = [];
   let setCallCount = 0;
   let closeCallCount = 0;
   const committed = new Map<string, ArrayBuffer>();
@@ -19,17 +20,27 @@ function createSlowSetDatabase() {
     async get(key) {
       return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
     },
-    async listEntries() {
-      throw new Error("not implemented");
+    async listEntries(options) {
+      const limit = options?.limit ?? 1000;
+      const startAfter = options?.startAfter === undefined ? undefined : text(options.startAfter);
+      if (startAfter === null) throw new Error("Expected a non-null pagination cursor");
+      const matchingEntries = [...committed.entries()]
+        .filter(([key]) => startAfter === undefined || key > startAfter)
+        .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+      return {
+        entries: matchingEntries.slice(0, limit).map(([key, value]) => ({ key: buffer(key), value: value.slice(0) })),
+        hasMore: matchingEntries.length > limit,
+      };
     },
     async setAll(entries) {
       setCallCount++;
       const seq = ["slow", crypto.randomUUID()] as unknown as DatabaseSeq;
-      const promise = new Promise<void>(resolve => {
+      const promise = new Promise<void>((resolve, reject) => {
         releaseSets.push(() => {
           for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
           resolve();
         });
+        rejectSets.push(reject);
       });
       seqToPromise.set(seq, promise);
       return { seq };
@@ -79,7 +90,14 @@ function createSlowSetDatabase() {
     releaseSet: () => {
       const releaseSet = releaseSets.shift();
       if (releaseSet === undefined) throw new Error("set was not started");
+      rejectSets.shift();
       releaseSet();
+    },
+    rejectSet: (error: Error) => {
+      releaseSets.shift();
+      const rejectSet = rejectSets.shift();
+      if (rejectSet === undefined) throw new Error("set was not started");
+      rejectSet(error);
     },
     setCallCount: () => setCallCount,
     closeCallCount: () => closeCallCount,
@@ -198,6 +216,45 @@ describe("instant-availability low-level database", () => {
     slow.releaseSet();
     await replicatedPromise;
     expect(replicated).toBe(true);
+  });
+
+  it("waits for this store's pending writes before listing a coherent range", async () => {
+    const slow = createSlowSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-list-test" });
+    const store = db.declareKvStore("store");
+    await store.setAll([{ key: buffer("key"), value: buffer("pending") }]);
+
+    let listed = false;
+    const listing = store.listEntries().then(result => {
+      listed = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(listed).toBe(false);
+
+    slow.releaseSet();
+    expect((await listing).entries.map(entry => [text(entry.key), text(entry.value)])).toEqual([["key", "pending"]]);
+  });
+
+  it("does not block a range read on another store's pending write", async () => {
+    const slow = createSlowSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-list-store-scope-test" });
+    const writingStore = db.declareKvStore("writing");
+    const unrelatedStore = db.declareKvStore("unrelated");
+    await writingStore.setAll([{ key: buffer("key"), value: buffer("pending") }]);
+
+    await expect(unrelatedStore.listEntries()).resolves.toEqual({ entries: [], hasMore: false });
+    slow.releaseSet();
+  });
+
+  it("rejects range reads when this store's optimistic write failed", async () => {
+    const slow = createSlowSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-list-failure-test" });
+    const store = db.declareKvStore("store");
+    await store.setAll([{ key: buffer("key"), value: buffer("pending") }]);
+    slow.rejectSet(new Error("underlying write failed"));
+
+    await expect(store.listEntries()).rejects.toThrow("underlying write failed");
   });
 
   it("applies backpressure to writes when too many seq records are pending", async () => {

@@ -1009,7 +1009,14 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
     })),
     getPiledriverGarbageCollectionProcessStartedAtMillis: () => piledriverDatabase.getGarbageCollectionProcessStartedAtMillis(),
-    collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => await piledriverDatabase.collectGarbage(cutoffTimestampMillis, maxObjects),
+    collectPiledriverGarbage: async (cutoffTimestampMillis, maxObjects) => {
+      if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+      return await withWriteLock(async () => {
+        // Recheck after waiting for the lock: close may have started while GC was queued.
+        if (closePromise !== null) throw new Error("Bulldozer database is closing and cannot start garbage collection");
+        return await piledriverDatabase.collectGarbage(cutoffTimestampMillis, maxObjects);
+      });
+    },
     close() {
       if (closePromise === null) {
         closePromise = traceSpan("bulldozer-js.bulldozer.close", async () => await withWriteLock(async () => {

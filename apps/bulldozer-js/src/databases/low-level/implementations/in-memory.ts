@@ -73,12 +73,12 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
           const matchingEntries = [...base64KeyToValue.entries()]
             .map(([keyBase64, value]) => ({
               key: arrayBufferFromUint8Array(Buffer.from(keyBase64, "base64")),
-              value: value.slice(0),
+              value,
             }))
             .filter(entry => options?.startAfter === undefined || compareArrayBuffers(entry.key, options.startAfter) > 0)
             .sort((a, b) => compareArrayBuffers(a.key, b.key));
           return {
-            entries: matchingEntries.slice(0, limit),
+            entries: matchingEntries.slice(0, limit).map(({ key, value }) => ({ key, value: value.slice(0) })),
             hasMore: matchingEntries.length > limit,
           };
         });

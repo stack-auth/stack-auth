@@ -40,6 +40,11 @@ export type LowLevelDatabaseDebugSnapshot = {
  */
 export type LowLevelKvStore = {
   get(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer | null, seq: DatabaseSeq }>,
+  /**
+   * Lists at most `limit` entries in ascending bytewise key order (default 1000), beginning
+   * strictly after `startAfter`. `hasMore` indicates that at least one entry exists after the
+   * final returned entry, so callers can safely use that entry's key as the next cursor.
+   */
   listEntries(options?: { startAfter?: ArrayBuffer, limit?: number }): Promise<{
     entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>,
     hasMore: boolean,
@@ -52,8 +57,9 @@ export type LowLevelKvStore = {
 }
 
 /**
- * A KV dump. It is like a KV store, but all objects are immutable once created; therefore, instead of exposing a
- * `setAll` function, it exposes an `insertAll` function.
+ * A KV dump. It is like a KV store, but values are immutable while their entries exist; therefore, instead of exposing
+ * a `setAll` function, it exposes an `insertAll` function. Entries may still be removed with `deleteAll`, for example
+ * when garbage collection proves that an immutable value is unreachable.
  *
  * If values are never modified, then a KV dump can be significantly more efficient than a KV store, especially in a
  * distributed setting.

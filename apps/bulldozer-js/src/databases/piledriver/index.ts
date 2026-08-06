@@ -1,4 +1,5 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
@@ -284,14 +285,16 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   const heapSerializationDependencies = new WeakMap<PiledriverHeapObject, Set<PiledriverHeapObject>>();
 
   const addHeapSerializationDependency = (parent: PiledriverHeapObject, child: PiledriverHeapObject) => {
-    const canReachParent = (current: PiledriverHeapObject, visited: Set<PiledriverHeapObject>): boolean => {
-      if (current === parent) return true;
-      if (visited.has(current)) return false;
+    // Backfills can produce dependency graphs deep enough to overflow a recursive reachability
+    // walk. Keep cycle failures deterministic with an explicit stack.
+    const visited = new Set<PiledriverHeapObject>();
+    const pending = [child];
+    while (pending.length > 0) {
+      const current = pending.pop() ?? throwErr("Piledriver heap dependency stack unexpectedly became empty");
+      if (current === parent) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+      if (visited.has(current)) continue;
       visited.add(current);
-      return [...heapSerializationDependencies.get(current) ?? []].some(dependency => canReachParent(dependency, visited));
-    };
-    if (canReachParent(child, new Set())) {
-      throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+      for (const dependency of heapSerializationDependencies.get(current) ?? []) pending.push(dependency);
     }
     const dependencies = heapSerializationDependencies.get(parent);
     if (dependencies === undefined) heapSerializationDependencies.set(parent, new Set([child]));

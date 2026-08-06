@@ -201,8 +201,10 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         return await traceSpanHot({ description: "bulldozer-js.low-level.instant.listEntries", attributes }, async () => {
           return await withWriteGate(async () => {
             // A range cannot be overlaid cheaply with the per-key pending cache. Drain the
-            // bounded pending set while writes are gated, then read one coherent wrapped range.
-            await Promise.all([...pendingSeqRecords].map(async record => await record.underlyingAvailable));
+            // latest write to this store while writes are gated, then read one coherent wrapped
+            // range. Waiting on the store's causal write chain avoids unrelated stores and also
+            // propagates a failed cached write instead of exposing stale wrapped data.
+            if (lastWriteSeq !== undefined) await getSeqRecord(lastWriteSeq).underlyingAvailable;
             const result = await wrappedStore.listEntries(options);
             return {
               entries: result.entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) })),

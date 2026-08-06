@@ -94,7 +94,12 @@ describe("LMDB low-level database", () => {
       const secondPage = await dump.listEntries({ startAfter: firstPage.entries[1].key, limit: 2 });
       expect(secondPage.entries).toHaveLength(1);
       expect(secondPage.hasMore).toBe(false);
-      expect(new Set([...firstPage.entries, ...secondPage.entries].map(entry => text(entry.value)))).toEqual(new Set(["payload", "second", "third"]));
+      const listedEntries = [...firstPage.entries, ...secondPage.entries];
+      expect(listedEntries.every((entry, index) => index === 0 || Buffer.compare(
+        Buffer.from(listedEntries[index - 1].key),
+        Buffer.from(entry.key),
+      ) < 0)).toBe(true);
+      expect(new Set(listedEntries.map(entry => text(entry.value)))).toEqual(new Set(["payload", "second", "third"]));
       const deleted = await dump.deleteAll(keys, { requiresSeq: seq });
       await db.waitUntilAvailable(deleted.seq);
       expect(await Promise.all(keys.map(async key => text((await dump.get(key)).buffer)))).toEqual([null, null, null]);

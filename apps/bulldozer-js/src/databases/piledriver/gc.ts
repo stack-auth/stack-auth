@@ -2,7 +2,11 @@ import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelKvDump } from "../low-level/index.js";
 
+// A version bump creates new stores and leaves the previous stores orphaned. Before the next
+// bump, add an explicit cleanup path for those stores and diagnostics for objects moved into the
+// legacy-immortal set, so the rollout's retained storage is both bounded and visible.
 const GC_SCHEMA_VERSION = 3;
+const INITIAL_GC_GENERATION = `schema-v${GC_SCHEMA_VERSION}`;
 const GC_SCAN_PAGE_SIZE = 1000;
 const GC_DIAGNOSTIC_SAMPLE_LIMIT = 25;
 const textEncoder = new TextEncoder();
@@ -187,30 +191,31 @@ function parseGarbageCollectionState(buffer: ArrayBuffer): GarbageCollectionStat
 
 function serializedHeapReferenceKeys(buffer: ArrayBuffer): ArrayBuffer[] {
   const result: ArrayBuffer[] = [];
-  const visit = (value: unknown): void => {
-    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return;
+  const pending: unknown[] = [parseJson(buffer)];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") continue;
     if (Array.isArray(value)) {
       const tag = value[0];
       if (tag === "heap-reference") {
         if (value.length !== 2 || typeof value[1] !== "string") throw new Error("Invalid serialized Piledriver heap reference");
         result.push(decodeBase64(value[1]).buffer);
-        return;
+        continue;
       }
       if (tag === "array") {
         if (value.length !== 2 || !Array.isArray(value[1])) throw new Error("Invalid serialized Piledriver array");
-        for (const item of value[1]) visit(item);
-        return;
+        for (const item of value[1]) pending.push(item);
+        continue;
       }
-      if ((tag === "NaN" || tag === "Infinity" || tag === "-Infinity" || tag === "-0") && value.length === 1) return;
+      if ((tag === "NaN" || tag === "Infinity" || tag === "-Infinity" || tag === "-0") && value.length === 1) continue;
       throw new Error("Invalid serialized Piledriver tagged value");
     }
     if (typeof value === "object") {
-      for (const child of Object.values(value)) visit(child);
-      return;
+      for (const child of Object.values(value)) pending.push(child);
+      continue;
     }
     throw new Error("Invalid serialized Piledriver value");
-  };
-  visit(parseJson(buffer));
+  }
   return result;
 }
 
@@ -283,6 +288,9 @@ export function declarePiledriverGarbageCollector(options: {
     initializationPromise = (async () => {
       const existingState = await stateStore.get(gcStateKey);
       if (existingState.buffer !== null) {
+        // A visible state is not necessarily durable under the low-level contract. Do not let
+        // new metadata depend on its generation until that generation survives a crash.
+        await options.lowLevelDb.waitUntilDurable(existingState.seq);
         generation = parseGarbageCollectionState(existingState.buffer).generation;
         return;
       }
@@ -290,7 +298,10 @@ export function declarePiledriverGarbageCollector(options: {
       // Objects without metadata predate refcount GC and are deliberately immortal. This makes
       // rollout O(1) even for very large existing heaps; only objects created after this state
       // record are tracked and eligible for collection.
-      const newGeneration = crypto.randomUUID();
+      // First-time initialization may race across processes. A deterministic initial generation
+      // ensures every contender tags metadata identically even though the state write is
+      // last-write-wins; existing databases continue to use their persisted random generation.
+      const newGeneration = INITIAL_GC_GENERATION;
       const state: GarbageCollectionState = {
         schemaVersion: GC_SCHEMA_VERSION,
         generation: newGeneration,
@@ -299,7 +310,12 @@ export function declarePiledriverGarbageCollector(options: {
       };
       const stateWrite = await stateStore.setAll([{ key: gcStateKey, value: encodeJson(state) }]);
       await options.lowLevelDb.waitUntilAvailable(stateWrite.seq);
-      generation = newGeneration;
+      // The state must be durable before metadata can reference its generation. Otherwise a crash
+      // could preserve metadata while losing the only state that makes that metadata collectable.
+      await options.lowLevelDb.waitUntilDurable(stateWrite.seq);
+      const persistedState = await stateStore.get(gcStateKey);
+      if (persistedState.buffer === null) throw new Error("Piledriver GC state disappeared immediately after initialization");
+      generation = parseGarbageCollectionState(persistedState.buffer).generation;
     })();
     try {
       await initializationPromise;
@@ -356,6 +372,9 @@ export function declarePiledriverGarbageCollector(options: {
           compareAndSetConflicts,
         };
       }
+      // The restart cutoff predates this process, so a claimed object was last dereferenced
+      // before any live handle in this process could observe it. Reaching this means that
+      // invariant was violated rather than that GC merely raced a normal write.
       if (metadata.deletion !== null) throw new Error("Piledriver GC attempted to reference an object that is being deleted");
       const nextReferenceCount = metadata.referenceCount + delta;
       if (!Number.isSafeInteger(nextReferenceCount) || nextReferenceCount < 0) {
@@ -431,6 +450,8 @@ export function declarePiledriverGarbageCollector(options: {
 
   const recordHeapObjectCreation = async (key: ArrayBuffer, requiresSeq: DatabaseSeq) => {
     await initialize();
+    // Clamp backward clock jumps to the process start. Every valid collection cutoff predates
+    // that barrier, so a newly created object can never accidentally become eligible.
     const createdAtMillis = Math.max(Date.now(), options.processStartedAtMillis);
     const metadata = newMetadata(readyGeneration(), createdAtMillis);
     const metadataWrite = await metadataStore.setAll([{ key, value: encodeJson(metadata) }], { requiresSeq });
@@ -555,8 +576,14 @@ export function declarePiledriverGarbageCollector(options: {
         if (!samples.includes(keyBase64)) samples.push(keyBase64);
       };
       let latestMutationSeq = options.lowLevelDb.initialSeq;
+      const recordMutation = (seq: DatabaseSeq) => {
+        // The final durability barrier must cover every mutation across the independent stores,
+        // not merely whichever write happened to be recorded last.
+        latestMutationSeq = options.lowLevelDb.combineSeqs(latestMutationSeq, seq);
+      };
       while (deletedObjects < maxObjects && examinedCandidates + examinedMetadataEntries < maxObjects) {
         if (queueIndex >= queue.length) {
+          if (queuedKeys.size !== 0) throw new Error("Piledriver GC candidate dedupe set was not drained with the queue");
           queue.length = 0;
           queueIndex = 0;
           if (!initialCandidateScanComplete) {
@@ -604,10 +631,10 @@ export function declarePiledriverGarbageCollector(options: {
               const expectedCandidateKey = candidateKey(key, eligibleAtMillis);
               const existingCandidate = await candidateStore.get(expectedCandidateKey);
               if (existingCandidate.buffer === null) {
-                latestMutationSeq = (await candidateStore.setAll(
+                recordMutation((await candidateStore.setAll(
                   [{ key: expectedCandidateKey, value: new ArrayBuffer(0) }],
                   { requiresSeq: latestMutationSeq },
-                )).seq;
+                )).seq);
                 missingCandidateEntriesRepaired++;
                 addKeySample(repairedMissingCandidateObjectKeysBase64, key);
               }
@@ -625,10 +652,10 @@ export function declarePiledriverGarbageCollector(options: {
               ? encodeBase64(new Uint8Array(lastEntry.key))
               : null;
             metadataRepairPassComplete = !page.hasMore;
-            latestMutationSeq = (await stateStore.setAll(
+            recordMutation((await stateStore.setAll(
               [{ key: gcStateKey, value: encodeJson(state) }],
               { requiresSeq: latestMutationSeq },
-            )).seq;
+            )).seq);
             metadataRepairMillis += performance.now() - metadataRepairStartedAt;
           }
           if (queue.length === 0) break;
@@ -641,7 +668,10 @@ export function declarePiledriverGarbageCollector(options: {
         examinedCandidates++;
         let metadataRead = await metadataStore.get(key);
         if (metadataRead.buffer === null) {
-          latestMutationSeq = (await candidateStore.deleteAll([candidate.candidateKey])).seq;
+          recordMutation((await candidateStore.deleteAll(
+            [candidate.candidateKey],
+            { requiresSeq: latestMutationSeq },
+          )).seq);
           staleCandidatesWithoutMetadataRemoved++;
           addKeySample(staleCandidateObjectKeysBase64, key);
           skippedCandidates++;
@@ -649,14 +679,20 @@ export function declarePiledriverGarbageCollector(options: {
         }
         let metadata = parseReferenceMetadata(metadataRead.buffer);
         if (metadata.generation !== readyGeneration()) {
-          latestMutationSeq = (await candidateStore.deleteAll([candidate.candidateKey])).seq;
+          recordMutation((await candidateStore.deleteAll(
+            [candidate.candidateKey],
+            { requiresSeq: latestMutationSeq },
+          )).seq);
           staleCandidatesFromInactiveGenerationsRemoved++;
           addKeySample(staleCandidateObjectKeysBase64, key);
           skippedCandidates++;
           continue;
         }
         if (metadata.referenceCount !== 0) {
-          latestMutationSeq = (await candidateStore.deleteAll([candidate.candidateKey])).seq;
+          recordMutation((await candidateStore.deleteAll(
+            [candidate.candidateKey],
+            { requiresSeq: latestMutationSeq },
+          )).seq);
           staleCandidatesWithLiveReferencesRemoved++;
           addKeySample(staleCandidateObjectKeysBase64, key);
           skippedCandidates++;
@@ -665,11 +701,11 @@ export function declarePiledriverGarbageCollector(options: {
         const eligibleAtMillis = metadata.lastDereferencedAtMillis ?? metadata.createdAtMillis;
         const expectedCandidateKey = candidateKey(key, eligibleAtMillis);
         if (!arrayBuffersAreEqual(candidate.candidateKey, expectedCandidateKey)) {
-          const removed = await candidateStore.deleteAll([candidate.candidateKey]);
-          latestMutationSeq = (await candidateStore.setAll(
+          const removed = await candidateStore.deleteAll([candidate.candidateKey], { requiresSeq: latestMutationSeq });
+          recordMutation((await candidateStore.setAll(
             [{ key: expectedCandidateKey, value: new ArrayBuffer(0) }],
             { requiresSeq: removed.seq },
-          )).seq;
+          )).seq);
           staleCandidateKeysCorrected++;
           skippedCandidates++;
           continue;
@@ -691,6 +727,7 @@ export function declarePiledriverGarbageCollector(options: {
             if (!enqueue(candidate)) duplicateQueueAttemptsIgnored++;
             continue;
           }
+          recordMutation(claimSeq);
           metadataRead = await metadataStore.get(key);
           if (metadataRead.buffer === null) throw new Error("Piledriver GC deletion claim disappeared");
           metadata = parseReferenceMetadata(metadataRead.buffer);
@@ -712,10 +749,12 @@ export function declarePiledriverGarbageCollector(options: {
           // Persist progress first. A crash between this write and the decrement can leak one
           // reference, but can never undercount and delete live data when the job is resumed.
           const progress = await advanceDeletion(key, referenceIndex);
+          recordMutation(progress.seq);
           deletionProgressCompareAndSetConflicts += progress.compareAndSetConflicts;
           metadata = progress.metadata;
           const child = references[referenceIndex];
           const changed = await changeReferenceCount(child, -1, eligibleAtMillis, progress.seq);
+          recordMutation(changed.seq);
           outgoingEdgesProcessed++;
           referenceCountCompareAndSetAttempts += changed.compareAndSetAttempts;
           referenceCountCompareAndSetConflicts += changed.compareAndSetConflicts;
@@ -749,9 +788,9 @@ export function declarePiledriverGarbageCollector(options: {
             ? deletedHeapPayloadBytes
             : Math.max(largestHeapPayloadBytes, deletedHeapPayloadBytes);
         }
-        const heapDeletion = await options.heapDump.deleteAll([key]);
+        const heapDeletion = await options.heapDump.deleteAll([key], { requiresSeq: latestMutationSeq });
         const metadataDeletion = await metadataStore.deleteAll([key], { requiresSeq: heapDeletion.seq });
-        latestMutationSeq = (await candidateStore.deleteAll([candidate.candidateKey], { requiresSeq: metadataDeletion.seq })).seq;
+        recordMutation((await candidateStore.deleteAll([candidate.candidateKey], { requiresSeq: metadataDeletion.seq })).seq);
         deletedObjects++;
       }
       const durabilityWaitStartedAt = performance.now();
@@ -866,8 +905,5 @@ export function declarePiledriverGarbageCollector(options: {
     beforeSerializedObjectBecomesVisible,
     afterSerializedObjectBecameInvisible,
     collectGarbage,
-    metadataStore,
-    candidateStore,
-    stateStore,
   };
 }

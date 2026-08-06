@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
-import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, PiledriverHeapObject, piledriverObjectEquals } from "./index.js";
+import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, PiledriverHeapObject, PiledriverObject, piledriverObjectEquals } from "./index.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
   return {
@@ -96,6 +97,7 @@ describe("PiledriverDatabase", () => {
     const cutoff = await timestampAfter(Date.now());
     await timestampAfter(cutoff);
     const restarted = declareAfterRestart(lowLevel, cutoff);
+    durabilityWaits = 0;
     const result = await restarted.collectGarbage(cutoff);
     expect(result).toMatchObject({
       limits: {
@@ -127,8 +129,10 @@ describe("PiledriverDatabase", () => {
     expect(result.reclaimed.heapPayloadBytes).toBeGreaterThan(0);
     expect(result.reclaimed.knownLogicalBytes).toBeGreaterThanOrEqual(result.reclaimed.heapPayloadBytes);
     expect(result.reclaimed.physicalStorageNote).toContain("do not normally shrink");
-    expect(durabilityWaits).toBe(1);
-    expect((await restarted.debugSnapshot!()).heap).toHaveLength(0);
+    // One wait validates the persisted generation during initialization; the other is the
+    // collection-wide mutation barrier.
+    expect(durabilityWaits).toBe(2);
+    expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(0);
   });
 
   it("keeps descendants that still have another incoming reference", async () => {
@@ -146,7 +150,7 @@ describe("PiledriverDatabase", () => {
     const restarted = declareAfterRestart(lowLevel, cutoff);
     const result = await restarted.collectGarbage(cutoff);
     expect(result.objects.deleted).toBe(1);
-    expect((await restarted.debugSnapshot!()).heap).toHaveLength(2);
+    expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(2);
   });
 
   it("serializes concurrent mutations of the same root", async () => {
@@ -189,7 +193,55 @@ describe("PiledriverDatabase", () => {
         knownLogicalBytes: 0,
       },
     });
-    expect((await restarted.debugSnapshot!()).heap).toHaveLength(1);
+    expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(1);
+  });
+
+  it("durably initializes GC state before publishing its generation", async () => {
+    const underlying = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    let durabilityWaits = 0;
+    const lowLevel: LowLevelDatabase = {
+      ...underlying,
+      async waitUntilDurable(seq) {
+        durabilityWaits++;
+        await underlying.waitUntilDurable(seq);
+      },
+    };
+
+    await declarePiledriverDatabase(lowLevel).setRootObject(
+      new TextEncoder().encode("root").buffer,
+      { initialized: true },
+    );
+    expect(durabilityWaits).toBe(1);
+  });
+
+  it("uses one metadata generation when first-time initialization races", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const first = declarePiledriverDatabase(lowLevel);
+    const second = declarePiledriverDatabase(lowLevel);
+    await Promise.all([
+      first.setRootObject(new TextEncoder().encode("first").buffer, { child: asHeapObject({ source: "first" }) }),
+      second.setRootObject(new TextEncoder().encode("second").buffer, { child: asHeapObject({ source: "second" }) }),
+    ]);
+
+    const state = await lowLevel.declareKvStore("piledriver-gc-state-v3").get(new TextEncoder().encode("state").buffer);
+    if (state.buffer === null) throw new Error("Expected initialized Piledriver GC state");
+    const stateGeneration = Reflect.get(JSON.parse(new TextDecoder().decode(state.buffer)), "generation");
+    const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
+    expect(metadata.entries).toHaveLength(2);
+    expect(new Set(metadata.entries.map(entry => Reflect.get(
+      JSON.parse(new TextDecoder().decode(entry.value)),
+      "generation",
+    )))).toEqual(new Set([stateGeneration]));
+  });
+
+  it("walks deeply nested serialized structures without an artificial GC depth limit", async () => {
+    let nested: PiledriverObject = "leaf";
+    for (let depth = 0; depth <= 1001; depth++) nested = [nested];
+
+    await expect(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())).setRootObject(
+      new TextEncoder().encode("root").buffer,
+      nested,
+    )).resolves.toEqual({ seq: expect.anything() });
   });
 
   it("keeps legacy objects immortal while collecting newly created objects", async () => {
@@ -235,7 +287,7 @@ describe("PiledriverDatabase", () => {
     const result = await restarted.collectGarbage(cutoff);
     expect(result.objects.deleted).toBe(2);
     expect(result.references.legacyImmortalEdgesIgnored).toBe(1);
-    expect((await restarted.debugSnapshot!()).heap).toHaveLength(2);
+    expect((await (restarted.debugSnapshot ?? throwErr("Expected restarted Piledriver database to expose debugSnapshot"))()).heap).toHaveLength(2);
   });
 
   it("repairs a missing zero-reference candidate", async () => {
