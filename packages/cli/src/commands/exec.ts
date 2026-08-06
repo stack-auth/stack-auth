@@ -1,7 +1,4 @@
 import { Command } from "commander";
-import { isProjectAuthWithRefreshToken, resolveAuth, type ProjectAuthWithRefreshToken } from "../lib/auth.js";
-import { resolveLocalDashboardAuthByConfigPath } from "../lib/local-dashboard-client.js";
-import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 
 function getErrorMessage(err: unknown): string {
@@ -46,48 +43,15 @@ export function parseExecTarget(opts: ExecTargetOpts): ExecTarget {
   return { kind: "config", configFile: opts.configFile as string };
 }
 
+
 export function registerExecCommand(program: Command) {
-  program
-    .command("exec [javascript]")
+  program.command("exec [javascript]")
     .description("Execute JavaScript with a pre-configured StackServerApp as `hexclaveServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
     .option("--cloud-project-id <id>", "Cloud project ID to run against (use --config-file instead for the development environment)")
     .option("--config-file <path>", "Path to a development-environment stack.config.ts (use --cloud-project-id instead for the cloud API)")
     .addHelpText("after", "\nFor available API methods, see: https://docs.hexclave.com/sdk/overview")
     .action(async (javascript: string | undefined, opts: ExecTargetOpts) => {
-      if (javascript === undefined) {
-        throw new CliError("Missing JavaScript argument. Use `hexclave exec \"<javascript>\"` or `hexclave exec --help`.");
-      }
-
-      const target = parseExecTarget(opts);
-      let auth: ProjectAuthWithRefreshToken;
-      if (target.kind === "cloud") {
-        const cloudAuth = resolveAuth(target.projectId);
-        if (!isProjectAuthWithRefreshToken(cloudAuth)) {
-          throw new CliError("`hexclave exec --cloud-project-id` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
-        }
-        auth = cloudAuth;
-      } else {
-        auth = await resolveLocalDashboardAuthByConfigPath(target.configFile);
-      }
-      const project = await getAdminProject(auth);
-
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-      let fn;
-      try {
-        fn = new AsyncFunction("hexclaveServerApp", javascript);
-      } catch (err: unknown) {
-        throw new CliError(`Syntax error in exec code: ${getErrorMessage(err)}`);
-      }
-      let result;
-      try {
-        result = await fn(project.app);
-      } catch (err: unknown) {
-        throw new CliError(`Exec error: ${getErrorMessage(err)}`);
-      }
-
-      if (result !== undefined) {
-        console.log(JSON.stringify(result, null, 2));
-      }
+      const { run } = await import("./exec.impl.js");
+      await run(javascript, opts);
     });
 }

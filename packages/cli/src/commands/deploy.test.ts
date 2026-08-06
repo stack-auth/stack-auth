@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertSecretsMatchEnv, extractServiceDefinition, parseSecretOptions, resolveDeployConfigPath, type ServiceEnvVarConfig } from "./deploy.js";
+import { assertSecretsMatchEnv, extractServiceDefinition, parseSecretOptions, resolveDeployConfigPath, type ServiceEnvVarConfig } from "../lib/deploy-config.js";
 
 describe("parseSecretOptions", () => {
   it("parses KEY=VALUE pairs", () => {

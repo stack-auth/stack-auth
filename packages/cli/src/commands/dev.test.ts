@@ -3,7 +3,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, runChildProcess, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, dashboardEnvWithStatePath, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "../lib/dev-dashboard-utils.js";
+import { runChildProcess } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -342,5 +343,20 @@ describe("killLocalDashboard", () => {
     const sigkill = killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL");
     expect(sigterm).toHaveLength(1);
     expect(sigkill).toHaveLength(0);
+  });
+
+  it("treats a non-2xx response as a live dashboard until the port stops responding", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM")).toHaveLength(1);
+    expect(killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL")).toHaveLength(0);
   });
 });
