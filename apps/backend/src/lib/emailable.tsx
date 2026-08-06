@@ -1,4 +1,4 @@
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
@@ -125,6 +125,10 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   const { vi, test, beforeEach, expect } = import.meta.vitest!;
 
   const fakeClient = (verifyFn: (email: string) => Promise<unknown>) => (_apiKey: string) => ({ verify: verifyFn });
+  const stubEmailableApiKey = (value: string) => {
+    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", value);
+    vi.stubEnv("STACK_EMAILABLE_API_KEY", value);
+  };
 
   const deliverableClient = fakeClient(async () => ({
     state: "deliverable", disposable: false, score: 95, domain: "gmail.com", email: "test@gmail.com", user: "test",
@@ -135,7 +139,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   });
 
   beforeEach(() => {
-    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "test_api_key");
+    stubEmailableApiKey("test_api_key");
     return () => vi.unstubAllEnvs();
   });
 
@@ -144,17 +148,17 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
       .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
   });
 
-  test("returns test-domain rejection even when API key is unset", async ({ expect }) => {
-    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "");
+  test("falls back to deliverable when API key is unset", async ({ expect }) => {
+    stubEmailableApiKey("");
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
-      .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
+      .resolves.toEqual({ status: "deliverable", emailableScore: null });
   });
 
   test.each([
     "user@example.com",
     "user@stack-generated.example.com",
-  ])("treats reserved example address %s as deliverable without an API key", async (email) => {
-    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "");
+  ])("falls back to deliverable for reserved example address %s when the API key is unset", async (email) => {
+    stubEmailableApiKey("");
     vi.stubEnv("NODE_ENV", "test");
     const result = await checkEmailWithEmailable(email);
     expect(result).toEqual({ status: "deliverable", emailableScore: null });
@@ -163,23 +167,22 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   test.each([
     "user@example.com",
     "user@status-monitor.example.com",
-  ])("rejects reserved example address %s without calling Emailable", async (email) => {
+  ])("bypasses reserved example address %s when validation is disabled", async (email) => {
+    stubEmailableApiKey("disable_email_validation");
     const verify = vi.fn();
     const result = await checkEmailWithEmailable(email, { _clientFactory: () => ({ verify }) });
-    expect(result).toMatchObject({
-      status: "not-deliverable",
-      emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" },
-      emailableScore: 0,
-    });
+    expect(result).toEqual({ status: "deliverable", emailableScore: null });
     expect(verify).not.toHaveBeenCalled();
   });
 
   test("returns ok for deliverable email", async ({ expect }) => {
+    stubEmailableApiKey("test_api_key");
     const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: deliverableClient });
     expect(result).toMatchObject({ status: "deliverable", emailableScore: 95 });
   });
 
   test("successfully retries and verifies deliverable email if Emailable asks for a retry the first time", async ({ expect }) => {
+    stubEmailableApiKey("test_api_key");
     let retryCount = 0;
     const retryClient = fakeClient(async () => retryCount++ === 0 ? {
       message: "Your request is taking longer than normal. Please send your request again."

@@ -1,12 +1,11 @@
 import { globalPrismaClient } from '@/prisma-client';
-import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
-import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
 import { Json } from '@hexclave/shared/dist/utils/json';
-import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
+import { serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
