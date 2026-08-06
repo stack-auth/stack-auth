@@ -56,7 +56,10 @@ function buildBrowserScriptSnippet(options: {
 }
 
 function getSetupDocsBaseUrl() {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL') ?? PROD_DOCS_BASE_URL;
+  // `||` instead of `??`: builds without the docs base URL configured inline the
+  // .env placeholder as an empty string rather than undefined, which would make
+  // the docs links resolve relative to the dashboard origin and 404.
+  return getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL') || PROD_DOCS_BASE_URL;
 }
 
 function getManualSetupDocsUrl() {
@@ -65,7 +68,8 @@ function getManualSetupDocsUrl() {
 }
 
 function getSetupApiBaseUrl() {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL;
+  // `||` for the same empty-string-placeholder reason as getSetupDocsBaseUrl.
+  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || PROD_API_BASE_URL;
 }
 
 function buildCloudSetupPrompt(options: {
