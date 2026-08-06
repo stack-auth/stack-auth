@@ -1,5 +1,5 @@
 import { createFileRoute, useLocation } from '@tanstack/react-router';
-import { HexclaveHandler } from '@hexclave/react';
+import { HexclaveHandler, hexclaveAppInternalsSymbol, useStackApp } from '@hexclave/react';
 import type { ReactNode } from "react";
 import { DevelopmentPageNote, type DevelopmentPageKey } from "~/components/development-page-note";
 import { HostedAccountSettings } from '../../hosted-components/account-settings/index';
@@ -7,6 +7,7 @@ import {
   HostedEmailVerification,
   HostedError,
   HostedForgotPassword,
+  HostedMagicLinkCallback,
   HostedMfa,
   HostedPasswordReset,
   HostedSignIn,
@@ -15,13 +16,16 @@ import {
   HostedCliAuthConfirm,
   HostedOnboarding,
 } from '../../hosted-components/auth';
+import { HostedAuthMessage } from '../../hosted-components/auth/supporting/layout';
+import { requiresAfterAuthReturn } from './after-auth-return-policy';
+import { isCanonicalHandlerPathOrAlias } from './handler-path-policy';
 
 export const Route = createFileRoute('/handler/$')({
   component: HandlerPage,
 });
 
 type HostedPage = {
-  pageKey: DevelopmentPageKey,
+  pageKey?: DevelopmentPageKey,
   render: () => ReactNode,
 };
 
@@ -58,6 +62,9 @@ const hostedPages = new Map<string, HostedPage>([
     pageKey: "emailVerification",
     render: () => <HostedEmailVerification fullPage />,
   }],
+  ["magic-link-callback", {
+    render: () => <HostedMagicLinkCallback fullPage />,
+  }],
   ["mfa", {
     pageKey: "mfa",
     render: () => <HostedMfa fullPage />,
@@ -82,10 +89,22 @@ const hostedPages = new Map<string, HostedPage>([
 
 function HandlerPage() {
   const location = useLocation();
-  const hostedPage = hostedPages.get(getHostedHandlerPath(location.pathname));
+  const app = useStackApp();
+  const handlerPath = getHostedHandlerPath(location.pathname);
+  const hostedPage = hostedPages.get(handlerPath);
+  const searchParams = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+
+  if (
+    requiresAfterAuthReturn({ handlerPath, searchParams })
+    && app[hexclaveAppInternalsSymbol].getRawAfterAuthReturnTo() == null
+  ) {
+    return <MissingAfterAuthReturn />;
+  }
 
   if (hostedPage == null) {
-    return <HexclaveHandler fullPage />;
+    return isCanonicalHandlerPathOrAlias(handlerPath)
+      ? <HexclaveHandler fullPage />
+      : <UnknownHandlerPath handlerPath={handlerPath} />;
   }
 
   return (
@@ -95,8 +114,38 @@ function HandlerPage() {
   );
 }
 
+function UnknownHandlerPath(props: {
+  handlerPath: string,
+}) {
+  return (
+    <HostedAuthMessage
+      title="Hosted page not found"
+      primaryAction={() => window.history.back()}
+      primaryText="Back"
+      fullPage
+    >
+      The hosted handler path <code>{props.handlerPath || "/"}</code> is not recognized. Go back to the website that opened it, or close this tab.
+    </HostedAuthMessage>
+  );
+}
+
+function MissingAfterAuthReturn() {
+  return (
+    <HostedAuthMessage
+      title="Return URL is missing"
+      primaryAction={() => window.history.back()}
+      primaryText="Go back"
+      fullPage
+    >
+      This authentication page was opened without an <code>after_auth_return_to</code> URL. Go
+      back to the website and start the flow there. If you maintain the website, use the SDK
+      redirect helpers instead of linking to this hosted page directly.
+    </HostedAuthMessage>
+  );
+}
+
 function WithDevelopmentPageNote(props: {
-  pageKey: DevelopmentPageKey,
+  pageKey?: DevelopmentPageKey,
   children: ReactNode,
 }) {
   return (

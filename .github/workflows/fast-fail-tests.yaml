@@ -295,7 +295,7 @@ jobs:
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm run start:backend --log-order=stream &
+          run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
             http://localhost:8102
           tail: true

@@ -223,24 +223,6 @@ function createAvailableAppPreview(
   };
 }
 
-// Cache for available app preview components
-const availableAppPreviewCache = new Map<string, React.ComponentType<CmdKPreviewProps>>();
-
-function getOrCreateAvailableAppPreview(
-  appId: AppId,
-  projectId: string,
-  onEnable?: () => Promise<void>,
-  goToParentHref?: string
-): React.ComponentType<CmdKPreviewProps> {
-  const cacheKey = `${appId}:${projectId}:${goToParentHref ?? "enable"}:${onEnable == null ? "readonly" : "enable"}`;
-  let preview = availableAppPreviewCache.get(cacheKey);
-  if (!preview) {
-    preview = createAvailableAppPreview(appId, onEnable, goToParentHref);
-    availableAppPreviewCache.set(cacheKey, preview);
-  }
-  return preview;
-}
-
 export type CmdKCommand = {
   id: string,
   icon: React.ReactNode,
@@ -573,9 +555,8 @@ export function useCmdKCommands({
             : { type: "navigate", href: `/projects/${projectId}/apps/${appId}` }
           : { type: "navigate", href: parentDestination ?? `/projects/${projectId}/apps/${appId}` },
         preview: parentApp == null && hasPreview
-          ? getOrCreateAvailableAppPreview(
+          ? createAvailableAppPreview(
             appId,
-            projectId,
             () => onEnableApp(appId),
             undefined
           )

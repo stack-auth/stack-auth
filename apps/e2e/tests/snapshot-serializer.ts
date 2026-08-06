@@ -23,6 +23,7 @@ const hideHeaders = [
   "referrer-policy",
   "transfer-encoding",
   "vary",
+  "allow",
   "x-content-type-options",
   "x-frame-options",
   "content-encoding",

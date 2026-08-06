@@ -84,7 +84,7 @@ it("should send a password reset code even if the user signed up with magic link
 });
 
 it('should not send a password reset code if the redirect URL is invalid', async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.signOut();
   const mailbox = backendContext.value.mailbox;
   const response = await niceBackendFetch("/api/v1/auth/password/send-reset-code", {

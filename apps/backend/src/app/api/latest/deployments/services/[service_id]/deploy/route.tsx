@@ -6,11 +6,6 @@ import { deploymentSecretDefaultsSchema } from "@hexclave/shared/dist/deployment
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// The deploy request only hands the upload reference to Marshal (the source
-// tarball already sits in Marshal's bucket); the container build itself runs
-// remotely, so this stays well within a normal function budget.
-export const maxDuration = 60;
-
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Deploy service",

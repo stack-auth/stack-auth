@@ -126,6 +126,11 @@ const internalToolsItem: AppSection = {
       href: "/platform-analytics",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/platform-analytics(\/.*)?$/.test(fullUrl.pathname),
     },
+    {
+      name: "Newly Created Projects",
+      href: "/newly-created-projects",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/newly-created-projects(\/.*)?$/.test(fullUrl.pathname),
+    },
   ],
 };
 
@@ -515,7 +520,7 @@ function SidebarContent({
     /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
   const [isInternalToolsExpanded, setIsInternalToolsExpanded] = useState(() =>
-    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync)(\/.*)?$/.test(pathname)
+    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync|newly-created-projects)(\/.*)?$/.test(pathname)
   );
   const internalToolsSection = useMemo<AppSection>(() => ({
     ...internalToolsItem,
@@ -622,7 +627,7 @@ function SidebarContent({
       </div>
 
       <div className={cn(
-        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl",
+        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 bg-black/[0.03] dark:bg-foreground/[0.06] dark:backdrop-blur-xl",
         !isDrawer && "dark:rounded-b-2xl",
         isCollapsed ? "px-2" : "px-3",
       )}>

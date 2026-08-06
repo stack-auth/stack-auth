@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/bulldozer-js",
-  "version": "1.0.71",
+  "version": "1.0.81",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@elysia/opentelemetry": "^1.4.12",
-    "@elysiajs/node": "^1.4.5",
+    "@elysia/node": "^1.4.6",
     "@hexclave/shared": "workspace:*",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.200.0",
     "@sentry/node": "^10.42.0",

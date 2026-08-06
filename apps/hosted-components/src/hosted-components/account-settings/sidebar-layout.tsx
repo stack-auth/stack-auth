@@ -1,5 +1,5 @@
 import { Button, cn } from "~/components/ui";
-import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
+import { useLocation } from "@tanstack/react-router";
 import { XIcon } from 'lucide-react';
 import React, { ReactNode } from 'react';
 
@@ -11,6 +11,12 @@ export type SidebarItem = {
   icon?: React.ReactNode,
   content?: React.ReactNode,
   contentTitle?: React.ReactNode,
+}
+
+function useHash() {
+  return useLocation({
+    select: (location) => location.hash.startsWith("#") ? location.hash.slice(1) : location.hash,
+  });
 }
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {
