@@ -128,6 +128,10 @@ let actualReplicaConnectionString: string = globalVar.__hexclave_actual_replica_
 
 export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
   $replica: () => Omit<T, "$on">,
+  // You should always never use $primary. Usually, the primary blocks writes until they have been replicated to the
+  // replica. This is only useful in rare cases, for example when we aren't writing for the blocked write because the
+  // previous transaction to the primary was aborted (eg. due to an error or a conflict). Ask Konsti if you're confused.
+  $primary: () => Omit<T, "$on">,
 };
 
 

@@ -1428,6 +1428,26 @@ const InvalidAppleCredentials = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const ExternalAuthProviderNotConfigured = createKnownErrorConstructor(
+  KnownError,
+  "EXTERNAL_AUTH_PROVIDER_NOT_CONFIGURED",
+  () => [
+    400,
+    "The external authentication provider is not configured or enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
+const InvalidExternalAuthToken = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_EXTERNAL_AUTH_TOKEN",
+  () => [
+    401,
+    "The external authentication token could not be verified. Please sign in again.",
+  ] as const,
+  () => [] as const,
+);
+
 const OAuthProviderAccessDenied = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCESS_DENIED",
@@ -1987,6 +2007,8 @@ export const KnownErrors = {
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
   InvalidAppleCredentials,
+  ExternalAuthProviderNotConfigured,
+  InvalidExternalAuthToken,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   OAuthProviderTemporarilyUnavailable,

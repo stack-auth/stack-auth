@@ -28,6 +28,7 @@ import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApi
 import { ProjectPermissionsCrud } from './crud/project-permissions';
 import { AdminUserProjectsCrud, ClientProjectsCrud } from './crud/projects';
 import { SessionsCrud } from './crud/sessions';
+import type { ExternalAuthProviderId } from "./external-auth";
 import { TeamInvitationCrud } from './crud/team-invitation';
 import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
@@ -1253,6 +1254,41 @@ export class HexclaveClientInterface {
     return Result.ok({
       accessToken: result.access_token,
       refreshToken: result.refresh_token,
+    });
+  }
+
+  async exchangeExternalAuthToken(
+    providerId: ExternalAuthProviderId,
+    token: string,
+  ): Promise<Result<{ accessToken: string, sessionId: string, userId: string }, KnownErrors["ExternalAuthProviderNotConfigured"] | KnownErrors["InvalidExternalAuthToken"] | KnownErrors["SignUpNotEnabled"] | KnownErrors["SignUpRejected"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/external/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider_id: providerId,
+          token,
+        }),
+      },
+      null,
+      [
+        KnownErrors.ExternalAuthProviderNotConfigured,
+        KnownErrors.InvalidExternalAuthToken,
+        KnownErrors.SignUpNotEnabled,
+        KnownErrors.SignUpRejected,
+      ],
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    const body = await res.data.json();
+    return Result.ok({
+      accessToken: body.access_token,
+      sessionId: body.session_id,
+      userId: body.user_id,
     });
   }
 

@@ -1,0 +1,122 @@
+import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { ExternalAuthProviderId, VerifiedExternalIdentity } from "@/lib/external-auth";
+import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
+import { Tenancy } from "@/lib/tenancies";
+import { getDisabledBotChallengeAssessment } from "@/lib/turnstile";
+import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
+import { getPrismaClientForTenancy, PRISMA_ERROR_CODES } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
+import { KnownErrors } from "@hexclave/shared";
+import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+
+export async function getOrCreateExternalAuthSession(options: {
+  tenancy: Tenancy,
+  providerId: ExternalAuthProviderId,
+  identity: VerifiedExternalIdentity,
+  currentUser: UsersCrud["Admin"]["Read"] | null,
+}) {
+  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  const identityWhere = {
+    tenancyId: options.tenancy.id,
+    providerConfigId: options.providerId,
+    issuer: options.identity.issuer,
+    subject: options.identity.subject,
+  };
+
+  let authMethod = await prisma.externalAuthMethod.findFirst({ where: identityWhere });
+  let isNewUser = false;
+
+  if (authMethod == null) {
+    if (!options.tenancy.config.auth.allowSignUp) {
+      throw new KnownErrors.SignUpNotEnabled();
+    }
+    const requestContext = await getBestEffortEndUserRequestContext();
+    // User creation commits its own transactions and side effects (sign-up events, webhooks, external
+    // DB sync), so wrapping it together with the auth method creation in a transaction would not make
+    // the combination atomic anyway — it would only add retry hazards (a retried wrapper re-runs the
+    // already-committed user creation and produces duplicate users). Instead, we create the user
+    // first and resolve the (rare) concurrent-first-exchange race below via the identity's unique
+    // constraint, cleaning up our user if we lost.
+    const user = await createOrUpgradeAnonymousUserWithRules(
+      options.tenancy,
+      options.currentUser?.is_anonymous === true ? options.currentUser : null,
+      {},
+      [],
+      buildSignUpRuleOptions({
+        // External identity providers follow the existing federated sign-up rule path.
+        authMethod: "oauth",
+        oauthProvider: options.providerId,
+        requestContext,
+        turnstileAssessment: getDisabledBotChallengeAssessment(),
+      }),
+    );
+
+    try {
+      // Nested create so the base AuthMethod and the identity projection are inserted atomically —
+      // losing the uniqueness race can then never leave behind a dangling AuthMethod row.
+      const baseAuthMethod = await prisma.authMethod.create({
+        data: {
+          tenancyId: options.tenancy.id,
+          projectUserId: user.id,
+          externalAuthMethod: {
+            create: {
+              providerConfigId: options.providerId,
+              issuer: options.identity.issuer,
+              subject: options.identity.subject,
+            },
+          },
+        },
+        include: {
+          externalAuthMethod: true,
+        },
+      });
+      authMethod = baseAuthMethod.externalAuthMethod ?? throwErr("The nested create should have created the external auth method");
+      isNewUser = options.currentUser?.id !== user.id;
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== PRISMA_ERROR_CODES.UNIQUE_CONSTRAINT_VIOLATION) {
+        throw error;
+      }
+      // A concurrent first exchange projected the same provider identity between our lookup and our
+      // insert. Use the winner's projection and sign into its user instead. This read must go to the
+      // primary: the winner's row was committed by a concurrent request, so the read replica may not
+      // have caught up yet (the automatic replication wait only covers writes made by ourselves).
+      authMethod = await prisma.$primary().externalAuthMethod.findFirst({ where: identityWhere })
+        ?? throwErr("An external auth method unique constraint was violated, but the identity projection does not exist. The violation must have come from a different constraint, which shouldn't happen: the auth method ID is freshly generated and the user was freshly created or upgraded from an anonymous user (which cannot have had external auth methods).", { cause: error });
+      // The user we just created will never be linked to anything, so delete it again — unless it is
+      // the caller's own (formerly anonymous, now upgraded) user, which we must not destroy.
+      if (options.currentUser?.id !== user.id && authMethod.projectUserId !== user.id) {
+        await usersCrudHandlers.adminDelete({
+          tenancy: options.tenancy,
+          user_id: user.id,
+        });
+      }
+    }
+  }
+
+  const session = await prisma.externalAuthSession.upsert({
+    where: {
+      tenancyId_externalAuthMethodId_providerSessionId: {
+        tenancyId: options.tenancy.id,
+        externalAuthMethodId: authMethod.authMethodId,
+        providerSessionId: options.identity.providerSessionId,
+      },
+    },
+    update: {},
+    create: {
+      tenancyId: options.tenancy.id,
+      externalAuthMethodId: authMethod.authMethodId,
+      providerSessionId: options.identity.providerSessionId,
+    },
+  });
+  if (session.revokedAt != null) {
+    throw new KnownErrors.InvalidExternalAuthToken();
+  }
+
+  return {
+    authMethod,
+    session,
+    isNewUser,
+  };
+}

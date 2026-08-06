@@ -143,6 +143,22 @@ export async function applyMigrations(options: {
 
           log(`  |> Running statement${isSingleStatement ? "" : "s"}${runOutside ? " outside of transaction" : ""}: ${statement.replace(/(\n|\s)/gm, " ").slice(0, 20)}...`);
 
+          if (runOutside) {
+            // Nasty subtlety: Prisma's driver adapter keeps the snapshot of the most recent *parameterized*
+            // query registered (pinning pg_stat_activity.backend_xmin) until the next statement runs on that
+            // connection or the transaction ends. Our SchemaMigration lookup above is parameterized, so at this
+            // point the wrapping transaction still holds a snapshot even though it is idle. Statements like
+            // CREATE/DROP INDEX CONCURRENTLY (the reason RUN_OUTSIDE_TRANSACTION_SENTINEL exists) wait for
+            // every transaction with an older snapshot to finish — including our own wrapper, which in turn
+            // waits for the outside statement to complete. That self-deadlock is invisible to Postgres'
+            // deadlock detector and only resolves via statement_timeout. Running any non-parameterized no-op
+            // statement on the wrapper connection releases the pinned snapshot first.
+            // (Historically this was masked by migration files starting with a lone SPLIT_STATEMENT_SENTINEL,
+            // which made the runner execute a no-op DO block inside the transaction before the outside
+            // statement — accidentally unpinning the snapshot.)
+            await tx.$executeRaw`SELECT 1`;
+          }
+
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;
           if (isSingleStatement) {
             const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;

@@ -22,10 +22,36 @@ Optional:
     Default: "https://api.hexclave.com"
     Can specify different URLs for browser vs server environments.
     
-  tokenStore: "cookie" | "memory" | { accessToken, refreshToken } | null
+  tokenStore: "cookie" | "memory" | { accessToken, refreshToken } | ExternalTokenStore | null
     Default: "cookie" (JS) or "memory" (other SDKs)
     Where to store authentication tokens.
     "cookie" is JS-only due to complexity. See _utilities.spec.md for details.
+
+    ExternalTokenStore is JS-only and delegates the long-lived session to another
+    authentication provider:
+      type: "external"
+      providerId: "clerk-integration" | "better-auth-integration" | "workos-integration"
+      getToken(): async string | null
+      getSessionId(): string | null [optional]
+      subscribe(callback): unsubscribe function [optional]
+      signOut(): async void [optional]
+
+    On demand, call getToken() and exchange the provider JWT for a short-lived
+    Hexclave access token. Never persist the provider JWT or receive a Hexclave
+    refresh token. If getToken() returns null, invalidate that external session.
+    If getSessionId() is provided, use it to keep the SDK session and its caches
+    stable across provider token rotations. A null session ID represents a signed-out
+    provider. Without getSessionId(), each subscription notification starts a new
+    SDK session generation because identity continuity cannot be proven.
+
+    subscribe(callback) notifies the SDK when the provider token or session changes;
+    expire the current Hexclave access token and re-read the provider state. On
+    Hexclave sign-out, revoke the correlated Hexclave session and then call the
+    optional provider signOut().
+
+    JS SDKs expose clerkTokenStore(), betterAuthTokenStore(), and workosTokenStore()
+    helpers that construct ExternalTokenStore objects with the corresponding
+    providerId.
       
   oauthScopesOnSignIn: object
     Additional OAuth scopes to request during sign-in for each provider.

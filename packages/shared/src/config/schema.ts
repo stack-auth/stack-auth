@@ -146,6 +146,22 @@ const branchAuthSchema = yupObject({
   signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
+const clerkIntegrationSchema = yupObject({
+  issuer: schemaFields.urlSchema.optional(),
+  authorizedParties: yupString().optional(),
+});
+
+const betterAuthIntegrationSchema = yupObject({
+  issuer: schemaFields.urlSchema.optional(),
+  audience: yupString().optional(),
+  jwksUrl: schemaFields.urlSchema.optional(),
+});
+
+const workosIntegrationSchema = yupObject({
+  clientId: yupString().optional(),
+  issuer: schemaFields.urlSchema.optional(),
+});
+
 export const branchPaymentsSchema = yupObject({
   blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
@@ -452,6 +468,9 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   payments: branchPaymentsSchema,
 
   "deployments-alpha": branchDeploymentsSchema,
+  "clerk-integration": clerkIntegrationSchema,
+  "better-auth-integration": betterAuthIntegrationSchema,
+  "workos-integration": workosIntegrationSchema,
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -1030,6 +1049,20 @@ const organizationConfigDefaults = {
       },
     }),
     signUpRulesDefaultAction: 'allow',
+  },
+
+  "clerk-integration": {
+    issuer: undefined,
+    authorizedParties: undefined,
+  },
+  "better-auth-integration": {
+    issuer: undefined,
+    audience: undefined,
+    jwksUrl: undefined,
+  },
+  "workos-integration": {
+    clientId: undefined,
+    issuer: undefined,
   },
 
   emails: {

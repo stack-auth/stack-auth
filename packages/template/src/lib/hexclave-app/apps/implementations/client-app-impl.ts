@@ -67,6 +67,7 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
+import { ExternalTokenStoreSessionAdapter, isExternalTokenStore } from "./external-token-store-session-adapter";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -358,6 +359,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
   private _pendingSignOut: Promise<void> | null = null;
+  private readonly _externalTokenStoreSessionAdapter: ExternalTokenStoreSessionAdapter;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -787,6 +789,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
       });
     }
+    this._externalTokenStoreSessionAdapter = new ExternalTokenStoreSessionAdapter(
+      (sessionOptions) => this._interface.createSession(sessionOptions),
+      async (providerId, token) => {
+        const exchange = await this._interface.exchangeExternalAuthToken(providerId, token);
+        return Result.orThrow(exchange).accessToken;
+      },
+    );
 
     this._tokenStoreInit = resolvedOptions.tokenStore;
     this._redirectMethod = resolvedOptions.redirectMethod || (isBrowserLike() ? "window" : "none");
@@ -1697,6 +1706,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       default: {
         if (tokenStoreInit === null) {
           return createEmptyTokenStore();
+        } else if (typeof tokenStoreInit === "object" && isExternalTokenStore(tokenStoreInit)) {
+          return this._externalTokenStoreSessionAdapter.getOrCreateTokenStore(tokenStoreInit, (store, previousSessionKey) => {
+            this._sessionsByTokenStoreAndSessionKey
+              .get(store)
+              ?.get(previousSessionKey)
+              ?.suggestAccessTokenExpired();
+          });
         } else if (typeof tokenStoreInit === "object" && "headers" in tokenStoreInit) {
           if (this._requestTokenStores.has(tokenStoreInit)) return this._requestTokenStores.get(tokenStoreInit)!;
 
@@ -1772,28 +1788,29 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * - So different token stores are separated and don't leak information between each other, eg. if the same user sends two requests to the same server they should get a different session object
    */
   private _sessionsByTokenStoreAndSessionKey = new WeakMap<Store<TokenObject>, Map<string, InternalSession>>();
+
+  private _getSessionKeyForTokenStore(tokenStore: Store<TokenObject>, tokenObj: TokenObject): string {
+    return this._externalTokenStoreSessionAdapter.getSessionKey(tokenStore, tokenObj);
+  }
   /**
    * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet
    *                         (so we can warm a sign-in's session before the token store publishes it).
    */
   protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>, overrideTokenObj?: TokenObject): InternalSession {
     const tokenObj = overrideTokenObj ?? tokenStore.get();
-    const sessionKey = InternalSession.calculateSessionKey(tokenObj);
+    const sessionKey = this._getSessionKeyForTokenStore(tokenStore, tokenObj);
     const existing = sessionKey ? this._sessionsByTokenStoreAndSessionKey.get(tokenStore)?.get(sessionKey) : null;
     if (existing) return existing;
 
-    const session = this._interface.createSession({
-      refreshToken: tokenObj.refreshToken,
-      accessToken: tokenObj.accessToken,
-    });
+    const session = this._externalTokenStoreSessionAdapter.createSessionForTokenStore(tokenStore, tokenObj, sessionKey);
     session.onAccessTokenChange((newAccessToken) => {
-      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
+      tokenStore.update((old) => this._getSessionKeyForTokenStore(tokenStore, old) === sessionKey ? {
         ...old,
         accessToken: newAccessToken?.token ?? null
       } : old);
     });
     session.onInvalidate(() => {
-      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
+      tokenStore.update((old) => this._getSessionKeyForTokenStore(tokenStore, old) === sessionKey ? {
         ...old,
         accessToken: null,
         refreshToken: null,
@@ -4249,6 +4266,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       // Preserve the old behavior of serializing concurrent sign-outs without coupling them to unrelated stores.
       await previousSignOut;
       await this._interface.signOut(session);
+      await this._externalTokenStoreSessionAdapter.getExternalTokenStoreForSession(session)?.signOut?.();
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {
@@ -4479,6 +4497,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
         if (typeof this._redirectMethod !== "string") {
           throw new HexclaveAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
+        }
+        if (typeof this._tokenStoreInit === "object" && this._tokenStoreInit != null && "type" in this._tokenStoreInit) {
+          throw new HexclaveAssertionError("Cannot serialize an app with an external token store because its callbacks are not serializable. Construct this app in the client runtime instead.");
         }
 
         const publishableClientKey = "publishableClientKey" in this._interface.options

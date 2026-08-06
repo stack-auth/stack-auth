@@ -108,16 +108,18 @@ export class InternalSession {
 
   constructor(private readonly _options: {
     refreshAccessTokenCallback(refreshToken: RefreshToken): Promise<AccessToken | null>,
+    refreshAccessTokenWithoutRefreshTokenCallback?: () => Promise<AccessToken | null>,
     refreshToken: string | null,
     accessToken?: string | null,
+    sessionKey?: string,
   }) {
     this._accessToken = new Store(_options.accessToken ? AccessToken.createIfValid(_options.accessToken) : null);
     this._refreshToken = _options.refreshToken ? new RefreshToken(_options.refreshToken) : null;
-    if (_options.accessToken === null && _options.refreshToken === null) {
+    if (_options.accessToken === null && _options.refreshToken === null && _options.refreshAccessTokenWithoutRefreshTokenCallback == null) {
       // this session is already invalid
       this._knownToBeInvalid.set(true);
     }
-    this.sessionKey = InternalSession.calculateSessionKey({ accessToken: _options.accessToken ?? null, refreshToken: _options.refreshToken });
+    this.sessionKey = _options.sessionKey ?? InternalSession.calculateSessionKey({ accessToken: _options.accessToken ?? null, refreshToken: _options.refreshToken });
   }
 
   static calculateSessionKey(ofTokens: { refreshToken: string | null, accessToken?: string | null }): string {
@@ -231,7 +233,7 @@ export class InternalSession {
     if (!newAccessToken) return;
     // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token pair
     // that maps to this same session key (validated against the incoming pair, not this session's existing tokens).
-    if (InternalSession.calculateSessionKey(tokens) !== this.sessionKey) return;
+    if (this._options.sessionKey == null && InternalSession.calculateSessionKey(tokens) !== this.sessionKey) return;
     if (this._accessToken.get()?.token === newAccessToken.token) return;
     this._accessToken.set(newAccessToken);
   }
@@ -261,7 +263,7 @@ export class InternalSession {
    * If you need a stronger guarantee of revoking an access token, use markAccessTokenExpired instead.
    */
   suggestAccessTokenExpired(): void {
-    if (this._refreshToken) {
+    if (this._refreshToken || this._options.refreshAccessTokenWithoutRefreshTokenCallback != null) {
       this.markAccessTokenExpired();
     }
   }
@@ -311,25 +313,34 @@ export class InternalSession {
    * @returns A newly fetched access token (never read from cache), or null if the session either does not represent a user or the session is invalid.
    */
   private async _getNewlyFetchedAccessToken(): Promise<AccessToken | null> {
-    if (!this._refreshToken) return null;
+    if (!this._refreshToken && this._options.refreshAccessTokenWithoutRefreshTokenCallback == null) return null;
     if (this._knownToBeInvalid.get()) return null;
 
     if (!this._refreshPromise) {
-      this._refreshAndSetRefreshPromise(this._refreshToken);
+      this._refreshAndSetRefreshPromise();
     }
     return await this._refreshPromise;
   }
 
-  private _refreshAndSetRefreshPromise(refreshToken: RefreshToken) {
-    let refreshPromise: Promise<AccessToken | null> = this._options.refreshAccessTokenCallback(refreshToken).then((accessToken) => {
+  private _refreshAndSetRefreshPromise() {
+    const refreshToken = this._refreshToken;
+    const refresh = refreshToken == null
+      ? this._options.refreshAccessTokenWithoutRefreshTokenCallback ?? throwErr("Session has no way to refresh its access token")
+      : async () => await this._options.refreshAccessTokenCallback(refreshToken);
+    let refreshPromise: Promise<AccessToken | null> = refresh().then((accessToken) => {
       if (refreshPromise === this._refreshPromise) {
-        this._refreshPromise = null;
         this._accessToken.set(accessToken);
         if (!accessToken) {
           this.markInvalid();
         }
       }
       return accessToken;
+    }).finally(() => {
+      // Provider/network failures are transient; leaving a rejected promise cached would make this
+      // session permanently unable to retry even though the delegated provider session is still valid.
+      if (refreshPromise === this._refreshPromise) {
+        this._refreshPromise = null;
+      }
     });
     this._refreshPromise = refreshPromise;
   }
