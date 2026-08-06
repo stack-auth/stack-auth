@@ -1,0 +1,22 @@
+apps/backend/src/server/route-pattern-index.test.ts
+  s_fd23e7c5bda127::t_d96693bebcdd89 17-26,44-69
+apps/backend/src/server/route-pattern-index.ts
+  s_fd23e7c5bda127::t_48c6b05dd8fd4e 33-34,36,116,123,136,144-150
+  s_fd23e7c5bda127::t_672bd0c4917614 151-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3750b32e3a63c0dba22dccf0bb709beae3245856",
+  "prompts": {},
+  "sessions": {
+    "s_fd23e7c5bda127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd803-3cea-7d62-ad17-059767f952a4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
