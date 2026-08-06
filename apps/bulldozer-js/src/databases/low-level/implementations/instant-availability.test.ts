@@ -19,6 +19,9 @@ function createSlowSetDatabase() {
     async get(key) {
       return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
     },
+    async listEntries() {
+      throw new Error("not implemented");
+    },
     async setAll(entries) {
       setCallCount++;
       const seq = ["slow", crypto.randomUUID()] as unknown as DatabaseSeq;
@@ -100,6 +103,9 @@ function createReorderingSetDatabase() {
   const store: LowLevelKvStore = {
     async get(key) {
       return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
+    },
+    async listEntries() {
+      throw new Error("not implemented");
     },
     async setAll(entries, setOptions) {
       setCallCount++;

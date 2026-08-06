@@ -84,10 +84,20 @@ describe("LMDB low-level database", () => {
     try {
       const db = declareLmdbLowLevelDatabase({ path, dbId: "dump" });
       const dump = db.declareKvDump("heap");
-      const { keys: [key], seq } = await dump.insertAll([buffer("payload")]);
+      const { keys, seq } = await dump.insertAll([buffer("payload"), buffer("second"), buffer("third")]);
       await db.waitUntilDurable(seq);
-      expect(key.byteLength).toBe(48);
-      expect(text((await dump.get(key)).buffer)).toBe("payload");
+      expect(keys.every(key => key.byteLength === 48)).toBe(true);
+      expect(text((await dump.get(keys[0])).buffer)).toBe("payload");
+      const firstPage = await dump.listEntries({ limit: 2 });
+      expect(firstPage.entries).toHaveLength(2);
+      expect(firstPage.hasMore).toBe(true);
+      const secondPage = await dump.listEntries({ startAfter: firstPage.entries[1].key, limit: 2 });
+      expect(secondPage.entries).toHaveLength(1);
+      expect(secondPage.hasMore).toBe(false);
+      expect(new Set([...firstPage.entries, ...secondPage.entries].map(entry => text(entry.value)))).toEqual(new Set(["payload", "second", "third"]));
+      const deleted = await dump.deleteAll(keys, { requiresSeq: seq });
+      await db.waitUntilAvailable(deleted.seq);
+      expect(await Promise.all(keys.map(async key => text((await dump.get(key)).buffer)))).toEqual([null, null, null]);
     } finally {
       await rm(path, { recursive: true, force: true });
     }

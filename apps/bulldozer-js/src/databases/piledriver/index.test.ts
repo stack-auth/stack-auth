@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LowLevelDatabase } from "../low-level/index.js";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
-import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, piledriverObjectEquals } from "./index.js";
+import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, PiledriverHeapObject, piledriverObjectEquals } from "./index.js";
 
 function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
   return {
@@ -18,6 +18,34 @@ function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => voi
       };
     },
   };
+}
+
+function wrapWithHeapListCounter(lowLevel: LowLevelDatabase, onHeapList: () => void): LowLevelDatabase {
+  return {
+    ...lowLevel,
+    declareKvDump(id) {
+      const dump = lowLevel.declareKvDump(id);
+      if (id !== "heap") return dump;
+      return {
+        ...dump,
+        async listEntries(options) {
+          onHeapList();
+          return await dump.listEntries(options);
+        },
+      };
+    },
+  };
+}
+
+async function timestampAfter(value: number) {
+  while (Date.now() <= value) await new Promise(resolve => setTimeout(resolve, 1));
+  return Date.now();
+}
+
+function declareAfterRestart(lowLevel: LowLevelDatabase, cutoffTimestampMillis: number) {
+  return declarePiledriverDatabase(lowLevel, {
+    garbageCollectionProcessStartedAtMillis: cutoffTimestampMillis + 1,
+  });
 }
 
 describe("PiledriverDatabase", () => {
@@ -46,6 +74,220 @@ describe("PiledriverDatabase", () => {
     }
     expect(await child.get()).toEqual({ nested: "value" });
     expect(heapGets).toBe(1);
+  });
+
+  it("collects a recursively dereferenced DAG after a restart barrier", async () => {
+    let durabilityWaits = 0;
+    const underlyingLowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const lowLevel: LowLevelDatabase = {
+      ...underlyingLowLevel,
+      async waitUntilDurable(seq) {
+        durabilityWaits++;
+        await underlyingLowLevel.waitUntilDurable(seq);
+      },
+    };
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const child = asHeapObject({ value: "child" });
+    const parent = asHeapObject({ child });
+    await writer.setRootObject(rootKey, { parent });
+    await writer.setRootObject(rootKey, { replacement: true });
+
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    const result = await restarted.collectGarbage(cutoff);
+    expect(result).toMatchObject({
+      limits: {
+        maxObjects: 1000,
+        limitReached: false,
+      },
+      objects: {
+        deleted: 2,
+        candidatesExamined: 2,
+        candidatesSkipped: 0,
+        metadataEntriesExaminedForRepair: 0,
+        childObjectsBecameUnreferenced: 1,
+        maxCascadeDepth: 1,
+      },
+      references: {
+        outgoingEdgesProcessed: 1,
+        legacyImmortalEdgesIgnored: 0,
+        referenceCountCompareAndSetAttempts: 1,
+        referenceCountCompareAndSetConflicts: 0,
+      },
+      recovery: {
+        deletionClaimConflicts: 0,
+        deletionProgressCompareAndSetConflicts: 0,
+      },
+      reclaimed: {
+        physicalFileBytesReduced: null,
+      },
+    });
+    expect(result.reclaimed.heapPayloadBytes).toBeGreaterThan(0);
+    expect(result.reclaimed.knownLogicalBytes).toBeGreaterThanOrEqual(result.reclaimed.heapPayloadBytes);
+    expect(result.reclaimed.physicalStorageNote).toContain("do not normally shrink");
+    expect(durabilityWaits).toBe(1);
+    expect((await restarted.debugSnapshot!()).heap).toHaveLength(0);
+  });
+
+  it("keeps descendants that still have another incoming reference", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const child = asHeapObject({ value: "shared" });
+    const discardedParent = asHeapObject({ child, parent: "discarded" });
+    const retainedParent = asHeapObject({ child, parent: "retained" });
+    await writer.setRootObject(rootKey, { discardedParent, retainedParent });
+    await writer.setRootObject(rootKey, { retainedParent });
+
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    const result = await restarted.collectGarbage(cutoff);
+    expect(result.objects.deleted).toBe(1);
+    expect((await restarted.debugSnapshot!()).heap).toHaveLength(2);
+  });
+
+  it("serializes concurrent mutations of the same root", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const writer = declarePiledriverDatabase(lowLevel);
+    const rootKey = new TextEncoder().encode("root").buffer;
+    await Promise.all([
+      writer.setRootObject(rootKey, { child: asHeapObject({ value: "first" }) }),
+      writer.setRootObject(rootKey, { child: asHeapObject({ value: "second" }) }),
+    ]);
+    await writer.setRootObject(rootKey, { replacement: true });
+
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    expect((await restarted.collectGarbage(cutoff)).objects.deleted).toBe(2);
+  });
+
+  it("never collects objects created after the restart barrier", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const initial = declarePiledriverDatabase(lowLevel);
+    await initial.setRootObject(new TextEncoder().encode("initial").buffer, { initialized: true });
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    await restarted.setRootObject(new TextEncoder().encode("new-root").buffer, {
+      child: asHeapObject({ created: "after-restart" }),
+    });
+    await restarted.setRootObject(new TextEncoder().encode("new-root").buffer, { replacement: true });
+    expect(await restarted.collectGarbage(cutoff)).toMatchObject({
+      objects: {
+        deleted: 0,
+        candidatesExamined: 0,
+        metadataEntriesExaminedForRepair: 1,
+        candidatesSkipped: 0,
+      },
+      reclaimed: {
+        heapPayloadBytes: 0,
+        knownLogicalBytes: 0,
+      },
+    });
+    expect((await restarted.debugSnapshot!()).heap).toHaveLength(1);
+  });
+
+  it("keeps legacy objects immortal while collecting newly created objects", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const legacyRootKey = new TextEncoder().encode("legacy-root").buffer;
+    const legacyWriter = declarePiledriverDatabase(lowLevel);
+    await legacyWriter.setRootObject(legacyRootKey, {
+      parent: asHeapObject({ child: asHeapObject({ legacy: true }) }),
+    });
+    for (const storeId of [
+      "piledriver-gc-reference-metadata-v3",
+      "piledriver-gc-zero-reference-candidates-v3",
+      "piledriver-gc-state-v3",
+    ]) {
+      const store = lowLevel.declareKvStore(storeId);
+      const entries = await store.listEntries();
+      await store.deleteAll(entries.entries.map(entry => entry.key));
+    }
+
+    let heapListCalls = 0;
+    const trackingWriter = declarePiledriverDatabase(wrapWithHeapListCounter(lowLevel, () => heapListCalls++));
+    const legacyRoot = (await trackingWriter.getRootObject(legacyRootKey)).object;
+    if (typeof legacyRoot !== "object" || legacyRoot === null || Array.isArray(legacyRoot) || !("parent" in legacyRoot)) {
+      throw new Error("Expected legacy root to contain its parent reference");
+    }
+    const legacyParent = legacyRoot.parent;
+    if (typeof legacyParent !== "object" || legacyParent === null || Array.isArray(legacyParent) || !(isPiledriverHeapObjectSymbol in legacyParent)) {
+      throw new Error("Expected legacy parent to be a heap reference");
+    }
+    await trackingWriter.setRootObject(legacyRootKey, { replacement: true });
+    expect(heapListCalls).toBe(0);
+    const trackedRootKey = new TextEncoder().encode("tracked-root").buffer;
+    await trackingWriter.setRootObject(trackedRootKey, {
+      parent: asHeapObject({
+        child: asHeapObject({ tracked: true }),
+        legacyParent,
+      }),
+    });
+    await trackingWriter.setRootObject(trackedRootKey, { replacement: true });
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    const result = await restarted.collectGarbage(cutoff);
+    expect(result.objects.deleted).toBe(2);
+    expect(result.references.legacyImmortalEdgesIgnored).toBe(1);
+    expect((await restarted.debugSnapshot!()).heap).toHaveLength(2);
+  });
+
+  it("repairs a missing zero-reference candidate", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const rootKey = new TextEncoder().encode("root").buffer;
+    const writer = declarePiledriverDatabase(lowLevel);
+    await writer.setRootObject(rootKey, { child: asHeapObject({ tracked: true }) });
+    await writer.setRootObject(rootKey, { replacement: true });
+    const candidateStore = lowLevel.declareKvStore("piledriver-gc-zero-reference-candidates-v3");
+    const candidates = await candidateStore.listEntries();
+    await candidateStore.deleteAll(candidates.entries.map(entry => entry.key));
+
+    const cutoff = await timestampAfter(Date.now());
+    await timestampAfter(cutoff);
+    const restarted = declareAfterRestart(lowLevel, cutoff);
+    expect(await restarted.collectGarbage(cutoff)).toMatchObject({
+      objects: {
+        deleted: 1,
+        candidatesExamined: 1,
+        metadataEntriesExaminedForRepair: 1,
+        candidatesSkipped: 0,
+      },
+      recovery: {
+        missingCandidateEntriesRepaired: 1,
+      },
+    });
+  });
+
+  it("does not allow re-instantiation to bypass the process restart barrier", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const cutoff = await timestampAfter(Date.now());
+    const sameProcessDatabase = declarePiledriverDatabase(lowLevel);
+    await expect(sameProcessDatabase.collectGarbage(cutoff)).rejects.toThrow("restart the Bulldozer service");
+  });
+
+  it("rejects cycles between heap objects", async () => {
+    let second: PiledriverHeapObject | undefined;
+    const first: PiledriverHeapObject = {
+      async get() {
+        if (second === undefined) throw new Error("Second heap object was not initialized");
+        return { second };
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+    second = {
+      async get() {
+        return { first };
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+    const database = declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID()));
+    await expect(database.setRootObject(new TextEncoder().encode("root").buffer, { first, second })).rejects.toThrow("must not contain cycles");
   });
 });
 
