@@ -26,7 +26,7 @@ import { ProjectRowSchema } from "./schemas";
 
 const RdeFilterSchema = yupString().oneOf(["both", "rde", "not_rde"]).default("both");
 const OnboardingFilterSchema = yupString().oneOf(["both", "incomplete", "completed"]).default("both");
-const NeonFilterSchema = yupString().oneOf(["include", "exclude"]).default("include");
+const NeonFilterSchema = yupString().oneOf(["include", "exclude"]).default("exclude");
 const NEON_PROJECT_DESCRIPTION = "Created with Neon";
 
 function parseNonNegativeInt(name: string, raw: string | undefined, fallback: number): number {
