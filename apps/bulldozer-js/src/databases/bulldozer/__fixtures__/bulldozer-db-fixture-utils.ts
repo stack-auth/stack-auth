@@ -90,16 +90,38 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   return result;
 }
 
+// The result of reading the entire database. `readModel` covers every table whose rows the reading
+// code can list; `unlistableTableIds` names the tables that *explicitly rejected* row listing (the
+// dedicated "does not support listing rows" error thrown by non-materialized operators such as
+// stateless Sort and count-only GroupBy, and by lazy operators reading through them). Tracking the
+// rejections explicitly lets callers exempt exactly these tables from comparisons without weakening
+// the check for everything else — a table that goes missing for any other reason is still an error.
+export type ComputedReadModel = {
+  readModel: BulldozerReadModel,
+  unlistableTableIds: string[],
+};
+
 // Reads the entire database: every table, every group, every row. The result is deterministic (the
 // backing B-trees are ordered), so it is a stable attestation of the complete logical state.
-export async function computeReadModel(db: BulldozerDatabase): Promise<BulldozerReadModel> {
+export async function computeReadModel(db: BulldozerDatabase): Promise<ComputedReadModel> {
   const { snapshot } = await db.getSnapshot();
   const tables = db.listTables().map(descriptor => descriptor.tableId).sort();
   const readModel: BulldozerReadModel = [];
+  const unlistableTableIds: string[] = [];
   for (const tableId of tables) {
     const groups: ReadModelGroup[] = [];
     try {
-      for (const { groupKey } of await collect(snapshot.listGroups({ tableId, range: {} }))) {
+      const groupKeys = await collect(snapshot.listGroups({ tableId, range: {} }));
+      // Row-listing support is a property of the table's operator graph, not of its contents, so an
+      // empty table must be classified the same way as a populated one. With no groups to iterate,
+      // the rejection would never be observed, so probe a nonexistent group instead: row-listing
+      // tables yield nothing for unknown group keys (a long-stable property of stored and groupwise
+      // tables, so this also behaves correctly under the older checkouts the cross-version CI job
+      // overlays this module onto), while non-materialized operators throw regardless of the key.
+      if (groupKeys.length === 0) {
+        await collect(snapshot.listRowsInGroup({ tableId, groupKey: null, range: {} }));
+      }
+      for (const { groupKey } of groupKeys) {
         const rows: ReadModelRow[] = [];
         for (const row of await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))) {
           rows.push({
@@ -112,11 +134,12 @@ export async function computeReadModel(db: BulldozerDatabase): Promise<Bulldozer
       }
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes("does not support listing rows")) throw error;
+      unlistableTableIds.push(tableId);
       continue;
     }
     readModel.push({ tableId, groups });
   }
-  return readModel;
+  return { readModel, unlistableTableIds };
 }
 
 // Serializes a low-level backend's current contents into a portable, base64-encoded KV document.
@@ -134,7 +157,7 @@ function kvEntriesFromDebugSnapshot(snapshot: LowLevelDatabaseDebugSnapshot): { 
 // Bulldozer database was just written to. The backend must expose `debugSnapshot`.
 export async function dumpBulldozerDatabase(lowLevel: LowLevelDatabase, db: BulldozerDatabase): Promise<BulldozerDbDump> {
   if (!lowLevel.debugSnapshot) throw new Error("Low-level backend must support debugSnapshot to be dumped");
-  const readModel = await computeReadModel(db);
+  const { readModel } = await computeReadModel(db);
   return { ...kvEntriesFromDebugSnapshot(await lowLevel.debugSnapshot()), readModel };
 }
 

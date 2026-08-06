@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { declareInMemoryLowLevelDatabase } from "../../low-level/implementations/in-memory.js";
+import { declarePiledriverDatabase } from "../../piledriver/index.js";
+import { declareBulldozerDatabase, declareGroupByTable, defineMaterializeTable, defineSortTable, defineStoredTable } from "../index.js";
 import { BulldozerDbDump, computeReadModel, restoreBulldozerDatabase } from "./bulldozer-db-fixture-utils.js";
 
 // Golden whole-database serialization fixtures. Each file freezes an entire persisted Bulldozer
@@ -17,6 +20,38 @@ function loadFixture(name: string): BulldozerDbDump {
   return JSON.parse(readFileSync(join(here, `${name}.json`), "utf8")) as BulldozerDbDump;
 }
 
+// The exact split of the fixture schema (example-schema.ts) into tables whose rows the current code
+// can list and tables that reject row listing. Derived by hand from the schema — NOT from the code
+// under test — so that a table regressing to (or away from) supporting row listing fails the
+// assertions below instead of silently dropping out of the read-model comparison. Unlistable are the
+// stateless Sort and count-only GroupBy tables plus every lazy operator (filter/map/flatMap/concat)
+// whose full-scan read path goes through one of them; stateful operators (stored, leftFold, leftJoin,
+// timeFold, reduce, compact) own their rows and stay listable regardless of their inputs.
+const expectedReadableTableIds = [
+  "accountCounterpartyJoinedSample",
+  "accountEntriesRunningExposure",
+  "accountEntriesTimedExposure",
+  "accountEntriesTimedReprice",
+  "accountSummary",
+  "compactedDebits",
+  "ledgerEntries",
+];
+const expectedUnlistableTableIds = [
+  "accountAssetPartitions",
+  "accountDebits",
+  "accountDebitsSorted",
+  "accountEntriesNormalized",
+  "accountEntriesSortedByAmount",
+  "accountEntriesWithCounterparty",
+  "accountEntryLegs",
+  "accountPriorityEntries",
+  "assetEntriesNormalized",
+  "entriesByAccount",
+  "entriesByAsset",
+  "highValueEntriesByAsset",
+  "highValueEntriesByAssetAccount",
+];
+
 describe("bulldozer whole-database serialization compatibility", () => {
   // v0 = pre-versioning tree nodes; v1 = materialized Sort/GroupBy; v2 = stateless Sort and
   // count-only GroupBy.
@@ -24,13 +59,15 @@ describe("bulldozer whole-database serialization compatibility", () => {
     it(`reads the entire database from golden fixture ${version} with the current code`, async () => {
       const fixture = loadFixture(version);
       const db = restoreBulldozerDatabase(fixture);
-      const readModel = await computeReadModel(db);
-      const readableTableIds = new Set(readModel.map(table => table.tableId));
+      const { readModel, unlistableTableIds } = await computeReadModel(db);
+      expect(readModel.map(table => table.tableId)).toEqual(expectedReadableTableIds);
+      expect(unlistableTableIds).toEqual(expectedUnlistableTableIds);
       // Deserializing the whole persisted database and re-reading every table must reproduce exactly
       // the readable logical state its writer observed — including the v0 path where augmentations
-      // are recomputed, not trusted. Stateless Sort and count-only GroupBy intentionally have no
-      // row-listing read model.
-      expect(readModel).toEqual(fixture.readModel.filter(table => readableTableIds.has(table.tableId)));
+      // are recomputed, not trusted. Fixtures written before Sort/GroupBy became non-materialized
+      // (v0/v1) still contain read models for the now-unlistable tables; those are exactly the
+      // pinned `expectedUnlistableTableIds` and are exempt from the comparison.
+      expect(readModel).toEqual(fixture.readModel.filter(table => expectedReadableTableIds.includes(table.tableId)));
     });
 
     it(`mutates a database loaded from golden fixture ${version} into valid current-format state`, async () => {
@@ -78,4 +115,31 @@ describe("bulldozer whole-database serialization compatibility", () => {
       expect(runningExposureRows).toEqual([]);
     });
   }
+});
+
+describe("computeReadModel", () => {
+  it("classifies empty non-listable tables the same as populated ones", async () => {
+    // An empty Sort/GroupBy never gets its listRowsInGroup called during a plain group walk (there
+    // are no groups), so without the nonexistent-group probe it would be misclassified as listable
+    // and the read model would depend on whether the table happens to contain data.
+    const db = declareBulldozerDatabase(
+      declarePiledriverDatabase(declareInMemoryLowLevelDatabase(`bulldozer-empty-read-model-${crypto.randomUUID()}`)),
+      {
+        migrations: [[
+          { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+          { type: "initTable", tableId: "sorted", table: defineSortTable({ sortKeyExtractor: row => row.rowIdentifier, sortKeyComparator: (a, b) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0 }), inputTables: { input: "store" } },
+          { type: "initTable", tableId: "grouped", table: declareGroupByTable({ groupKeyExtractor: async row => row.rowIdentifier, groupKeyComparator: (a, b) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0 }), inputTables: { input: "store" } },
+          { type: "initTable", tableId: "sortedMaterialized", table: defineMaterializeTable(), inputTables: { input: "sorted" } },
+        ]],
+      },
+    );
+    await db.applyRemainingMigrations();
+
+    const { readModel, unlistableTableIds } = await computeReadModel(db);
+    expect(unlistableTableIds).toEqual(["grouped", "sorted"]);
+    expect(readModel).toEqual([
+      { tableId: "sortedMaterialized", groups: [] },
+      { tableId: "store", groups: [] },
+    ]);
+  });
 });

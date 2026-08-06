@@ -757,6 +757,17 @@ describe("Bulldozer", () => {
       { groupKey: null, rowIdentifier: "c", rowSortKey: 3, rowData: 3 },
       { groupKey: null, rowIdentifier: "b", rowSortKey: 2, rowData: 2 },
     ]);
+    // Reading concat directly still works here even though its input `a` (sorted) rejects row
+    // listing: with `reverse`, concat drains input `b` first and reaches the limit before ever
+    // touching `a`. Note the intentional asymmetry with the materialized copy below: lazy operators
+    // stream outputs in input-major order, which only coincides with global sort-key order when sort
+    // keys are distinct. All store rows share the sort key `null`, so flatMap's outputs tie on their
+    // input-key component and the lazy read yields each input row's elements together ([103, 3])
+    // instead of the true top-2 by sort key ([103, 102]) that the materialized table returns.
+    expect(await collect(snapshot.listRowsInGroup({ tableId: "concat", groupKey: null, range: { reverse: true, limit: 2 } }))).toEqual([
+      { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 1])]), rowSortKey: [1, [null, 1]], rowData: 103 },
+      { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 0])]), rowSortKey: [1, [null, 0]], rowData: 3 },
+    ]);
     expect(await collect(snapshot.listRowsInGroup({ tableId: "concatMaterialized", groupKey: null, range: { reverse: true, limit: 2 } }))).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["c", 1])]), rowSortKey: [1, [null, 1]], rowData: 103 },
       { groupKey: null, rowIdentifier: JSON.stringify(["b", JSON.stringify(["b", 1])]), rowSortKey: [1, [null, 1]], rowData: 102 },
