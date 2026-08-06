@@ -135,7 +135,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   });
 
   beforeEach(() => {
-    vi.stubEnv("STACK_EMAILABLE_API_KEY", "test_api_key");
+    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "test_api_key");
     return () => vi.unstubAllEnvs();
   });
 
@@ -145,7 +145,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   });
 
   test("returns test-domain rejection even when API key is unset", async ({ expect }) => {
-    vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "");
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
       .resolves.toMatchObject({ status: "not-deliverable", emailableResponse: { state: "undeliverable", reason: "test_domain_rejection" } });
   });
@@ -154,7 +154,7 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     "user@example.com",
     "user@stack-generated.example.com",
   ])("treats reserved example address %s as deliverable without an API key", async (email) => {
-    vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+    vi.stubEnv("HEXCLAVE_EMAILABLE_API_KEY", "");
     vi.stubEnv("NODE_ENV", "test");
     const result = await checkEmailWithEmailable(email);
     expect(result).toEqual({ status: "deliverable", emailableScore: null });
