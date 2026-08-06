@@ -166,16 +166,14 @@ async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy 
   // outbox rows that the event gate immediately discards. The resume path
   // fast-forwards the schedule cursors (see setWorkflowPaused), so the
   // interval spent paused cannot come back as a catch-up burst.
-  const definitions = await retryTransaction(globalPrismaClient, async (tx) => {
-    return await tx.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
-      SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
-      FROM "WorkflowDefinition" d
-      JOIN "WorkflowVersion" v
-        ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
-      WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
-        AND d."pausedAt" IS NULL
-    `);
-  });
+  const definitions = await globalPrismaClient.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
+    SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest", v."createdAt" AS "deployedAt"
+    FROM "WorkflowDefinition" d
+    JOIN "WorkflowVersion" v
+      ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
+    WHERE v."manifest"->'triggers' @> '[{"type":"schedule"}]'
+      AND d."pausedAt" IS NULL
+  `);
 
   let didWork = false;
   for (const definition of definitions) {
@@ -323,12 +321,10 @@ type DefinitionWithManifest = {
  * permanent drop after one is not.
  */
 async function listPausedWorkflowIdsForTenancy(tenancyId: string): Promise<Set<string>> {
-  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
-    return await tx.$queryRaw<{ workflowId: string }[]>(Prisma.sql`
-      SELECT "workflowId" FROM "WorkflowDefinition"
-      WHERE "tenancyId" = ${tenancyId}::uuid AND "pausedAt" IS NOT NULL
-    `);
-  });
+  const rows = await globalPrismaClient.$queryRaw<{ workflowId: string }[]>(Prisma.sql`
+    SELECT "workflowId" FROM "WorkflowDefinition"
+    WHERE "tenancyId" = ${tenancyId}::uuid AND "pausedAt" IS NOT NULL
+  `);
   return new Set(rows.map((row) => row.workflowId));
 }
 
@@ -336,16 +332,17 @@ async function listDefinitionsForTenancy(tenancyId: string, cache: Map<string, D
   const cached = cache.get(tenancyId);
   if (cached != null) return cached;
   // This read controls the irreversible processedAt decision below, so it
-  // must observe the primary rather than a potentially stale replica.
-  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
-    return await tx.$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
-      SELECT d."workflowId", d."latestVersion", v."manifest"
-      FROM "WorkflowDefinition" d
-      JOIN "WorkflowVersion" v
-        ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
-      WHERE d."tenancyId" = ${tenancyId}::uuid
-    `);
-  });
+  // must observe the primary rather than a potentially stale replica. Raw
+  // queries are not in the read-replicas extension's routing list (only the
+  // model-level finders and findRaw/aggregateRaw are), so this stays on the
+  // primary. Rewriting it as a findMany would silently move it to a replica.
+  const rows = await globalPrismaClient.$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
+    SELECT d."workflowId", d."latestVersion", v."manifest"
+    FROM "WorkflowDefinition" d
+    JOIN "WorkflowVersion" v
+      ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
+    WHERE d."tenancyId" = ${tenancyId}::uuid
+  `);
   cache.set(tenancyId, rows);
   return rows;
 }
@@ -369,13 +366,11 @@ async function createFailedRun(options: {
   triggerPayload: { ts_millis: number, data: unknown },
   errorSummary: string,
 }): Promise<void> {
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "failureKind", "errorSummary", "completedAt", "updatedAt")
-      VALUES (${options.tenancy.id}::uuid, ${options.runId}::uuid, ${options.workflowId}, ${options.version}, ${options.runKey}, 'FAILED', ${options.event.id}::uuid, ${options.event.type}, ${JSON.stringify(options.triggerPayload)}::jsonb, 'USER', ${options.errorSummary}, NOW(), NOW())
-      ON CONFLICT ("tenancyId", "id") DO NOTHING
-    `);
-  });
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    INSERT INTO "WorkflowRun" ("tenancyId", "id", "workflowId", "version", "runKey", "state", "triggerEventId", "triggerType", "triggerPayload", "failureKind", "errorSummary", "completedAt", "updatedAt")
+    VALUES (${options.tenancy.id}::uuid, ${options.runId}::uuid, ${options.workflowId}, ${options.version}, ${options.runKey}, 'FAILED', ${options.event.id}::uuid, ${options.event.type}, ${JSON.stringify(options.triggerPayload)}::jsonb, 'USER', ${options.errorSummary}, NOW(), NOW())
+    ON CONFLICT ("tenancyId", "id") DO NOTHING
+  `);
 }
 
 async function createRunForEvent(tenancy: Tenancy, event: WorkflowEventRow, definition: DefinitionWithManifest): Promise<void> {
