@@ -246,10 +246,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
-      DENO_DIR: /deno-cache
       HOST_ON_HOST: host.docker.internal
     volumes:
-      - deno-cache:/deno-cache
+      - freestyle-module-cache:/app/module-cache
 
   # ================= Vercel mock =================
 
@@ -332,7 +331,7 @@ volumes:
   svix-redis-data:
   svix-postgres-data:
   s3mock-data:
-  deno-cache:
+  freestyle-module-cache:
   localstack-data:
   clickhouse-data:
   drizzle-gateway:
