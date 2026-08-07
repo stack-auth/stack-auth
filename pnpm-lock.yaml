@@ -923,6 +923,9 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@bydefault/vercel':
+        specifier: ^0.1.4
+        version: 0.1.4
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -988,6 +991,9 @@ importers:
 
   apps/skills:
     dependencies:
+      '@bydefault/vercel':
+        specifier: ^0.1.4
+        version: 0.1.4
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -3283,6 +3289,9 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+
+  '@bydefault/vercel@0.1.4':
+    resolution: {integrity: sha512-sw5GSwCZ9JE8bpLd0tG8kTPWLt6iJStmRnomfB1wX65biAbu1W+Fz67IMPmHafaF7oBaLNw10+sSnvedQk6PYw==}
 
   '@canvas/image-data@1.1.0':
     resolution: {integrity: sha512-QdObRRjRbcXGmM1tmJ+MrHcaz1MftF2+W7YI+MsphnsCrmtyfS0d5qJbk0MeSbUeyM/jCb0hmnkXPsy026L7dA==}
@@ -19849,6 +19858,8 @@ snapshots:
       '@babel/helper-validator-identifier': 8.0.2
 
   '@borewit/text-codec@0.2.2': {}
+
+  '@bydefault/vercel@0.1.4': {}
 
   '@canvas/image-data@1.1.0': {}
 
