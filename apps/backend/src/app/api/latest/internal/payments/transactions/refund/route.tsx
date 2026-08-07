@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
-import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription, manualTransactionToPrismaRow } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
@@ -415,9 +415,9 @@ export const POST = createSmartRouteHandler({
 // 1. **Race on cap check.** Two concurrent refund requests for the same
 //    source can both call `readPriorRefundSummary` before either commits its
 //    refund row, so both pass the cap check and over-refund. Wrapping this
-//    flow in a Prisma `$transaction` does NOT fix it — `bulldozerWriteManualTransaction`
-//    embeds its own `BEGIN; ... COMMIT;` (see `lib/bulldozer/db/index.ts:162`),
-//    so its writes commit independently of any outer Prisma tx. A real fix
+//    flow in a Prisma `$transaction` does NOT fix it — the Bulldozer
+//    manual-transaction write embeds its own `BEGIN; ... COMMIT;` (see
+//    `lib/bulldozer/db/index.ts:162`), so its writes commit independently of any outer Prisma tx. A real fix
 //    needs either a bulldozer-aware mutex (writes-table sentinel row, advisory
 //    lock taken on a long-lived dedicated connection, etc.) or a "pending
 //    refund intent" pattern that participates in the cap calc before Stripe is
@@ -693,8 +693,8 @@ async function handleSubscriptionRefund(options: {
       // ending/ended, so this catch is defence-in-depth: it only fires if the
       // sub became terminal between that check and here (e.g. a concurrent
       // cancel). The Stripe money refund has already been issued at this
-      // point, so an unhandled error would propagate before
-      // `bulldozerWriteManualTransaction` commits the ledger row, leaving the
+      // point, so an unhandled error would propagate before the Prisma +
+      // Bulldozer dual-write commits the ledger row, leaving the
       // customer refunded with no record.
       try {
         await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
@@ -809,6 +809,26 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
+  // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
+  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
+  await prisma.manualTransaction.upsert({
+    where: {
+      tenancyId_txnId: {
+        tenancyId: refundPrismaRow.tenancyId,
+        txnId: refundPrismaRow.txnId,
+      },
+    },
+    create: refundPrismaRow,
+    update: {
+      type: refundPrismaRow.type,
+      customerId: refundPrismaRow.customerId,
+      customerType: refundPrismaRow.customerType,
+      paymentProvider: refundPrismaRow.paymentProvider,
+      effectiveAt: refundPrismaRow.effectiveAt,
+      // Preserve original create time on conflict (idempotent re-refund / retry).
+      entries: refundPrismaRow.entries,
+    },
+  });
   await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
@@ -967,6 +987,26 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
+  // Same dual-write shape as subscriptions/OTPs: Prisma first, then Bulldozer.
+  const refundPrismaRow = manualTransactionToPrismaRow(refundRow);
+  await prisma.manualTransaction.upsert({
+    where: {
+      tenancyId_txnId: {
+        tenancyId: refundPrismaRow.tenancyId,
+        txnId: refundPrismaRow.txnId,
+      },
+    },
+    create: refundPrismaRow,
+    update: {
+      type: refundPrismaRow.type,
+      customerId: refundPrismaRow.customerId,
+      customerType: refundPrismaRow.customerType,
+      paymentProvider: refundPrismaRow.paymentProvider,
+      effectiveAt: refundPrismaRow.effectiveAt,
+      // Preserve original create time on conflict (idempotent re-refund / retry).
+      entries: refundPrismaRow.entries,
+    },
+  });
   await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
