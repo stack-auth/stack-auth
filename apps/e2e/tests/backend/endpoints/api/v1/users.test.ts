@@ -2385,7 +2385,7 @@ describe("with server access", () => {
   });
 
   it("should be able to update primary email and sign-in with the new email", async ({ expect }) => {
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "password123" });
+    await Auth.Password.signUpWithEmail({ password: "password123" });
     const mailbox = createMailbox();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
@@ -2467,7 +2467,7 @@ describe("with server access", () => {
     const primaryEmail = backendContext.value.mailbox.emailAddress;
     await Auth.signOut();
     await bumpEmailAddress();
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "password123" });
+    await Auth.Password.signUpWithEmail({ password: "password123" });
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2529,7 +2529,7 @@ describe("with server access", () => {
   });
 
   it("should not be able to sign up with an email already in use for auth", async ({ expect }) => {
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "password123" });
+    await Auth.Password.signUpWithEmail({ password: "password123" });
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
@@ -2560,7 +2560,7 @@ describe("with server access", () => {
   });
 
   it("should be able to sign up with an email already in use for auth in a different project", async ({ expect }) => {
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true, password: "password123" });
+    await Auth.Password.signUpWithEmail({ password: "password123" });
     await Project.createAndSwitch({});
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",

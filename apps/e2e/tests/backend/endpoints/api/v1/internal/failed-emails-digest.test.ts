@@ -146,8 +146,9 @@ describe("with valid credentials", () => {
         },
       },
     }, true);
-    // Don't wait for verification email since the SMTP is intentionally broken
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    // The project intentionally has a broken SMTP host, so preserve the
+    // verification outbox row without waiting for delivery.
+    const { userId } = await Auth.Password.signUpWithEmail({ sendVerificationEmail: true, waitForVerificationEmail: false });
     await Auth.signOut();
 
     const testEmailResponse = await niceBackendFetch("/api/v1/emails/send-email", {

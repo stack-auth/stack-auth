@@ -598,7 +598,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, sendVerificationEmail?: boolean, waitForVerificationEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -608,7 +608,7 @@ export namespace Auth {
         body: filterUndefined({
           email,
           password,
-          verification_callback_url: "http://localhost:12345/some-callback-url",
+          verification_callback_url: options.sendVerificationEmail ? "http://localhost:12345/some-callback-url" : undefined,
           bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
         }),
       });
@@ -622,8 +622,9 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // Wait for the verification email to arrive (unless explicitly disabled)
-      if (!options.noWaitForEmail) {
+      // Verification emails dominated the baseline outbox and slowed the suite,
+      // so only tests asserting verification behavior opt into sending one.
+      if (options.sendVerificationEmail && options.waitForVerificationEmail !== false) {
         await mailbox.waitForMessagesWithSubject("Verify your email");
       }
 
