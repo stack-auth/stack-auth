@@ -3,7 +3,7 @@ import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/
 import './polyfills';
 
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
-import { wait } from '@hexclave/shared/dist/utils/promises';
+import { runAsynchronously, wait } from '@hexclave/shared/dist/utils/promises';
 import type { NextFetchEvent, NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -14,7 +14,7 @@ function getTracker(): Tracker | null {
     return tracker;
   }
 
-  const token = getEnvVariable('BYDEFAULT_INGEST_TOKEN', '');
+  const token = getEnvVariable('HEXCLAVE_BYDEFAULT_INGEST_TOKEN', '');
   tracker = token === ''
     ? null
     : new Tracker({
@@ -79,7 +79,7 @@ const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllo
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const currentTracker = getTracker();
   if (currentTracker != null) {
-    currentTracker.track(request, event).catch(() => undefined);
+    runAsynchronously(currentTracker.track(request, event), { noErrorLogging: true });
   }
 
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));

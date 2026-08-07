@@ -1,5 +1,6 @@
 import { Tracker } from "@bydefault/vercel";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { NextFetchEvent, NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -10,7 +11,7 @@ function getTracker(): Tracker | null {
     return tracker;
   }
 
-  const token = getEnvVariable("BYDEFAULT_INGEST_TOKEN", "");
+  const token = getEnvVariable("HEXCLAVE_BYDEFAULT_INGEST_TOKEN", "");
   tracker = token === "" ? null : new Tracker({ token });
   return tracker;
 }
@@ -18,7 +19,7 @@ function getTracker(): Tracker | null {
 export function proxy(request: NextRequest, event: NextFetchEvent) {
   const currentTracker = getTracker();
   if (currentTracker != null) {
-    currentTracker.track(request, event).catch(() => undefined);
+    runAsynchronously(currentTracker.track(request, event), { noErrorLogging: true });
   }
 
   return NextResponse.next();
