@@ -247,6 +247,7 @@ services:
       - "host.docker.internal:host-gateway"  # noop on Docker Desktop/Orbstack, enables host.docker.internal on Linux
     environment:
       HOST_ON_HOST: host.docker.internal
+      HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT: "4"
       HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED: "true"
       HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ORIGINS: "http://host.docker.internal:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
     read_only: true

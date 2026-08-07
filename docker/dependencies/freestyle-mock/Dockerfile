@@ -17,10 +17,9 @@ COPY server.mjs ./
 RUN mkdir -p /app/module-cache \
   && groupadd --system freestyle \
   && useradd --system --gid freestyle --home-dir /home/freestyle --create-home freestyle \
-  && chmod 1777 /app/module-cache \
   && chown -R freestyle:freestyle /app/module-cache /home/freestyle
 
-ENV NPM_CONFIG_CACHE=/tmp/npm-cache
+ENV NPM_CONFIG_CACHE=/app/module-cache/npm-cache
 USER freestyle
 
 EXPOSE 8080

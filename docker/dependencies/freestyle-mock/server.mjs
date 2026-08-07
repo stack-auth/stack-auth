@@ -1,13 +1,12 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
-import { cpus } from "node:os";
 import {
+  lstat,
   mkdir,
   readFile,
   readdir,
   rename,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,14 +15,27 @@ import { NodeRuntime } from "secure-exec";
 
 const PORT = Number(process.env.PORT || 8080);
 const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_TIMEOUT_MS = 120_000;
+// Keep this above the workflow step backstop of 630 seconds (600s + 30s).
+const MAX_TIMEOUT_MS = 15 * 60_000;
 const OUTER_TIMEOUT_GRACE_MS = 1_000;
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 1 * 1024 * 1024;
 const MAX_RESULT_BYTES = 4 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
 const MAX_QUEUE_DEPTH = 100;
-const MAX_IN_FLIGHT = Math.max(2, Math.min(cpus().length, 8));
+const DEFAULT_MAX_IN_FLIGHT = 4;
+const configuredMaxInFlight = process.env.HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT;
+const MAX_IN_FLIGHT =
+  configuredMaxInFlight == null
+    ? DEFAULT_MAX_IN_FLIGHT
+    : Number(configuredMaxInFlight);
+if (
+  !Number.isInteger(MAX_IN_FLIGHT) ||
+  MAX_IN_FLIGHT < 1 ||
+  MAX_IN_FLIGHT > 32
+) {
+  throw new Error("HEXCLAVE_FREESTYLE_MOCK_MAX_IN_FLIGHT must be an integer from 1 to 32");
+}
 const MAX_JOBS_PER_RUNTIME = 50;
 const MAX_NON_DEFAULT_RUNTIMES = 3;
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
@@ -250,7 +262,10 @@ function runNpmInstall(workDir, signal) {
       {
         cwd: workDir,
         stdio: "ignore",
-        env: { ...process.env, NPM_CONFIG_CACHE: "/tmp/npm-cache" },
+        env: {
+          ...process.env,
+          NPM_CONFIG_CACHE: join(MODULE_CACHE_DIR, "npm-cache"),
+        },
       },
     );
     let settled = false;
@@ -287,8 +302,12 @@ async function directorySize(path) {
   let total = 0;
   for (const entry of await readdir(path, { withFileTypes: true })) {
     const childPath = join(path, entry.name);
-    if (entry.isDirectory()) total += await directorySize(childPath);
-    else total += (await stat(childPath)).size;
+    try {
+      if (entry.isDirectory()) total += await directorySize(childPath);
+      else total += (await lstat(childPath)).size;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
   }
   return total;
 }
@@ -298,44 +317,69 @@ class DependencyCache {
     this.rootDir = rootDir;
     this.installPromises = new Map();
     this.protectedHashes = () => new Set();
+    this.pruneTimer = null;
+    this.pruneProtection = new Set();
   }
 
   setProtectedHashes(callback) {
     this.protectedHashes = callback;
   }
 
+  schedulePrune(hash) {
+    if (hash) this.pruneProtection.add(hash);
+    if (this.pruneTimer) return;
+    this.pruneTimer = setTimeout(async () => {
+      this.pruneTimer = null;
+      try {
+        await this.prune();
+      } finally {
+        this.pruneProtection.clear();
+      }
+    }, 1_000);
+  }
+
   async prune() {
-    let entries;
     try {
-      entries = await readdir(this.rootDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    const now = Date.now();
-    const candidates = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
-      if (
-        this.protectedHashes().has(entry.name) ||
-        this.installPromises.has(entry.name)
-      ) {
-        continue;
+      const entries = await readdir(this.rootDir, { withFileTypes: true });
+      const now = Date.now();
+      const candidates = [];
+      for (const entry of entries) {
+        const temporaryMatch = entry.name.match(/^([a-f0-9]{64})\.tmp-/);
+        if (temporaryMatch) {
+          if (!this.installPromises.has(temporaryMatch[1])) {
+            await rm(join(this.rootDir, entry.name), {
+              recursive: true,
+              force: true,
+            });
+          }
+          continue;
+        }
+        if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
+        if (
+          this.protectedHashes().has(entry.name) ||
+          this.pruneProtection.has(entry.name) ||
+          this.installPromises.has(entry.name)
+        ) {
+          continue;
+        }
+        const path = join(this.rootDir, entry.name);
+        const metadata = await lstat(path);
+        const size = await directorySize(path);
+        if (now - metadata.mtimeMs > MAX_CACHE_AGE_MS) {
+          await rm(path, { recursive: true, force: true });
+        } else {
+          candidates.push({ path, size, mtimeMs: metadata.mtimeMs });
+        }
       }
-      const path = join(this.rootDir, entry.name);
-      const metadata = await stat(path);
-      const size = await directorySize(path);
-      if (now - metadata.mtimeMs > MAX_CACHE_AGE_MS) {
-        await rm(path, { recursive: true, force: true });
-      } else {
-        candidates.push({ path, size, mtimeMs: metadata.mtimeMs });
+      let total = candidates.reduce((sum, candidate) => sum + candidate.size, 0);
+      candidates.sort((a, b) => a.mtimeMs - b.mtimeMs);
+      for (const candidate of candidates) {
+        if (total <= MAX_CACHE_BYTES) break;
+        await rm(candidate.path, { recursive: true, force: true });
+        total -= candidate.size;
       }
-    }
-    let total = candidates.reduce((sum, candidate) => sum + candidate.size, 0);
-    candidates.sort((a, b) => a.mtimeMs - b.mtimeMs);
-    for (const candidate of candidates) {
-      if (total <= MAX_CACHE_BYTES) break;
-      await rm(candidate.path, { recursive: true, force: true });
-      total -= candidate.size;
+    } catch (error) {
+      logInternalError("prune module cache", error);
     }
   }
 
@@ -350,7 +394,6 @@ class DependencyCache {
     }
     const hash = hashNodeModules(normalized);
     const nodeModulesPath = join(this.rootDir, hash, "node_modules");
-    await this.prune();
     let state = this.installPromises.get(hash);
     if (!state) {
       const controller = new AbortController();
@@ -359,6 +402,7 @@ class DependencyCache {
         normalized,
         controller.signal,
       ).finally(() => {
+        this.schedulePrune(hash);
         if (this.installPromises.get(hash)?.promise === promise) {
           this.installPromises.delete(hash);
         }
@@ -375,6 +419,7 @@ class DependencyCache {
         state.controller.abort(signal.reason);
       }
     }
+    this.schedulePrune(hash);
     return { hash, nodeModulesPath, isDefault: false };
   }
 
@@ -416,11 +461,11 @@ class RuntimeCache {
     this.recyclingPromises = new Map();
   }
 
-  async acquire(dependency) {
+  async acquire(dependency, signal) {
     for (;;) {
       const recycling = this.recyclingPromises.get(dependency.hash);
       if (recycling) {
-        await recycling;
+        await awaitAbort(recycling, signal);
         continue;
       }
       const entry = this.entries.get(dependency.hash);
@@ -430,7 +475,7 @@ class RuntimeCache {
         return entry;
       }
       if (entry?.retiring) {
-        await this.recycleEntry(entry, dependency);
+        await awaitAbort(this.recycleEntry(entry, dependency), signal);
         continue;
       }
       if (
@@ -438,13 +483,13 @@ class RuntimeCache {
         this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES &&
         !(await this.evictInactiveRuntime())
       ) {
-        await this.waitForRuntime();
+        await awaitAbort(this.waitForRuntime(), signal);
         continue;
       }
       let creation = this.creationPromises.get(dependency.hash);
-    if (!creation) {
-      creation = this.createEntry(dependency);
-      this.creationPromises.set(dependency.hash, creation);
+      if (!creation) {
+        creation = this.createEntry(dependency);
+        this.creationPromises.set(dependency.hash, creation);
         const clearCreation = () => {
           if (this.creationPromises.get(dependency.hash) === creation) {
             this.creationPromises.delete(dependency.hash);
@@ -452,7 +497,7 @@ class RuntimeCache {
         };
         creation.then(clearCreation, clearCreation);
       }
-      await creation;
+      await awaitAbort(creation, signal);
     }
   }
 
@@ -555,7 +600,7 @@ class RuntimeCache {
       entry.retiring = true;
     }
     if (entry.retiring && entry.activeJobs === 0) {
-      this.recycleEntry(entry, entry).catch((error) =>
+      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
         logInternalError("recycle secure-exec runtime", error),
       );
     }
@@ -564,7 +609,7 @@ class RuntimeCache {
   retire(entry) {
     entry.retiring = true;
     if (entry.activeJobs === 0) {
-      this.recycleEntry(entry, entry).catch((error) =>
+      this.recycleEntry(entry, dependencyFromEntry(entry)).catch((error) =>
         logInternalError("recycle secure-exec runtime", error),
       );
     }
@@ -577,6 +622,14 @@ class RuntimeCache {
   async waitForRuntime() {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+function dependencyFromEntry(entry) {
+  return {
+    hash: entry.hash,
+    isDefault: entry.isDefault,
+    nodeModulesPath: entry.nodeModulesPath,
+  };
 }
 
 function createOutput() {
@@ -637,8 +690,11 @@ function logsFromOutput(output) {
 }
 
 function truncateResult(result) {
+  if (result === undefined) return undefined;
   try {
-    if (Buffer.byteLength(JSON.stringify(result)) <= MAX_RESULT_BYTES) return result;
+    const serialized = JSON.stringify(result);
+    if (serialized === undefined) return result;
+    if (Buffer.byteLength(serialized) <= MAX_RESULT_BYTES) return result;
   } catch {
     return "[result could not be serialized]";
   }
@@ -709,7 +765,8 @@ const bridgedFetch = async (input, init) => {
 };
 Object.defineProperty(globalThis, "fetch", {
   configurable: true,
-  writable: false,
+  // This shim only routes convenience fetches; hostFetch enforces the boundary.
+  writable: true,
   value: bridgedFetch,
 });
 `
@@ -731,15 +788,24 @@ const inspectValue = (value) => {
 // Guest code can forge or suppress these logs; they are untrusted data.
 for (const type of ["log", "info", "warn", "error", "debug"]) {
   const original = console[type];
-  console[type] = async (...args) => {
+  console[type] = (...args) => {
     if (logs.length < MAX_LOG_ENTRIES) {
       const values = [];
       for (const arg of args) values.push(inspectValue(arg));
       let message = values.join(" ");
-      if (new TextEncoder().encode(message).byteLength > MAX_LOG_MESSAGE_BYTES) {
-        message = message.slice(0, MAX_LOG_MESSAGE_BYTES) + " [log truncated]";
+      const encoder = new TextEncoder();
+      let encoded = encoder.encode(message);
+      if (encoded.byteLength > MAX_LOG_MESSAGE_BYTES) {
+        const marker = " [log truncated]";
+        const budget = MAX_LOG_MESSAGE_BYTES - encoder.encode(marker).byteLength;
+        let truncated = new TextDecoder().decode(encoded.subarray(0, budget));
+        while (encoder.encode(truncated).byteLength > budget) {
+          truncated = truncated.slice(0, -1);
+        }
+        message = truncated + marker;
+        encoded = encoder.encode(message);
       }
-      const messageBytes = new TextEncoder().encode(message).byteLength;
+      const messageBytes = encoded.byteLength;
       if (logBytes + messageBytes <= ${MAX_RESULT_BYTES}) {
         logs.push({ message, type });
         logBytes += messageBytes;
@@ -841,6 +907,7 @@ async function executeScript(runtime, job) {
   const userModulePath = `${userModuleDir}/user.mjs`;
   await runtime.writeFile(userModulePath, job.script);
   let result;
+  let cleanupFallbackNeeded = true;
   try {
     result = await runtime.run(makeWrapper(userModulePath, userModuleDir), {
       env: job.config.envVars || {},
@@ -849,6 +916,7 @@ async function executeScript(runtime, job) {
       onStdout: (chunk) => appendOutput(job.output, "stdout", chunk),
       onStderr: (chunk) => appendOutput(job.output, "stderr", chunk),
     });
+    cleanupFallbackNeeded = result.exitCode !== 0 || result.value === undefined;
   } catch (error) {
     logInternalError("secure-exec execution", error);
     return {
@@ -859,7 +927,9 @@ async function executeScript(runtime, job) {
       },
     };
   } finally {
-    await cleanupGuestFiles(runtime, userModuleDir);
+    if (cleanupFallbackNeeded) {
+      await cleanupGuestFiles(runtime, userModuleDir);
+    }
   }
   if (result.exitCode !== 0 || result.value === undefined) {
     logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
@@ -924,7 +994,6 @@ class JobQueue {
       const job = this.queue.shift();
       this.activeJobs++;
       job.timer = setTimeout(() => {
-        job.forceRecycle = true;
         if (job.entry) this.runtimeCache.retire(job.entry);
         job.controller.abort(new Error("Execution timed out"));
         this.settle(job, {
@@ -961,7 +1030,10 @@ class JobQueue {
         job.config.nodeModules,
         job.controller.signal,
       );
-      entry = await this.runtimeCache.acquire(dependency);
+      entry = await this.runtimeCache.acquire(
+        dependency,
+        job.controller.signal,
+      );
       job.entry = entry;
       return await executeScript(entry.runtime, job);
     } finally {
