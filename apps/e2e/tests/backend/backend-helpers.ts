@@ -337,6 +337,13 @@ export namespace Auth {
     };
   }
 
+  export async function fastSignUpWithEmail(email = backendContext.value.mailbox.emailAddress) {
+    return await fastSignUp({
+      primary_email: email,
+      primary_email_verified: true,
+    });
+  }
+
   export async function ensureParsableAccessToken() {
     const accessToken = backendContext.value.userAuth?.accessToken;
     if (accessToken) {

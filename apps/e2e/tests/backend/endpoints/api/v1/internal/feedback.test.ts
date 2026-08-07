@@ -8,10 +8,7 @@ const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations
 describe("POST /api/v1/internal/feedback", () => {
   it("should send feedback from an authenticated user", async ({ expect }) => {
     const senderEmail = backendContext.value.mailbox.emailAddress;
-    const signInResult = await Auth.fastSignUp({
-      primary_email: senderEmail,
-      primary_email_verified: true,
-    });
+    const signInResult = await Auth.fastSignUpWithEmail();
     const recipientMailbox = createMailbox("team@hexclave.com");
     const subject = `[Support] ${senderEmail}`;
 

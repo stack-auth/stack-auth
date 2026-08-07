@@ -1114,10 +1114,7 @@ describe("with server access", () => {
   });
 
   it("should be able to read a user", async ({ expect }) => {
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
     const signedInResponse = (await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
     }));
@@ -2148,7 +2145,7 @@ describe("with server access", () => {
 
   it("should be able to update a user's password, signing them out, and sign in with it again", async ({ expect }) => {
     const password = "this-is-some-password";
-    await Auth.Password.signUpWithEmail();
+    await Auth.Otp.signIn();
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2171,11 +2168,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": false,
+          "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
           "primary_email_auth_enabled": true,
-          "primary_email_verified": false,
+          "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -2184,8 +2181,8 @@ describe("with server access", () => {
           "restricted_reason": null,
           "risk_scores": {
             "sign_up": {
-              "bot": 38,
-              "free_trial_abuse": 38,
+              "bot": 0,
+              "free_trial_abuse": 0,
             },
           },
           "selected_team": {
@@ -2443,8 +2440,8 @@ describe("with server access", () => {
           "restricted_reason": null,
           "risk_scores": {
             "sign_up": {
-              "bot": 38,
-              "free_trial_abuse": 38,
+              "bot": 0,
+              "free_trial_abuse": 0,
             },
           },
           "selected_team": {

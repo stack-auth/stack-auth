@@ -129,10 +129,7 @@ describe("with valid credentials", () => {
       projectKeys: InternalProjectKeys,
       userAuth: null,
     });
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
     const projectOwnerMailbox = backendContext.value.mailbox;
     const { projectId } = await Project.createAndSwitch({
       display_name: "Test Failed Emails Project",
@@ -228,20 +225,14 @@ describe("with valid credentials", () => {
   });
 
   it("should return 200 and not send digest email when all emails are successful and dry run is enabled", async ({ expect }) => {
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
     await Project.createAndSwitch({
       display_name: "Test Successful Emails Project",
       config: {
         magic_link_enabled: true,
       },
     }, true);
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
 
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
@@ -265,20 +256,14 @@ describe("with valid credentials", () => {
 
   // TODO: fix this when we re-enable failed emails digest
   it.todo("should return 200 and not send digest email when all emails are successful", async ({ expect }) => {
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
     await Project.createAndSwitch({
       display_name: "Test Successful Emails Project",
       config: {
         magic_link_enabled: true,
       },
     }, true);
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
 
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
@@ -303,10 +288,7 @@ describe("with valid credentials", () => {
       projectKeys: InternalProjectKeys,
       userAuth: null,
     });
-    const { userId } = await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    const { userId } = await Auth.fastSignUpWithEmail();
 
     // Remove primary email from the user
     const updateEmailResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -345,10 +327,7 @@ describe("with valid credentials", () => {
 
   // TODO: fix this when we re-enable failed emails digest
   it.todo("should not send digest email when project has no owner (account deleted)", async ({ expect }) => {
-    const { userId } = await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    const { userId } = await Auth.fastSignUpWithEmail();
     await Project.createAndSwitch({
       display_name: "Test Project Deleted Owner",
     }, true);
@@ -387,10 +366,7 @@ describe("with valid credentials", () => {
 
   // TODO: fix this when we re-enable failed emails digest
   it.todo("should not send digest email when project is deleted after email delivery failed", async ({ expect }) => {
-    await Auth.fastSignUp({
-      primary_email: backendContext.value.mailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    await Auth.fastSignUpWithEmail();
     await Project.createAndSwitch({
       display_name: "Test Project To Be Deleted",
     }, true);
@@ -430,10 +406,7 @@ describe("with valid credentials", () => {
     backendContext.set({
       projectKeys: InternalProjectKeys,
     });
-    const { userId: user1Id } = await Auth.fastSignUp({
-      primary_email: firstOwnerMailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    const { userId: user1Id } = await Auth.fastSignUpWithEmail(firstOwnerMailbox.emailAddress);
     const { projectId } = await Project.createAndSwitch({
       display_name: "Test Project Multiple Owners",
     }, true);
@@ -443,10 +416,7 @@ describe("with valid credentials", () => {
     backendContext.set({
       projectKeys: InternalProjectKeys,
     });
-    const { userId: user2Id } = await Auth.fastSignUp({
-      primary_email: secondOwnerMailbox.emailAddress,
-      primary_email_verified: true,
-    });
+    const { userId: user2Id } = await Auth.fastSignUpWithEmail(secondOwnerMailbox.emailAddress);
 
     const user1Response = await niceBackendFetch(`/api/v1/users/${user1Id}`, {
       method: "GET",
