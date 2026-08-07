@@ -7,7 +7,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 describe("Compliance Center security events", () => {
   it("records failed and successful password sign-in attempts", async ({ expect }) => {
     await Project.createAndSwitch({ config: {} });
-    const { email, password, userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { email, password, userId } = await Auth.Password.signUpWithEmail();
 
     const failedResponse = await niceBackendFetch("/api/v1/auth/password/sign-in", {
       method: "POST",
@@ -68,7 +68,7 @@ describe("Compliance Center security events", () => {
 
   it("records successful password sign-ins completed through MFA", async ({ expect }) => {
     await Project.createAndSwitch({ config: {} });
-    const { email, password } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { email, password } = await Auth.Password.signUpWithEmail();
     const { totpSecret } = await Auth.Mfa.setupTotpMfa();
     await Auth.signOut();
 
@@ -182,7 +182,7 @@ describe("Compliance Center security events", () => {
     });
     const anonymousUser = await Auth.Anonymous.signUp();
     await Auth.signOut();
-    const registeredUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const registeredUser = await Auth.Password.signUpWithEmail();
 
     const response = await niceBackendFetch("/api/v1/internal/compliance/restricted-users", {
       accessType: "admin",

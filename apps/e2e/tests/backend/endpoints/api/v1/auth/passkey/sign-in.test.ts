@@ -6,7 +6,7 @@ import { Auth, niceBackendFetch, Project } from "../../../../../backend-helpers"
 
 it("should allow initiating passkey authentication", async ({ expect }) => {
   await Project.createAndSwitch({ config: { passkey_enabled: true, magic_link_enabled: true } });
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch("/api/v1/auth/passkey/initiate-passkey-authentication", {
     method: "POST",
     accessType: "client",
@@ -34,7 +34,7 @@ it("should allow initiating passkey authentication", async ({ expect }) => {
 
 it("should successfully sign in with a passkey", async ({ expect }) => {
   await Project.createAndSwitch({ config: { passkey_enabled: true } });
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
 
   const expectedUserId = res.userId;
   await Auth.Passkey.register();
@@ -87,7 +87,7 @@ it("should successfully sign in with a passkey", async ({ expect }) => {
 
 it("should fail if passkey does not exist", async ({ expect }) => {
   await Project.createAndSwitch({ config: { passkey_enabled: true } });
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   await Auth.Passkey.register();
   const response_initiation = await niceBackendFetch("/api/v1/auth/passkey/initiate-passkey-authentication", {
     method: "POST",

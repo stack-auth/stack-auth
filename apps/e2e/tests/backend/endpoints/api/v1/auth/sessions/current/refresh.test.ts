@@ -2,7 +2,7 @@ import { it } from "../../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 
 it("should refresh sessions", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   backendContext.set({ userAuth: { ...backendContext.value.userAuth, accessToken: undefined } });
   await Auth.expectSessionToBeValid();
   const refreshSessionResponse = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
@@ -22,7 +22,7 @@ it("should refresh sessions", async ({ expect }) => {
 });
 
 it("should not refresh sessions given invalid refresh tokens", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const refreshSessionResponse = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
     method: "POST",
     accessType: "client",
@@ -48,7 +48,7 @@ it("should not refresh sessions given invalid refresh tokens", async ({ expect }
 it.todo("should not refresh sessions of other projects");
 
 it("should not refresh sessions when user has been deleted", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
 
   // delete the user
   const response = await niceBackendFetch("/api/v1/users/me", {
@@ -84,7 +84,7 @@ it("should not refresh sessions when user has been deleted", async ({ expect }) 
 
 it("should not refresh revoked sessions", async ({ expect }) => {
   // Create a user and sign up
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
 
   // Create an additional session for the user
   const additionalSession = await niceBackendFetch("/api/v1/auth/sessions", {

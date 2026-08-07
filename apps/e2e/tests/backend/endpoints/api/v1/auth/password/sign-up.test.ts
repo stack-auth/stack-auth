@@ -4,7 +4,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should sign up new users", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail();
+  const res = await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   expect(res.signUpResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
@@ -126,7 +126,7 @@ it("should not sign up new users if verification callback url is not valid", asy
 });
 
 it("should not allow signing up with an e-mail that already exists", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const res2 = await niceBackendFetch("/api/v1/auth/password/sign-up", {
     method: "POST",
     accessType: "client",

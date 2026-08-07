@@ -17,7 +17,7 @@ it("createCheckoutUrl supports optional returnUrl and embeds it", async ({ expec
     },
   });
 
-  await clientApp.signUpWithCredential({ email: "checkout-return@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signUpWithCredential({ email: "checkout-return@test.com", password: "password", noVerificationCallback: true });
   await clientApp.signInWithCredential({ email: "checkout-return@test.com", password: "password" });
   const user = await clientApp.getUser();
   if (!user) throw new Error("User not found");
@@ -48,7 +48,7 @@ it("returns default item quantity for a team", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   await clientApp.signInWithCredential({
@@ -84,7 +84,7 @@ it("root-level getItem works for user and team", async ({ expect }) => {
     },
   });
 
-  await clientApp.signUpWithCredential({ email: "rl@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signUpWithCredential({ email: "rl@test.com", password: "password", noVerificationCallback: true });
   await clientApp.signInWithCredential({ email: "rl@test.com", password: "password" });
   const user = await clientApp.getUser();
   if (!user) throw new Error("User not found");
@@ -144,7 +144,7 @@ it("admin can increase team item quantity and client sees updated value", async 
   await clientApp.signUpWithCredential({
     email: "inc@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({ email: "inc@test.com", password: "password" });
 
@@ -185,7 +185,7 @@ it("cannot decrease team item quantity below zero", async ({ expect }) => {
   await clientApp.signUpWithCredential({
     email: "dec@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({ email: "dec@test.com", password: "password" });
 
@@ -221,7 +221,7 @@ it("client can cancel their own subscription", async ({ expect }) => {
     },
   });
 
-  await clientApp.signUpWithCredential({ email: "cancel-sub@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signUpWithCredential({ email: "cancel-sub@test.com", password: "password", noVerificationCallback: true });
   await clientApp.signInWithCredential({ email: "cancel-sub@test.com", password: "password" });
   const user = await clientApp.getUser({ or: "throw" });
 
@@ -251,7 +251,7 @@ it("team admin can cancel a team's subscription", async ({ expect }) => {
     },
   });
 
-  await clientApp.signUpWithCredential({ email: "cancel-team-sub@test.com", password: "password", verificationCallbackUrl: "http://localhost:3000" });
+  await clientApp.signUpWithCredential({ email: "cancel-team-sub@test.com", password: "password", noVerificationCallback: true });
   await clientApp.signInWithCredential({ email: "cancel-team-sub@test.com", password: "password" });
   const user = await clientApp.getUser({ or: "throw" });
 
@@ -332,7 +332,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   await clientApp.signUpWithCredential({
     email: "products@example.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   await clientApp.signInWithCredential({
     email: "products@example.com",

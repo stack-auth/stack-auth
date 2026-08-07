@@ -6,7 +6,7 @@ it("should not crash when signing out a session that was already deleted by a bu
   // concurrent password change), then attempt sign-out with the stale access token.
   // Before fix: 500 assertion error in recordExternalDbSyncDeletion.
   // After fix: 401 REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED.
-  const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const signUpRes = await Auth.Password.signUpWithEmail();
   const savedAuth = backendContext.value.userAuth ?? undefined;
 
   // Admin updates the user's password, which bulk-deletes all refresh tokens
@@ -41,7 +41,7 @@ it("should not crash when signing out a session that was already deleted by a bu
 
 it("should not crash when deleting a session that was already deleted by a bulk operation", async ({ expect }) => {
   // Same race condition but via the sessions CRUD DELETE endpoint
-  const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const signUpRes = await Auth.Password.signUpWithEmail();
 
   // Create a second session
   const newSessionRes = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -85,7 +85,7 @@ it("should not crash when deleting a session that was already deleted by a bulk 
 });
 
 it("should sign out users", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   await Auth.expectToBeSignedIn();
   const res = await Auth.signOut();
   expect(res.signOutResponse).toMatchInlineSnapshot(`
@@ -116,7 +116,7 @@ it("should sign out users", async ({ expect }) => {
 });
 
 it("should sign out user without refresh token, only using access token", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch("/api/v1/auth/sessions/current", {
     method: "DELETE",
     accessType: "client",

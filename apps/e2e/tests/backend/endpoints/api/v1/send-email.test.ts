@@ -213,7 +213,7 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       email_config: testEmailConfig,
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {
@@ -418,7 +418,7 @@ it("should send email using a draft_id and mark draft as sent", async ({ expect 
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
 
   const tsxSource = `import { Container } from "@react-email/components";
 import { Subject, NotificationCategory, Props } from "@stackframe/emails";
@@ -750,7 +750,7 @@ describe("notification categories", () => {
         email_config: testEmailConfig,
       },
     });
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
     const response = await niceBackendFetch(
       "/api/v1/emails/send-email",
       {
@@ -783,7 +783,7 @@ describe("notification categories", () => {
         email_config: testEmailConfig,
       },
     });
-    const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const { userId } = await Auth.Password.signUpWithEmail();
     const response = await niceBackendFetch(
       "/api/v1/emails/send-email",
       {

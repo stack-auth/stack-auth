@@ -190,7 +190,7 @@ describe("with admin access", () => {
       },
     });
 
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    await Auth.Password.signUpWithEmail();
 
     // Wait for the ClickHouse event to appear and verify via a raw COALESCE query
     let chResult: any;
