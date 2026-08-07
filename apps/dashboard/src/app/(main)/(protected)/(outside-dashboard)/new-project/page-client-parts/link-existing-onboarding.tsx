@@ -10,11 +10,13 @@ import { getPublicEnvVar } from "@/lib/env";
 import { getOnboardingRemindersPrompt } from "@/lib/setup-prompt";
 import { cn } from "@/lib/utils";
 import { type AdminOwnedProject } from "@hexclave/next";
-import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { EyeIcon, EyeSlashIcon, KeyIcon } from "@phosphor-icons/react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { OnboardingAiPromptBlock, OnboardingPage } from "./components";
+import { pollForConfigPush } from "./link-existing-onboarding-polling";
 import {
   buildGithubWorkflowAiPrompt,
   buildWorkflowYaml,
@@ -165,12 +167,40 @@ function GithubRepositorySecretsTable(props: {
   );
 }
 
+function ConfigPushPollingStatus(props: {
+  isWaiting: boolean,
+  connectionInterrupted: boolean,
+  waitingMessage: string,
+}) {
+  if (!props.isWaiting) {
+    return null;
+  }
+
+  return (
+    <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60" contentClassName="p-4">
+      {props.connectionInterrupted ? (
+        <DesignAlert
+          variant="warning"
+          title="Connection interrupted"
+          description="Hexclave could not check the config status. Retrying automatically…"
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <Spinner size={16} />
+          <Typography variant="secondary" className="text-sm">{props.waitingMessage}</Typography>
+        </div>
+      )}
+    </DesignCard>
+  );
+}
+
 export function LinkExistingOnboarding(props: Props) {
   const { onContinueAfterLink, project } = props;
   const [packageRunner, setPackageRunner] = useState<PackageRunner>("npx");
   const [secretServerKey, setSecretServerKey] = useState<string | null>(null);
   const [workflowTab, setWorkflowTab] = useState<"ai-prompt" | "manual">("ai-prompt");
   const [isWaitingForPush, setIsWaitingForPush] = useState(false);
+  const [pollingConnectionInterrupted, setPollingConnectionInterrupted] = useState(false);
   const pollingRunIdRef = useRef(0);
   const localPollingStartedRef = useRef(false);
   const githubPollingStartedRef = useRef(false);
@@ -179,16 +209,26 @@ export function LinkExistingOnboarding(props: Props) {
     const runId = pollingRunIdRef.current + 1;
     pollingRunIdRef.current = runId;
     setIsWaitingForPush(true);
+    setPollingConnectionInterrupted(false);
     try {
-      while (pollingRunIdRef.current === runId) {
-        const source = await project.getPushedConfigSource();
-        if (source.type !== "unlinked") {
-          await project.getConfig();
-          await onContinueAfterLink();
-          return;
-        }
-        await wait(1000);
+      const pollingResult = await pollForConfigPush({
+        shouldContinue: () => pollingRunIdRef.current === runId,
+        getPushedConfigSource: () => project.getPushedConfigSource(),
+        onTransientError: (error) => {
+          captureError("link-existing-onboarding-config-poll", error);
+          setPollingConnectionInterrupted(true);
+        },
+        onPollSucceeded: () => setPollingConnectionInterrupted(false),
+      });
+      if (pollingResult === "cancelled") {
+        return;
       }
+
+      await project.getConfig();
+      if (pollingRunIdRef.current !== runId) {
+        return;
+      }
+      await onContinueAfterLink();
     } finally {
       if (pollingRunIdRef.current === runId) {
         setIsWaitingForPush(false);
@@ -294,14 +334,11 @@ export function LinkExistingOnboarding(props: Props) {
             </div>
           </DesignCard>
 
-          {isWaitingForPush && (
-            <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60" contentClassName="p-4">
-              <div className="flex items-center gap-2">
-                <Spinner size={16} />
-                <Typography variant="secondary" className="text-sm">Waiting for the config push…</Typography>
-              </div>
-            </DesignCard>
-          )}
+          <ConfigPushPollingStatus
+            isWaiting={isWaitingForPush}
+            connectionInterrupted={pollingConnectionInterrupted}
+            waitingMessage="Waiting for the config push…"
+          />
         </div>
       </OnboardingPage>
     );
@@ -444,16 +481,11 @@ export function LinkExistingOnboarding(props: Props) {
           </div>
         </DesignCard>
 
-        {isWaitingForPush && (
-          <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60" contentClassName="p-4">
-            <div className="flex items-center gap-2">
-              <Spinner size={16} />
-              <Typography variant="secondary" className="text-sm">
-                Waiting for the GitHub workflow to push your config…
-              </Typography>
-            </div>
-          </DesignCard>
-        )}
+        <ConfigPushPollingStatus
+          isWaiting={isWaitingForPush}
+          connectionInterrupted={pollingConnectionInterrupted}
+          waitingMessage="Waiting for the GitHub workflow to push your config…"
+        />
       </div>
     </OnboardingPage>
   );
