@@ -326,7 +326,7 @@ class DependencyCache {
     this.protectedHashes = callback;
   }
 
-  schedulePrune(hash) {
+  schedulePrune() {
     if (this.pruneTimer) return;
     this.pruneTimer = setTimeout(async () => {
       this.pruneTimer = null;
@@ -425,7 +425,7 @@ class DependencyCache {
         normalized,
         controller.signal,
       ).finally(() => {
-        this.schedulePrune(hash);
+        this.schedulePrune();
         if (this.installPromises.get(hash)?.promise === promise) {
           this.installPromises.delete(hash);
         }
@@ -442,7 +442,7 @@ class DependencyCache {
         state.controller.abort(signal.reason);
       }
     }
-    this.schedulePrune(hash);
+    this.schedulePrune();
     this.hold(hash);
     let released = false;
     return {
@@ -453,7 +453,7 @@ class DependencyCache {
         if (released) return;
         released = true;
         this.release(hash);
-        this.schedulePrune(hash);
+        this.schedulePrune();
       },
     };
   }
