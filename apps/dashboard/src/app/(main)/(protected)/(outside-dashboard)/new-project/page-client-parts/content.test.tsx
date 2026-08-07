@@ -6,7 +6,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const mockPush = vi.hoisted(() => vi.fn());
 const mockReplace = vi.hoisted(() => vi.fn());
-const mockOwnedProjects = vi.hoisted(() => ({ current: [] as Array<{ id: string }> }));
+const mockOwnedProjects = vi.hoisted(() => ({
+  current: [] as Array<{
+    id: string,
+    onboardingStatus?: "completed",
+    onboardingState?: null,
+  }>,
+}));
 const mockCreateProject = vi.hoisted(() => vi.fn(async () => ({ id: "created-project-id" })));
 const mockWindowOpen = vi.hoisted(() => vi.fn());
 const mockSearchParams = vi.hoisted(() => ({ current: new URLSearchParams() }));
@@ -170,6 +176,26 @@ describe("new project page", () => {
     expect(screen.getByText("Go back")).not.toBeNull();
     expect(mockCreateProject).not.toHaveBeenCalled();
   });
+
+  it.each(["link-existing", "deploy-local", "deploy-github"])(
+    "keeps completed projects in the re-link flow for %s mode",
+    (mode) => {
+      mockOwnedProjects.current = [{
+        id: "completed-project-id",
+        onboardingStatus: "completed",
+        onboardingState: null,
+      }];
+      mockSearchParams.current = new URLSearchParams({
+        project_id: "completed-project-id",
+        mode,
+      });
+
+      render(<PageClient />);
+
+      expect(screen.getByText("Onboarding wizard")).not.toBeNull();
+      expect(mockReplace).not.toHaveBeenCalledWith("/projects/completed-project-id");
+    },
+  );
 
   it("creates a deploy project only after the name and team form is submitted", async () => {
     const { container } = render(<PageClient />);

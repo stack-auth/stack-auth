@@ -197,18 +197,24 @@ function PageClientInner() {
     return onboardingState;
   }, [projectOnboardingStates, selectedProject, selectedProjectId]);
 
+  const isCompletedProjectRelinking = selectedProjectStatus === "completed" && (
+    mode === "link-existing"
+    || mode === "deploy-local"
+    || mode === "deploy-github"
+  );
+
   useEffect(() => {
     if (selectedProject == null || selectedProjectStatus !== "completed") {
       return;
     }
-    // Already-onboarded projects can re-enter the link-existing flow from the
-    // project settings page, so don't bounce them back to the project.
-    if (mode === "link-existing") {
+    // Re-linking starts in link-existing mode, then switches to a deployment-
+    // specific mode. Keep every stage on this page for completed projects.
+    if (isCompletedProjectRelinking) {
       return;
     }
 
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
-  }, [mode, router, selectedProject, selectedProjectStatus]);
+  }, [isCompletedProjectRelinking, router, selectedProject, selectedProjectStatus]);
 
   const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
@@ -293,7 +299,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && selectedProjectStatus === "completed" && mode !== "link-existing") {
+  if (selectedProject != null && selectedProjectStatus === "completed" && !isCompletedProjectRelinking) {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
         <Spinner size={24} />
