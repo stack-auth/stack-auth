@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
+import { cpus } from "node:os";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -8,13 +9,21 @@ import { NodeRuntime } from "secure-exec";
 const PORT = Number(process.env.PORT || 8080);
 const DEFAULT_TIMEOUT_MS = 30_000;
 const OUTER_TIMEOUT_GRACE_MS = 1_000;
-const MAX_IN_FLIGHT = 8;
+// Each in-flight job owns a guest process. Limit concurrency to available CPU
+// capacity with a floor for small CI/dev machines; this also bounds RSS (about
+// 444 MiB at eight concurrent jobs in local measurements).
+const MAX_IN_FLIGHT = Math.max(2, Math.min(cpus().length, 8));
 const MAX_JOBS_PER_RUNTIME = 50;
 const MAX_NON_DEFAULT_RUNTIMES = 3;
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
 const MODULE_CACHE_DIR = process.env.MODULE_CACHE_DIR || "/app/module-cache";
-const DEFAULT_NODE_MODULES_DIR = "/app/node_modules";
+const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
 const USER_MODULE_DIR = "/tmp";
+const STRIPPED_RESPONSE_HEADERS = new Set([
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+]);
 const BRIDGED_HOSTS = [
   ...new Set(
     (process.env.BRIDGED_HOSTS || process.env.HOST_ON_HOST || "host.docker.internal")
@@ -170,10 +179,11 @@ class RuntimeCache {
       }
 
       if (!entry) {
-        const evicted = await this.evictInactiveRuntime();
-        if (!dependency.isDefault && !evicted && this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES) {
-          await this.waitForRuntime();
-          continue;
+        if (!dependency.isDefault && this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES) {
+          if (!await this.evictInactiveRuntime()) {
+            await this.waitForRuntime();
+            continue;
+          }
         }
         entry = await this.createEntry(dependency);
         this.entries.set(dependency.hash, entry);
@@ -250,6 +260,9 @@ class RuntimeCache {
       return;
     }
     entry.recycling = (async () => {
+      // Each job leaves a uniquely named /tmp/user-*.mjs in the guest VFS.
+      // Recycling after MAX_JOBS_PER_RUNTIME bounds that accumulation and its
+      // associated RSS growth without disposing a runtime with active jobs.
       while (entry.activeJobs > 0) await new Promise((resolve) => setTimeout(resolve, 10));
       await entry.runtime.dispose();
       const replacement = await this.createEntry(dependency);
@@ -303,6 +316,7 @@ class JobQueue {
         config,
         timeoutMs,
         controller,
+        output: { stdout: "", stderr: "" },
         started: false,
         settled: false,
         resolve,
@@ -311,7 +325,10 @@ class JobQueue {
         job.controller.abort(new Error(`Freestyle mock job timed out after ${timeoutMs}ms`));
         this.settle(job, {
           statusCode: 500,
-          payload: { error: `Freestyle mock job timed out after ${timeoutMs}ms`, logs: [] },
+          payload: {
+            error: `Freestyle mock job timed out after ${timeoutMs}ms`,
+            logs: logsFromOutput(job.output),
+          },
         });
       }, timeoutMs + OUTER_TIMEOUT_GRACE_MS);
       this.queue.push(job);
@@ -350,7 +367,13 @@ class JobQueue {
     try {
       const dependency = await this.dependencyCache.get(job.config.nodeModules);
       entry = await this.runtimeCache.acquire(dependency);
-      return await executeScript(entry.runtime, job.script, job.config, job.controller.signal);
+      return await executeScript(
+        entry.runtime,
+        job.script,
+        job.config,
+        job.controller.signal,
+        job.output,
+      );
     } finally {
       if (entry) this.runtimeCache.release(entry);
     }
@@ -387,7 +410,9 @@ const decodeBase64 = (value) => {
 // Deliberate dev/CI-only boundary hole: Secure Exec rejects RFC1918
 // destinations, while Hexclave's local backend is only reachable through
 // host.docker.internal. Only the configured development-host hostnames use
-// this host callback; all other URLs retain Secure Exec's network policy.
+// this host callback; all other URLs retain Secure Exec's network policy. This
+// only replaces globalThis.fetch: node:http and direct undici calls still hit
+// Secure Exec's private-range block.
 const bridgedFetch = async (input, init) => {
   const request = new Request(input, init);
   const target = new URL(request.url);
@@ -444,32 +469,66 @@ async function hostFetch(input) {
     requestInit.body = Buffer.from(input.bodyBase64, "base64");
   }
   const response = await fetch(url, requestInit);
+  const strippedHeaders = Object.fromEntries(
+    [...response.headers].filter(([name]) => !STRIPPED_RESPONSE_HEADERS.has(name.toLowerCase())),
+  );
   return {
     status: response.status,
     statusText: response.statusText,
-    headers: Object.fromEntries(response.headers),
+    headers: strippedHeaders,
     bodyBase64: Buffer.from(await response.arrayBuffer()).toString("base64"),
   };
 }
 
-async function executeScript(runtime, script, config, signal) {
+function appendOutput(output, stream, chunk) {
+  output[stream] += new TextDecoder().decode(chunk);
+}
+
+function logsFromOutput(output) {
+  return [
+    ...output.stdout.split(/\r?\n/).filter(Boolean).map((message) => ({ message, type: "log" })),
+    ...output.stderr.split(/\r?\n/).filter(Boolean).map((message) => ({ message, type: "error" })),
+  ];
+}
+
+async function executeScript(runtime, script, config, signal, output) {
   const userModulePath = `${USER_MODULE_DIR}/user-${randomUUID()}.mjs`;
   await runtime.writeFile(userModulePath, script);
+  // The backend passes executionTimeoutMs through the Freestyle SDK as
+  // config.timeout. Although Freestyle's schema documentation is ambiguous
+  // in one place about seconds, this mock deliberately interprets it as
+  // milliseconds to match our caller's contract.
   const timeoutMs = Number.isFinite(config.timeout) && config.timeout > 0
     ? config.timeout
     : DEFAULT_TIMEOUT_MS;
-  const result = await runtime.run(makeWrapper(userModulePath), {
-    env: config.envVars || {},
-    timeout: timeoutMs,
-    signal,
-  });
+  let result;
+  try {
+    result = await runtime.run(makeWrapper(userModulePath), {
+      env: config.envVars || {},
+      timeout: timeoutMs,
+      signal,
+      onStdout: (chunk) => appendOutput(output, "stdout", chunk),
+      onStderr: (chunk) => appendOutput(output, "stderr", chunk),
+    });
+  } catch (error) {
+    return {
+      statusCode: 500,
+      payload: {
+        error: `Secure Exec execution failed: ${formatError(error)}`,
+        logs: logsFromOutput(output),
+      },
+    };
+  }
 
   if (result.exitCode !== 0 || result.value === undefined) {
     const stderr = result.stderr.trim();
     const detail = stderr ? `: ${stderr}` : ` (exit code ${result.exitCode})`;
     return {
       statusCode: 500,
-      payload: { error: `Secure Exec execution failed${detail}`, logs: [] },
+      payload: {
+        error: `Secure Exec execution failed${detail}`,
+        logs: logsFromOutput(output),
+      },
     };
   }
   if (result.value.status === "error") {
