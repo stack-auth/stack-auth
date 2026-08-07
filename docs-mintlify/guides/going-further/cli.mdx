@@ -49,10 +49,10 @@ The preferred current environment variables are:
 | `HEXCLAVE_DASHBOARD_URL` | Dashboard base URL |
 | `HEXCLAVE_PROJECT_ID` | Default cloud project ID |
 | `HEXCLAVE_SECRET_SERVER_KEY` | Server-key authentication for commands that support it |
-| `STACK_CLI_REFRESH_TOKEN` | Refresh token for CI or other noninteractive login |
-| `STACK_CLI_ANON_REFRESH_TOKEN` | Anonymous session token to link during `login` |
 
-`STACK_API_URL`, `STACK_DASHBOARD_URL`, `STACK_PROJECT_ID`, and `STACK_SECRET_SERVER_KEY` are retained as backwards-compatible aliases for the corresponding `HEXCLAVE_*` variables. The `STACK_CLI_*` credential names are also retained for compatibility. If both names for one setting are set to different values, the CLI reports an error.
+`STACK_API_URL`, `STACK_DASHBOARD_URL`, `STACK_PROJECT_ID`, and `STACK_SECRET_SERVER_KEY` are retained as backwards-compatible aliases for the corresponding `HEXCLAVE_*` variables. If both names for one setting are set to different values, the CLI reports an error.
+
+The CLI credential variables are currently named `STACK_CLI_REFRESH_TOKEN` and `STACK_CLI_ANON_REFRESH_TOKEN`. Use `STACK_CLI_REFRESH_TOKEN` for CI or other noninteractive login, and set `STACK_CLI_ANON_REFRESH_TOKEN` to link an anonymous session during `login`.
 
 The CLI defaults to Hexclave Cloud (`https://api.hexclave.com` and `https://app.hexclave.com`) when endpoint variables are not set.
 
@@ -60,6 +60,90 @@ The root `--json` option enables JSON output for commands that support it. Comma
 
 ## Command reference
 
+### `hexclave init`
+
+**Synopsis**
+
+```text
+hexclave init [options]
+```
+
+**Description**
+
+Initialize Hexclave in a project. The wizard can create a development-environment config, create a cloud project, or link an existing config or cloud project.
+
+**Options**
+
+| Option | Description |
+| --- | --- |
+| `--mode <mode>` | Noninteractive mode: `create`, `create-cloud`, `link-config`, or `link-cloud`. |
+| `--apps <apps>` | Comma-separated app IDs to enable in `create` mode. |
+| `--config-file <path>` | Existing config file for `link-config` mode. |
+| `--select-project-id <id>` | Cloud project ID for `link-cloud` mode. |
+| `--output-dir <dir>` | Directory for generated files. Defaults to the current directory. |
+| `--no-agent` | Skip the Claude agent and print setup instructions instead. |
+| `--display-name <name>` | Project display name for `create-cloud` mode. |
+
+**Behavior and authentication**
+
+Without mode or link flags, the command is interactive. Noninteractive environments must provide an explicit mode or link option. Incompatible combinations such as `--config-file` with `--select-project-id` are rejected. The command writes project setup files, registers the Hexclave MCP server, and can run the Claude setup agent unless `--no-agent` is used.
+
+```sh title="Terminal"
+hexclave init --mode create
+```
+### `hexclave doctor`
+
+**Synopsis**
+
+```text
+hexclave doctor [options]
+```
+
+**Description**
+
+Check that Hexclave is correctly wired up in a project.
+
+**Options**
+
+| Option | Description |
+| --- | --- |
+| `--output-dir <dir>` | Project root to inspect. Defaults to the current directory. |
+| `--framework <fw>` | Override framework detection: `next`, `react`, or `js`. |
+| `--json` | Emit a machine-readable report. The root `--json` option has the same effect. |
+
+**Behavior and authentication**
+
+The command reads `package.json`, detects or validates the framework, runs integration checks, prints pass/fail/warning results, and exits with status 1 if any check fails.
+
+```sh title="Terminal"
+hexclave doctor --framework next --json
+```
+### `hexclave fix`
+
+**Synopsis**
+
+```text
+hexclave fix [options]
+```
+
+**Description**
+
+Use an AI agent to fix a Hexclave error in the current project.
+
+**Options**
+
+| Option | Description |
+| --- | --- |
+| `--error <text>` | Error message to fix. The command also accepts piped stdin. |
+| `-y, --yes` | Skip the confirmation prompt. |
+
+**Behavior and authentication**
+
+If no error is supplied, the CLI reads stdin or prompts interactively. Error input is limited to 8,000 characters. In noninteractive environments, provide `--error`; confirmation is required unless `--yes` is supplied.
+
+```sh title="Terminal"
+printf '%s\n' "$HEXCLAVE_ERROR" | hexclave fix --yes
+```
 ### `hexclave login`
 
 **Synopsis**
@@ -79,7 +163,6 @@ None.
 **Behavior and authentication**
 
 The refresh token is saved as `STACK_CLI_REFRESH_TOKEN` in the CLI credentials file. Set `STACK_CLI_ANON_REFRESH_TOKEN` before logging in to attach the login to an existing anonymous session; the anonymous token is removed after a successful link.
-
 ### `hexclave logout`
 
 **Synopsis**
@@ -99,64 +182,87 @@ None.
 **Behavior and authentication**
 
 This removes the local credential. It does not require an API request.
-
-### `hexclave exec`
+### `hexclave whoami`
 
 **Synopsis**
 
 ```text
-hexclave exec [javascript] [options]
+hexclave whoami
 ```
 
 **Description**
 
-Execute JavaScript as an async function with a preconfigured `HexclaveServerApp` available as `hexclaveServerApp`.
+Show the currently logged-in Hexclave CLI user.
 
 **Options**
 
 | Option | Description |
 | --- | --- |
-| `--cloud-project-id <id>` | Cloud project ID to run against. Use `--config-file` for a development environment. |
-| `--config-file <path>` | Development-environment config file. Use `--cloud-project-id` for the cloud API. |
+| `--json` | Root option; print user and team details as JSON. |
 
 **Behavior and authentication**
 
-Pass exactly one JavaScript argument. Cloud execution requires `hexclave login` and intentionally rejects `HEXCLAVE_SECRET_SERVER_KEY` authentication. Development-environment execution resolves access from the supplied config file. Non-`undefined` return values are printed as formatted JSON; `undefined` prints nothing.
+Requires a login session. Human output includes user identity, email verification, anonymous/restricted status, team count, API URL, and dashboard URL.
+### `hexclave project`
 
-The current built help text still calls the injected object `StackServerApp` and describes the config path as `stack.config.ts`; the runtime object is `hexclaveServerApp`, and current project setup uses `hexclave.config.ts`.
+Manage projects.
 
-```sh title="Terminal"
-hexclave exec --cloud-project-id <project-id> "return await hexclaveServerApp.listUsers()"
-```
-
-### `hexclave deploy`
+#### `hexclave project list`
 
 **Synopsis**
 
 ```text
-hexclave deploy <service> [options]
+hexclave project list [options]
 ```
 
 **Description**
 
-Deploy a service defined under `deployments-alpha.services` in `hexclave.config.ts`. The CLI uploads the service source, waits for Vercel to accept the deployment, and prints the run ID without waiting for the remote build to finish.
+List projects owned by the current user. By default, both cloud and development-environment projects are included.
 
 **Options**
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Config file path. If omitted, the CLI auto-discovers `hexclave.config.ts` in the current directory. |
-| `--cloud-project-id <id>` | Cloud project ID. Defaults to `HEXCLAVE_PROJECT_ID` or its `STACK_PROJECT_ID` compatibility alias. |
-| `--secret <KEY=VALUE>` | Secret value for a deployment environment variable. Repeatable. |
+| `--cloud` | Only list cloud projects. |
+| `--local` | Only list development-environment projects. |
+| `--json` | Root option; print project objects as JSON. |
 
 **Behavior and authentication**
 
-Authentication uses `HEXCLAVE_SECRET_SERVER_KEY` when set, which is recommended for CI; otherwise it uses the `hexclave login` session. Every secret referenced by the service must be supplied, and unknown secret keys are rejected. Secret values are sent to the deployment target and are not persisted by Hexclave.
+`--cloud` and `--local` cannot be combined. Listing cloud projects requires a login session; listing local development-environment projects uses local state. Human-readable output contains the project ID, display name, and `[cloud]` or `[local]` target.
 
 ```sh title="Terminal"
-hexclave deploy web --config ./hexclave.config.ts --secret DATABASE_PASSWORD="$DATABASE_PASSWORD"
+hexclave project list --cloud
 ```
 
+#### `hexclave project create`
+
+**Synopsis**
+
+```text
+hexclave project create [options]
+```
+
+**Description**
+
+Create a new cloud project.
+
+**Options**
+
+| Option | Description |
+| --- | --- |
+| `--cloud` | Required confirmation that this command creates a cloud project. |
+| `--display-name <name>` | Project display name. |
+| `--team-id <id>` | Team that owns the project. |
+| `--json` | Root option; print the created project as JSON. |
+
+**Behavior and authentication**
+
+The command currently creates cloud projects only, so `--cloud` is required. It requires a login session. Missing display names can be entered interactively; in a noninteractive environment, provide `--display-name`.
+
+```sh title="Terminal"
+hexclave project create --cloud --display-name "My App"
+```
 ### `hexclave config`
 
 Manage project configuration files.
@@ -219,100 +325,6 @@ This command accepts either `hexclave login` or `HEXCLAVE_SECRET_SERVER_KEY` aut
 ```sh title="Terminal"
 hexclave config push --cloud-project-id <project-id> --config-file ./hexclave.config.ts
 ```
-
-### `hexclave init`
-
-**Synopsis**
-
-```text
-hexclave init [options]
-```
-
-**Description**
-
-Initialize Hexclave in a project. The wizard can create a development-environment config, create a cloud project, or link an existing config or cloud project.
-
-**Options**
-
-| Option | Description |
-| --- | --- |
-| `--mode <mode>` | Noninteractive mode: `create`, `create-cloud`, `link-config`, or `link-cloud`. |
-| `--apps <apps>` | Comma-separated app IDs to enable in `create` mode. |
-| `--config-file <path>` | Existing config file for `link-config` mode. |
-| `--select-project-id <id>` | Cloud project ID for `link-cloud` mode. |
-| `--output-dir <dir>` | Directory for generated files. Defaults to the current directory. |
-| `--no-agent` | Skip the Claude agent and print setup instructions instead. |
-| `--display-name <name>` | Project display name for `create-cloud` mode. |
-
-**Behavior and authentication**
-
-Without mode or link flags, the command is interactive. Noninteractive environments must provide an explicit mode or link option. Incompatible combinations such as `--config-file` with `--select-project-id` are rejected. The command writes project setup files, registers the Hexclave MCP server, and can run the Claude setup agent unless `--no-agent` is used.
-
-```sh title="Terminal"
-hexclave init --mode create
-```
-
-### `hexclave project`
-
-Manage projects.
-
-#### `hexclave project list`
-
-**Synopsis**
-
-```text
-hexclave project list [options]
-```
-
-**Description**
-
-List projects owned by the current user. By default, both cloud and development-environment projects are included.
-
-**Options**
-
-| Option | Description |
-| --- | --- |
-| `--cloud` | Only list cloud projects. |
-| `--local` | Only list development-environment projects. |
-| `--json` | Root option; print project objects as JSON. |
-
-**Behavior and authentication**
-
-`--cloud` and `--local` cannot be combined. Listing cloud projects requires a login session; listing local development-environment projects uses local state. Human-readable output contains the project ID, display name, and `[cloud]` or `[local]` target.
-
-```sh title="Terminal"
-hexclave project list --cloud
-```
-
-#### `hexclave project create`
-
-**Synopsis**
-
-```text
-hexclave project create [options]
-```
-
-**Description**
-
-Create a new cloud project.
-
-**Options**
-
-| Option | Description |
-| --- | --- |
-| `--cloud` | Required confirmation that this command creates a cloud project. |
-| `--display-name <name>` | Project display name. |
-| `--team-id <id>` | Team that owns the project. |
-| `--json` | Root option; print the created project as JSON. |
-
-**Behavior and authentication**
-
-The command currently creates cloud projects only, so `--cloud` is required. It requires a login session. Missing display names can be entered interactively; in a noninteractive environment, provide `--display-name`.
-
-```sh title="Terminal"
-hexclave project create --cloud --display-name "My App"
-```
-
 ### `hexclave dev`
 
 **Synopsis**
@@ -334,34 +346,64 @@ Run a command with Hexclave development-environment credentials.
 
 **Behavior and authentication**
 
-The CLI starts or reuses the development dashboard, creates a development-environment session, injects the project’s API URL, dashboard URL, project ID, and related environment variables into the child process, then forwards signals and cleans up when the child exits. The command accepts the config path supplied by the user; current project setup uses `hexclave.config.ts`. The current built help text still labels the option as `Path to stack.config.ts`; this is stale help wording, not a different required filename.
+The CLI starts or reuses the development dashboard, creates a development-environment session, injects the project’s API URL, dashboard URL, project ID, and related environment variables into the child process, then forwards signals and cleans up when the child exits. The command accepts the config path supplied by the user; current project setup uses `hexclave.config.ts`.
 
 ```sh title="Terminal"
 hexclave dev --config-file ./hexclave.config.ts -- npm run dev:inner
 ```
-
-### `hexclave whoami`
+### `hexclave deploy`
 
 **Synopsis**
 
 ```text
-hexclave whoami
+hexclave deploy <service> [options]
 ```
 
 **Description**
 
-Show the currently logged-in Hexclave CLI user.
+Deploy a service defined under `deployments-alpha.services` in `hexclave.config.ts`. The CLI uploads the service source, waits for Vercel to accept the deployment, and prints the run ID without waiting for the remote build to finish.
 
 **Options**
 
 | Option | Description |
 | --- | --- |
-| `--json` | Root option; print user and team details as JSON. |
+| `--config <path>` | Config file path. If omitted, the CLI auto-discovers `hexclave.config.ts` in the current directory. |
+| `--cloud-project-id <id>` | Cloud project ID. Defaults to `HEXCLAVE_PROJECT_ID` or its `STACK_PROJECT_ID` compatibility alias. |
+| `--secret <KEY=VALUE>` | Secret value for a deployment environment variable. Repeatable. |
 
 **Behavior and authentication**
 
-Requires a login session. Human output includes user identity, email verification, anonymous/restricted status, team count, API URL, and dashboard URL.
+Authentication uses `HEXCLAVE_SECRET_SERVER_KEY` when set, which is recommended for CI; otherwise it uses the `hexclave login` session. Every secret referenced by the service must be supplied, and unknown secret keys are rejected. Secret values are sent to the deployment target and are not persisted by Hexclave.
 
+```sh title="Terminal"
+hexclave deploy web --config ./hexclave.config.ts --secret DATABASE_PASSWORD="$DATABASE_PASSWORD"
+```
+### `hexclave exec`
+
+**Synopsis**
+
+```text
+hexclave exec [javascript] [options]
+```
+
+**Description**
+
+Execute JavaScript as an async function with a preconfigured `HexclaveServerApp` available as `hexclaveServerApp`.
+
+**Options**
+
+| Option | Description |
+| --- | --- |
+| `--cloud-project-id <id>` | Cloud project ID to run against. Use `--config-file` for a development environment. |
+| `--config-file <path>` | Development-environment config file. Use `--cloud-project-id` for the cloud API. |
+
+**Behavior and authentication**
+
+Pass exactly one JavaScript argument. Cloud execution requires `hexclave login` and intentionally rejects `HEXCLAVE_SECRET_SERVER_KEY` authentication. Development-environment execution resolves access from the supplied config file. Non-`undefined` return values are printed as formatted JSON; `undefined` prints nothing.
+
+```sh title="Terminal"
+hexclave exec --cloud-project-id <project-id> "return await hexclaveServerApp.listUsers()"
+```
 ### `hexclave team`
 
 Manage teams.
@@ -628,58 +670,3 @@ Delete a team.
 **Behavior and authentication**
 
 Deleting a team is destructive. It requires confirmation interactively and requires `--yes` in noninteractive environments.
-
-### `hexclave fix`
-
-**Synopsis**
-
-```text
-hexclave fix [options]
-```
-
-**Description**
-
-Use an AI agent to fix a Hexclave error in the current project.
-
-**Options**
-
-| Option | Description |
-| --- | --- |
-| `--error <text>` | Error message to fix. The command also accepts piped stdin. |
-| `-y, --yes` | Skip the confirmation prompt. |
-
-**Behavior and authentication**
-
-If no error is supplied, the CLI reads stdin or prompts interactively. Error input is limited to 8,000 characters. In noninteractive environments, provide `--error`; confirmation is required unless `--yes` is supplied.
-
-```sh title="Terminal"
-printf '%s\n' "$HEXCLAVE_ERROR" | hexclave fix --yes
-```
-
-### `hexclave doctor`
-
-**Synopsis**
-
-```text
-hexclave doctor [options]
-```
-
-**Description**
-
-Check that Hexclave is correctly wired up in a project.
-
-**Options**
-
-| Option | Description |
-| --- | --- |
-| `--output-dir <dir>` | Project root to inspect. Defaults to the current directory. |
-| `--framework <fw>` | Override framework detection: `next`, `react`, or `js`. |
-| `--json` | Emit a machine-readable report. The root `--json` option has the same effect. |
-
-**Behavior and authentication**
-
-The command reads `package.json`, detects or validates the framework, runs integration checks, prints pass/fail/warning results, and exits with status 1 if any check fails.
-
-```sh title="Terminal"
-hexclave doctor --framework next --json
-```
