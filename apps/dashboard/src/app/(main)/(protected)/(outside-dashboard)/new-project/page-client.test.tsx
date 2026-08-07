@@ -128,6 +128,7 @@ describe("OnboardingPage", () => {
     expect(className).toContain("transition-colors");
     expect(className).toContain("hover:transition-none");
     expect(currentStepButton.getAttribute("aria-current")).toBe("step");
+    expect(className).toContain("w-[6px]");
   });
 
   it("keeps the progress dots centered on a wider rail with the back arrow offset", () => {
@@ -156,6 +157,31 @@ describe("OnboardingPage", () => {
     expect(backButtonClassName).toContain("left-0");
     expect(progressRailClassName).toContain("w-[150px]");
     expect(progressRailClassName).toContain("justify-center");
+  });
+
+  it("can advance the visual progress independently for route-only pages", () => {
+    render(
+      <OnboardingPage
+        stepKey="setup-new-project"
+        title="Set up Hexclave"
+        steps={[
+          { id: "config_choice", label: "Config" },
+          { id: "apps_selection", label: "Apps" },
+        ]}
+        currentStep="config_choice"
+        progressIndex={1}
+        progressTotal={4}
+        primaryAction={<button type="button">Continue</button>}
+      >
+        <div>Step body</div>
+      </OnboardingPage>,
+    );
+
+    const completedStep = screen.getByRole("button", { name: "Config" });
+    const currentStep = screen.getByRole("button", { name: "Apps" });
+    expect(completedStep.getAttribute("class")).toContain("w-[6px]");
+    expect(currentStep.getAttribute("class")).toContain("w-5");
+    expect(screen.getByRole("button", { name: "Step 3" })).not.toBeNull();
   });
 });
 

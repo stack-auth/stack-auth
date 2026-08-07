@@ -25,9 +25,7 @@ import {
   ArrowsClockwiseIcon,
   ChartBarIcon,
   CheckCircleIcon,
-  LinkBreakIcon,
   ShieldCheckIcon,
-  SparkleIcon,
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
@@ -39,10 +37,13 @@ import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  DeploymentChoicePage,
   DomainSetupTransitionState,
+  NewProjectEntryPage,
   OnboardingAppCard,
   OnboardingEmailThemePreview,
   OnboardingPage,
+  SetupNewProjectPage,
   WelcomeSlide,
 } from "./components";
 import {
@@ -167,7 +168,14 @@ export function ProjectOnboardingWizard(props: {
     finalConfigSavePromiseRef.current = null;
   }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
-  const isLinkExistingMode = !isDevelopmentEnvironment && props.mode === "link-existing";
+  const isLinkExistingMode = !isDevelopmentEnvironment && (
+    props.mode === "deploy-local"
+    || props.mode === "deploy-github"
+  );
+  const isDeploymentMode = !isDevelopmentEnvironment && (
+    props.mode === "deploy"
+    || isLinkExistingMode
+  );
   const paymentsAppEnabledInConfig = completeConfig.apps.installed.payments?.enabled === true;
   const includePayments = (
     status === "payments_setup"
@@ -175,8 +183,8 @@ export function ProjectOnboardingWizard(props: {
     || (!isLinkExistingMode && selectedApps.has("payments"))
   );
   const timelineSteps = useMemo(
-    () => isLinkExistingMode ? buildLinkExistingTimeline(includePayments) : buildTimeline(includePayments),
-    [includePayments, isLinkExistingMode],
+    () => isDeploymentMode ? buildLinkExistingTimeline(includePayments) : buildTimeline(includePayments),
+    [includePayments, isDeploymentMode],
   );
   const currentTimelineIndex = useMemo(() => getStepIndex(timelineSteps, status), [status, timelineSteps]);
 
@@ -210,12 +218,12 @@ export function ProjectOnboardingWizard(props: {
     }
 
     runAsynchronouslyWithAlert(async () => {
-      if (step === "config_choice" && props.mode !== "link-existing") {
+      if (step === "config_choice" && !isDevelopmentEnvironment) {
         setMode(null);
       }
       await saveOnboardingProgress({ status: step });
     });
-  }, [currentTimelineIndex, props.mode, saveOnboardingProgress, setMode, timelineSteps]);
+  }, [currentTimelineIndex, isDevelopmentEnvironment, saveOnboardingProgress, setMode, timelineSteps]);
 
   const handleBack = useMemo(() => {
     if (currentTimelineIndex <= 0) {
@@ -467,6 +475,22 @@ export function ProjectOnboardingWizard(props: {
     });
   }, [props.project.app, runWithSaving]);
 
+  const openDeploymentSource = async (mode: "deploy-local" | "deploy-github") => {
+    await runWithSaving(async () => {
+      const nextOnboardingState = createProjectOnboardingState({
+        selectedConfigChoice: "link-existing",
+        selectedApps,
+        selectedSignInMethods: signInMethods,
+        selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
+        selectedPaymentsCountry,
+        developmentEnvironment: false,
+      });
+      await saveOnboardingProgress({ onboardingState: nextOnboardingState });
+      setSelectedConfigChoice("link-existing");
+      setMode(mode);
+    });
+  };
+
   if (props.status === "welcome") {
     return (
       <WelcomeSlide
@@ -478,7 +502,15 @@ export function ProjectOnboardingWizard(props: {
     );
   }
 
-  if (props.status === "completed" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
+  if (
+    props.status === "completed"
+    && !isDevelopmentEnvironment
+    && (
+      props.mode === "link-existing"
+      || props.mode === "deploy-local"
+      || props.mode === "deploy-github"
+    )
+  ) {
     // Re-linking an already-onboarded project (initiated from the project
     // settings page). The project's onboarding status must stay "completed",
     // so both back and continue simply return to the settings page instead of
@@ -487,14 +519,29 @@ export function ProjectOnboardingWizard(props: {
     const returnToProjectSettings = () => {
       window.location.href = `/projects/${encodeURIComponent(props.project.id)}/project-settings`;
     };
+
+    if (props.mode === "link-existing") {
+      return (
+        <DeploymentChoicePage
+          stepKey="relink-deployment-location"
+          steps={[{ id: "config_choice", label: "Config" }]}
+          currentStep="config_choice"
+          onBack={returnToProjectSettings}
+          disabled={saving}
+          onSelect={(source) => props.setMode(source === "local" ? "deploy-local" : "deploy-github")}
+        />
+      );
+    }
+
     return (
       <LinkExistingOnboarding
         project={props.project}
         steps={[{ id: "config_choice", label: "Config" }]}
         disabled={saving}
         currentStep="config_choice"
+        deploymentSource={props.mode === "deploy-local" ? "local" : "github"}
         onStepClick={() => {}}
-        onBack={returnToProjectSettings}
+        onBack={() => props.setMode("link-existing")}
         onContinueAfterLink={async () => {
           returnToProjectSettings();
         }}
@@ -502,17 +549,19 @@ export function ProjectOnboardingWizard(props: {
     );
   }
 
-  if (props.status === "config_choice" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
+  if (props.status === "config_choice" && isLinkExistingMode) {
     return (
       <LinkExistingOnboarding
         project={props.project}
         steps={timelineSteps}
         disabled={saving}
         currentStep="config_choice"
+        progressIndex={2}
+        progressTotal={3}
+        deploymentSource={props.mode === "deploy-local" ? "local" : "github"}
         onStepClick={handleTimelineStepClick}
         onBack={() => {
-          props.setMode(null);
-          setSelectedConfigChoice("create-new");
+          props.setMode("deploy");
         }}
         onContinueAfterLink={async () => {
           const latestConfig = await props.project.getConfig();
@@ -562,94 +611,40 @@ export function ProjectOnboardingWizard(props: {
       );
     }
 
-    const createNewSelected = selectedConfigChoice === "create-new";
-    const linkExistingSelected = selectedConfigChoice === "link-existing";
+    if (props.mode === "setup-new") {
+      return (
+        <SetupNewProjectPage
+          steps={timelineSteps}
+          currentStep="config_choice"
+          onBack={() => setMode(null)}
+          disabled={saving}
+        />
+      );
+    }
+
+    if (props.mode === "deploy") {
+      return (
+        <DeploymentChoicePage
+          stepKey="deployment-location"
+          steps={timelineSteps}
+          currentStep="config_choice"
+          progressIndex={1}
+          onStepClick={handleTimelineStepClick}
+          onBack={() => setMode(null)}
+          disabled={saving}
+          onSelect={(source) => runAsynchronouslyWithAlert(() => openDeploymentSource(source === "local" ? "deploy-local" : "deploy-github"))}
+        />
+      );
+    }
 
     return (
-      <OnboardingPage
-        stepKey="config-choice"
-        title="Choose how you want to start"
-        subtitle="Start fresh or link an existing config."
+      <NewProjectEntryPage
         steps={timelineSteps}
         currentStep="config_choice"
-        onStepClick={handleTimelineStepClick}
         onBack={handleBack}
         disabled={saving}
-        primaryAction={
-          <DesignButton
-            className="w-full rounded-full"
-            loading={saving}
-            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              if (selectedConfigChoice === "create-new") {
-                await saveCurrentOnboardingProgress("apps_selection");
-              } else {
-                await saveOnboardingProgress({ onboardingState: buildOnboardingState() });
-                props.setMode("link-existing");
-              }
-            }))}
-          >
-            Continue
-          </DesignButton>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => setSelectedConfigChoice("create-new")}
-            className={cn(
-              "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
-              createNewSelected
-                ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
-            )}
-          >
-            {createNewSelected && (
-              <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
-                <CheckCircleIcon className="h-4 w-4" weight="fill" />
-              </div>
-            )}
-            <div className={cn(
-              "rounded-xl p-4",
-              createNewSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
-            )}>
-              <SparkleIcon className="h-7 w-7" />
-            </div>
-            <div className="space-y-1.5">
-              <Typography className="text-base font-semibold">Create New</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">Create and customize a new Hexclave project.</Typography>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => setSelectedConfigChoice("link-existing")}
-            className={cn(
-              "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
-              linkExistingSelected
-                ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
-            )}
-          >
-            {linkExistingSelected && (
-              <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
-                <CheckCircleIcon className="h-4 w-4" weight="fill" />
-              </div>
-            )}
-            <div className={cn(
-              "rounded-xl p-4",
-              linkExistingSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
-            )}>
-              <LinkBreakIcon className="h-7 w-7" />
-            </div>
-            <div className="space-y-1.5">
-              <Typography className="text-base font-semibold">Link Existing Config</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Hexclave project locally or on GitHub, link it here.</Typography>
-            </div>
-          </button>
-        </div>
-      </OnboardingPage>
+        onSelect={setMode}
+      />
     );
   }
 
@@ -805,7 +800,7 @@ export function ProjectOnboardingWizard(props: {
               className="flex w-full max-w-md justify-center"
             />
           </div>
-          <div className="grid md:grid-cols-[minmax(260px,2fr)_minmax(0,3fr)]">
+          <div className="grid md:grid-cols-[minmax(260px,2fr)_minmax(0,2fr)]">
             <div
               className={cn(
                 "flex flex-col justify-center border-b border-black/[0.12] dark:border-white/[0.06] md:border-b-0 md:border-r",
@@ -845,13 +840,25 @@ export function ProjectOnboardingWizard(props: {
                 authSetupMobileTab !== "preview" && "max-md:hidden",
               )}
             >
-              <BrowserFrame url="your-website.com/signin" className="w-full">
-                <div className="flex min-h-[180px] items-center justify-center px-4 py-3 sm:min-h-[220px] md:min-h-[260px] md:px-5 md:py-4 lg:min-h-[300px]">
-                  <div className="relative flex w-full items-center justify-center">
-                    <HostedAuthMethodPreview project={authPreviewProject} />
+              <div className="relative flex w-full items-center justify-center">
+                {/* Transform keeps the browser mockup's proportions; negative margins reclaim the
+                    unscaled flow space because CSS transforms do not affect layout dimensions. */}
+                <div className="relative my-[-20%] w-full origin-center scale-[0.6] transform-gpu">
+                  <BrowserFrame url="your-website.com/signin" className="w-full">
+                    <div className="flex min-h-[180px] items-center justify-center px-4 py-3 md:px-5 md:py-4">
+                      <div className="relative flex w-full items-center justify-center">
+                        <HostedAuthMethodPreview project={authPreviewProject} />
+                      </div>
+                    </div>
+                  </BrowserFrame>
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 -rotate-[18deg] text-center text-4xl font-black tracking-[0.2em] text-red-500/50"
+                  >
+                    [PREVIEW]
                   </div>
                 </div>
-              </BrowserFrame>
+              </div>
             </div>
           </div>
         </DesignCard>

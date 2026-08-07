@@ -1,11 +1,15 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { useState } from "react";
 
 import { AppIcon } from "@/components/app-square";
+import { CodeBlock } from "@/components/code-block";
+import { DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignBadge } from "@/components/design-components/badge";
 import { DesignButton } from "@/components/design-components/button";
+import { formatApproximateTokenCountLabel, getManualSetupDocsUrl } from "@/lib/setup-prompt";
 import {
   Alert,
   AlertDescription,
@@ -23,8 +27,9 @@ import {
   Typography,
   cn,
 } from "@/components/ui";
-import { ArrowLeftIcon, CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, BookIcon, CheckCircleIcon, CompassIcon, GithubLogoIcon, LaptopIcon, RocketLaunchIcon, SparkleIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject } from "@hexclave/next";
+import { aiSetupPrompt } from "@hexclave/shared/dist/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt";
 import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
 
@@ -36,6 +41,8 @@ export type OnboardingPageProps = {
   subtitle?: string,
   steps: TimelineStep[],
   currentStep: TimelineStep["id"],
+  progressIndex?: number,
+  progressTotal?: number,
   onStepClick?: (step: TimelineStep["id"]) => void,
   disabled?: boolean,
   primaryAction: ReactNode,
@@ -46,11 +53,84 @@ export type OnboardingPageProps = {
   children: ReactNode,
 };
 
-export function OnboardingPage(props: OnboardingPageProps) {
-  const currentIndex = props.steps.findIndex((step) => step.id === props.currentStep);
+/** Half the previous preview height — enough to hint at length without dominating the card. */
+export const ONBOARDING_AI_PROMPT_PREVIEW_HEIGHT_PX = 110;
+
+export function OnboardingAiPromptBlock(props: {
+  title: string,
+  content: string,
+  previewHeightPx?: number,
+}) {
+  const previewHeightPx = props.previewHeightPx ?? ONBOARDING_AI_PROMPT_PREVIEW_HEIGHT_PX;
 
   return (
-    <div className="flex w-full flex-grow flex-col items-center justify-center px-4 pb-16 pt-8">
+    <div className="space-y-2">
+      <Typography variant="secondary" className="text-sm">
+        Copy-paste the following prompt into your coding agent:
+      </Typography>
+      <div className="relative">
+        <CodeBlock
+          title={props.title}
+          icon="code"
+          language="text"
+          content={props.content}
+          compact
+          maxHeight={previewHeightPx}
+          customRender={(
+            <pre
+              className="overflow-y-auto whitespace-pre-wrap break-words px-3 pb-8 pt-2.5 font-mono text-[11px] leading-4 text-foreground"
+              style={{ maxHeight: previewHeightPx }}
+            >
+              {props.content}
+            </pre>
+          )}
+        />
+        {/* Fade + token hint sit over the prompt body so truncated content is obvious. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-xl bg-gradient-to-t from-white/95 via-white/80 to-transparent dark:from-background/95 dark:via-background/80"
+        />
+        <Typography
+          variant="secondary"
+          className="pointer-events-none absolute inset-x-0 bottom-2 z-[1] text-center text-[11px] tabular-nums"
+        >
+          {formatApproximateTokenCountLabel(props.content)}
+        </Typography>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Fixed step dots / back control. Gradient fade softens the overlap when page
+ * content scrolls underneath — solid bars look harsh on the lavender ambient bg.
+ */
+function OnboardingBottomChrome(props: {
+  children: ReactNode,
+}) {
+  return (
+    <div
+      className="onboarding-cascade pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center bg-gradient-to-t from-background from-35% via-background/80 to-transparent pb-6 pt-14"
+      style={{ "--cascade-i": 3 } as CSSProperties}
+    >
+      <div className="pointer-events-auto">
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
+export function OnboardingPage(props: OnboardingPageProps) {
+  const currentTimelineIndex = props.steps.findIndex((step) => step.id === props.currentStep);
+  const currentIndex = props.progressIndex ?? currentTimelineIndex;
+  const progressTotal = props.progressTotal ?? props.steps.length;
+  const progressSteps: Array<TimelineStep | undefined> = Array.from(
+    { length: progressTotal },
+    (_, index) => index < props.steps.length ? props.steps[index] : undefined,
+  );
+
+  return (
+    <div className="flex w-full flex-grow flex-col items-center justify-center px-4 pb-28 pt-8">
       <div
         key={props.stepKey}
         className={cn(
@@ -92,7 +172,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
         </div>
       </div>
 
-      <div className="onboarding-cascade fixed bottom-6 left-0 right-0 z-50 flex justify-center" style={{ "--cascade-i": 3 } as CSSProperties}>
+      <OnboardingBottomChrome>
         <div className="relative flex h-5 w-[150px] items-center justify-center">
           {props.onBack != null && (
             <button
@@ -106,35 +186,229 @@ export function OnboardingPage(props: OnboardingPageProps) {
             </button>
           )}
           <span className="flex items-center gap-[5px]">
-            {props.steps.map((step, index) => {
+            {progressSteps.map((step, index) => {
               const isComplete = index < currentIndex;
               const isCurrent = index === currentIndex;
-              const isClickable = isComplete && !props.disabled && props.onStepClick != null;
+              const isClickable = step != null && isComplete && !props.disabled && props.onStepClick != null;
+              const stepLabel = step?.label ?? `Step ${index + 1}`;
 
               return (
                 <button
-                  key={step.id}
+                  key={step?.id ?? `progress-step-${index}`}
                   type="button"
                   disabled={!isClickable}
                   onClick={() => { if (isClickable) props.onStepClick?.(step.id); }}
-                  aria-label={isClickable ? `Go to step: ${step.label}` : step.label}
+                  aria-label={isClickable ? `Go to step: ${stepLabel}` : stepLabel}
                   aria-current={isCurrent ? "step" : undefined}
                   className={cn(
-                    "rounded-full transition-colors duration-300 hover:transition-none",
-                    isCurrent
-                      ? "h-[6px] w-5 bg-foreground"
-                      : isComplete
-                        ? "h-[6px] w-[6px] cursor-pointer bg-foreground/40 hover:bg-foreground/60"
-                        : "h-[6px] w-[6px] cursor-default bg-foreground/20",
-                  )}
-                  title={step.label}
+                      "rounded-full transition-colors duration-300 hover:transition-none",
+                      isCurrent
+                        ? "h-[6px] w-5 bg-foreground"
+                        : isComplete
+                          ? "h-[6px] w-[6px] cursor-pointer bg-foreground/60 hover:bg-foreground/80"
+                          : "h-[6px] w-[6px] cursor-default bg-foreground/20",
+                    )}
+                  title={stepLabel}
                 />
               );
             })}
           </span>
         </div>
-      </div>
+      </OnboardingBottomChrome>
     </div>
+  );
+}
+
+export function OnboardingChoiceCard(props: {
+  icon: ReactNode,
+  title: string,
+  description: string,
+  disabled: boolean,
+  onClick: () => void,
+}) {
+  return (
+    <button
+      type="button"
+      disabled={props.disabled}
+      onClick={props.onClick}
+      className="group flex w-full items-center gap-4 rounded-xl bg-white/70 p-4 text-left ring-1 ring-black/[0.06] transition-[background-color,box-shadow] duration-150 hover:bg-white hover:shadow-sm hover:transition-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-background/60 dark:ring-white/[0.08] dark:hover:bg-background"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] text-muted-foreground transition-colors duration-150 group-hover:bg-blue-500/10 group-hover:text-blue-500 group-hover:transition-none">
+        {props.icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <Typography className="text-sm font-semibold">{props.title}</Typography>
+        <Typography variant="secondary" className="mt-0.5 text-xs leading-relaxed">{props.description}</Typography>
+      </div>
+      <span className="text-lg text-muted-foreground/50" aria-hidden>›</span>
+    </button>
+  );
+}
+
+export function DeploymentChoicePage(props: {
+  stepKey: string,
+  steps: TimelineStep[],
+  currentStep: TimelineStep["id"],
+  progressIndex?: number,
+  progressTotal?: number,
+  disabled: boolean,
+  onBack?: () => void,
+  onStepClick?: (step: TimelineStep["id"]) => void,
+  onSelect: (source: "local" | "github") => void,
+}) {
+  return (
+    <OnboardingPage
+      stepKey={props.stepKey}
+      title="Where is your project currently?"
+      steps={props.steps}
+      currentStep={props.currentStep}
+      progressIndex={props.progressIndex}
+      progressTotal={props.progressTotal}
+      onStepClick={props.onStepClick}
+      onBack={props.onBack}
+      disabled={props.disabled}
+      primaryAction={null}
+    >
+      <div className="space-y-3">
+        <OnboardingChoiceCard
+          icon={<LaptopIcon className="h-5 w-5" />}
+          title="On my computer (local)"
+          description="Push your existing config from the Hexclave CLI."
+          disabled={props.disabled}
+          onClick={() => props.onSelect("local")}
+        />
+        <OnboardingChoiceCard
+          icon={<GithubLogoIcon className="h-5 w-5" />}
+          title="On GitHub"
+          description="Add repository secrets and a config-sync workflow manually."
+          disabled={props.disabled}
+          onClick={() => props.onSelect("github")}
+        />
+      </div>
+    </OnboardingPage>
+  );
+}
+
+export function NewProjectEntryPage(props: {
+  steps: TimelineStep[],
+  currentStep: TimelineStep["id"],
+  disabled: boolean,
+  onBack?: () => void,
+  onSelect: (choice: "setup-new" | "deploy") => void,
+}) {
+  return (
+    <OnboardingPage
+      stepKey="new-project-entry"
+      title="Welcome to Hexclave!"
+      subtitle="What would you like to do?"
+      steps={props.steps}
+      currentStep={props.currentStep}
+      onBack={props.onBack}
+      disabled={props.disabled}
+      primaryAction={null}
+    >
+      <div className="space-y-3">
+        <OnboardingChoiceCard
+          icon={<SparkleIcon className="h-5 w-5" />}
+          title="Add Hexclave to a new project"
+          description="If you haven't installed Hexclave yet, this is the way to get started."
+          disabled={props.disabled}
+          onClick={() => props.onSelect("setup-new")}
+        />
+        <OnboardingChoiceCard
+          icon={<RocketLaunchIcon className="h-5 w-5" />}
+          title="Deploy my existing Hexclave project to production"
+          description="Link your config file from your computer and deploy to Hexclave Cloud."
+          disabled={props.disabled}
+          onClick={() => props.onSelect("deploy")}
+        />
+        <div className="flex items-center gap-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/60">
+          <span className="h-px flex-1 bg-foreground/[0.10]" />
+          <span>OR</span>
+          <span className="h-px flex-1 bg-foreground/[0.10]" />
+        </div>
+        <OnboardingChoiceCard
+          icon={<CompassIcon className="h-5 w-5" />}
+          title="I just want to look around"
+          description="Explore a live Hexclave project without creating one."
+          disabled={props.disabled}
+          onClick={() => window.open("https://preview.hexclave.com", "_blank", "noopener,noreferrer")}
+        />
+      </div>
+    </OnboardingPage>
+  );
+}
+
+export function SetupNewProjectPage(props: {
+  steps: TimelineStep[],
+  currentStep: TimelineStep["id"],
+  disabled: boolean,
+  onBack: () => void,
+}) {
+  const [setupTab, setSetupTab] = useState<"ai-prompt" | "manual">("ai-prompt");
+  const manualSetupDocsUrl = getManualSetupDocsUrl();
+
+  return (
+    <OnboardingPage
+      stepKey="setup-new-project"
+      title="Set up Hexclave in a project"
+      subtitle="You don't need Hexclave Cloud to build your project with Hexclave. Just use the AI prompt below, and you can come back when you're ready to deploy."
+      steps={props.steps}
+      currentStep={props.currentStep}
+      progressIndex={1}
+      onBack={props.onBack}
+      disabled={props.disabled}
+      primaryAction={(
+        <DesignButton
+          variant="outline"
+          className="w-full rounded-full"
+          onClick={props.onBack}
+        >
+          Go back
+        </DesignButton>
+      )}
+    >
+      <div className="space-y-4">
+        <div className="flex justify-center">
+          <DesignPillToggle
+            options={[
+              { id: "ai-prompt", label: "AI Prompt" },
+              { id: "manual", label: "Manual Installation" },
+            ]}
+            selected={setupTab}
+            onSelect={(id) => setSetupTab(id === "manual" ? "manual" : "ai-prompt")}
+            size="sm"
+            gradient="default"
+          />
+        </div>
+
+        {setupTab === "ai-prompt" ? (
+          <OnboardingAiPromptBlock title="Setup prompt" content={aiSetupPrompt} />
+        ) : (
+          <div className="flex flex-col items-center gap-4 rounded-2xl bg-white/70 px-6 py-10 text-center ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.08]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
+              <BookIcon className="h-6 w-6" />
+            </div>
+            <div className="space-y-1.5">
+              <Typography className="text-base font-semibold">
+                Follow the Getting Started guide
+              </Typography>
+              <Typography variant="secondary" className="mx-auto max-w-sm text-sm leading-relaxed">
+                Manual setup steps live in the docs so they stay up to date with every framework and SDK change.
+              </Typography>
+            </div>
+            <DesignButton
+              onClick={() => {
+                window.open(manualSetupDocsUrl, "_blank", "noopener,noreferrer");
+              }}
+            >
+              <BookIcon className="mr-2 h-4 w-4" />
+              Open Getting Started guide
+            </DesignButton>
+          </div>
+        )}
+      </div>
+    </OnboardingPage>
   );
 }
 
@@ -475,7 +749,7 @@ export function WelcomeSlide(props: WelcomeSlideProps) {
   const currentIndex = props.steps.findIndex((step) => step.id === "welcome");
 
   return (
-    <div className="flex w-full flex-grow flex-col items-center justify-center px-4 pb-16 pt-8">
+    <div className="flex w-full flex-grow flex-col items-center justify-center px-4 pb-28 pt-8">
       <div
         key="welcome"
         className="flex w-full max-w-xl flex-col items-center"
@@ -504,31 +778,33 @@ export function WelcomeSlide(props: WelcomeSlideProps) {
         </div>
       </div>
 
-      <div className="onboarding-cascade fixed bottom-6 left-0 right-0 z-50 flex justify-center" style={{ "--cascade-i": 3 } as CSSProperties}>
-        <div className="flex items-center gap-[5px]">
-          {props.steps.map((step, index) => {
-            const isComplete = index < currentIndex;
-            const isCurrent = index === currentIndex;
+      <OnboardingBottomChrome>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-[5px]">
+            {props.steps.map((step, index) => {
+              const isComplete = index < currentIndex;
+              const isCurrent = index === currentIndex;
 
-            return (
-              <div
-                key={step.id}
-                aria-label={step.label}
-                aria-current={isCurrent ? "step" : undefined}
-                className={cn(
-                  "rounded-full",
-                  isCurrent
-                    ? "h-[6px] w-5 bg-foreground"
-                    : isComplete
-                      ? "h-[6px] w-[6px] bg-foreground/40"
-                      : "h-[6px] w-[6px] bg-foreground/20",
-                )}
-                title={step.label}
-              />
-            );
-          })}
+              return (
+                <div
+                  key={step.id}
+                  aria-label={step.label}
+                  aria-current={isCurrent ? "step" : undefined}
+                  className={cn(
+                    "rounded-full",
+                    isCurrent
+                      ? "h-[6px] w-5 bg-foreground"
+                      : isComplete
+                        ? "h-[6px] w-[6px] bg-foreground/60"
+                        : "h-[6px] w-[6px] bg-foreground/20",
+                  )}
+                  title={step.label}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </OnboardingBottomChrome>
     </div>
   );
 }
