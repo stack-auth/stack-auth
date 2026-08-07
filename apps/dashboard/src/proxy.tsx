@@ -1,10 +1,33 @@
+import { Tracker } from "@bydefault/vercel";
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import './polyfills';
 
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
 import { wait } from '@hexclave/shared/dist/utils/promises';
-import type { NextRequest } from 'next/server';
+import type { NextFetchEvent, NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+
+const token = process.env.BYDEFAULT_INGEST_TOKEN;
+const tracker = token == null || token === ""
+  ? null
+  : new Tracker({
+    token,
+    exclude: [
+      '/api',
+      '/monitoring',
+      '/consume',
+      '/_next',
+      '/handler',
+      '/projects',
+      '/new-project',
+      '/playground',
+      '/purchase',
+      '/integrations',
+      '/health',
+      '/rde-debug',
+      '/development-environment',
+    ],
+  });
 
 const corsAllowedRequestHeaders = [
   // General
@@ -44,7 +67,11 @@ function withHexclaveHeaderAliases(headers: string[]): string[] {
 const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
-export async function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  if (tracker != null) {
+    tracker.track(request, event).catch(() => undefined);
+  }
+
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));
   if (delay) {
     if (getNodeEnvironment().includes('production')) {

@@ -24,6 +24,7 @@
     "@ai-sdk/react": "^3.0.72",
     "@assistant-ui/react": "^0.10.24",
     "@assistant-ui/react-markdown": "^0.10.5",
+    "@bydefault/vercel": "^0.1.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
