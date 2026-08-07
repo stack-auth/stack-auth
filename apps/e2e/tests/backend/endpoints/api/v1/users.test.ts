@@ -127,7 +127,7 @@ describe("with client access", () => {
   });
 
   it("should be able to read own user if signed in", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
     });
@@ -135,7 +135,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "display_name": null,
@@ -144,10 +144,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -156,7 +156,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -169,7 +169,7 @@ describe("with client access", () => {
   });
 
   it("should be able to read own user if signed in even without refresh token", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     backendContext.set({ userAuth: { ...backendContext.value.userAuth, refreshToken: undefined } });
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
@@ -178,7 +178,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "display_name": null,
@@ -187,10 +187,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -199,7 +199,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -254,7 +254,7 @@ describe("with client access", () => {
   });
 
   it("should be able to update own user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -266,7 +266,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "display_name": "John Doe",
@@ -275,10 +275,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -287,7 +287,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -308,7 +308,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": { "key": "value" },
           "client_read_only_metadata": null,
           "display_name": "John Doe",
@@ -317,10 +317,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -329,7 +329,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -454,7 +454,7 @@ describe("with client access", () => {
   });
 
   it("should set own display name to null when set to the empty string", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -466,7 +466,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "display_name": "John Doe",
@@ -475,10 +475,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -487,7 +487,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -508,7 +508,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "display_name": null,
@@ -517,10 +517,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -529,7 +529,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -645,7 +645,7 @@ describe("with client access", () => {
   });
 
   it("should be able to update own client metadata", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -657,7 +657,7 @@ describe("with client access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": { "key": "value" },
           "client_read_only_metadata": null,
           "display_name": null,
@@ -666,10 +666,10 @@ describe("with client access", () => {
           "is_anonymous": false,
           "is_restricted": false,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -678,7 +678,7 @@ describe("with client access", () => {
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
           },
@@ -809,7 +809,7 @@ describe("with client access", () => {
 
 describe("with server access", () => {
   it("should be able to read own user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
     });
@@ -817,7 +817,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -828,11 +828,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -849,7 +849,7 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -864,7 +864,7 @@ describe("with server access", () => {
   });
 
   it("should be able to update own user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -876,7 +876,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -887,11 +887,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -908,7 +908,7 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -939,57 +939,57 @@ describe("with server access", () => {
 
   it("should be able to list users", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
 
     const response = await niceBackendFetch("/api/v1/users", {
       accessType: "server",
     });
     expect(response).toMatchInlineSnapshot(`
-          NiceResponse {
-            "status": 200,
-            "body": {
-              "is_paginated": true,
-              "items": [
-                {
-                  "auth_with_email": true,
-                  "client_metadata": null,
-                  "client_read_only_metadata": null,
-                  "country_code": null,
-                  "display_name": null,
-                  "has_password": false,
-                  "id": "<stripped UUID>",
-                  "is_anonymous": false,
-                  "is_restricted": false,
-                  "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-                  "oauth_providers": [],
-                  "otp_auth_enabled": true,
-                  "passkey_auth_enabled": false,
-                  "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-                  "primary_email_auth_enabled": true,
-                  "primary_email_verified": true,
-                  "profile_image_url": null,
-                  "requires_totp_mfa": false,
-                  "restricted_by_admin": false,
-                  "restricted_by_admin_private_details": null,
-                  "restricted_by_admin_reason": null,
-                  "restricted_reason": null,
-                  "risk_scores": {
-                    "sign_up": {
-                      "bot": 0,
-                      "free_trial_abuse": 0,
-                    },
-                  },
-                  "selected_team": null,
-                  "selected_team_id": null,
-                  "server_metadata": null,
-                  "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "is_paginated": true,
+          "items": [
+            {
+              "auth_with_email": false,
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "country_code": null,
+              "display_name": null,
+              "has_password": false,
+              "id": "<stripped UUID>",
+              "is_anonymous": false,
+              "is_restricted": false,
+              "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+              "oauth_providers": [],
+              "otp_auth_enabled": false,
+              "passkey_auth_enabled": false,
+              "primary_email": null,
+              "primary_email_auth_enabled": false,
+              "primary_email_verified": false,
+              "profile_image_url": null,
+              "requires_totp_mfa": false,
+              "restricted_by_admin": false,
+              "restricted_by_admin_private_details": null,
+              "restricted_by_admin_reason": null,
+              "restricted_reason": null,
+              "risk_scores": {
+                "sign_up": {
+                  "bot": 0,
+                  "free_trial_abuse": 0,
                 },
-              ],
-              "pagination": { "next_cursor": null },
+              },
+              "selected_team": null,
+              "selected_team_id": null,
+              "server_metadata": null,
+              "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
             },
-            "headers": Headers { <some fields may have been hidden> },
-          }
-        `);
+          ],
+          "pagination": { "next_cursor": null },
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
   });
 
   it("should require include_anonymous=true when only_anonymous=true", async ({ expect }) => {
@@ -1114,7 +1114,10 @@ describe("with server access", () => {
   });
 
   it("should be able to read a user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp({
+      primary_email: backendContext.value.mailbox.emailAddress,
+      primary_email_verified: true,
+    });
     const signedInResponse = (await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
     }));
@@ -1129,7 +1132,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -1140,10 +1143,10 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
+          "primary_email_auth_enabled": false,
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
@@ -1966,7 +1969,7 @@ describe("with server access", () => {
   });
 
   it("should be able to update a user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const signedInResponse = (await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
     }));
@@ -1986,7 +1989,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -1997,11 +2000,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -2018,7 +2021,7 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -2037,7 +2040,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -2048,11 +2051,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -2069,7 +2072,7 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -2084,7 +2087,7 @@ describe("with server access", () => {
   });
 
   it("should be able to update own user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2097,7 +2100,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
           "country_code": null,
@@ -2108,11 +2111,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -2129,7 +2132,7 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -2145,7 +2148,7 @@ describe("with server access", () => {
 
   it("should be able to update a user's password, signing them out, and sign in with it again", async ({ expect }) => {
     const password = "this-is-some-password";
-    await Auth.Otp.signIn();
+    await Auth.Password.signUpWithEmail();
     const response1 = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2168,11 +2171,11 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
           "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
@@ -2181,8 +2184,8 @@ describe("with server access", () => {
           "restricted_reason": null,
           "risk_scores": {
             "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
+              "bot": 38,
+              "free_trial_abuse": 38,
             },
           },
           "selected_team": {
@@ -2213,7 +2216,7 @@ describe("with server access", () => {
   });
 
   it("should be able to delete a user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const signedInResponse = (await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
     }));
@@ -2251,7 +2254,7 @@ describe("with server access", () => {
   });
 
   it("should be able to update all metadata fields", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2266,7 +2269,7 @@ describe("with server access", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "auth_with_email": true,
+          "auth_with_email": false,
           "client_metadata": { "key": "client value" },
           "client_read_only_metadata": { "key": "client read only value" },
           "country_code": null,
@@ -2277,82 +2280,10 @@ describe("with server access", () => {
           "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
-          "otp_auth_enabled": true,
+          "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "selected_team_id": "<stripped UUID>",
-          "server_metadata": { "key": "server value" },
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-  });
-
-  it("should be able to update profile image url", async ({ expect }) => {
-    await Auth.Otp.signIn();
-    const response = await niceBackendFetch("/api/v1/users/me", {
-      accessType: "server",
-      method: "PATCH",
-      body: {
-        profile_image_url: localhostUrl("01", "/open-graph-image.png"),
-      },
-    });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>01/open-graph-image.png"`);
-  });
-
-  it("should be able to update primary email", async ({ expect }) => {
-    await Auth.Otp.signIn();
-    const mailbox = createMailbox();
-    const response = await niceBackendFetch("/api/v1/users/me", {
-      accessType: "server",
-      method: "PATCH",
-      body: {
-        primary_email: mailbox.emailAddress,
-      },
-    });
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "auth_with_email": true,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": true,
-          "passkey_auth_enabled": false,
-          "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
+          "primary_email": null,
+          "primary_email_auth_enabled": false,
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
@@ -2370,7 +2301,79 @@ describe("with server access", () => {
             "client_metadata": null,
             "client_read_only_metadata": null,
             "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+            "display_name": "Personal Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+            "server_metadata": null,
+          },
+          "selected_team_id": "<stripped UUID>",
+          "server_metadata": { "key": "server value" },
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should be able to update profile image url", async ({ expect }) => {
+    await Auth.fastSignUp();
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        profile_image_url: localhostUrl("01", "/open-graph-image.png"),
+      },
+    });
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>01/open-graph-image.png"`);
+  });
+
+  it("should be able to update primary email", async ({ expect }) => {
+    await Auth.fastSignUp();
+    const mailbox = createMailbox();
+    const response = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "server",
+      method: "PATCH",
+      body: {
+        primary_email: mailbox.emailAddress,
+      },
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "country_code": null,
+          "display_name": null,
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": false,
+          "is_restricted": false,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
+          "primary_email_auth_enabled": false,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "restricted_by_admin": false,
+          "restricted_by_admin_private_details": null,
+          "restricted_by_admin_reason": null,
+          "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
+          "selected_team": {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "created_at_millis": <stripped field 'created_at_millis'>,
+            "display_name": "Personal Team",
             "id": "<stripped UUID>",
             "profile_image_url": null,
             "server_metadata": null,
@@ -2440,8 +2443,8 @@ describe("with server access", () => {
           "restricted_reason": null,
           "risk_scores": {
             "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
+              "bot": 38,
+              "free_trial_abuse": 38,
             },
           },
           "selected_team": {
