@@ -6,11 +6,14 @@ import { EnvFileViewer } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { Tabs, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
+import {
+  buildCliDevSetupPrompt,
+  getManualSetupDocsUrl,
+  getSetupDocsBaseUrl,
+} from '@/lib/setup-prompt';
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, XIcon } from "@phosphor-icons/react";
-import { remindersPrompt } from '@hexclave/shared/dist/ai/unified-prompts/reminders';
 import { use } from "@hexclave/shared/dist/utils/react";
-import { deindent } from '@hexclave/shared/dist/utils/strings';
 import dynamic from "next/dynamic";
 import { Suspense, useRef, useState } from "react";
 import type { GlobeMethods } from 'react-globe.gl';
@@ -22,142 +25,7 @@ import styles from './setup-page.module.css';
 const countriesPromise = import('./country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
-type SetupMode = "recommended" | "manual" | "script";
-
-const PROD_DOCS_BASE_URL = 'https://docs.hexclave.com';
-const PROD_API_BASE_URL = 'https://api.hexclave.com';
-// Pin the esm.sh version in the copy-paste snippet so a new SDK release can't unexpectedly break the page.
-const NO_BUNDLER_SDK_VERSION = '1.0.51';
-
-function buildBrowserScriptSnippet(options: {
-  apiBaseUrl: string,
-  projectId: string,
-  requirePublishableClientKey: boolean,
-}) {
-  const { apiBaseUrl, projectId, requirePublishableClientKey } = options;
-  const publishableClientKeyLine = requirePublishableClientKey
-    ? `\n    publishableClientKey: "<your-publishable-client-key>",`
-    : '';
-
-  return deindent`
-    <script type="module">
-      // Sets up Hexclave as a global hexclaveClientApp variable.
-      // See: https://docs.hexclave.com (humans), https://skill.hexclave.com (AI agents)
-      import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${NO_BUNDLER_SDK_VERSION}";
-
-      globalThis.hexclaveClientApp = new HexclaveClientApp({
-        baseUrl: "${apiBaseUrl}",
-        projectId: "${projectId}",${publishableClientKeyLine}
-        tokenStore: "cookie",
-        urls: { default: { type: "hosted" } },
-      });
-    </script>
-  `;
-}
-
-function getSetupDocsBaseUrl() {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL') ?? PROD_DOCS_BASE_URL;
-}
-
-function getManualSetupDocsUrl() {
-  const docsBaseUrl = getSetupDocsBaseUrl().replace(/\/$/, '');
-  return `${docsBaseUrl}/guides/getting-started/setup`;
-}
-
-function getSetupApiBaseUrl() {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL;
-}
-
-function buildCloudSetupPrompt(options: {
-  docsBaseUrl: string,
-  projectId: string,
-  apiBaseUrl: string,
-}) {
-  const { docsBaseUrl, projectId, apiBaseUrl } = options;
-  const normalizedDocsBaseUrl = docsBaseUrl.replace(/\/$/, '');
-  const reminders = remindersPrompt.replaceAll(PROD_DOCS_BASE_URL, normalizedDocsBaseUrl);
-
-  // The SDK's baked-in default base URL is the production cloud API, so there's no point telling
-  // the agent to set a custom API URL when the deployment already uses it — omit the line in that
-  // case. Non-default deployments (dev/staging cloud, self-host custom domains) still show it.
-  const isDefaultApiBaseUrl = apiBaseUrl === PROD_API_BASE_URL;
-
-  const projectValues = isDefaultApiBaseUrl
-    ? deindent`
-      - Hexclave project ID: ${projectId}
-    `
-    : deindent`
-      - Hexclave API URL: ${apiBaseUrl}
-      - Hexclave project ID: ${projectId}
-    `;
-
-  const envVarInstructions = isDefaultApiBaseUrl
-    ? deindent`
-      Create the framework-specific public environment variable for the Hexclave project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify a different environment variable name, use the docs' framework-specific name with the value above.
-    `
-    : deindent`
-      Create the framework-specific public environment variables for the Hexclave API URL and project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_API_URL and VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify different environment variable names, use the docs' framework-specific names with the values above.
-    `;
-
-  return deindent`
-    Install and set up Hexclave in this project by following these instructions:
-
-    Read https://skill.hexclave.com and follow the setup instructions it gives for this project's specific framework and language.
-
-    Follow skill.hexclave.com as written, but make sure to use the cloud setup, not the local dashboard setup.
-
-    Do not change the dev script in package.json. In cloud setup, there's no need for that.
-
-    Use these Hexclave project values when creating environment variables:
-
-    ${projectValues}
-
-    ${envVarInstructions}
-
-    After setup finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. If it is not registered, add it manually so future agents have live access to Hexclave docs and APIs.
-
-    Once setup is done, tell me to add the Hexclave secret server key from the dashboard to my environment file. After that, setup is complete.
-
-    ${reminders}
-  `;
-}
-
-function buildCliDevSetupPrompt(options: {
-  docsBaseUrl: string,
-}) {
-  const { docsBaseUrl } = options;
-  const normalizedDocsBaseUrl = docsBaseUrl.replace(/\/$/, '');
-  const reminders = remindersPrompt.replaceAll(PROD_DOCS_BASE_URL, normalizedDocsBaseUrl);
-
-  return deindent`
-    Install and set up Hexclave in this project by following these instructions:
-
-    Read https://skill.hexclave.com and follow the setup instructions it gives for this project's specific framework and language.
-
-    Follow skill.hexclave.com as written, but use the local dashboard / Hexclave CLI development setup. Do not use the cloud environment-variable setup for local development.
-
-    Set up the app's dev command so Hexclave starts through the CLI:
-
-    \`\`\`json
-    {
-      "scripts": {
-        "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:inner",
-        "dev:inner": "<the app's previous dev command>"
-      }
-    }
-    \`\`\`
-
-    If the Hexclave CLI is not installed globally, use \`npx @hexclave/cli dev --config-file ./hexclave.config.ts -- npm run dev:inner\` instead.
-
-    Do not create Hexclave project keys or ask for Hexclave environment variables for local development. The \`hexclave dev\` command automatically creates or links the local config project and injects the project ID and secret server key into the child app process.
-
-    Keep project configuration in \`hexclave.config.ts\`. Once setup is done, run \`npm run dev\` and create the first user in the app.
-
-    After setup finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. If it is not registered, add it manually so future agents have live access to Hexclave docs and APIs.
-
-    ${reminders}
-  `;
-}
+type SetupMode = "recommended" | "manual";
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
@@ -183,22 +51,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     });
   };
 
-  const setupApiBaseUrl = getSetupApiBaseUrl();
-  const browserScriptSnippet = buildBrowserScriptSnippet({
-    apiBaseUrl: setupApiBaseUrl,
-    projectId: adminApp.projectId,
-    requirePublishableClientKey,
-  });
   const setupDocsBaseUrl = getSetupDocsBaseUrl();
-  const selectedInstallPrompt = isRemoteDevelopmentEnvironment
-    ? buildCliDevSetupPrompt({
-      docsBaseUrl: setupDocsBaseUrl,
-    })
-    : buildCloudSetupPrompt({
-      docsBaseUrl: setupDocsBaseUrl,
-      projectId: adminApp.projectId,
-      apiBaseUrl: setupApiBaseUrl,
-    });
+  const selectedInstallPrompt = buildCliDevSetupPrompt({
+    docsBaseUrl: setupDocsBaseUrl,
+  });
   const manualSetupDocsUrl = getManualSetupDocsUrl();
 
   return (
@@ -243,109 +99,81 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </div>
       </div>
 
-      <div className="flex justify-end mt-8 mx-4">
-        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : value === "script" ? "script" : "recommended")}>
-          <TabsList>
-            <TabsTrigger value="recommended">AI Prompt (recommended)</TabsTrigger>
-            <TabsTrigger value="manual">Manual setup</TabsTrigger>
-            {!isRemoteDevelopmentEnvironment && (
-              <TabsTrigger value="script">{`<script> tag`}</TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
-      </div>
+      {isRemoteDevelopmentEnvironment ? (
+        <>
+          <div className="mx-4 mt-8 flex justify-end">
+            <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : "recommended")}>
+              <TabsList>
+                <TabsTrigger value="recommended">AI Prompt (recommended)</TabsTrigger>
+                <TabsTrigger value="manual">Manual setup</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
-      {setupMode === "recommended" ? (
-        <div className="flex flex-col mt-4 mx-4">
-          <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400 ">
-            {(isRemoteDevelopmentEnvironment ? [
-              {
-                step: 1,
-                title: "Copy Setup Prompt",
-                content: <div className="flex min-w-0 flex-col gap-4">
-                  <CodeBlock
-                    language="text"
-                    content={selectedInstallPrompt}
-                    customRender={
-                      <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
-                        {selectedInstallPrompt}
-                      </pre>
-                    }
-                    title="Prompt for your AI agent"
-                    icon="code"
-                    maxHeight={480}
-                  />
-                </div>,
-              },
-              {
-                step: 2,
-                title: "Done",
-                content: <SetupRecommendedDoneStep onExploreDashboard={props.toMetrics} />,
-              },
-            ] : [
-              {
-                step: 1,
-                title: "Copy Setup Prompt",
-                content: <div className="flex min-w-0 flex-col gap-4">
-                  <CodeBlock
-                    language="text"
-                    content={selectedInstallPrompt}
-                    customRender={
-                      <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
-                        {selectedInstallPrompt}
-                      </pre>
-                    }
-                    title="Prompt for your AI agent"
-                    icon="code"
-                    maxHeight={480}
-                  />
-                </div>,
-              },
-              {
-                step: 2,
-                title: "Create Keys",
-                content: <>
-                  <Typography>
-                    Add this server-only key to your project&apos;s <InlineCode>.env.local</InlineCode> file.
-                  </Typography>
-                  <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} />
-                </>,
-              },
-              {
-                step: 3,
-                title: "Done",
-                content: <SetupRecommendedDoneStep onExploreDashboard={props.toMetrics} />,
-              },
-            ]).map((item) => (
-              <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
-                <div className="flex flex-col justify-center gap-2 max-w-[180px] min-w-[180px]">
-                  <span className={`absolute flex items-center justify-center w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded-full -start-4 ring-4 ring-white dark:ring-zinc-900`}>
-                    <span className={`text-zinc-500 dark:text-zinc-400 font-semibold`}>{item.step}</span>
-                  </span>
-                  <h3 className="font-medium leading-tight">{item.title}</h3>
-                </div>
-                <div className="flex min-w-0 flex-grow flex-col gap-4">
-                  {item.content}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      ) : setupMode === "script" ? (
-        <BrowserScriptSetup snippet={browserScriptSnippet} requirePublishableClientKey={requirePublishableClientKey} />
+          {setupMode === "recommended" ? (
+            <div className="mx-4 mt-4 flex flex-col">
+              <ol className="relative border-s border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                {[
+                  {
+                    step: 1,
+                    title: "Copy Setup Prompt",
+                    content: (
+                      <div className="flex min-w-0 flex-col gap-4">
+                        <CodeBlock
+                          language="text"
+                          content={selectedInstallPrompt}
+                          customRender={
+                            <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
+                              {selectedInstallPrompt}
+                            </pre>
+                          }
+                          title="Prompt for your AI agent"
+                          icon="code"
+                          maxHeight={480}
+                        />
+                      </div>
+                    ),
+                  },
+                  {
+                    step: 2,
+                    title: "Done",
+                    content: <SetupRecommendedDoneStep onExploreDashboard={props.toMetrics} />,
+                  },
+                ].map((item) => (
+                  <li key={item.step} className={cn("ms-6 mb-20 flex flex-col gap-10 lg:flex-row")}>
+                    <div className="flex min-w-[180px] max-w-[180px] flex-col justify-center gap-2">
+                      <span className="absolute -start-4 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 ring-4 ring-white dark:bg-zinc-800 dark:ring-zinc-900">
+                        <span className="font-semibold text-zinc-500 dark:text-zinc-400">{item.step}</span>
+                      </span>
+                      <h3 className="font-medium leading-tight">{item.title}</h3>
+                    </div>
+                    <div className="flex min-w-0 flex-grow flex-col gap-4">
+                      {item.content}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : (
+            <div className="mx-4 mt-12 flex flex-col items-center gap-4 py-16 text-center">
+              <Typography>
+                Manual setup steps live in the documentation so they stay up to date with every framework and SDK change.
+              </Typography>
+              <DesignButton
+                onClick={() => {
+                  window.open(manualSetupDocsUrl, '_blank');
+                }}
+              >
+                <BookIcon className="mr-2 h-4 w-4" />
+                Open manual setup docs
+              </DesignButton>
+            </div>
+          )}
+        </>
       ) : (
         <div className="mx-4 mt-12 flex flex-col items-center gap-4 py-16 text-center">
-          <Typography>
-            Manual setup steps live in the documentation so they stay up to date with every framework and SDK change.
-          </Typography>
-          <DesignButton
-            onClick={() => {
-              window.open(manualSetupDocsUrl, '_blank');
-            }}
-          >
-            <BookIcon className="w-4 h-4 mr-2" />
-            Open manual setup docs
-          </DesignButton>
+          <Typography type="h2">Waiting for your first user...</Typography>
+          <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} />
         </div>
       )}
     </PageLayout>
@@ -442,45 +270,6 @@ function SetupRecommendedDoneStep(props: { onExploreDashboard: () => void }) {
   );
 }
 
-function BrowserScriptSetup(props: { snippet: string, requirePublishableClientKey: boolean }) {
-  return (
-    <div className="mx-4 mt-8 flex flex-col gap-4">
-      <Typography variant="secondary">
-        For static pages or quick prototypes with no build step. Environment variables aren&apos;t available in the browser, so the project ID{props.requirePublishableClientKey ? ' and publishable client key are' : ' is'} set directly in the snippet.
-      </Typography>
-
-      <CodeBlock
-        language="html"
-        content={props.snippet}
-        customRender={
-          <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
-            {props.snippet}
-          </pre>
-        }
-        title="index.html"
-        icon="code"
-        maxHeight={480}
-      />
-    </div>
-  );
-}
-
-function CliDevSetupStep() {
-  return (
-    <div className="flex flex-col gap-4">
-      <Typography>
-        Start the app through the Hexclave CLI instead of copying project keys into an env file.
-      </Typography>
-      <div className={cn(codePanelShellClasses, "w-full overflow-x-auto p-4 font-mono text-sm")}>
-        hexclave dev --config-file ./hexclave.config.ts -- &lt;your-dev-command&gt;
-      </div>
-      <Typography variant="secondary">
-        The CLI creates or links the local config project and injects the project ID and secret server key into the child process automatically. Use <InlineCode>npx @hexclave/cli dev</InlineCode> if the CLI is not installed globally.
-      </Typography>
-    </div>
-  );
-}
-
 function HexclaveKeys(props: {
   keys: { projectId: string, publishableClientKey?: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
@@ -490,7 +279,7 @@ function HexclaveKeys(props: {
       <div className={cn(codePanelShellClasses, "w-full p-5 flex flex-col")}>
         <div className="flex items-center justify-center">
           <DesignButton onClick={props.onGenerateKeys}>
-            Generate Keys
+            Generate Project Keys
           </DesignButton>
         </div>
       </div>
@@ -499,7 +288,10 @@ function HexclaveKeys(props: {
 
   return (
     <div className="w-full flex flex-col gap-3">
-      <EnvFileViewer filename=".env.local" value={`HEXCLAVE_SECRET_SERVER_KEY=${props.keys.secretServerKey}`} />
+      <EnvFileViewer
+        filename=".env.local"
+        value={`NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${props.keys.projectId}\nHEXCLAVE_SECRET_SERVER_KEY=${props.keys.secretServerKey}`}
+      />
 
       <Typography type="label" variant="secondary">
         {`Save these keys securely - they won't be shown again after leaving this page.`}
