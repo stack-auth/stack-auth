@@ -6,8 +6,8 @@
 
 ![Onboarding welcome step](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-onboarding-welcome.webp)
 
-- Onboarding now starts with a welcome step where you pick what you want to do — add Hexclave to a new project, deploy an existing config to production, or just look around — instead of immediately creating a cloud project, with guided local and GitHub deployment paths and copy-paste AI setup prompts.
-- The CLI docs page is now an install guide plus a complete reference for every `hexclave` command and subcommand, replacing the outdated `stack` binary documentation.
+- Revamped onboarding with a welcome step to set up a new project, deploy an existing config, or just look around.
+- The CLI docs page is now an install guide plus a full command reference.
 
 ## 7/31/26
 
