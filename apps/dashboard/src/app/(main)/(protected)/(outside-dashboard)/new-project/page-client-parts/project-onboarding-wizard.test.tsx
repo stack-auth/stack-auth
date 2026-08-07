@@ -200,6 +200,11 @@ describe("ProjectOnboardingWizard", () => {
     expect(componentsSource).toContain("You don't need Hexclave Cloud to build your project with Hexclave.");
     expect(componentsSource).toContain("On my computer (local)");
     expect(componentsSource).toContain("On GitHub");
+    expect(componentsSource).toContain("Advanced");
+    expect(componentsSource).toContain("Create plain production project");
+    expect(componentsSource).toContain("Only recommended if you're an expert at using Hexclave");
+    expect(source).toContain('source === "plain-production"');
+    expect(source).toContain('status: "apps_selection"');
     expect(source).toContain("NewProjectEntryPage");
     expect(source).toContain("DeploymentChoicePage");
   });

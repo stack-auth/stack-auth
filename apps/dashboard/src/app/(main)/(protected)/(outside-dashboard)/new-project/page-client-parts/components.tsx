@@ -27,7 +27,7 @@ import {
   Typography,
   cn,
 } from "@/components/ui";
-import { ArrowLeftIcon, BookIcon, CheckCircleIcon, CompassIcon, GithubLogoIcon, LaptopIcon, RocketLaunchIcon, SparkleIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, BookIcon, CaretDownIcon, CheckCircleIcon, CompassIcon, GithubLogoIcon, LaptopIcon, RocketLaunchIcon, SparkleIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject } from "@hexclave/next";
 import { aiSetupPrompt } from "@hexclave/shared/dist/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt";
 import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
@@ -254,8 +254,11 @@ export function DeploymentChoicePage(props: {
   disabled: boolean,
   onBack?: () => void,
   onStepClick?: (step: TimelineStep["id"]) => void,
-  onSelect: (source: "local" | "github") => void,
+  onSelect: (source: "local" | "github" | "plain-production") => void,
+  showAdvancedProductionOption?: boolean,
 }) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   return (
     <OnboardingPage
       stepKey={props.stepKey}
@@ -284,6 +287,31 @@ export function DeploymentChoicePage(props: {
           disabled={props.disabled}
           onClick={() => props.onSelect("github")}
         />
+        {props.showAdvancedProductionOption === true && (
+          <div className="pt-1">
+            <button
+              type="button"
+              aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen((open) => !open)}
+              disabled={props.disabled}
+              className="mx-auto flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground hover:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span>Advanced</span>
+              <CaretDownIcon className={cn("h-3 w-3 transition-transform duration-150", advancedOpen && "rotate-180")} />
+            </button>
+            {advancedOpen && (
+              <div className="mt-2">
+                <OnboardingChoiceCard
+                  icon={<RocketLaunchIcon className="h-5 w-5" />}
+                  title="Create plain production project"
+                  description="Only recommended if you're an expert at using Hexclave"
+                  disabled={props.disabled}
+                  onClick={() => props.onSelect("plain-production")}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </OnboardingPage>
   );

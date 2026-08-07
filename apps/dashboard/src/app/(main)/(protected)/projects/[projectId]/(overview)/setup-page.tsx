@@ -159,7 +159,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               <Typography>
                 Manual setup steps live in the documentation so they stay up to date with every framework and SDK change.
               </Typography>
-              <DesignButton onClick={() => window.open(manualSetupDocsUrl, '_blank')}>
+              <DesignButton
+                onClick={() => {
+                  window.open(manualSetupDocsUrl, '_blank');
+                }}
+              >
                 <BookIcon className="mr-2 h-4 w-4" />
                 Open manual setup docs
               </DesignButton>

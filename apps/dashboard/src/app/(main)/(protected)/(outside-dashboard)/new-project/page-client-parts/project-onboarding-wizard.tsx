@@ -491,6 +491,34 @@ export function ProjectOnboardingWizard(props: {
     });
   };
 
+  const openPlainProductionOnboarding = useCallback(async () => {
+    await runWithSaving(async () => {
+      const nextOnboardingState = createProjectOnboardingState({
+        selectedConfigChoice: "create-new",
+        selectedApps,
+        selectedSignInMethods: signInMethods,
+        selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
+        selectedPaymentsCountry,
+        developmentEnvironment: false,
+      });
+      await saveOnboardingProgress({
+        status: "apps_selection",
+        onboardingState: nextOnboardingState,
+      });
+      setSelectedConfigChoice("create-new");
+      setMode(null);
+    });
+  }, [
+    completeConfig.emails.selectedThemeId,
+    runWithSaving,
+    saveOnboardingProgress,
+    selectedApps,
+    selectedEmailThemeId,
+    selectedPaymentsCountry,
+    setMode,
+    signInMethods,
+  ]);
+
   if (props.status === "welcome") {
     return (
       <WelcomeSlide
@@ -632,7 +660,14 @@ export function ProjectOnboardingWizard(props: {
           onStepClick={handleTimelineStepClick}
           onBack={() => setMode(null)}
           disabled={saving}
-          onSelect={(source) => runAsynchronouslyWithAlert(() => openDeploymentSource(source === "local" ? "deploy-local" : "deploy-github"))}
+          showAdvancedProductionOption
+          onSelect={(source) => {
+            if (source === "plain-production") {
+              runAsynchronouslyWithAlert(openPlainProductionOnboarding);
+              return;
+            }
+            runAsynchronouslyWithAlert(() => openDeploymentSource(source === "local" ? "deploy-local" : "deploy-github"));
+          }}
         />
       );
     }
@@ -835,8 +870,10 @@ export function ProjectOnboardingWizard(props: {
             </div>
 
             <div
+              aria-hidden="true"
+              inert
               className={cn(
-                "flex items-center justify-center bg-foreground/[0.02] px-3 py-3 md:px-4 md:py-4 lg:px-6",
+                "pointer-events-none flex items-center justify-center bg-foreground/[0.02] px-3 py-3 select-none md:px-4 md:py-4 lg:px-6",
                 authSetupMobileTab !== "preview" && "max-md:hidden",
               )}
             >
