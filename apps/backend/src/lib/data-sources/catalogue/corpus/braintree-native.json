@@ -1,0 +1,638 @@
+{
+  "id": "braintree-native",
+  "estuaryDir": "source-braintree-native",
+  "displayName": "Braintree",
+  "description": "Imports Braintree payment gateway data (transactions, customers, subscriptions, disputes, credit card verifications, merchant accounts, plans, discounts, add-ons) from Braintree's XML server API.",
+  "category": "payments",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://api.{sandbox.}braintreegateway.com/merchants/{merchant_id}",
+          "placeholders": {
+            "sandbox.": "literal 'sandbox.' segment inserted when advanced.is_sandbox is true, empty string otherwise",
+            "merchant_id": "the merchant_id endpoint config field"
+          }
+        },
+        "defaultHeaders": {
+          "X-ApiVersion": "6",
+          "Accept": "application/xml"
+        },
+        "apiVersionPinning": "request header X-ApiVersion: 6"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API Key (public key + private key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.username",
+        "passwordField": "credentials.password"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data generated before this is not replicated. Defaults to 30 days before now." },
+    { "name": "merchant_id", "displayName": "Merchant ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Braintree Merchant ID associated with the account; also forms a path segment of the base URL." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator, const \"API Key\"." },
+    { "name": "credentials.username", "displayName": "Public Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Braintree public key; sent as the HTTP Basic username." },
+    { "name": "credentials.password", "displayName": "Private Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Braintree private key; sent as the HTTP Basic password." },
+    { "name": "advanced.is_sandbox", "displayName": "Is a Sandbox Environment", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Selects the sandbox host/environment instead of production. Default false." },
+    { "name": "advanced.window_size", "displayName": "Window Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Window size in hours for incremental streams. Default 24, must be > 0." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; connector ships PT5M for every binding." },
+    { "name": "schedule", "displayName": "Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Cron expression that triggers an automatic re-backfill of the binding." },
+    { "name": "concurrency", "displayName": "Concurrency", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Max concurrent requests used to fetch this stream. Default 20; disputes ships 5, full-refresh snapshots ship 1." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "merchant_accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/merchant_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "merchant_accounts.merchant_account",
+          "params": { "page": 1 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": null,
+            "pageParam": "page",
+            "pageSize": null,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "discounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/discounts",
+          "httpMethod": "GET",
+          "recordsPath": "discounts",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "add_ons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/add_ons",
+          "httpMethod": "GET",
+          "recordsPath": "add_ons",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "plans",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/plans",
+          "httpMethod": "GET",
+          "recordsPath": "plans",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "credit_card_verifications",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } },
+        { "role": "automatic re-backfill", "schedule": { "kind": "cron", "expr": "0 20 * * 5" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/verifications/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/verifications/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } },
+        { "role": "automatic re-backfill", "schedule": { "kind": "cron", "expr": "0 20 * * 5" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/customers/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/customers/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "subscriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } },
+        { "role": "automatic re-backfill", "schedule": { "kind": "cron", "expr": "0 20 * * 5" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/subscriptions/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/subscriptions/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "transactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/transactions/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/transactions/advanced_search_ids",
+          "httpMethod": "POST",
+          "recordsPath": "search_results.ids",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "disputes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "effective_date (of any entry in the dispute's status_history; NOT updated_at)",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/disputes/advanced_search",
+          "httpMethod": "POST",
+          "recordsPath": "disputes.dispute",
+          "params": { "page": "1..N" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": null,
+            "pageParam": "page",
+            "pageSize": 50,
+            "startPage": 1,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/disputes/advanced_search",
+          "httpMethod": "POST",
+          "recordsPath": "disputes.dispute",
+          "params": { "page": "1..N" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": null,
+            "pageParam": "page",
+            "pageSize": 50,
+            "startPage": 1,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is an API Key: a Braintree public key + private key pair plus the merchant ID, all self-serve from the Braintree control panel. The CDK's TokenSource is constructed with oauth_spec=None and a BasicAuth credentials object, which base64-encodes username:password into an `Authorization: Basic ...` header. No OAuth app registration and no refresh token are involved.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull (incremental resources, transactions)",
+      "description": "Every searchable stream needs TWO HTTP calls per bounded slice, and the schema's PullSpec holds only one path. Call 1 is POST {path}/advanced_search_ids with a JSON body {search: {<field>: {min, max}}} which returns only a list of IDs. Call 2 is POST {path}/advanced_search with a JSON body {search: {ids: [...]}} for chunks of at most 50 IDs, which returns the full records. I put the ids endpoint in `path` because it is what bounds the slice; the detail endpoint is unrepresented.",
+      "proposedShape": {
+        "kind": "http_two_phase",
+        "idPhase": { "path": "/{resource}/advanced_search_ids", "httpMethod": "POST", "bodySketch": "{search: {<field>: {min, max}}}", "recordsPath": "search_results.ids" },
+        "detailPhase": { "path": "/{resource}/advanced_search", "httpMethod": "POST", "bodySketch": "{search: {ids: [...]}}", "batchSize": 50, "recordsPath": "<envelope>.<resource singular>" }
+      }
+    },
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "There is no server-side paginator on the search endpoints at all. Bounding is done by a client-driven date-window bisection: the connector calls advanced_search_ids for [start, end), and while the returned ID count is >= the search cap it halves the window (bisect_window) and retries; the resulting IDs are then chunked client-side into 50-ID detail requests fanned out concurrently. Caps are 10,000 IDs for non-transaction searches and 50,000 for transactions. `{\"type\":\"none\"}` is technically correct per-request but hides the real resumption mechanism entirely.",
+      "proposedShape": {
+        "type": "window_bisection",
+        "windowField": "created_at (or the per-stream search field)",
+        "initialWindowHours": "advanced.window_size, default 24",
+        "capPerSearch": { "default": 10000, "transactions": 50000 },
+        "onCap": "halve the window end and re-issue; raise if the window shrinks below 1 second",
+        "clientBatchSize": 50
+      }
+    },
+    {
+      "where": "streams[7].pull.incremental (transactions)",
+      "description": "The transactions incremental leg is a fan-out over NINE different search fields (authorization_expired_at, authorized_at, created_at, failed_at, gateway_rejected_at, processor_declined_at, settled_at, submitted_for_settlement_at, voided_at), unioned into one ID set, PLUS two extra lookback searches over the previous three days keyed on disbursement_date and dispute_date (each with its own nested created_at sub-windowing) because disbursement/dispute updates do not touch any of the nine fields. One PullSpec with one `path` and one `incrementalParam` cannot express this.",
+      "proposedShape": {
+        "kind": "multi_field_union",
+        "searchFields": ["authorization_expired_at", "authorized_at", "created_at", "failed_at", "gateway_rejected_at", "processor_declined_at", "settled_at", "submitted_for_settlement_at", "voided_at"],
+        "supplementalSearches": [
+          { "field": "disbursement_date", "lookbackDays": 3, "secondaryWindowField": "created_at" },
+          { "field": "dispute_date", "lookbackDays": 3, "secondaryWindowField": "created_at" }
+        ]
+      }
+    },
+    {
+      "where": "transports[0].spec.kind / streams[*].pull.*.kind",
+      "description": "This connector is a hybrid, and neither `http` nor a vendor-SDK marker covers it cleanly. All HTTP is issued by the Estuary CDK's own HTTPSession (so real paths exist and are recorded above) — but the vendor `braintree` Python SDK (pinned ==4.34.0) is still imported and used for two things: choosing Environment.Sandbox vs Environment.Production, and constructing record objects (braintree.Transaction(gateway, dict), braintree.Dispute(dict), etc.) which are then flattened back into dicts. The wire format is also asymmetric: the request body is sent as JSON while the response is XML (Accept: application/xml) and is hand-parsed by a reimplementation of the SDK's XML coercion rules.",
+      "proposedShape": {
+        "kind": "http",
+        "requestEncoding": "json",
+        "responseEncoding": "xml",
+        "vendorSdkRole": "record model construction and environment selection only, not transport",
+        "vendorSdkPin": "braintree==4.34.0"
+      }
+    },
+    {
+      "where": "streams[*].schedules",
+      "description": "Only the three INCREMENTAL_RESOURCES (credit_card_verifications, customers, subscriptions) ship a default re-backfill cron of `0 20 * * 5`. transactions and disputes are built by separate functions that omit `schedule` entirely, and the four full-refresh streams omit it too. Whether that asymmetry is deliberate is not stated anywhere in the source.",
+      "proposedShape": null
+    },
+    {
+      "where": "streams[8].cursorField (disputes)",
+      "description": "The disputes incremental cursor is a search over `effective_date` inside status_history, which the code's own comment says can be days apart from the record's updated_at — so the checkpoint watermark and the document's updated_at are not the same clock. Deduplication is handled out-of-band by the CDK's emitted_changes_cache (cache.should_yield). `cursorField` as a single string cannot say 'searched by X, watermarked by X, but the document's mutation time is Y'.",
+      "proposedShape": {
+        "searchField": "effective_date",
+        "documentUpdateField": "updated_at",
+        "skewWarning": "effective_date and updated_at can be days apart; dedupe via emitted_changes_cache",
+        "alternativeSearchField": "received_date (DisputeSearchField enum, defined but unused by the current fetch paths)"
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "82-83",
+      "snippet": "def _build_base_url(is_sandbox: bool, merchant_id: str) -> str:\n    return f\"https://api.{\"sandbox.\" if is_sandbox else \"\"}braintreegateway.com/merchants/{merchant_id}\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_braintree_native/api/common.py",
+      "lines": "21-24",
+      "snippet": "HEADERS = {\n    \"X-ApiVersion\": \"6\",\n    \"Accept\": \"application/xml\",\n}"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_braintree_native/api/common.py",
+      "lines": "21-22",
+      "snippet": "HEADERS = {\n    \"X-ApiVersion\": \"6\","
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_braintree_native/models.py",
+      "lines": "35-47",
+      "snippet": "class ApiKey(BasicAuth):\n        username: str = Field(title=\"Public Key\", json_schema_extra={\"secret\": True},)\n        password: str = Field(title=\"Private Key\", json_schema_extra={\"secret\": True},)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "381",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)"
+    },
+    "authTierOverall": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n            return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode(),)"
+    },
+    "execution.mode": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "260-262",
+      "snippet": "initial_config=ResourceConfig(\n                name=name, interval=timedelta(minutes=5), schedule=\"0 20 * * 5\","
+    },
+    "configFields": {
+      "file": "source_braintree_native/models.py",
+      "lines": "24-90",
+      "snippet": "class EndpointConfig(BaseModel):\n    start_date: AwareDatetime = Field(...)\n    merchant_id: str = Field(...)"
+    },
+    "streamMode": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "384-390",
+      "snippet": "return [\n        *paginated_full_refresh_resources(...),\n        *non_paginated_full_refresh_resources(...), *incremental_resources(...), transactions(...), disputes(...),\n    ]"
+    },
+    "streams[0].pull.snapshot": {
+      "file": "source_braintree_native/api/merchant_accounts.py",
+      "lines": "18-48",
+      "snippet": "url = f\"{base_url}/merchant_accounts\"\n    params = {\"page\": 1,}"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_braintree_native/api/merchant_accounts.py",
+      "lines": "45-48",
+      "snippet": "if len(response.merchant_accounts.merchant_account) < response.merchant_accounts.page_size:\n            return\n        params[\"page\"] += 1"
+    },
+    "streams[1].pull.snapshot": {
+      "file": "source_braintree_native/api/non_paginated_snapshot_resource.py",
+      "lines": "20-25",
+      "snippet": "url = f\"{base_url}/{path}\"\n    response = response_model.model_validate(braintree_xml_to_dict(await http.request(log, url, headers=HEADERS)))"
+    },
+    "streams[1].pull.snapshot.recordsPath": {
+      "file": "source_braintree_native/models.py",
+      "lines": "228-237",
+      "snippet": "class PlansResponse(NonPaginatedSnapshotResponse):\n    resources: list[dict[str, Any]] | None = Field(alias=\"plans\", default=None)"
+    },
+    "streams[4].pull.backfill.path": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "62-66",
+      "snippet": "INCREMENTAL_RESOURCES: list[...] = [\n    (\"credit_card_verifications\", \"verifications\", CreditCardVerificationSearchResponse, braintree.CreditCardVerification),"
+    },
+    "streams[5].pull.backfill": {
+      "file": "source_braintree_native/api/searchable_incremental_resource.py",
+      "lines": "52-60",
+      "snippet": "url = f\"{base_url}/{path}/advanced_search_ids\"\n    body = {\"search\": {field_name.lower(): {\"min\": start.isoformat(), \"max\": end.isoformat(),}}}"
+    },
+    "streams[5].cursorField": {
+      "file": "source_braintree_native/api/__init__.py",
+      "lines": "205-210",
+      "snippet": "end = await determine_next_searchable_resource_window_end_by_field(\n        http=http, base_url=base_url, path=path, field_name=\"created_at\","
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_braintree_native/api/transactions.py",
+      "lines": "41",
+      "snippet": "TRANSACTION_PATH_COMPONENT = \"transactions\""
+    },
+    "streams[8].pull.incremental": {
+      "file": "source_braintree_native/api/disputes.py",
+      "lines": "30-41",
+      "snippet": "url = f\"{base_url}/disputes/advanced_search\"\n    body = {\"search\": {search_field: {\"min\": start.isoformat(), \"max\": end.isoformat(),}}}\n    params = {\"page\": page,}"
+    },
+    "streams[8].pull.incremental.paginator": {
+      "file": "source_braintree_native/api/disputes.py",
+      "lines": "93-97",
+      "snippet": "if response.resources.resource is None or response.resources.total_items == 0:\n            return 0\n        total_pages = math.ceil(response.resources.total_items / SEARCH_PAGE_SIZE)"
+    },
+    "streams[8].cursorField": {
+      "file": "source_braintree_native/api/__init__.py",
+      "lines": "321-331",
+      "snippet": "async for doc in fetch_disputes_between(http, base_url, DisputeSearchField.EFFECTIVE_DATE, log_cursor, end, concurrency, log,):\n        if cache.should_yield(\"disputes\", doc.id, doc.updated_at):"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "143-146",
+      "snippet": "common.Resource(\n            name=name,\n            key=[\"/_meta/row_id\"],"
+    },
+    "streams[5].primaryKey": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "251-254",
+      "snippet": "common.Resource(\n            name=name,\n            key=[\"/id\"],\n            model=IncrementalResource,"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "139",
+      "snippet": "tombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))"
+    },
+    "streams[4].schedules": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "260-263",
+      "snippet": "initial_config=ResourceConfig(\n                name=name, interval=timedelta(minutes=5), schedule=\"0 20 * * 5\",\n                concurrency=DEFAULT_CONCURRENCY,"
+    },
+    "unionMisfits[0]": {
+      "file": "source_braintree_native/api/searchable_incremental_resource.py",
+      "lines": "119-123",
+      "snippet": "url = f\"{base_url}/{path}/advanced_search\"\n    body = {\"search\": {\"ids\": ids,}}"
+    },
+    "unionMisfits[1]": {
+      "file": "source_braintree_native/api/searchable_incremental_resource.py",
+      "lines": "102-106",
+      "snippet": "if len(ids) < search_limit:\n            break\n\n        end = bisect_window(start, end)"
+    },
+    "unionMisfits[2]": {
+      "file": "source_braintree_native/api/transactions.py",
+      "lines": "30-40",
+      "snippet": "TRANSACTION_SEARCH_FIELDS = [\n    'authorization_expired_at', 'authorized_at', 'created_at', 'failed_at',\n    'gateway_rejected_at', 'processor_declined_at', 'settled_at', 'submitted_for_settlement_at', 'voided_at',]"
+    },
+    "unionMisfits[3]": {
+      "file": "source_braintree_native/resources.py",
+      "lines": "70-79",
+      "snippet": "environment = braintree.Environment.Sandbox if config.advanced.is_sandbox else braintree.Environment.Production\n    return braintree.BraintreeGateway(braintree.Configuration(environment=environment, ...))"
+    },
+    "unionMisfits[5]": {
+      "file": "source_braintree_native/models.py",
+      "lines": "196-204",
+      "snippet": "EFFECTIVE_DATE = \"effective_date\"\n    # Note: While the most recent status' timestamp is used for the dispute's updated_at field,\n    # effective_date and updated_at can be days apart."
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot": "high",
+    "streams[2].pull.snapshot": "high",
+    "streams[3].pull.snapshot": "high",
+    "streams[4].pull.backfill": "high",
+    "streams[5].pull.backfill": "high",
+    "streams[6].pull.backfill": "high",
+    "streams[7].pull.backfill": "high",
+    "streams[8].pull.incremental": "high",
+    "streams[8].pull.incremental.paginator": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[4].cursorField": "high",
+    "streams[5].cursorField": "high",
+    "streams[6].cursorField": "high",
+    "streams[7].cursorField": "medium",
+    "streams[8].cursorField": "medium",
+    "streams[0].pull.snapshot.paginator.pageSize": "low"
+  },
+
+  "abstained": {
+    "streams[0].pull.snapshot.paginator.pageSize": "The merchant_accounts page size is never set by the connector; it reads `page_size` back off each response envelope and stops when the returned count is smaller. The server-side default is not stated anywhere in the source, so no literal value is recorded.",
+    "streams[0].pull.snapshot.paginator.limitParam": "No limit/per-page parameter is sent — only `page`.",
+    "streams[8].pull.incremental.paginator.limitParam": "The disputes search sends only `page`; the 50-per-page figure comes from SEARCH_PAGE_SIZE being used to compute total_pages from total_items, not from a request parameter.",
+    "streams[7].cursorField": "The transactions incremental leg has no single cursor field. It unions ID searches across nine timestamp fields and additionally re-searches disbursement_date and dispute_date over a three-day lookback; the checkpoint stored is the window-end datetime, not any one record field. Recording one name here would be misleading.",
+    "streams[*].pull.*.incrementalParam": "Incremental bounding is not a query parameter. It is a nested JSON request body of the form {search: {<field>: {min, max}}} with ISO-8601 datetimes, so the `incrementalParam` shape (param + format) does not apply.",
+    "execution.defaultSchedule": "There is no connector-wide schedule; every binding ships its own interval (PT5M) and, for three streams, a cron. Recorded per stream.",
+    "discovery": "streamMode is static — the nine bindings are hard-coded lists in resources.py. No discovery mechanism exists.",
+    "transports[0].spec.baseUrl.value": "The base URL is not constant: the host varies with advanced.is_sandbox and the path carries the merchant_id, so it is recorded as a template rather than a constant.",
+    "credentialModes[*].oauth": "Braintree does support an OAuth flow in general, but this connector implements exactly one credentials variant (ApiKey, a BasicAuth subclass) and constructs TokenSource with oauth_spec=None. No OAuth mode is recorded because none exists in this code."
+  }
+}

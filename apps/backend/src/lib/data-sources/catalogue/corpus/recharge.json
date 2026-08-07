@@ -1,0 +1,730 @@
+{
+  "id": "recharge",
+  "estuaryDir": "source-recharge",
+  "displayName": "Recharge",
+  "description": "Imports subscription-commerce data (customers, addresses, subscriptions, charges, orders, onetimes, discounts, products, collections, metafields, shop) from the Recharge Payments API.",
+  "category": "payments",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.rechargeapps.com/" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "Request header `x-recharge-version`, set per stream: \"2021-11\" for streams deriving from RechargeStreamModernAPI (addresses, charges, collections, customers, discounts, metafields, onetimes, subscriptions, and orders when use_orders_deprecated_api is false) and \"2021-01\" for streams deriving from RechargeStreamDeprecatedAPI (products, shop, and orders when use_orders_deprecated_api is true)."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Recharge API access token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "header", "header": "X-Recharge-Access-Token", "field": "access_token", "prefix": null }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The value of the Recharge Access Token generated." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "Replicate data from this date onward; format YYYY-MM-DDT00:00:00Z. Data before this date is not replicated." },
+    { "name": "use_orders_deprecated_api", "displayName": "Use `Orders` Deprecated API", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Whether the Orders stream uses the deprecated 2021-01 API version instead of 2021-11. Defaults to true in the spec." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the captured stream (from the estuary-cdk airbyte shim ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh or incremental (from the estuary-cdk airbyte shim ResourceConfig)." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Cursor field(s) for incremental bindings; discovery emits [\"updated_at\"] for incremental streams." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace of the resource; unused by this connector (no stream sets a namespace)." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "addresses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "addresses",
+          "httpMethod": "GET",
+          "recordsPath": "addresses",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "addresses",
+          "httpMethod": "GET",
+          "recordsPath": "addresses",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "charges",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "charges",
+          "httpMethod": "GET",
+          "recordsPath": "charges",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "charges",
+          "httpMethod": "GET",
+          "recordsPath": "charges",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "collections",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "collections",
+          "httpMethod": "GET",
+          "recordsPath": "collections",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "customers",
+          "httpMethod": "GET",
+          "recordsPath": "customers",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "customers",
+          "httpMethod": "GET",
+          "recordsPath": "customers",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "discounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "discounts",
+          "httpMethod": "GET",
+          "recordsPath": "discounts",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "discounts",
+          "httpMethod": "GET",
+          "recordsPath": "discounts",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "metafields",
+          "httpMethod": "GET",
+          "recordsPath": "metafields",
+          "params": { "limit": 250, "owner_resource": "<one of: customer, store, subscription>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "onetimes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "onetimes",
+          "httpMethod": "GET",
+          "recordsPath": "onetimes",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "onetimes",
+          "httpMethod": "GET",
+          "recordsPath": "onetimes",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "orders",
+          "httpMethod": "GET",
+          "recordsPath": "orders",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit",
+            "pageParam": "page",
+            "pageSize": 250,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "orders",
+          "httpMethod": "GET",
+          "recordsPath": "orders",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit",
+            "pageParam": "page",
+            "pageSize": 250,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "products",
+          "httpMethod": "GET",
+          "recordsPath": "products",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit",
+            "pageParam": "page",
+            "pageSize": 250,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "shop",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/store_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "shop",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit",
+            "pageParam": "page",
+            "pageSize": 250,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "subscriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "subscriptions",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "subscriptions",
+          "params": { "limit": 250, "sort_by": "updated_at-asc", "updated_at_min": "<slice start>", "updated_at_max": "<slice end>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": { "param": "updated_at_min", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a single self-serve Recharge Access Token pasted into `access_token`, sent verbatim in the `X-Recharge-Access-Token` request header by RechargeTokenAuthenticator. No OAuth is wired at all: `__main__.py` constructs the estuary-cdk CaptureShim with `oauth2=None`, and the spec exposes no client id/secret or refresh token fields. One key, no app registration, no refresh flow.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*",
+      "description": "Every stream except shop and metafields is swept in fixed-length date windows over the `updated_at` axis (period_in_days = 30, 14 for subscriptions), issuing one paginated request series per window with `updated_at_min`/`updated_at_max` bounds. The PullSpec has `incrementalParam` for the lower bound but no place for the window length or the paired upper bound, so the windowing strategy is invisible in the emitted shape.",
+      "proposedShape": { "windowing": { "kind": "closed_interval", "lowerParam": "updated_at_min", "upperParam": "updated_at_max", "windowLength": "P30D", "orderParam": "sort_by", "orderValue": "updated_at-asc" } }
+    },
+    {
+      "where": "streams[7] (orders)",
+      "description": "The `orders` stream has TWO mutually exclusive pull shapes selected by the endpoint-level boolean `use_orders_deprecated_api`: when true (the spec default) it uses api-version header 2021-01 with a page-number paginator; when false it uses 2021-11 with the `next_cursor` cursor paginator. The schema allows backfill/incremental/snapshot variants but not config-switched alternatives of the same leg. The emitted `orders` pull reflects the spec default (deprecated = true, page paginator); the checked-in config.yaml sets it to false.",
+      "proposedShape": { "pullVariants": [ { "when": "use_orders_deprecated_api == true", "apiVersion": "2021-01", "paginator": { "type": "page" } }, { "when": "use_orders_deprecated_api == false", "apiVersion": "2021-11", "paginator": { "type": "cursor", "cursorPath": "next_cursor" } } ] }
+    },
+    {
+      "where": "transports[0].spec.apiVersionPinning",
+      "description": "The API version is not a connector-wide constant: it is a per-stream request header (`x-recharge-version`), mixing 2021-11 and 2021-01 within a single capture. `apiVersionPinning` is a single string on the transport and cannot express a per-stream value.",
+      "proposedShape": { "apiVersionPinning": { "kind": "header", "header": "x-recharge-version", "perStream": true, "values": { "default": "2021-11", "products": "2021-01", "shop": "2021-01", "orders": "2021-01 | 2021-11 (config-switched)" } } }
+    },
+    {
+      "where": "streams[].pull.*.incrementalParam.format",
+      "description": "`updated_at_min`/`updated_at_max` are rendered as `%Y-%m-%d %H:%M:%S` (space separator, no timezone designator), which is not strict ISO-8601 even though the `start_date` config field is validated as `YYYY-MM-DDTHH:MM:SSZ`. The format enum has no member for this.",
+      "proposedShape": { "format": "sql_datetime", "pattern": "%Y-%m-%d %H:%M:%S" }
+    },
+    {
+      "where": "streams[9] (shop).pull.snapshot",
+      "description": "The `shop` stream sets `data_path = None`, so the entire response body is emitted as one record rather than an array being unwrapped from an envelope key; `recordsPath: null` is used to mean \"the whole document is the record\", which is ambiguous with \"records are at the top level as a bare array\".",
+      "proposedShape": { "recordsPath": null, "recordShape": "whole_response_body" }
+    },
+    {
+      "where": "streams[9] (shop).pull.snapshot.paginator",
+      "description": "`shop` inherits the deprecated-API page paginator but overrides request_params to return `{}`, so `limit`/`page` are never actually sent on the first request. The inherited next_page_token still compares the record count to limit=250; since the response yields exactly one record it terminates after one page. The paginator is structurally present but functionally inert.",
+      "proposedShape": { "type": "none", "inheritedButSuppressed": "page" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_recharge/api.py",
+      "lines": "17",
+      "snippet": "url_base = \"https://api.rechargeapps.com/\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_recharge/api.py",
+      "lines": "40-43, 98, 125",
+      "snippet": "return {\"x-recharge-version\": self.api_version}"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_recharge/source.py",
+      "lines": "30-32",
+      "snippet": "class RechargeTokenAuthenticator(TokenAuthenticator):\n    def get_auth_header(self) -> Mapping[str, Any]:\n        return {\"X-Recharge-Access-Token\": self._token}"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_recharge/__main__.py",
+      "lines": "12-16",
+      "snippet": "shim_airbyte_cdk.CaptureShim(\n        delegate=SourceRecharge(),\n        oauth2=None,"
+    },
+    "configFields": {
+      "file": "source_recharge/spec.json",
+      "lines": "7-30",
+      "snippet": "\"required\": [\"start_date\", \"access_token\"],"
+    },
+    "configFields[3]": {
+      "file": "../estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "68-72",
+      "snippet": "sync_mode: Literal[\"full_refresh\", \"incremental\"] = Field(\n        alias=\"syncMode\","
+    },
+    "streamMode": {
+      "file": "source_recharge/source.py",
+      "lines": "52-67",
+      "snippet": "def streams(self, config: Mapping[str, Any]) -> List[Stream]:\n        auth = RechargeTokenAuthenticator(token=config[\"access_token\"])"
+    },
+    "streams": {
+      "file": "tests/snapshots/snapshot__discover__capture.stdout.json",
+      "lines": "whole file (11 discovered bindings)",
+      "snippet": "\"recommendedName\": \"addresses\", \"resourceConfig\": {\"stream\": \"addresses\", \"syncMode\": \"incremental\", \"cursorField\": [\"updated_at\"]}"
+    },
+    "streams[].pull.*.path": {
+      "file": "source_recharge/api.py",
+      "lines": "45-48",
+      "snippet": "    ) -> str:\n        return self.name"
+    },
+    "streams[].pull.*.recordsPath": {
+      "file": "source_recharge/api.py",
+      "lines": "31-33, 66-70",
+      "snippet": "    def data_path(self):\n        return self.name"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_recharge/api.py",
+      "lines": "100-104",
+      "snippet": "cursor = response.json().get(\"next_cursor\")\n        if cursor:\n            return {\"cursor\": cursor}"
+    },
+    "streams[0].pull.incremental.params": {
+      "file": "source_recharge/api.py",
+      "lines": "108-121",
+      "snippet": "params = {\"limit\": self.limit}\n        # if a cursor value is passed, only limit can be passed with it!"
+    },
+    "streams[7].pull.incremental.paginator": {
+      "file": "source_recharge/api.py",
+      "lines": "127-131",
+      "snippet": "stream_data = self.get_stream_data(response.json())\n        if len(stream_data) == self.limit:\n            self.page_num += 1"
+    },
+    "streams[7].pull.incremental.params": {
+      "file": "source_recharge/api.py",
+      "lines": "133-146",
+      "snippet": "params = {\n            \"limit\": self.limit,\n            \"sort_by\": \"updated_at-asc\","
+    },
+    "streams[].cursorField": {
+      "file": "source_recharge/api.py",
+      "lines": "149-151",
+      "snippet": "class IncrementalRechargeStream(RechargeStream, ABC):\n    cursor_field = \"updated_at\"\n    state_checkpoint_interval = 250"
+    },
+    "streams[5].pull.snapshot.params": {
+      "file": "source_recharge/api.py",
+      "lines": "198, 204-208",
+      "snippet": "owner_resources = [\"customer\", \"store\", \"subscription\"]"
+    },
+    "streams[9].primaryKey": {
+      "file": "source_recharge/api.py",
+      "lines": "277-278",
+      "snippet": "primary_key = \"store_id\"\n    data_path = None"
+    },
+    "streams[9].pull.snapshot.params": {
+      "file": "source_recharge/api.py",
+      "lines": "285-288",
+      "snippet": "    ) -> MutableMapping[str, Any]:\n        return {}"
+    },
+    "streams[10].pull.incremental": {
+      "file": "source_recharge/api.py",
+      "lines": "302-310",
+      "snippet": "class Subscriptions(RechargeStreamModernAPI, IncrementalRechargeStream):\n    period_in_days = 14"
+    },
+    "streams[].primaryKeyKind": {
+      "file": "../estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "245-253",
+      "snippet": "key = [\n                    \"/\" + key\n                    for key in transform_airbyte_key(stream.source_defined_primary_key)"
+    },
+    "execution.mode": {
+      "file": "source_recharge/api.py",
+      "lines": "15",
+      "snippet": "class RechargeStream(HttpStream, ABC):"
+    },
+    "unionMisfits[0]": {
+      "file": "source_recharge/api.py",
+      "lines": "91-94",
+      "snippet": "while start_date <= now:\n            end_date = start_date.add(days=self.period_in_days)\n            yield {\"start_date\": ..., \"end_date\": ...}"
+    },
+    "unionMisfits[1]": {
+      "file": "source_recharge/source.py",
+      "lines": "46-50",
+      "snippet": "if config.get(\"use_orders_deprecated_api\"):\n            return OrdersDeprecatedApi(config, **kwargs)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams": "high",
+    "streams[].pull.*.path": "high",
+    "streams[].pull.*.recordsPath": "high",
+    "streams[].primaryKey": "high",
+    "streams[].cursorField": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[7].pull.incremental.paginator": "medium",
+    "streams[8].pull.snapshot.paginator": "high",
+    "streams[9].pull.snapshot.paginator": "low",
+    "streams[].writeDisposition": "medium",
+    "streams[].pull.backfill": "medium",
+    "configFields": "high",
+    "execution.mode": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Nothing in the connector or in estuary-cdk's shim_airbyte_cdk sets a polling interval or cron; scheduling is entirely external to the connector image. No literal to report.",
+    "streams[].schedules": "Same reason as execution.defaultSchedule — no per-binding schedule exists anywhere in the source or the ResourceConfig model (which carries only stream/syncMode/cursorField/namespace).",
+    "execution.continuity": "mode is \"poll\" over a stateless REST API; the connector creates no server-side artifacts, holds no slot/consumer-group, and nothing accrues or expires on either side between runs. `continuity` is optional for poll mode, so it is left null rather than fabricated.",
+    "transports[0].spec.defaultHeaders": "The only headers the connector sets are the per-stream `x-recharge-version` (captured in apiVersionPinning) and the auth header (captured in credentialModes). There is no connector-wide default header set.",
+    "discovery": "streamMode is static — the 11 streams are hard-coded in SourceRecharge.streams(). The estuary-cdk shim calls the Airbyte `discover` method, but that method only re-emits this fixed list; it does not inspect the customer's account. Emitting a `discovery` block would misrepresent it.",
+    "streams[].writeDisposition": "Reported as \"merge\" for every stream because the shim gives each binding a source-defined key (/id, or /store_id for shop) and Flow reductions upsert on that key; but the connector code itself never states a disposition and emits no deletes/tombstones, so this is inferred from the shim's keying, not read literally.",
+    "streams[].pull.backfill": "The connector does not distinguish a backfill leg from an incremental leg: the same request builder runs both, differing only in whether stream_slices starts at config.start_date or at the persisted `updated_at` state. backfill and incremental are therefore reported as identical specs rather than one being nulled.",
+    "streams[9].pull.snapshot.paginator": "Reported as the inherited page paginator, but `shop` overrides request_params to `{}` so no pagination parameters are ever sent; whether the real behaviour is `none` or `page` cannot be settled from the code alone. See unionMisfits.",
+    "streams[2].pull / streams[8].pull (collections, products)": "These are full_refresh (no cursor_field) yet still inherit the date-windowed stream_slices, so each run re-sweeps every 30-day window from config.start_date forward. Classified as `snapshot` per rule, but the `updated_at_min`/`updated_at_max` params they nonetheless send are recorded in `params` and cannot be expressed as an incrementalParam on a snapshot leg."
+  }
+}

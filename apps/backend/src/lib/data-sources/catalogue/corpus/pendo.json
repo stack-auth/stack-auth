@@ -1,0 +1,738 @@
+{
+  "id": "pendo",
+  "estuaryDir": "source-pendo",
+  "displayName": "Pendo",
+  "description": "Imports Pendo product-analytics data — pages, features, guides, reports, segments, accounts, visitors, track types, their metadata schemas, and guide/poll/page/feature/track event streams.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{host}/api/v1",
+          "placeholders": {
+            "host": "endpoint config field `host`, chosen from a fixed regional enum: app.pendo.io (default), us1.app.pendo.io, app.eu.pendo.io, app.jpn.pendo.io, app.au.pendo.io"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v1` baked into the base URL"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Pendo integration key (Private App Credentials)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "x-pendo-integration-key",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "host", "displayName": "Pendo Host", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Regional Pendo host to connect to; enum of app.pendo.io / us1.app.pendo.io / app.eu.pendo.io / app.jpn.pendo.io / app.au.pendo.io, defaulting to app.pendo.io." },
+    { "name": "startDate", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC YYYY-MM-DDTHH:MM:SSZ; data generated before this is not replicated. Defaults to one hour before the present." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Constant discriminator, always \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Pendo integration key, sent verbatim in the x-pendo-integration-key header." },
+    { "name": "advanced.incremental_limit", "displayName": "Incremental Limit", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Max documents per API call during incremental replication; default 1000, range 1..50000." },
+    { "name": "advanced.backfill_limit", "displayName": "Backfill Limit", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Max documents per API call during historical backfills; default 50000, range 1..50000." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK-standard ResourceConfig field)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Interval between updates for this resource; the connector proposes PT5M for every binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "Feature",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/feature",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "expand": "*" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Guide",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/guide",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "expand": "*" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Page",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/page",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "expand": "*" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/report",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "expand": "*" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Segment",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/segment",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "expand": "*" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "AccountMetadata",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/metadata/schema/account",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "VisitorMetadata",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v1/metadata/schema/visitor",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Account",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "metadata.auto.lastupdated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `metadata.auto.lastupdated == <lower_bound_ms> && accountId >= \"<last seen accountId>\"`",
+            "cursorPath": "results[last].accountId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `metadata.auto.lastupdated == <lower_bound_ms> && accountId >= \"<last seen accountId>\"`",
+            "cursorPath": "results[last].accountId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Visitor",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "metadata.auto.lastupdated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `metadata.auto.lastupdated == <lower_bound_ms> && visitorId >= \"<last seen visitorId>\"`",
+            "cursorPath": "results[last].visitorId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `metadata.auto.lastupdated == <lower_bound_ms> && visitorId >= \"<last seen visitorId>\"`",
+            "cursorPath": "results[last].visitorId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TrackType",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastUpdatedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastUpdatedAt == <lower_bound_ms> && id >= \"<last seen id>\"`",
+            "cursorPath": "results[last].id",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastUpdatedAt == <lower_bound_ms> && id >= \"<last seen id>\"`",
+            "cursorPath": "results[last].id",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "GuideEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId", "/appId", "/guideId", "/guideTimestamp", "/remoteIp", "/serverName", "/userAgent", "/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "guideTimestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `guideTimestamp == <lower_bound_ms> && guideId >= \"<last seen guideId>\"`",
+            "cursorPath": "results[last].guideId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `guideTimestamp == <lower_bound_ms> && guideId >= \"<last seen guideId>\"`",
+            "cursorPath": "results[last].guideId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PollEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId", "/appId", "/guideId", "/guideTimestamp", "/pollId", "/remoteIp", "/serverName", "/userAgent", "/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "guideTimestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `guideTimestamp == <lower_bound_ms> && pollId >= \"<last seen pollId>\"`",
+            "cursorPath": "results[last].pollId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `guideTimestamp == <lower_bound_ms> && pollId >= \"<last seen pollId>\"`",
+            "cursorPath": "results[last].pollId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PageEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId", "/appId", "/firstTime", "/lastTime", "/pageId", "/remoteIp", "/server", "/userAgent", "/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && pageId >= \"<last seen pageId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].pageId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && pageId >= \"<last seen pageId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].pageId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "FeatureEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId", "/appId", "/featureId", "/firstTime", "/lastTime", "/remoteIp", "/server", "/userAgent", "/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && featureId >= \"<last seen featureId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].featureId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && featureId >= \"<last seen featureId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].featureId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TrackEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/accountId", "/appId", "/firstTime", "/lastTime", "/remoteIp", "/server", "/trackTypeId", "/userAgent", "/visitorId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep and backfill page", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && trackTypeId >= \"<last seen trackTypeId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].trackTypeId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v1/aggregation",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "request.pipeline[].filter — expression `lastTime == <lower_bound_ms> && trackTypeId >= \"<last seen trackTypeId>\" && hour < <current hour ms>`",
+            "cursorPath": "results[last].trackTypeId",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single Pendo integration key. `EndpointConfig.credentials` is typed as the CDK's `AccessToken` (titled \"Private App Credentials\"), and `resources.py` builds `TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=\"x-pendo-integration-key\")`. Because the header is not the CDK default `Authorization`, the CDK sends the raw token with no `Bearer` prefix. No OAuth spec exists anywhere in the connector, so the user registers no app and supplies no refresh token — one self-serve key only.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.{backfill,incremental}.paginator",
+      "description": "Pagination on the /api/v1/aggregation endpoint is not a token at all: it is a re-written query pipeline. The connector requests documents sorted by (cursor timestamp, identifying field) with a `limit` stage, then advances by rewriting the pipeline's `filter` string — pinning the cursor timestamp with `==` and adding `<identifying_field> >= \"<last seen id>\"`, i.e. a keyset predicate embedded in a C-expression-like filter grammar. `body_cursor` is the closest fit (the state does travel in the JSON request body, and the value is the last record's id), but there is no `cursorBodyKey` in the JSON-pointer sense: the value is string-interpolated into a filter expression, with escaping for `\"` and `\\`. The page-size stage is also a body pipeline stage (`{\"limit\": N}`), not a query param.",
+      "proposedShape": {
+        "type": "query_pipeline_keyset",
+        "requestBodyPath": "request.pipeline",
+        "stages": ["source", "filter", "sort", "limit"],
+        "keysetFields": ["<cursorField>", "<identifyingField>"],
+        "filterGrammar": "C-like expression, string values quoted and backslash/quote escaped",
+        "pageSizeStage": { "stage": "limit", "value": "advanced.incremental_limit | advanced.backfill_limit" },
+        "terminateOn": "short_page (doc_count < limit)",
+        "notes": "Two-phase: a bounded [lower, upper] time-window scan first, then a same-timestamp drain loop that only runs when the last document's timestamp equals the window's lower bound."
+      }
+    },
+    {
+      "where": "streams[*].pull.backfill",
+      "description": "The backfill's real page cursor is not an HTTP paginator token but a millisecond epoch stored in Flow's PageCursor. Each invocation scans a fixed date window (1 day for event/aggregate streams, 30 days for incremental resources) starting at that timestamp and yields the next timestamp. There is no schema field for 'the bounded slice is a date window advanced through connector state'.",
+      "proposedShape": {
+        "windowing": { "kind": "date_window", "unitDays": 1, "cursorState": "epoch milliseconds in PageCursor", "emptyWindowAdvance": "advance by the full window size", "sameTimestampAdvance": "+1 millisecond" }
+      }
+    },
+    {
+      "where": "streams[*].pull.*.incrementalParam",
+      "description": "There is no incremental query parameter. The incremental lower bound is an epoch-milliseconds literal interpolated into the pipeline `filter` string and into the `timeSeries.first`/`last` stage of the request body. Recorded as null rather than forced into the param shape.",
+      "proposedShape": { "incrementalBodyBound": { "location": "request.pipeline[0].source.*.timeSeries.first and the filter expression", "format": "unix_milliseconds", "period": "hourRange", "openEndedSentinel": "now()" } }
+    },
+    {
+      "where": "execution / streams[*] eventual consistency",
+      "description": "Event and aggregate streams apply an 8-hour eventual-consistency horizon (API_EVENT_LAG): the incremental leg refuses to read past now-8h, and the backfill cutoff is also now-8h. The schema has no field for a per-stream read horizon / watermark lag, which materially changes freshness expectations.",
+      "proposedShape": { "readHorizon": { "kind": "lag", "duration": "PT8H", "appliesTo": ["GuideEvents", "PollEvents", "PageEvents", "FeatureEvents", "TrackEvents"] } }
+    },
+    {
+      "where": "streams[Account|Visitor|TrackType].pull.incremental",
+      "description": "The incremental leg for resource streams passes each document through the CDK's `emitted_changes_cache` (`cache.should_yield(entity, id, updated_at)`) to suppress re-emitting rows already seen at the same updated-at. This is a connector-side dedup layer with no place in the schema.",
+      "proposedShape": { "dedup": { "kind": "emitted_changes_cache", "keyedBy": ["entity", "identifyingField", "cursorTimestamp"] } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_pendo/api.py", "lines": "39-40", "snippet": "def base_url(host: PendoHost) -> str:\n    return f\"https://{host}/api/v1\"" },
+    "transports[0].spec.baseUrl.placeholders.host": { "file": "source_pendo/models.py", "lines": "17-22", "snippet": "class PendoHost(StrEnum):\n    US = \"app.pendo.io\"\n    EU = \"app.eu.pendo.io\"" },
+    "credentialModes[0].scheme": { "file": "source_pendo/resources.py", "lines": "40,363", "snippet": "AUTHORIZATION_HEADER = \"x-pendo-integration-key\"\nhttp.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER)" },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "526-534", "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    ...\nelse:\n    header_value = token" },
+    "configFields": { "file": "source_pendo/models.py", "lines": "33-74", "snippet": "class EndpointConfig(BaseModel):\n    host: PendoHost = Field(...)\n    credentials: AccessToken = Field(title=\"Authentication\")" },
+    "streams[0].pull.snapshot": { "file": "source_pendo/api.py", "lines": "284-292", "snippet": "url = f\"{base_url(host)}/{entity}\"\nparams = {\"expand\": \"*\"}\nresources = TypeAdapter(list[FullRefreshResource]).validate_json(await http.request(log, url, params=params))" },
+    "streams[5].pull.snapshot.path": { "file": "source_pendo/api.py", "lines": "304", "snippet": "url = f\"{base_url(host)}/metadata/schema/{entity}\"" },
+    "streams[5].name": { "file": "source_pendo/models.py", "lines": "85-92", "snippet": "class AccountMetadata(Metadata):\n    path: ClassVar[str] = \"account\"\n    resource_name: ClassVar[str] = \"AccountMetadata\"" },
+    "streams[*].pull.*.path": { "file": "source_pendo/api.py", "lines": "324,516,728", "snippet": "url = f\"{base_url(host)}/aggregation\"" },
+    "streams[*].pull.*.httpMethod": { "file": "source_pendo/api.py", "lines": "336", "snippet": "_, response_body = await http.request_stream(log, url, method=\"POST\", json=body)" },
+    "streams[*].pull.*.recordsPath": { "file": "source_pendo/api.py", "lines": "337-341", "snippet": "processor = IncrementalJsonProcessor(\n    response_body(),\n    \"results.item\"," },
+    "streams[*].pull.*.paginator": { "file": "source_pendo/api.py", "lines": "100-103", "snippet": "if last_seen_id:\n    filter_condition = f\"guideTimestamp == {lower_bound} && {identifying_field} >= {_escape_filter_string(last_seen_id)}\"" },
+    "streams[*].pull.*.paginator.terminateOn": { "file": "source_pendo/api.py", "lines": "396-397", "snippet": "if doc_count < limit:\n    break" },
+    "streams[*].pull.*.paginator.pageSize": { "file": "source_pendo/api.py", "lines": "129-132", "snippet": "{\n    \"limit\": limit\n}" },
+    "streams[*].schedules": { "file": "source_pendo/resources.py", "lines": "92-95", "snippet": "initial_config=ResourceConfig(\n    name=stream.resource_name, interval=timedelta(minutes=5)\n)" },
+    "streams[7].primaryKey": { "file": "source_pendo/models.py", "lines": "131-136", "snippet": "class Account(IncrementalResource):\n    primary_keys: ClassVar[list[str]] = [\"accountId\"]\n    cursor_field: ClassVar[str] = \"metadata.auto.lastupdated\"" },
+    "streams[10].primaryKey": { "file": "source_pendo/resources.py", "lines": "255-268", "snippet": "shared_keys = [\n    \"/accountId\", \"/appId\", \"/guideTimestamp\", \"/remoteIp\", \"/serverName\", \"/visitorId\", \"/userAgent\",\n]" },
+    "streams[12].primaryKey": { "file": "source_pendo/resources.py", "lines": "328-342", "snippet": "shared_keys = [\n    \"/accountId\", \"/appId\", \"/firstTime\", \"/lastTime\", \"/remoteIp\", \"/server\", \"/visitorId\", \"/userAgent\",\n]" },
+    "streams[0].writeDisposition": { "file": "source_pendo/resources.py", "lines": "76-83", "snippet": "fetch_snapshot=functools.partial(snapshot_resources, ...),\ntombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))" },
+    "streams[7].supportedSyncModes": { "file": "source_pendo/resources.py", "lines": "122-142", "snippet": "fetch_changes=functools.partial(fetch_resources, ...),\nfetch_page=functools.partial(backfill_resources, ...)" },
+    "streamMode": { "file": "source_pendo/models.py", "lines": "237-273", "snippet": "FULL_REFRESH_RESOURCE_TYPES: list[type[FullRefreshResource]] = [\n    Feature, Guide, Page, Report, Segment,\n]" },
+    "execution.mode": { "file": "source_pendo/resources.py", "lines": "145-146", "snippet": "backfill_start_ts = _dt_to_ms(datetime.fromisoformat(config.startDate))\ncutoff = datetime.now(tz=UTC) - API_EVENT_LAG" },
+    "unionMisfits[3]": { "file": "source_pendo/api.py", "lines": "21-25", "snippet": "# Event data for a given hour isn't available via the API until ~4-6 hours afterwards.\nAPI_EVENT_LAG = timedelta(hours=8)" },
+    "unionMisfits[1]": { "file": "source_pendo/api.py", "lines": "27-30", "snippet": "EVENT_DATE_WINDOW_SIZE_IN_DAYS = 1\nRESOURCE_DATE_WINDOW_SIZE_IN_DAYS = 30" },
+    "unionMisfits[4]": { "file": "source_pendo/api.py", "lines": "834-836", "snippet": "last_seen_id = getattr(resource, identifying_field)\nif cache.should_yield(entity, last_seen_id, last_dt):\n    yield resource" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].schedules": "high",
+    "streams[*].pull.snapshot.path": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.*.paginator": "medium",
+    "streams[*].writeDisposition": "medium",
+    "transports[0].spec.apiVersionPinning": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "There is no connector-wide default; every binding is proposed with an explicit PT5M ResourceConfig interval, so the schedule lives on the streams. The CDK's ResourceConfig default is PT0S, which the connector always overrides.",
+    "execution.continuity": "Poll-mode HTTP connector. It leaves no server-side artifact on Pendo (no slot, subscription, cursor registration, or scratch object) and nothing accrues on the customer side if we stop. The only 'our side' exposure is that Pendo's aggregation API only returns event data ~4-8h after the fact, which is modeled as API_EVENT_LAG rather than a retention window; the code names no retention limit, so a resumeWindow could not be determined. Left null per the schema's 'optional when mode is poll'.",
+    "discovery": "streamMode is static — the 15 bindings come from five hard-coded lists in models.py. No catalog/describe call exists.",
+    "streams[*].pull.*.paginator.pageSize": "The page-size value is not a constant in the paginator: it is whichever of advanced.incremental_limit (default 1000) or advanced.backfill_limit (default 50000) the leg was constructed with, and it is a pipeline `limit` stage in the request body rather than a paginator parameter. Recorded in unionMisfits instead of asserting a single number.",
+    "streams[*].pull.*.paginator.cursorBodyKey": "There is no JSON key that holds the token. The last-seen id is string-interpolated into the pipeline's `filter` expression, so the field is filled with a description of the expression rather than a pointer; the machine-usable form is in unionMisfits[0].",
+    "streams[*].pull.*.incrementalParam": "No query parameter carries the incremental bound; it is an epoch-milliseconds literal inside the request body's filter expression and timeSeries stage. See unionMisfits[2].",
+    "streams[0..4].pull.snapshot.recordsPath": "The snapshot response is validated as a bare top-level JSON array (TypeAdapter(list[FullRefreshResource])), so there is no envelope key to record.",
+    "transports[0].spec.defaultHeaders": "No static default headers are set; the only header the connector adds is the auth header, and Content-Type is set implicitly by aiohttp's json= kwarg."
+  }
+}

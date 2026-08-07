@@ -1,0 +1,253 @@
+{
+  "id": "gcs",
+  "estuaryDir": "source-gcs",
+  "displayName": "Google Cloud Storage",
+  "description": "Captures records from files stored under a key prefix in a Google Cloud Storage bucket, streaming each whole object through an external parser into documents.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": { "kind": "objectStore", "store": "gcs" }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Google service account JSON key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["googleCredentials"]
+      }
+    },
+    {
+      "name": "Anonymous (public bucket)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "When the googleCredentials field is left empty the client is constructed with option.WithoutAuthentication(); requests are unsigned and no credential fields are collected. Only usable against publicly readable buckets. This is an implicit mode - there is no auth_type discriminator and no oneOf in the config schema, unlike source-s3."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Only intermediate object versions. A sweep is bounded by object modification time (obj.Updated), so objects written while we are stopped are still picked up by the next sweep; but an object overwritten in place several times during a pause yields only its final version, and an object whose modification time is at or below the stored minBound is never revisited. With advanced.ascendingKeys=true, minBound is never advanced and the listing resumes at the last key seen, so any object written at a lexicographically earlier key while stopped is skipped permanently - a property of that option, not of the pause length.",
+      "resumeWindow": "Unbounded. Resumption is driven entirely by connector-side state: minBound (exclusive lower bound on modification time, carried forward from the prior sweep's maxMod), maxBound (wall clock + TimeHorizonDelta of -30s, exclusive upper bound), the last object path, and the count of records already emitted from that object. Nothing expires and GCS holds no server-side cursor on our behalf, so an arbitrarily long pause resumes correctly.",
+      "releasedOnShutdown": true,
+      "notes": "The connector creates nothing on the customer's side. Its only calls are object listings (Bucket.Objects), object reads (Object.NewReader), and one Object.Attrs existence probe against a random UUID key at connect time; the code comments state the required permissions are exactly storage.objects.list and storage.objects.get. No subscription, notification channel, scratch object or consumer group is left behind, so pausing between ticks costs the customer nothing. The -30s time horizon is a clock-drift margin guarding against files appearing with a modification time equal to the stored minBound, not a retention window."
+    }
+  },
+
+  "configFields": [
+    { "name": "googleCredentials", "displayName": "Google Service Account", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Service account JSON key used as Application Default Credentials. Declared multiline. Not in the schema's required list; empty means unauthenticated access." },
+    { "name": "bucket", "displayName": "Bucket", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Name of the Google Cloud Storage bucket. The only required field, enforced both by the JSON schema and by config.Validate()." },
+    { "name": "prefix", "displayName": "Prefix", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Prefix within the bucket to capture from. Joined with the bucket as bucket + \"/\" + prefix to form the discovered stream root." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Regex (schema format: regex) filter applied to object keys. Compiled once and validated during Validate(); empty means match everything. See unionMisfits - the description claims the match is relative to the prefix, but the code matches the full bucket/key path." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Default false. Asserts that objects are written in ascending lexicographic key order so that key order matches modification-time order. Switches the cross-sweep resume strategy from a modification-time window to a last-key-seen offset." },
+    { "name": "advanced.minimum_modified", "displayName": "Capture Files Newer Than", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "RFC3339 date-time parsed at connect time. Objects whose Updated time is before it are reported with Size 0 during listing, which makes the shared filesource skip them via its zero-size rule. Has no equivalent in source-s3." },
+    { "name": "parser", "displayName": "Parser Configuration", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Opaque sub-schema spliced in at spec time from parser.GetSpec() in github.com/estuary/flow. Carries format selection and compression handling; its shape is not defined in this repository." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Absolute path prefix (bucket/prefix) that this binding sweeps. Marked x-collection-name; the binding's resource path pointer is /stream." },
+    { "name": "syncMode", "displayName": "syncMode", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Hidden (jsonschema:\"-\") legacy resource field, accepted but unused by the sweep logic." },
+    { "name": "namespace", "displayName": "namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Hidden (jsonschema:\"-\") legacy resource field, accepted but unused." },
+    { "name": "cursorField", "displayName": "cursorField", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Hidden (jsonschema:\"-\") legacy resource field, accepted but unused - the real cursor is connector state, not a record field." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Synthesized single binding rooted at bucket/prefix - Discover performs no object enumeration at all. Bucket reachability is validated separately at connect time by opening an object listing with PageInfo().MaxSize = 1 and taking iterator.Done as success, plus an Object.Attrs probe on a random UUID key under the prefix where a googleapi 404 is the success outcome.",
+    "querySketch": "Discover -> exactly one Response_Discovered_Binding whose RecommendedName is bucket + \"/\" + prefix trimmed of slashes, keyed on /_meta/file and /_meta/offset, with an x-infer-schema minimal document schema. Pull then lists that prefix recursively.",
+    "excludes": [
+      "objects of size 0 (treated as directory placeholders)",
+      "objects older than advanced.minimum_modified (implemented by reporting them with Size 0, which triggers the zero-size rule)",
+      "objects whose path does not match the matchKeys regex",
+      "objects whose path hashes outside this shard's assigned key range",
+      "objects whose modification time is <= minBound or >= maxBound for the current sweep",
+      "objects already passed in this sweep (state.Path > obj.Path, or equal and marked Complete)",
+      "parquet objects larger than 8 GB (8_000_000_000 bytes), because the parser must stage them wholly to local disk",
+      "common-prefix (directory) entries are returned only for non-recursive listings; sweeps are always recursive and panic if one appears"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<bucket>/<prefix>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<bucket>/<prefix>",
+          "matchExpr": "config field `matchKeys` (user-supplied; empty means match everything)",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "The first sweep is not a distinct code path - it is the ordinary sweep run against empty state. state.Path is \"\" so no StartOffset is set, and minBound is the zero time so every object whose Updated time is below maxBound (now - 30s) qualifies. Paging is identical to the incremental leg: the google-cloud-go storage iterator issues Bucket.Objects requests and manages its own page tokens internally; the connector never reads or sends a page token, and only sets PageInfo().MaxSize at all in the connect-time validation probe (MaxSize = 1).",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "<bucket>/<prefix>",
+          "matchExpr": "config field `matchKeys` (user-supplied; empty means match everything)",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "GCS object listing via storage.Client.Bucket(b).Objects(ctx, &storage.Query{...}). Within a single sweep the listing is one google-cloud-go iterator: HTTP/JSON page tokens are handled entirely inside that iterator, so no page token ever appears in connector state or config - there is nothing resembling an HTTP Paginator here. Across sweeps, resumption is expressed as a key OFFSET on the query: Query.StartOffset is set to the key part of state.Path when state.Path is non-empty, which is GCS's INCLUSIVE lexicographic lower bound - so the last-processed object is re-listed and then dropped by the state filter (state.Path == obj.Path && Complete). Query.Delimiter is set to \"/\" only for non-recursive queries; sweeps are always recursive so it is never set during a sweep. Each listed object is then filtered by the exclusive modification-time window (minBound, maxBound) before being read. Note this differs from source-s3, which maps the same StartAt onto S3's EXCLUSIVE StartAfter by trimming the final character of the stored key.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Both offered modes are self-serve and need no OAuth app registration and no refresh token. The primary mode is a single Google service account JSON key that the user mints in their own GCP project and pastes into one multiline secret field; the code passes it verbatim to option.WithCredentialsJSON, and the required IAM permissions are only storage.objects.list and storage.objects.get. The second mode is no credential at all (option.WithoutAuthentication) for public buckets. Nothing depends on Estuary's control plane injecting credentials - unlike source-s3's AWSIAM mode, which is T1 only because a hosted control plane performs the AssumeRole. The connector sets no Oauth2 field on its filesource.Source, so there is no OAuth path at all.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].cursorField / PullSpec objects",
+      "description": "The incremental cursor is neither a record field nor a listing page token; it is per-binding connector state with two distinct modes selected by advanced.ascendingKeys. With ascendingKeys=false (default) the cursor is a modification-time window: minBound (exclusive lower bound), maxBound (= now - 30s, exclusive upper bound), maxMod (greatest modification time observed this sweep); at sweep end minBound advances to maxMod and the path resets to \"\". With ascendingKeys=true the cursor is instead a key offset: minBound is NEVER advanced, and the last object path is retained so the next listing starts at it via Query.StartOffset. The `objects` PullSpec has no slot for either, nor for the intra-object record counter used to resume mid-file.",
+      "proposedShape": {
+        "cursor": {
+          "type": "modtime_window_or_key_offset",
+          "selector": "advanced.ascendingKeys",
+          "whenFalse": { "lowerBoundField": "minBound", "upperBoundField": "maxBound", "highWatermarkField": "maxMod", "upperBoundLagSeconds": 30, "pathResetsEachSweep": true },
+          "whenTrue": { "resumeKeyField": "path", "resumeKeyBoundary": "inclusive (GCS Query.StartOffset)", "minBoundFrozen": true },
+          "intraObjectOffsetField": "records",
+          "storedIn": "connector checkpoint, keyed by boilerplate.StateKey per binding"
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.*.listing",
+      "description": "`listing` is a free-text string, but two orthogonal facts have to be crammed into it: (a) intra-sweep paging, which for GCS is entirely opaque - the google-cloud-go iterator owns the page tokens and the connector never sees them; and (b) cross-sweep resumption, which is an inclusive key offset on the listing query. Collapsing them into one string is exactly what makes an object-store listing look deceptively like an HTTP paginator when it is not one.",
+      "proposedShape": {
+        "listing": {
+          "intraSweepPaging": { "kind": "sdk_managed", "sdk": "google-cloud-go storage iterator", "tokenVisibleToConnector": false, "pageSizeControl": "PageInfo().MaxSize, used only in the connect-time probe" },
+          "crossSweepResume": { "kind": "key_offset", "queryField": "StartOffset", "boundary": "inclusive", "sourcedFrom": "state.path" }
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.*.objectChunking",
+      "description": "objectChunking is correctly null (no byte-range reads) but nulling it discards how a single object read is made safe - and here GCS diverges materially from S3. One Object.NewReader per object streams the whole body into an external parser subprocess. There is NO stale-object guard: source-s3 sends IfUnmodifiedSince and fails the read if the object changed between listing and reading, whereas source-gcs sends no precondition and instead moves obj.ModTime FORWARD to r.Attrs.LastModified when the reader reports a later time, silently accepting a rewritten object. Resumability inside an object is by parsed-record count, with the state's `skip` counter discarding already-emitted lines after a crash. The 8 GB parquet skip in the shared filesource exists because parquet cannot be streamed.",
+      "proposedShape": {
+        "objectRead": {
+          "mode": "whole_object_stream",
+          "staleGuard": null,
+          "modTimeReconciliation": "obj.ModTime = max(listing Updated, reader Attrs.LastModified) - listings have sub-second granularity while LastModified is rounded to seconds",
+          "intraObjectResume": "count of parsed records already emitted",
+          "sizeGuards": [{ "format": "parquet", "maxBytes": 8000000000, "reason": "parser stages the whole file to local disk" }]
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull (backfill vs incremental)",
+      "description": "The two-leg pull shape does not fit: there is exactly one code path. A 'backfill' is simply the first sweep, in which minBound is the zero time and no path is stored, so every object qualifies. Filling both legs duplicates one mechanism; filling only one would imply the other does not exist. Identical to the same misfit recorded for source-s3, because both share filesource/filesource.go.",
+      "proposedShape": { "pull": { "unified": "<PullSpec>", "backfillIsFirstRunOf": "unified", "note": "no distinct initial-load strategy" } }
+    },
+    {
+      "where": "execution.defaultSchedule",
+      "description": "There is no scheduler inside the connector, and null under-describes that. Pull performs exactly ONE sweep per binding (an errgroup over bindings, each calling reader.sweep once), writes a final checkpoint, and returns - the process then exits. Re-sweeping is entirely the Flow runtime's decision to re-invoke Pull. So the cadence is externally owned, which is different from 'no schedule was found'.",
+      "proposedShape": { "defaultSchedule": { "kind": "other", "literal": "externally driven", "description": "one sweep per Pull invocation; cadence owned by the runtime that restarts the connector" } }
+    },
+    {
+      "where": "streams[0] (parallelism)",
+      "description": "Object-to-shard assignment has no representation. Every replica lists the entire prefix and then drops any object whose path's high-word hash falls outside its assigned key range (boilerplate.RangeIncludesHwHash on the absolute path), so throughput scales by discarding rather than by partitioning the listing: N shards issue N full listings. Inherited from the shared filesource.",
+      "proposedShape": { "sharding": { "kind": "hash_filter_after_listing", "hashInput": "absolute object path", "assignment": "runtime-provided key range" } }
+    },
+    {
+      "where": "configFields[6] (parser)",
+      "description": "`parser` is not a field but an opaque sub-schema fetched at spec time from a binary outside this repository and interpolated into the config schema string. A flat list of typed fields cannot express 'an object whose shape is resolved by an external process at spec time'. Both format selection and compression handling live behind it, which is why format is reported as 'auto' and compression as null.",
+      "proposedShape": { "name": "parser", "type": "external_subschema", "source": "github.com/estuary/flow/go/parser GetSpec()", "resolvedAt": "spec time" }
+    },
+    {
+      "where": "credentialModes (anonymous mode)",
+      "description": "The anonymous mode is not declared anywhere in the config schema - there is no auth_type discriminator and no oneOf, unlike source-s3 which models Access Key / Anonymous / AWS IAM as an explicit oneOf. It exists purely as an `if cfg.GoogleCredentials != \"\"` branch, so a user who leaves the field blank silently gets unauthenticated access rather than a validation error (config.Validate() only checks bucket). A schema that lists credential modes as peers hides the fact that one of them is reachable only by omission.",
+      "proposedShape": { "declaredIn": "code_branch_only", "discriminator": null, "reachableBy": "omitting the googleCredentials field", "contrastWith": "source-s3 explicit auth_type oneOf" }
+    },
+    {
+      "where": "discovery.excludes (minimum_modified)",
+      "description": "advanced.minimum_modified is a genuine filter but is implemented as a lie about the object rather than as a filter: the store returns an ObjectInfo with Size deliberately set to 0 so the shared filesource's zero-size directory-placeholder rule drops it. A schema that records excludes as a flat list cannot show that one exclusion is expressed through another's mechanism, nor that the excluded object therefore never contributes to maxMod.",
+      "proposedShape": { "exclude": { "field": "advanced.minimum_modified", "predicate": "obj.Updated < minimumModified", "implementedAs": "size-0 masquerade routed through the shared zero-size skip", "sideEffect": "excluded objects do not advance the sweep high-watermark" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "source-gcs/main.go", "lines": "13, 79", "snippet": "\"cloud.google.com/go/storage\"\nvar client, err = storage.NewClient(ctx, opt)" },
+    "credentialModes[0].scheme": { "file": "source-gcs/main.go", "lines": "72-77", "snippet": "if cfg.GoogleCredentials != \"\" {\n\topt = option.WithCredentialsJSON([]byte(cfg.GoogleCredentials))" },
+    "credentialModes[1].scheme": { "file": "source-gcs/main.go", "lines": "75-77", "snippet": "} else {\n\topt = option.WithoutAuthentication()\n}" },
+    "execution.mode": { "file": "filesource/filesource.go", "lines": "336-344", "snippet": "func (r *reader) sweep(ctx context.Context) error {\n\tvar listing, err = r.store.List(ctx, Query{" },
+    "execution.defaultSchedule": { "file": "filesource/filesource.go", "lines": "304-312", "snippet": "grp.Go(func() error {\n\t\tif err := r.sweep(ctx); err != nil {\n\treturn grp.Wait()" },
+    "execution.continuity.artifacts": { "file": "source-gcs/main.go", "lines": "100-102", "snippet": "// This is done in a way that requires only storage.objects.list and storage.objects.get since these\n// are the permissions required by the connector." },
+    "execution.continuity.resumeWindow": { "file": "filesource/state.go", "lines": "28-37", "snippet": "// Exclusive lower bound modification time of files processed in this sweep.\nMinBound time.Time `json:\"minBound\"`\nMaxBound *time.Time `json:\"maxBound\"`" },
+    "execution.continuity.ourSideLoss": { "file": "filesource/state.go", "lines": "125-133", "snippet": "} else {\n\t*p = State{\n\t\tMinBound: p.MinBound, // Never increment MinBound." },
+    "configFields[0]": { "file": "source-gcs/main.go", "lines": "223-229", "snippet": "\"googleCredentials\": {\n\t\"title\":       \"Google Service Account\",\n\t\"secret\":      true," },
+    "configFields[1]": { "file": "source-gcs/main.go", "lines": "219-221, 38-40", "snippet": "\"required\": [\n\t\"bucket\"\n],\nif c.Bucket == \"\" { return fmt.Errorf(\"missing bucket\") }" },
+    "configFields[3]": { "file": "source-gcs/main.go", "lines": "243-248", "snippet": "\"matchKeys\": {\n\t\"format\":      \"regex\",\n\t\"description\": \"Filter applied to all object keys under the prefix...\"" },
+    "configFields[4]": { "file": "source-gcs/main.go", "lines": "252-256", "snippet": "\"ascendingKeys\": {\n\t\"type\": \"boolean\",\n\t\"default\": false" },
+    "configFields[5]": { "file": "source-gcs/main.go", "lines": "88-95", "snippet": "if cfg.Advanced.MinimumModified != \"\" {\n\tif minFilter, err := time.Parse(time.RFC3339, cfg.Advanced.MinimumModified); err != nil {" },
+    "configFields[6]": { "file": "filesource/filesource.go", "lines": "164-169", "snippet": "var parserSpec, err = parser.GetSpec()\nvar endpointSchema = src.ConfigSchema(parserSpec)" },
+    "configFields[7]": { "file": "filesource/filesource.go", "lines": "150, 181", "snippet": "Stream string `json:\"stream\" jsonschema:\"title=Stream to capture from\"...`\nResourcePathPointers: []string{\"/stream\"}," },
+    "discovery.method": { "file": "filesource/filesource.go", "lines": "224-235", "snippet": "var root = conn.config.DiscoverRoot()\nreturn &pc.Response_Discovered{Bindings: []*pc.Response_Discovered_Binding{{\n\tRecommendedName: conn.config.RecommendedName()," },
+    "discovery.querySketch": { "file": "source-gcs/main.go", "lines": "45-51", "snippet": "func (c config) DiscoverRoot() string {\n\treturn filesource.PartsToPath(c.Bucket, c.Prefix)\n}" },
+    "discovery.excludes": { "file": "filesource/filesource.go", "lines": "378-403", "snippet": "if obj.Size == 0 { return true, \"object has size of 0\" }\nif r.pathRe != nil && !r.pathRe.MatchString(obj.Path) {\nif obj.Size > maxParquetSize && isParquetFile(" },
+    "streams[0].primaryKey": { "file": "filesource/filesource.go", "lines": "234", "snippet": "Key: []string{\"/_meta/file\", \"/_meta/offset\"}," },
+    "streams[0].pull.incremental.listing": { "file": "source-gcs/main.go", "lines": "136-148", "snippet": "var gcsQuery = &storage.Query{Prefix: prefix}\nif query.StartAt != \"\" { _, startAt := filesource.PathToParts(query.StartAt); gcsQuery.StartOffset = startAt }\nvar it = s.gcs.Bucket(bucket).Objects(ctx, gcsQuery)" },
+    "streams[0].pull.incremental.matchExpr": { "file": "source-gcs/main.go", "lines": "61-63", "snippet": "func (c config) PathRegex() string {\n\treturn c.MatchKeys\n}" },
+    "streams[0].pull.backfill.listing": { "file": "filesource/filesource.go", "lines": "340-344", "snippet": "var listing, err = r.store.List(ctx, Query{\n\tPrefix: r.prefix, StartAt: r.state.Path, Recursive: true," },
+    "streams[0].pull.incremental.objectChunking": { "file": "source-gcs/main.go", "lines": "188-197", "snippet": "r, err := s.gcs.Bucket(bucket).Object(key).NewReader(ctx)\nif r.Attrs.LastModified.After(obj.ModTime) { obj.ModTime = r.Attrs.LastModified }" },
+    "unionMisfits[0].description": { "file": "filesource/state.go", "lines": "91-133", "snippet": "func (p *State) finishSweep(monotonic bool) {\n\tif !monotonic {\n\t\tminBound = *p.MaxMod" },
+    "unionMisfits[2].description": { "file": "source-s3/main.go", "lines": "301-305", "snippet": "resp, err := s.s3.GetObject(ctx, &s3.GetObjectInput{\n\tIfUnmodifiedSince: aws.Time(obj.ModTime),\n})" },
+    "unionMisfits[5].description": { "file": "filesource/filesource.go", "lines": "392-393", "snippet": "if !boilerplate.RangeIncludesHwHash(r.range_, []byte(obj.Path)) {\n\treturn true, \"path not in range\"" },
+    "unionMisfits[8].description": { "file": "source-gcs/main.go", "lines": "163-170", "snippet": "if s.minimumModified != nil && obj.Updated.Before(*s.minimumModified) {\n\treturn filesource.ObjectInfo{\n\t\tSize:    0," },
+    "authTierOverall": { "file": "source-gcs/main.go", "lines": "202-213", "snippet": "var src = filesource.Source{\n\tNewConfig: ...\n\tConnect: ... // no Oauth2 field is set" }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.matchExpr": "high",
+    "streams[0].pull.incremental.matchExprKind": "high",
+    "streams[0].pull.incremental.objectChunking": "high",
+    "streams[0].pull.incremental.format": "medium",
+    "streams[0].pull.incremental.compression": "low",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[0].writeDisposition": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[0].pull.*.compression": "Left null rather than guessed. The connector itself decompresses nothing: it forwards the object's ContentEncoding into the parser config (filesource/filesource.go configureParser) and hands the raw stream to an external parser binary that lives in github.com/estuary/flow, which is not present in this repository. Which compressions are supported (gzip, zstd, zip) is therefore not determinable here. Note an unresolved interaction: google-cloud-go's Reader may transparently decompress gzip-transcoded objects while the parser is still told ContentEncoding=gzip; whether that double-decompresses could not be confirmed without the vendored library or the parser source, so it is recorded here rather than asserted.",
+    "streams[0].pull.*.format": "Reported as \"auto\" on the strength of filesource's isParquetFile, which mirrors the parser's own resolution: an explicitly configured parser.Format[\"type\"] wins, otherwise the format is inferred last-first from dot-delimited path extensions among parquet, json, jsonl, csv, tsv, avro, xls, xlsx, xlsm, xml, ods. The authoritative list belongs to the external parser's format_for_file_extension and is not in this repository, so the enumeration above is the connector's mirror of it, not the source of truth.",
+    "streams[0].schedules": "Empty rather than populated. Neither source-gcs nor filesource contains any interval, cron, or duration governing re-sweeps: Pull runs one sweep per binding and returns. The cadence is imposed by whatever restarts the connector, which is outside this repository.",
+    "streams[0].writeDisposition": "Recorded as \"merge\" by inference from the key (/_meta/file, /_meta/offset), which makes re-emitted records from a resumed object idempotent. The connector emits documents plus checkpoints via DocumentsAndCheckpoint and never emits deletions or tombstones; the actual reduction strategy is decided by the target collection's schema, not by the connector.",
+    "streams[0].supportedSyncModes": "The connector has one code path, not two modes. \"full_refresh\",\"incremental\" is recorded because the first sweep over empty state reads everything and subsequent sweeps read only modification-time-newer objects, but no syncMode value is ever consulted - the resource's syncMode field is hidden and unused.",
+    "execution.continuity.customerSideAccrual": "Asserted as null (nothing accrues) rather than abstained: the only GCS operations issued are object listings, object reads, and one Attrs probe, and no server-side object, notification, or subscription is created."
+  }
+}

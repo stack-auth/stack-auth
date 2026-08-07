@@ -1,0 +1,422 @@
+{
+  "id": "qualtrics",
+  "estuaryDir": "source-qualtrics",
+  "displayName": "Qualtrics",
+  "description": "Imports Qualtrics surveys, their question definitions, and individual survey responses from the Qualtrics v3 API.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{data_center}.qualtrics.com/API/v3",
+          "placeholders": {
+            "data_center": "user-supplied `data_center` endpoint config field (Qualtrics data center ID such as 'fra1', 'syd1', 'dub1'); lower-cased and stripped by a pydantic field validator"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/API/v3` baked into every URL"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API token (Private App Credentials)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "X-API-TOKEN",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Authentication",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator, fixed literal \"Private App Credentials\". Only one credential variant exists."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "API Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Found in Account Settings > Qualtrics IDs under 'API' section."
+    },
+    {
+      "name": "data_center",
+      "displayName": "Data Center ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Qualtrics data center ID (e.g. 'fra1', 'syd1', 'dub1'). Found in Account Settings > Qualtrics IDs. Interpolated into the base URL host."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Start date for fetching survey responses (ISO format). Defaults to 180 days ago, truncated to midnight UTC. Seeds the incremental cursor."
+    },
+    {
+      "name": "advanced.window_size",
+      "displayName": "Window Size",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "number",
+      "description": "Window size in days for incremental streams; default 30, must be > 0. Bounds each survey_responses export window."
+    },
+    {
+      "name": "name",
+      "displayName": "Resource name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Standard CDK ResourceConfig binding name."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Standard CDK ResourceConfig poll interval; defaulted per stream by the connector."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "surveys",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/surveys",
+          "httpMethod": "GET",
+          "recordsPath": "result.elements",
+          "params": { "offset": "<integer, starts at 0>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "result.nextPage (the `offset` query parameter is parsed out of that URL)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "survey_questions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/survey-definitions/{survey_id}/questions",
+          "httpMethod": "GET",
+          "recordsPath": "result.elements",
+          "params": null,
+          "pathPlaceholders": {
+            "survey_id": "`id` of each survey yielded by the full `surveys` sweep, which is re-run in its entirety as the parent of this stream"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "survey_responses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/surveyId", "/responseId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "values.recordedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential variant is `Auth(AccessToken)` with a single `access_token` field, sent verbatim in the `X-API-TOKEN` header (TokenSource is constructed with `oauth_spec=None`, so no token exchange or refresh occurs). The user pastes one self-serve API token from Account Settings > Qualtrics IDs plus a non-secret data center ID. No OAuth app registration and no refresh token, so T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[2].pull.incremental (survey_responses)",
+      "description": "survey_responses is not a paginated read at all: it is a three-phase asynchronous export job, per-survey, fanned out over the full `surveys` sweep, with a windowed date range and a compressed NDJSON download. No PullSpec member models create->poll->download, so `pull` is left null rather than forced into `kind: \"http\"`. The flow per survey is: (1) POST /surveys/{survey_id}/export-responses with JSON body {format: \"ndjson\", startDate: <cursor ISO8601>, endDate: <min(cursor+window_size days, now) ISO8601>, compress: true} -> result.progressId; (2) GET /surveys/{survey_id}/export-responses/{progressId} every 2 seconds until result.status == \"complete\" or result.fileId is set, raising on status == \"failed\"; (3) GET /surveys/{survey_id}/export-responses/{fileId}/file, streamed, unzipped, split on newlines, `{}` lines discarded, each remaining line parsed as one SurveyResponse and stamped with the parent surveyId. Cursor bookkeeping: the connector tracks max(values.recordedDate) across all surveys and emits max+1ms; if a window produced zero documents it advances only when the window end is more than 1 hour in the past, otherwise it deliberately does not advance to avoid missing late-arriving data.",
+      "proposedShape": {
+        "kind": "async_export_job",
+        "create": {
+          "path": "/surveys/{survey_id}/export-responses",
+          "httpMethod": "POST",
+          "bodyFields": { "format": "ndjson", "startDate": "iso8601", "endDate": "iso8601", "compress": true },
+          "jobIdPath": "result.progressId"
+        },
+        "poll": {
+          "path": "/surveys/{survey_id}/export-responses/{progressId}",
+          "httpMethod": "GET",
+          "statusPath": "result.status",
+          "terminalStates": ["complete", "failed"],
+          "progressPath": "result.percentComplete",
+          "resultRefPath": "result.fileId",
+          "intervalSeconds": 2
+        },
+        "download": {
+          "path": "/surveys/{survey_id}/export-responses/{fileId}/file",
+          "httpMethod": "GET",
+          "compression": "zip",
+          "format": "ndjson",
+          "streamed": true
+        },
+        "parentFanout": "one job per survey returned by the /surveys sweep",
+        "windowing": { "field": "startDate/endDate", "sizeDays": "advanced.window_size", "clampedTo": "now" },
+        "cursor": { "field": "values.recordedDate", "advance": "max seen + 1ms", "emptyWindowGracePeriod": "1 hour" }
+      }
+    },
+    {
+      "where": "streams[1] (survey_questions) — parent/child fanout",
+      "description": "survey_questions has no independent listing endpoint. Each sync re-runs the entire paginated /surveys sweep and issues one /survey-definitions/{survey_id}/questions request per survey. The schema's `pathPlaceholders` records the dependency but nothing expresses that the parent sweep is itself a paginated, separately-billed stream re-executed inside the child.",
+      "proposedShape": {
+        "parentStream": "surveys",
+        "parentPull": "streams[0].pull.snapshot",
+        "childKeyFrom": "parent record field `id`",
+        "childInjectsParentKeyAs": "SurveyID"
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl / streams[*].pull.*.path",
+      "description": "The connector never composes a base URL plus a path; each call site formats a complete absolute URL from the data_center. Two of the three stream families also sit under different first path segments (/surveys vs /survey-definitions), so the shared prefix is only /API/v3.",
+      "proposedShape": { "note": "paths above are normalized by the miner to be relative to https://{data_center}.qualtrics.com/API/v3" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_qualtrics/api.py",
+      "lines": "52",
+      "snippet": "url = f\"https://{data_center}.qualtrics.com/API/v3/surveys\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_qualtrics/api.py",
+      "lines": "105",
+      "snippet": "url = f\"https://{data_center}.qualtrics.com/API/v3/survey-definitions/{survey_id}/questions\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "27, 172-176",
+      "snippet": "AUTHORIZATION_HEADER = \"X-API-TOKEN\"\nhttp.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER,)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_qualtrics/models.py",
+      "lines": "26-34",
+      "snippet": "class Auth(AccessToken):\n    credentials_title: Literal[\"Private App Credentials\"] = Field(...)\n    access_token: str = Field(title=\"API Token\", ...)"
+    },
+    "credentialModes[0].scheme.prefix": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "526-534",
+      "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    ...\nelse:\n    header_value = token"
+    },
+    "execution.mode": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "114-116, 160-162",
+      "snippet": "initial_config=common.ResourceConfig(name=resource.RESOURCE_NAME, interval=timedelta(minutes=15))"
+    },
+    "configFields": {
+      "file": "source_qualtrics/models.py",
+      "lines": "37-74",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: Auth = Field(discriminator=\"credentials_title\", title=\"Authentication\")\n    data_center: str = Field(...)"
+    },
+    "streamMode": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "30-50",
+      "snippet": "FULL_REFRESH_RESOURCES: list[...] = [(Survey, snapshot_surveys,), (SurveyQuestion, snapshot_survey_questions,),]\nINCREMENTAL_RESOURCES: list[...] = [(SurveyResponse, fetch_survey_responses_incremental,),]"
+    },
+    "streams[0].name": {
+      "file": "source_qualtrics/models.py",
+      "lines": "148-152",
+      "snippet": "class Survey(QualtricsResource, extra=\"allow\"):\n    RESOURCE_NAME: ClassVar[str] = \"surveys\"\n    ENDPOINT: ClassVar[str] = \"surveys\""
+    },
+    "streams[0].primaryKey": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "106",
+      "snippet": "key=[\"/_meta/row_id\"],"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "96-101",
+      "snippet": "fetch_snapshot=functools.partial(fetch_snapshot_fn, http, config.data_center,),\ntombstone=QualtricsResource(_meta=QualtricsResource.Meta(op=\"d\")),"
+    },
+    "streams[0].schedules": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "114-116",
+      "snippet": "initial_config=common.ResourceConfig(name=resource.RESOURCE_NAME, interval=timedelta(minutes=15))"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_qualtrics/api.py",
+      "lines": "75-91",
+      "snippet": "if not api_response.result.nextPage: return\nparsed = urlparse(api_response.result.nextPage)\nparams = dict(parse_qsl(parsed.query)); offset_str = params.get(\"offset\")"
+    },
+    "streams[0].pull.snapshot.params": {
+      "file": "source_qualtrics/api.py",
+      "lines": "53-63",
+      "snippet": "offset = 0\nwhile True:\n    params: dict[str, Any] = {\"offset\": offset}"
+    },
+    "streams[0].pull.snapshot.recordsPath": {
+      "file": "source_qualtrics/api.py",
+      "lines": "68-73",
+      "snippet": "if not api_response.result or not api_response.result.elements: ... return\nfor item in api_response.result.elements:\n    yield Survey.model_validate(item)"
+    },
+    "streams[1].name": {
+      "file": "source_qualtrics/models.py",
+      "lines": "155-159",
+      "snippet": "class SurveyQuestion(QualtricsResource, extra=\"allow\"):\n    RESOURCE_NAME: ClassVar[str] = \"survey_questions\""
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_qualtrics/api.py",
+      "lines": "105",
+      "snippet": "url = f\"https://{data_center}.qualtrics.com/API/v3/survey-definitions/{survey_id}/questions\""
+    },
+    "streams[1].pull.snapshot.paginator": {
+      "file": "source_qualtrics/api.py",
+      "lines": "106-119",
+      "snippet": "api_response = ApiResponse[PaginatedResponse].model_validate_json(await http.request(log=log, url=url,))\n... for item in api_response.result.elements:"
+    },
+    "streams[1].pull.snapshot.pathPlaceholders": {
+      "file": "source_qualtrics/api.py",
+      "lines": "127-137",
+      "snippet": "async for survey in snapshot_surveys(http, data_center, log):\n    async for question in _fetch_survey_questions(http, data_center, survey.id, log,):"
+    },
+    "streams[2].name": {
+      "file": "source_qualtrics/models.py",
+      "lines": "162-164",
+      "snippet": "class SurveyResponse(IncrementalResource, extra=\"allow\"):\n    RESOURCE_NAME: ClassVar[str] = \"survey_responses\""
+    },
+    "streams[2].primaryKey": {
+      "file": "source_qualtrics/models.py",
+      "lines": "181-183",
+      "snippet": "@classmethod\ndef get_resource_key_json_path(cls) -> list[str]:\n    return [\"/surveyId\", \"/responseId\"]"
+    },
+    "streams[2].cursorField": {
+      "file": "source_qualtrics/api.py",
+      "lines": "288-289, 306",
+      "snippet": "if response.values.recordedDate > max_modified_date:\n    max_modified_date = response.values.recordedDate\nyield max_modified_date + timedelta(milliseconds=1)"
+    },
+    "streams[2].schedules": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "160-162",
+      "snippet": "initial_config=common.ResourceConfig(name=resource.RESOURCE_NAME, interval=timedelta(minutes=5))"
+    },
+    "streams[2].writeDisposition": {
+      "file": "source_qualtrics/resources.py",
+      "lines": "140-146, 157-159",
+      "snippet": "fetch_changes=functools.partial(fetch_changes_fn, http, config.data_center, config.advanced.window_size,)\ninitial_state=common.ResourceState(inc=common.ResourceState.Incremental(cursor=config.start_date),)"
+    },
+    "unionMisfits[0]": {
+      "file": "source_qualtrics/api.py",
+      "lines": "148-156, 174, 203",
+      "snippet": "export_url = f\"https://{data_center}.qualtrics.com/API/v3/surveys/{survey_id}/export-responses\"\nstatus_url = f\"{export_url}/{progress_id}\"\ndownload_url = f\"{export_url}/{file_id}/file\""
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].name": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[0].schedules": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.recordsPath": "high",
+    "streams[0].pull.snapshot.paginator": "medium",
+    "streams[1].name": "high",
+    "streams[1].primaryKey": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.recordsPath": "medium",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2].name": "high",
+    "streams[2].primaryKey": "high",
+    "streams[2].cursorField": "high",
+    "streams[2].schedules": "high",
+    "streams[2].writeDisposition": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "streams[2].pull.incremental": "survey_responses is retrieved by an asynchronous create->poll->download export job (POST /surveys/{survey_id}/export-responses, GET .../{progressId}, GET .../{fileId}/file returning zipped NDJSON), fanned out over every survey. No PullSpec union member represents a job flow, and forcing it into kind:\"http\" would misrepresent both the record source and the absence of a paginator. The full flow is recorded verbatim in unionMisfits[0].proposedShape.",
+    "streams[2].pull.backfill": "There is no separate historical leg. The single incremental function starts from `start_date` and walks forward in `window_size`-day windows, so backfill and incremental are the same code path; recording a distinct backfill spec would be an invention.",
+    "streams[0].pull.snapshot.paginator.pageSize / pageSizeParam": "PAGE_SIZE = 500 is defined at api.py:25 with the comment 'Max allowed by Qualtrics API' but is never referenced anywhere in the connector; no limit/pageSize parameter is sent on any paged request. Recording 500 would assert a request parameter the code does not send.",
+    "streams[1].pull.snapshot.recordsPath": "The code reads `result.elements` as a list (ApiResponse[PaginatedResponse]) at api.py:115-117, but models.py:100-102 defines an unused QuestionsResponse whose `elements` is a dict[str, dict]. The two disagree about the shape of this endpoint's payload; `result.elements` is the path actually used, but the container type is not settled by the source.",
+    "streams[1].pull.snapshot pagination beyond page one": "_fetch_survey_questions parses the response as PaginatedResponse (which carries nextPage) but never inspects nextPage and never loops. Whether the endpoint can page is not decidable from this source; recorded as {\"type\":\"none\"} because that is what the connector does, not because the API is known to be unpaged.",
+    "transports[0].spec.defaultHeaders": "No connector-wide default headers are configured on the HTTP session. validate_credentials (resources.py:54-57) hand-builds {X-API-TOKEN, Content-Type: application/json} for its single probe request only; the capture path relies on TokenSource for the auth header and sets no Content-Type.",
+    "execution.defaultSchedule": "No connector-wide default exists; both intervals are set per-binding in initial_config (15m for the two full-refresh streams, 5m for survey_responses) and are recorded on the streams.",
+    "streams[*].supportedSyncModes for the full-refresh pair": "surveys and survey_questions are registered only via common.open_binding(fetch_snapshot=...) with a tombstone; no incremental path exists for them in the source."
+  }
+}

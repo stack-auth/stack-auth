@@ -1,0 +1,285 @@
+{
+  "id": "dynamodb",
+  "estuaryDir": "source-dynamodb",
+  "displayName": "Amazon DynamoDB",
+  "description": "Captures items from Amazon DynamoDB tables via a parallel segmented Scan backfill plus a continuous DynamoDB Streams change feed.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "DynamoDB control/data plane: ListTables, DescribeTable and segmented Scan for discovery and backfill.",
+      "spec": {
+        "kind": "stream",
+        "system": "dynamodb",
+        "endpointConfig": "AWS SDK v2 default endpoint resolution from the required `region` config field; an optional advanced `endpoint` URI overrides it via a custom EndpointResolverWithOptions (for DynamoDB-compatible APIs). Retryer is bumped to 20 max attempts."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "DynamoDB Streams data plane: DescribeStream / GetShardIterator / GetRecords for the change leg. Separate AWS SDK client built from the same aws.Config and same credentials.",
+      "spec": {
+        "kind": "stream",
+        "system": "dynamodb",
+        "endpointConfig": "Same aws.Config (region + optional advanced `endpoint` override) as the primary; per-table stream identified by the LatestStreamArn read from DescribeTable and pinned into capture state."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "AWS access key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_access_key_id", "credentials.aws_secret_access_key", "region"]
+      }
+    },
+    {
+      "name": "AWS IAM role assumption",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_region", "credentials.aws_role_arn"]
+      }
+    },
+    {
+      "name": "Legacy top-level access key (deprecated, hidden from the spec)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["awsAccessKeyId", "awsSecretAccessKey", "region"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "DynamoDB Streams must be enabled on each captured table with StreamViewType NEW_AND_OLD_IMAGES — a customer-side table setting the connector requires but never creates",
+        "Per-table stream ARN pinned in the Flow capture checkpoint (tableState.streamArn); a change means the stream was disabled and re-enabled and the capture hard-fails",
+        "Per-shard read position in the checkpoint (shards[shardId].lastReadSequence + finishedReading)",
+        "Per-backfill-segment resume key in the checkpoint (backfillSegmentProgress[segment].exclusiveStartKey)"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Unread DynamoDB Streams records. Stream records have a fixed ~24h retention that AWS enforces regardless of whether we consume them, and shards are cycled roughly every ~4 hours (open shard closed, new shard opened). If we pause past retention, a shard we had not finished reading disappears from DescribeStream; pruneShards detects a vanished shard whose state is not finishedReading and returns a hard error requiring the whole binding to be re-backfilled. Change events in that gap are permanently lost as change events (they are only recovered as snapshot rows by the forced re-backfill).",
+      "resumeWindow": "Under ~24 hours — bounded by the fixed DynamoDB Streams record retention, not by anything the connector controls. In practice tighter: a shard must be picked up before it both closes (~4h cycling) and ages out of the 24h window.",
+      "releasedOnShutdown": false,
+      "notes": "Nothing accrues on the customer side: DynamoDB Streams retention is a fixed rolling 24h window that AWS trims on its own schedule, so an unconsumed stream does not grow storage or backpressure the table the way a Postgres replication slot or a MySQL binlog would. Cost is per GetRecords request (the connector rate-limits open-shard GetRecords to 1/sec for exactly this reason), so pausing reduces customer cost rather than increasing it. All the risk is on our side and it is a hard cliff, not a degradation. During the initial backfill the connector explicitly interleaves 1-hour backfill windows with 'catch-up' passes over closed shards precisely to stay inside the 24h retention. The connector leaves no server-side object behind on shutdown — it never enables the stream, never creates a scratch table, and holds no consumer group or lease; all resumption state lives in the Flow checkpoint."
+    }
+  },
+
+  "configFields": [
+    { "name": "region", "displayName": "Region", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Region of the DynamoDB table." },
+    { "name": "credentials.auth_type", "displayName": "Authentication type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting AWSAccessKey or AWSIAM; defaults to AWSAccessKey." },
+    { "name": "credentials.aws_access_key_id", "displayName": "AWS Access Key ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSAccessKey." },
+    { "name": "credentials.aws_secret_access_key", "displayName": "AWS Secret Access key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSAccessKey." },
+    { "name": "credentials.aws_region", "displayName": "AWS Region", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS Region of your resource; required when auth_type is AWSIAM. Distinct from the top-level `region` field." },
+    { "name": "credentials.aws_role_arn", "displayName": "AWS Role ARN", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS Role with access to the resource, assumed by Flow; required when auth_type is AWSIAM." },
+    { "name": "advanced.backfillSegments", "displayName": "Backfill Table Segments", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Number of segments for parallel backfill Scan. Default 100. Persisted into state on first sight of a table; changing it after the backfill starts has no effect." },
+    { "name": "advanced.scanLimit", "displayName": "Scan Limit", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Limit on items evaluated per backfill Scan request. When unset, low-RCU tables (<=100 provisioned RCUs) use 100 and higher/unlimited tables use no item limit." },
+    { "name": "advanced.endpoint", "displayName": "AWS Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS endpoint URI, for DynamoDB-compatible non-AWS APIs." },
+    { "name": "awsAccessKeyId", "displayName": "(legacy, hidden) AWS Access Key ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Legacy top-level field marked jsonschema:\"-\" so it does not appear in the spec; still accepted when `credentials` is absent." },
+    { "name": "awsSecretAccessKey", "displayName": "(legacy, hidden) AWS Secret Access Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Legacy top-level field marked jsonschema:\"-\"; still accepted when `credentials` is absent." },
+    { "name": "table", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "The name of the table to be captured." },
+    { "name": "rcuAllocation", "displayName": "RCU Allocation", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Read capacity units the backfill will attempt to consume. Blank means derive from the table's provisioned capacity; 0/unknown means unlimited." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "DynamoDB ListTables (paginated by LastEvaluatedTableName) followed by DescribeTable per table, at concurrency 10",
+    "querySketch": "ListTables{ExclusiveStartTableName} -> loop until LastEvaluatedTableName is nil; then for each name DescribeTable{TableName} to read StreamSpecification, LatestStreamArn, ProvisionedThroughput.ReadCapacityUnits, AttributeDefinitions and KeySchema (HASH partition key, optional RANGE sort key).",
+    "excludes": [
+      "Tables with StreamSpecification absent or StreamEnabled false",
+      "Tables with streaming enabled but a nil LatestStreamArn",
+      "Tables whose StreamViewType is not NEW_AND_OLD_IMAGES"
+    ],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<dynamodb table with a partition key only>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<partitionKey>"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change stream tail (after backfill completes)", "schedule": { "kind": "continuous" } },
+        { "role": "shard topology re-listing during streaming", "schedule": { "kind": "interval", "seconds": 5 } },
+        { "role": "backfill window before alternating back to a stream catch-up pass", "schedule": { "kind": "other", "literal": "1h", "description": "backfillDuration: each backfill period runs 1 hour, then the connector does a catch-up pass over closed stream shards; repeats until the backfill completes." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": "<table name from resource config>",
+          "keyColumns": ["<partitionKey>"],
+          "cursorColumns": [],
+          "querySketch": "Scan{TableName, ConsistentRead: true, Segment: n, TotalSegments: N, ExclusiveStartKey, Limit, ReturnConsumedCapacity: TOTAL}",
+          "chunking": "Parallel segmented Scan: the table is split into N segments (advanced.backfillSegments, default 100) fixed at first sight of the table and persisted in state. Segments are cycled through a FIFO queue by 5 concurrent workers to spread load across partitions. Each segment resumes from its own ExclusiveStartKey, checkpointed as an FDB-tuple-encoded key after every scan; a nil LastEvaluatedKey marks that segment finished. Reads are rate-limited by an RCU token bucket set to rcuAllocation, else the table's provisioned RCUs, else unlimited; ProvisionedThroughputExceededException is retried up to 10 times."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": null,
+          "table": "<table name from resource config>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Per-shard DynamoDB Streams sequence number. First read of a shard uses a TRIM_HORIZON shard iterator; resumption uses AFTER_SEQUENCE_NUMBER with the checkpointed lastReadSequence. Shards are arranged into parent/child trees (parent read to completion before children, for per-key ordering) and read via GetShardIterator + GetRecords until NextShardIterator is nil. Open-shard GetRecords is rate-limited to 1/sec; closed shards are read at full speed."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<dynamodb table with a partition key and a sort key>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<partitionKey>", "/<sortKey>"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change stream tail (after backfill completes)", "schedule": { "kind": "continuous" } },
+        { "role": "shard topology re-listing during streaming", "schedule": { "kind": "interval", "seconds": 5 } },
+        { "role": "backfill window before alternating back to a stream catch-up pass", "schedule": { "kind": "other", "literal": "1h", "description": "backfillDuration." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": "<table name from resource config>",
+          "keyColumns": ["<partitionKey>", "<sortKey>"],
+          "cursorColumns": [],
+          "querySketch": "Scan{TableName, ConsistentRead: true, Segment: n, TotalSegments: N, ExclusiveStartKey, Limit, ReturnConsumedCapacity: TOTAL}",
+          "chunking": "Identical to the partition-key-only archetype; the resume key tuple simply carries both key attributes. Numeric (N) key attributes are encoded as a nested tuple tagged \"N\" and surfaced as strings with format: number, because Flow collection keys cannot be decimals."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": null,
+          "table": "<table name from resource config>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Per-shard sequence number; same TRIM_HORIZON / AFTER_SEQUENCE_NUMBER scheme as the partition-key-only archetype."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Both offered credential modes are self-serve AWS primitives with no OAuth app registration and no refresh token. The default mode is a static AWS access key id + secret pair the user pastes in alongside a region. The alternative asks the user to supply an AWS region and a role ARN which Flow assumes on their behalf — that requires editing a trust policy in their AWS account but still involves no third-party application registration, so it is T1 by the schema's definition rather than T2. There is also a hidden legacy top-level awsAccessKeyId/awsSecretAccessKey pair accepted when `credentials` is absent, which is likewise T1.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[]",
+      "description": "Both entries are `kind: \"stream\", system: \"dynamodb\"`, but they are not the same shape of thing: the primary is a request/response key-value API (ListTables/DescribeTable/Scan) with no streaming semantics at all, while the sidecar is the actual partitioned log. The `stream` transport kind flattens a database transport and a log transport into one label. Neither `sql` (no SQL engine) nor `http` (AWS SigV4 SDK, not a plain HTTP base URL) fits the primary either.",
+      "proposedShape": { "kind": "cloudApi", "provider": "aws", "service": "dynamodb", "region": "<from config>", "endpointOverride": "<advanced.endpoint>" }
+    },
+    {
+      "where": "streams[].pull.incremental",
+      "description": "The change leg is genuinely a partitioned log (DynamoDB Streams shards, per-shard sequence-number offsets, shards that split into child shards and must be read parent-first) that also carries CDC semantics (op c/u/d, before-image, deletes). `changes` captures the CDC semantics but loses the sharding; `partitioned_log` captures the sharding but has nowhere to put emitsDeletes/before-images. The shard tree with its parent-before-child ordering constraint and ~4h shard cycling has no representation in either.",
+      "proposedShape": { "kind": "sharded_changes", "unit": "stream shard", "offsetKind": "sequence number", "shardTopology": "parent/child tree, parent must be read to completion first", "topologyRefreshSeconds": 5, "retention": "~24h fixed", "emitsDeletes": true, "beforeImage": true }
+    },
+    {
+      "where": "credentialModes[].tier",
+      "description": "The IAM-role mode does not sit cleanly on the T1/T2/T3 axis, which is about OAuth app registration. Assuming a role requires the user to create a role and attach a trust policy naming Estuary's principal — strictly more work than pasting a key, and it is the mode that needs a hosted control plane to have a stable principal to trust, but it is not 'bring your own app'.",
+      "proposedShape": { "tier": "T1_SIMPLE", "setupBurden": "cloud_role_trust_policy", "requiresHostedPrincipal": true }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "Not cleanly merge, append, or snapshot_with_tombstone. Backfill rows are emitted with _meta.snapshot=true and op=c intermingled with live change events (there is no consistent-point watermark), and the discovered schema attaches a Flow reduction annotation of merge with `delete: true` when _meta.op == 'd'. The result is last-write-wins merge with tombstone-driven deletes, and it is explicitly only eventually consistent during the backfill (a stale backfill row can temporarily revert a key).",
+      "proposedShape": { "writeDisposition": "merge_with_delete_tombstones", "consistency": "eventually_consistent_during_backfill" }
+    },
+    {
+      "where": "streams[].schedules",
+      "description": "The connector alternates two modes rather than running one schedule: while the backfill is incomplete it loops [catch-up pass over closed shards, held back to a 1h horizon] then [1h of backfill]; once the backfill completes it switches permanently to a continuous tail. The `schedules` list can express the individual timers but not that they are phase-gated and mutually exclusive.",
+      "proposedShape": { "phases": [{ "name": "backfilling", "alternates": ["stream catch-up (closed shards only, 1h horizon)", "backfill (1h window)"] }, { "name": "streaming", "schedule": { "kind": "continuous" } }] }
+    },
+    {
+      "where": "configFields",
+      "description": "`region` and `credentials.aws_region` are two separate required fields that mean nearly the same thing; only the top-level `region` is passed to awsConfig.WithRegion. The schema has no way to mark a field as shadowed/redundant within a discriminated credential branch.",
+      "proposedShape": { "name": "credentials.aws_region", "redundantWith": "region", "note": "consumed only by the IAM role-assumption helper" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "main.go", "lines": "200-209", "snippet": "awsCfg, err := awsConfig.LoadDefaultConfig(ctx, opts...)\n\treturn &client{\n\t\tdb:     dynamodb.NewFromConfig(awsCfg)," },
+    "transports[1].spec": { "file": "main.go", "lines": "207-208", "snippet": "stream: dynamodbstreams.NewFromConfig(awsCfg)," },
+    "transports[0].spec.endpointConfig": { "file": "main.go", "lines": "192-198", "snippet": "if c.Advanced.Endpoint != \"\" {\n\t\tcustomResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {\n\t\t\treturn aws.Endpoint{URL: c.Advanced.Endpoint}, nil" },
+    "credentialModes[0].scheme": { "file": "main.go", "lines": "142-144", "snippet": "case AWSAccessKey:\n\t\treturn credentials.NewStaticCredentialsProvider(\n\t\t\tc.Credentials.AWSAccessKeyID, c.Credentials.AWSSecretAccessKey, \"\"), nil" },
+    "credentialModes[1].scheme": { "file": ".snapshots/TestSpec", "lines": "55-70", "snippet": "\"aws_region\": { \"title\": \"AWS Region\" },\n\"aws_role_arn\": { \"title\": \"AWS Role ARN\", \"description\": \"AWS Role which has access to the resource which will be assumed by Flow\" }" },
+    "credentialModes[2].scheme": { "file": "main.go", "lines": "137-139", "snippet": "if c.Credentials == nil {\n\t\treturn credentials.NewStaticCredentialsProvider(c.AWSAccessKeyID, c.AWSSecretAccessKey, \"\"), nil" },
+    "execution.mode": { "file": "capture.go", "lines": "286-291", "snippet": "}).Info(\"streaming from table\")\n\tif err := c.streamTable(ctx, t); err != nil {" },
+    "execution.defaultSchedule": { "file": "stream.go", "lines": "26-30", "snippet": "for {\n\t\tcurrentShards, err := c.listShards(ctx, t.streamArn)" },
+    "execution.continuity.artifacts": { "file": "capture.go", "lines": "119-140", "snippet": "if state.StreamArn == \"\" {\n\t\t// First time seeing this table.\n\t\tstate.StreamArn = d.streamArn" },
+    "execution.continuity.ourSideLoss": { "file": "stream.go", "lines": "136-140", "snippet": "// Shard is gone but we didn't get to completely read it. This is an error since it\n\t\t\t\t\treturn fmt.Errorf(\"shard %s of table %s was not completely read but no longer exists: this binding must be re-backfilled for the capture to continue\", id, table.tableName)" },
+    "execution.continuity.resumeWindow": { "file": "capture.go", "lines": "229-232", "snippet": "// Catch up streams for the table between periods of backfilling to ensure stream records do\n\t\t\t// not become unavailable after DynamoDB stream's 24-hour retention limit. This will read\n\t\t\t// only \"closed\" stream shards to the end. Shards are cycled out at regular intervals (every ~4 hours)" },
+    "execution.continuity.customerSideAccrual": { "file": "stream.go", "lines": "237-240", "snippet": "// DynamoDB streams are billed per GetRecords request, and GetRecords returns immediately if\n\t\t// there is no data. Limit GetRecords requests to once per second" },
+    "configFields": { "file": ".snapshots/TestSpec", "lines": "5-140", "snippet": "\"required\": [ \"region\", \"credentials\" ]" },
+    "configFields[6]": { "file": "driver.go", "lines": "29-30", "snippet": "defaultBackfillSegments = 100" },
+    "discovery.method": { "file": "discovery.go", "lines": "244-256", "snippet": "listing, err := c.db.ListTables(ctx, &dynamodb.ListTablesInput{ExclusiveStartTableName: exclusiveStartTableName})\n\t\texclusiveStartTableName = listing.LastEvaluatedTableName" },
+    "discovery.excludes": { "file": "discovery.go", "lines": "302-322", "snippet": "if tableDescribe.Table.StreamSpecification.StreamViewType != types.StreamViewTypeNewAndOldImages {\n\t\t\t}).Warn(\"streamViewType must be NEW_AND_OLD_IMAGES; table will not be captured\")" },
+    "streams[0].primaryKey": { "file": "discovery.go", "lines": "100-104", "snippet": "for idx, k := range table.keyFields {\n\t\t\tkeyPtrs = append(keyPtrs, \"/\"+k)" },
+    "streams[1].primaryKey": { "file": "discovery.go", "lines": "366-372", "snippet": "out.keyFields = append(out.keyFields, partitionKey.name)\n\tif sortKey != nil {\n\t\tout.keyFields = append(out.keyFields, sortKey.name)" },
+    "streams[0].writeDisposition": { "file": "discovery.go", "lines": "194-207", "snippet": "Then: &jsonschema.Schema{Extras: map[string]interface{}{\"reduce\": map[string]interface{}{\"strategy\": \"merge\", \"delete\": true}}},\n\t\t\t\t\tElse: ... \"strategy\": \"merge\"" },
+    "streams[0].schedules[1]": { "file": "driver.go", "lines": "26-27", "snippet": "// Delay between checks of the shard topology for the streaming process.\n\tdefaultShardMonitorDelay = 5 * time.Second" },
+    "streams[0].schedules[2]": { "file": "driver.go", "lines": "32-33", "snippet": "// Time to spend for each period of backfilling a table.\n\tbackfillDuration = 1 * time.Hour" },
+    "streams[0].pull.backfill.querySketch": { "file": "backfill.go", "lines": "226-234", "snippet": "scanned, err := c.client.db.Scan(ctx, &dynamodb.ScanInput{\n\t\t\tTableName: aws.String(t.tableName), ConsistentRead: aws.Bool(true), ExclusiveStartKey: startKey,\n\t\t\tSegment: aws.Int32(int32(segment)), TotalSegments: aws.Int32(int32(t.totalBackfillSegments))," },
+    "streams[0].pull.backfill.chunking": { "file": "backfill.go", "lines": "148-160", "snippet": "if scanned.LastEvaluatedKey == nil {\n\t\t\t\tnewState.FinishedAt = time.Now()\n\t\t\t} else {\n\t\t\t\tnewStartKey, err := encodeKey(t.keyFields, scanned.LastEvaluatedKey)" },
+    "streams[0].pull.incremental.resumeTokenKind": { "file": "stream.go", "lines": "334-341", "snippet": "if lastReadSeq == \"\" {\n\t\tinput.ShardIteratorType = streamTypes.ShardIteratorTypeTrimHorizon\n\t} else {\n\t\tinput.ShardIteratorType = streamTypes.ShardIteratorTypeAfterSequenceNumber" },
+    "streams[0].pull.incremental.emitsDeletes": { "file": "capture.go", "lines": "308-312", "snippet": "streamTypes.OperationTypeInsert: \"c\",\n\tstreamTypes.OperationTypeRemove: \"d\",\n\tstreamTypes.OperationTypeModify: \"u\"," },
+    "authTierOverall": { "file": "main.go", "lines": "37-43", "snippet": "schemagen.OneOfSubSchema(\"Access Key\", AccessKeyCredentials{}, string(AWSAccessKey)),\n\tsubSchemas = append(subSchemas, schemagen.OneOfSubSchema(\"AWS IAM\", iam.AWSConfig{}, string(AWSIAM)))" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "transports[1].spec": "high",
+    "transports[0].spec.endpointConfig": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "medium",
+    "credentialModes[2]": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "medium",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "high",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].schedules": "medium",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[1]": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[].cursorField": "There is no cursor field on the document. The backfill resumes on an opaque per-segment ExclusiveStartKey (an FDB-encoded key tuple, not a document field) and the change leg resumes on a per-shard stream sequence number held in the checkpoint. _meta.approximateCreationDateTime is emitted for stream records but is never read back as a resume position — it is only compared against the in-memory backfillStreamingHorizon.",
+    "credentialModes[1].tier": "The IAM branch is implemented in github.com/estuary/connectors/go/auth/iam, which is outside the connector directory supplied. Tier is inferred from the two schema fields (aws_region, aws_role_arn) visible in the spec snapshot and the call to c.Credentials.IAMTokens.AWSCredentialsProvider(); the trust-policy setup burden on the user's side could not be read directly.",
+    "execution.continuity.customerSideAccrual": "Asserted null on the strength of the in-code comment that DynamoDB Streams are billed per GetRecords request plus the fixed 24h AWS-side trim. The connector code itself cannot prove nothing accrues on the customer's account — it never queries stream storage or cost.",
+    "transports[].spec.apiVersionPinning": "Not applicable/not visible: versioning is handled by the pinned aws-sdk-go-v2 service client packages, not by a header, path segment, or query parameter the connector sets.",
+    "streams[].name": "Stream names are the customer's own DynamoDB table names (RecommendedName = table.name), so no literal list exists. The two entries above are archetypes distinguished by whether the table's KeySchema has a RANGE sort key in addition to the HASH partition key.",
+    "changelogRediscovery": "The CHANGELOG (2026-07-30) describes mid-capture rediscovery and its jittered timing, but no rediscovery loop appears anywhere in the files provided (Pull initializes bindings once and then runs captureTable per table). It presumably lives in source-boilerplate, which was not supplied, so no rediscovery schedule is claimed."
+  }
+}

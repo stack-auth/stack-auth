@@ -1,0 +1,1935 @@
+{
+  "id": "iterable",
+  "estuaryDir": "source-iterable",
+  "displayName": "Iterable",
+  "description": "Imports Iterable marketing-automation data: campaigns, lists, templates, channels, user profiles, and per-channel engagement events (email, push, web push, in-app, SMS, purchases, custom events).",
+  "category": "marketing",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.iterable.com/api/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "Api-Key",
+        "field": "api_key",
+        "prefix": null
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "api_key",
+      "displayName": "API Key",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Iterable API Key. Iterable issues both read-only and full server-side keys; the connector probes access and silently drops the user/event streams when the key is read-only."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Replication start, pattern-constrained to YYYY-MM-DDTHH:MM:SSZ."
+    },
+    {
+      "name": "project_type",
+      "displayName": "Project Type",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "One of Email-based | UserID-based | Hybrid. Selects the users stream primary key (email vs itblUserId) and which field is non-nullable in the users schema. Spec default is UserID-based."
+    },
+    {
+      "name": "end_date",
+      "displayName": "End Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Read by source.py but NOT declared in spec.json; the code comment says it exists for integration tests only. Caps every date-window slice generator."
+    },
+    {
+      "name": "stream",
+      "displayName": "Stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of the stream to capture."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "full_refresh or incremental."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Cursor field path for incremental bindings."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace of this resource."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "campaigns_metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "campaigns/metrics",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "campaignId": "<batch of up to 20 campaign ids read from the campaigns stream>",
+            "startDateTime": "<endpoint config start_date, verbatim>",
+            "endDateTime": "<endpoint config end_date, omitted when unset>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "channels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "channels",
+          "httpMethod": "GET",
+          "recordsPath": "channels",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "message_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "messageTypes",
+          "httpMethod": "GET",
+          "recordsPath": "messageTypes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "metadata",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "metadata",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "templateId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "templates",
+          "httpMethod": "GET",
+          "recordsPath": "templates",
+          "params": {
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "templateType": "<one of Base|Blast|Triggered|Workflow>",
+            "messageMedium": "<one of Email|Push|InApp|SMS>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "profileUpdatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "user",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "list_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "listId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "lists/getUsers",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "listId": "<id of each record from the lists stream>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "email_bounce",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailBounce",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_click",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailClick",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_complaint",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailComplaint",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_open",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailOpen",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_send",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailSend",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_send_skip",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "messageId",
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailSendSkip",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_subscribe",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailSubscribe",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_unsubscribe",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "emailUnsubscribe",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "push_send",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "pushSend",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "push_send_skip",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "pushSendSkip",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "push_open",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "pushOpen",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "push_uninstall",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "pushUninstall",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "push_bounce",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "pushBounce",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "web_push_send",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "webPushSend",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "web_push_click",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "webPushClick",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "web_push_send_skip",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "webPushSendSkip",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_send",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppSend",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_open",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppOpen",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_click",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppClick",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_close",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppClose",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_delete",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppDelete",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_delivery",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppDelivery",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "in_app_send_skip",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inAppSendSkip",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "inbox_session",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inboxSession",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "inbox_message_impression",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "inboxMessageImpression",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_send",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsSend",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_bounce",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsBounce",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_click",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsClick",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_received",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsReceived",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_send_skip",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsSendSkip",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sms_usage_info",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "smsUsageInfo",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "purchase",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "purchase",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_event",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "customEvent",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "hosted_unsubscribe_click",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "email",
+        "createdAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export/data.json",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "hostedUnsubscribeClick",
+            "startDateTime": "<slice start, formatted 'YYYY-MM-DD HH:MM:SS'>",
+            "endDateTime": "<slice end, formatted 'YYYY-MM-DD HH:MM:SS'>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a single self-serve Iterable API key, sent as the `Api-Key` request header with an empty auth scheme prefix (TokenAuthenticator(token=config['api_key'], auth_header='Api-Key', auth_method='')). No OAuth app registration, no refresh token, no hosted control plane involvement. The only nuance is a capability split on Iterable's side: a read-only key still connects, but the connector probes with a Users export read and silently omits the 36 user/event streams if that probe 401s, so a full server-side key is needed for the interesting data. That is a key-scope choice inside Iterable's own UI, not extra setup work, so the tier stays T1.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull",
+      "description": "There is no backfill/incremental split. Every windowed stream (users, templates, and all 34 event streams) uses ONE request shape; the only difference between the first sweep and later runs is where the date window starts (config start_date vs. the checkpointed cursor). I filled `incremental` only and left `backfill` null rather than duplicating the same PullSpec into both slots and implying two distinct mechanisms exist.",
+      "proposedShape": {
+        "pull": {
+          "windowed": "<PullSpec>",
+          "note": "single shape; backfill is the same request with the window anchored at the configured start_date"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.incrementalParam",
+      "description": "The incremental bound is a PAIR of params (startDateTime AND endDateTime) delimiting a closed window, not a single since-param, and the serialization is `%Y-%m-%d %H:%M:%S` (space-separated, no T, no Z) which is none of iso8601 | unix_seconds | date. I set incrementalParam null and put the literal params in `params` rather than mis-declare the format. NOTE also that the cursor is NOT derived from record values: the code comments that export results are unsorted, so state is advanced to the END OF THE WINDOW after the whole window is consumed. A max-of-seen-cursor implementation would skip data.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "startParam": "startDateTime",
+          "endParam": "endDateTime",
+          "format": "strftime:%Y-%m-%d %H:%M:%S",
+          "cursorAdvance": "window_end_after_full_window",
+          "recordsOrdered": false
+        }
+      }
+    },
+    {
+      "where": "execution / streams[].schedules",
+      "description": "Pagination is replaced by adaptive DATE-WINDOW CHUNKING, which the Paginator union cannot express. Two generators: RangeSliceGenerator emits fixed 90-day windows (templates); AdjustableSliceGenerator (users + all event streams) starts at 15 days, then after each window recomputes days_per_minute / 4 (Iterable's documented 4 req/min export limit), capped at 180 days, floored back to 15, and halves the window and retries up to 6 times on ChunkedEncodingError (the server closing a too-long streaming response). Window size is therefore load-adaptive at runtime, not configured.",
+      "proposedShape": {
+        "chunking": {
+          "kind": "adaptive_time_window",
+          "initialDays": 15,
+          "defaultDays": 90,
+          "maxDays": 180,
+          "reduceFactor": 2,
+          "retriesOnTruncation": 6,
+          "targetRequestsPerMinute": 4
+        }
+      }
+    },
+    {
+      "where": "transports[0].spec / streams[].pull.*.recordsPath",
+      "description": "Three different response encodings behind one http transport. (a) The plain list endpoints return JSON with records under an envelope key (recordsPath). (b) export/data.json returns a STREAMED JSONL body (requests stream=True, iter_lines) with no envelope, so recordsPath is meaningless and is set null. (c) campaigns/metrics returns CSV, and list_users returns newline-delimited bare email strings that the connector synthesizes into {email, listId} objects. `recordsPath: null` currently conflates 'JSONL' with 'unknown'.",
+      "proposedShape": {
+        "responseEncoding": "json_envelope|jsonl_stream|csv|newline_delimited_scalars",
+        "recordsPath": "str|null (json_envelope only)"
+      }
+    },
+    {
+      "where": "streams[].pull.*.path (list_users)",
+      "description": "ListUsers builds `lists/getUsers?listId={id}` as a single path STRING, embedding the query in the path, and then re-parses listId back out of response.url to stamp it onto each record. I normalized it to path `lists/getUsers` + params {listId}, which is the same wire request but not literally what the code writes.",
+      "proposedShape": {
+        "path": "lists/getUsers",
+        "params": {
+          "listId": "<from parent>"
+        },
+        "parentStream": "lists",
+        "parentKeyInjectedFromRequestUrl": true
+      }
+    },
+    {
+      "where": "streamMode",
+      "description": "'static' is right in that the list is shipped by the connector, but the OFFERED set is conditional on credential scope at discover time: 7 streams always, plus 36 more only if an access probe (a 5-minute Users export read) does not 401. A read-only API key therefore yields a 43-stream connector that discovers 7. This is neither 'static' nor 'discovered' nor really 'mixed' in the schema's schema-derived sense.",
+      "proposedShape": {
+        "streamMode": "static",
+        "conditionalStreams": {
+          "gate": "credential capability probe",
+          "alwaysAvailable": 7,
+          "gatedBehindProbe": 36
+        }
+      }
+    },
+    {
+      "where": "streams[users].primaryKey",
+      "description": "The users primary key is CONFIG-DEPENDENT, not fixed: Email-based -> 'email', UserID-based/Hybrid -> 'itblUserId'. The schema has one primaryKey slot. I recorded ['email'] because that is what the checked-in discover snapshot emits, but see the FLAG about the default disagreeing between spec.json and source.py.",
+      "proposedShape": {
+        "primaryKey": {
+          "kind": "conditional",
+          "on": "project_type",
+          "cases": {
+            "Email-based": [
+              "email"
+            ],
+            "UserID-based": [
+              "itblUserId"
+            ],
+            "Hybrid": [
+              "itblUserId"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "where": "mechanism note vs source-iterable-native",
+      "description": "Requested comparison: this LEGACY connector does NOT use Iterable's asynchronous export-job API (submit job -> poll -> download file). It issues a SYNCHRONOUS GET to https://api.iterable.com/api/export/data.json?dataTypeName=... and streams the JSONL response body directly, which is exactly why the connector needs the ChunkedEncodingError retry ladder and adaptive window shrinking. No job id, no polling, no signed download URL appears anywhere in the source. I could not compare against source-iterable-native (out of scope for this extraction), so I state only what the legacy code does.",
+      "proposedShape": {
+        "exportStyle": "synchronous_streaming_jsonl",
+        "not": "async_job_then_download"
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_iterable/streams.py",
+      "lines": "38",
+      "snippet": "url_base = \"https://api.iterable.com/api/\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_iterable/source.py",
+      "lines": "102",
+      "snippet": "authenticator = TokenAuthenticator(token=config[\"api_key\"], auth_header=\"Api-Key\", auth_method=\"\")"
+    },
+    "execution.mode": {
+      "file": "source_iterable/streams.py",
+      "lines": "242-250",
+      "snippet": "return [StreamSlice(start_datetime, self._end_date or pendulum.now(\"UTC\"))]"
+    },
+    "configFields": {
+      "file": "source_iterable/spec.json",
+      "lines": "7-34",
+      "snippet": "\"required\": [\"start_date\", \"api_key\"]"
+    },
+    "configFields[3]": {
+      "file": "source_iterable/source.py",
+      "lines": "84,103",
+      "snippet": "start_date, end_date = config[\"start_date\"], config.get(\"end_date\")"
+    },
+    "streamMode": {
+      "file": "source_iterable/source.py",
+      "lines": "104-121",
+      "snippet": "streams = [ Campaigns(...), ... ]\n        if all_streams_accessible():\n            streams.extend(["
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_iterable/streams.py",
+      "lines": "66-70",
+      "snippet": "def next_page_token(self, response) -> Optional[Mapping[str, Any]]:\n        \"\"\"Iterable API does not support pagination\"\"\"\n        return None"
+    },
+    "streams[*].pull.*.recordsPath": {
+      "file": "source_iterable/streams.py",
+      "lines": "106-110",
+      "snippet": "response_json = response.json() or {}\n        records = response_json.get(self.data_field, [])"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_iterable/streams.py",
+      "lines": "384-389",
+      "snippet": "class Campaigns(IterableStream):\n    data_field = \"campaigns\"\n    def path(self, **kwargs) -> str: return \"campaigns\""
+    },
+    "streams[1].pull.snapshot": {
+      "file": "source_iterable/streams.py",
+      "lines": "405-414,422",
+      "snippet": "return \"campaigns/metrics\"\n        params[\"campaignId\"] = stream_slice.get(\"campaign_ids\")\n        params[\"startDateTime\"] = self.start_date"
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_iterable/streams.py",
+      "lines": "472-476",
+      "snippet": "class Channels(IterableStream):\n    data_field = \"channels\"\n    def path(self, **kwargs) -> str: return \"channels\""
+    },
+    "streams[3].pull.snapshot.path": {
+      "file": "source_iterable/streams.py",
+      "lines": "348-352",
+      "snippet": "class Lists(IterableStream):\n    data_field = \"lists\"\n    def path(self, **kwargs) -> str: return \"lists\""
+    },
+    "streams[4].pull.snapshot.path": {
+      "file": "source_iterable/streams.py",
+      "lines": "479-484",
+      "snippet": "data_field = \"messageTypes\"\n    name = \"message_types\"\n    def path(self, **kwargs) -> str: return \"messageTypes\""
+    },
+    "streams[5].pull.snapshot": {
+      "file": "source_iterable/streams.py",
+      "lines": "487-492",
+      "snippet": "class Metadata(IterableStream):\n    primary_key = None\n    data_field = \"results\""
+    },
+    "streams[6].pull.incremental": {
+      "file": "source_iterable/streams.py",
+      "lines": "722-735",
+      "snippet": "class Templates(IterableExportStreamRanged):\n    template_types = [\"Base\", \"Blast\", \"Triggered\", \"Workflow\"]\n    message_types = [\"Email\", \"Push\", \"InApp\", \"SMS\"]"
+    },
+    "streams[7].cursorField": {
+      "file": "source_iterable/streams.py",
+      "lines": "746-748",
+      "snippet": "class Users(IterableExportStreamAdjustableRange):\n    data_field = \"user\"\n    cursor_field = \"profileUpdatedAt\""
+    },
+    "streams[8].pull.snapshot": {
+      "file": "source_iterable/streams.py",
+      "lines": "355-373",
+      "snippet": "return f\"lists/{self.data_field}?listId={stream_slice['list_id']}\""
+    },
+    "streams[*].pull.incremental.path": {
+      "file": "source_iterable/streams.py",
+      "lines": "170-171,192-207",
+      "snippet": "def path(self, **kwargs) -> str: return \"export/data.json\""
+    },
+    "streams[*].pull.incremental.params": {
+      "file": "source_iterable/streams.py",
+      "lines": "167,200-206",
+      "snippet": "self.stream_params = {\"dataTypeName\": self.data_field}\n        params.update({\"startDateTime\": stream_slice.start_date.strftime(\"%Y-%m-%d %H:%M:%S\"), ...})"
+    },
+    "streams[*].cursorField": {
+      "file": "source_iterable/streams.py",
+      "lines": "160,215",
+      "snippet": "cursor_field = \"createdAt\"\n        self.state = {self.cursor_field: stream_slice.end_date}"
+    },
+    "streams[*].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "n/a (43 discovered bindings)",
+      "snippet": "\"recommendedName\": \"email_send\", \"key\": [\"/messageId\", \"/email\"]"
+    },
+    "streams[*].supportedSyncModes": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "n/a",
+      "snippet": "\"resourceConfig\": {\"stream\": \"users\", \"syncMode\": \"incremental\", \"cursorField\": [\"profileUpdatedAt\"]}"
+    },
+    "unionMisfits[2].proposedShape": {
+      "file": "source_iterable/slice_generators.py",
+      "lines": "45,109-113",
+      "snippet": "RANGE_LENGTH_DAYS: int = 90\n    REQUEST_PER_MINUTE_LIMIT = 4\n    INITIAL_RANGE_DAYS: int = 15"
+    },
+    "unionMisfits[7].proposedShape": {
+      "file": "source_iterable/streams.py",
+      "lines": "217-233",
+      "snippet": "Passing stream=True argument to requests.session.send method to avoid\n        loading whole analytics report content into memory."
+    }
+  },
+  "confidence": {
+    "id": "high",
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].pull.incremental.path": "high",
+    "streams[*].pull.incremental.params": "high",
+    "streams[*].pull.snapshot.path": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[7].primaryKey": "low",
+    "streams[*].writeDisposition": "medium",
+    "streams[5].primaryKey": "medium",
+    "streams[8].primaryKey": "low",
+    "streams[1].pull.snapshot.recordsPath": "high",
+    "configFields": "high",
+    "configFields[3]": "medium",
+    "category": "high"
+  },
+  "abstained": {
+    "execution.defaultSchedule": "No schedule, interval, cron, or Go duration appears anywhere in the connector or in estuary_cdk/shim_airbyte_cdk.py. Cadence is entirely the Flow runtime's, not the connector's.",
+    "streams[*].schedules": "Same reason: nothing per-binding either. The resourceConfigSchema exposes only stream / syncMode / namespace / cursorField.",
+    "execution.continuity": "Set null deliberately: this is a stateless polling HTTP source. No server-side artifact is created on Iterable's side (no slot, no export job id, no consumer group), nothing accrues on the customer's infra if we stop, and the only 'loss' from pausing is a longer catch-up window - Iterable's export endpoint accepts arbitrary historical startDateTime, so there is no retention cliff visible in the code. If Iterable enforces an export-history retention limit it is not encoded here.",
+    "streams[*].pull.backfill": "No distinct backfill request shape exists in the code; see unionMisfits[0]. Left null rather than duplicating the incremental spec and implying a second mechanism.",
+    "streams[*].pull.incremental.incrementalParam": "The bound is a start/end PAIR and the datetime format is strftime '%Y-%m-%d %H:%M:%S', which matches none of the allowed format enum values. Recorded literally in `params` instead; see unionMisfits[1].",
+    "streams[*].pull.incremental.recordsPath": "Not applicable rather than unknown: export/data.json returns a streamed JSONL body with no envelope (response.iter_lines(), json.loads per line).",
+    "transports[0].spec.apiVersionPinning": "No version header, query param, or path segment beyond the constant '/api/' prefix. There is no evidence '/api/' is a version segment, so I did not claim it as one.",
+    "transports[0].spec.defaultHeaders": "None set. Only the Api-Key auth header is added, plus a (60, 300) connect/read timeout which is not a header.",
+    "discovery": "streamMode is static; the connector ships a fixed 43-stream list and performs no schema introspection against the customer's account. The credential-capability probe gates which of the fixed streams are offered but discovers nothing new; recorded as unionMisfits[5] instead.",
+    "streams[5].primaryKey": "Metadata sets primary_key = None in code; the ['/_meta/row_id'] key comes from the discover snapshot, i.e. it is Flow's synthetic fallback, not a source key.",
+    "streams[8].primaryKey": "list_users is keyed ['/listId'] by discover, but the stream emits one record per email per list, so listId alone is not unique. Recorded as-discovered; I could not determine the intended key and did not invent one.",
+    "streams[*].writeDisposition": "Inferred from the presence of a real key plus Flow's default reduction, not stated anywhere in the connector. No tombstone/delete emission exists in any stream, so 'snapshot_with_tombstone' is definitely wrong; the merge/append call is the inference."
+  }
+}

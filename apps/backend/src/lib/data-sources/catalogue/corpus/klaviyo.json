@@ -1,0 +1,808 @@
+{
+  "id": "klaviyo",
+  "estuaryDir": "source-klaviyo",
+  "displayName": "Klaviyo",
+  "description": "Imports Klaviyo email/SMS marketing data — campaigns, flows, events, profiles, lists, metrics, templates and suppressed profiles — from the Klaviyo REST API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://a.klaviyo.com/api/" },
+        "defaultHeaders": {
+          "Accept": "application/json",
+          "Revision": "2023-10-15"
+        },
+        "apiVersionPinning": "Request header `Revision`; connector-wide default \"2023-10-15\", overridden per-stream (the `events` stream pins \"2024-07-15\"). ArchivedRecordsStream inherits the revision of the stream that spawned it."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Klaviyo private API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "Authorization",
+        "field": "api_key",
+        "prefix": "Klaviyo-API-Key "
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "api_key",
+      "displayName": "Api Key",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Klaviyo API Key."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC date-time (pattern ^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z). Data before this is not replicated; if omitted, all data is replicated."
+    },
+    {
+      "name": "stream",
+      "displayName": "Stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of the stream to capture."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enum: full_refresh | incremental."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Cursor field(s) for incremental sync."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace of this resource."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "filter": "greater-or-equal(updated_at,<cursor>),equals(messages.channel,'email')",
+            "sort": "updated_at"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "filter": "greater-or-equal(updated_at,<cursor>),equals(messages.channel,'email')",
+            "sort": "updated_at"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "datetime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "filter": "greater-or-equal(datetime,<cursor>),less-or-equal(datetime,<now-110min>)",
+            "sort": "datetime"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "filter": "greater-or-equal(datetime,<cursor>),less-or-equal(datetime,<now-110min>)",
+            "sort": "datetime"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "global_exclusions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page[size]": "100",
+            "additional-fields[profile]": "predictive_analytics,subscriptions",
+            "filter": "greater-than(updated,<cursor>)",
+            "sort": "updated"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page[size]": "100",
+            "additional-fields[profile]": "predictive_analytics,subscriptions",
+            "filter": "greater-than(updated,<cursor>)",
+            "sort": "updated"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "lists",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "metrics",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "flows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "flows",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "filter": "greater-or-equal(updated,<cursor>)", "sort": "updated" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "flows",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "filter": "greater-or-equal(updated,<cursor>)", "sort": "updated" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "templates",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "filter": "greater-or-equal(updated,<cursor>)", "sort": "updated" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "templates",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "filter": "greater-or-equal(updated,<cursor>)", "sort": "updated" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "profiles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page[size]": "100",
+            "additional-fields[profile]": "predictive_analytics,subscriptions",
+            "filter": "greater-than(updated,<cursor>)",
+            "sort": "updated"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page[size]": "100",
+            "additional-fields[profile]": "predictive_analytics,subscriptions",
+            "filter": "greater-than(updated,<cursor>)",
+            "sort": "updated"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "filter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The spec has exactly two endpoint fields, `api_key` (required, secret) and `start_date` (optional). The key is sent verbatim in an `Authorization: Klaviyo-API-Key <key>` header built inline in the stream base class. The connector's entrypoint constructs the Airbyte shim with `oauth2=None`, so there is no OAuth flow, no client id/secret, and no refresh token anywhere in the connector. A Klaviyo private API key is self-serve from the Klaviyo UI, so the user does a single copy-paste: T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "The paginator is a genuine hybrid that neither `next_url` nor a plain single-token `cursor` describes. The connector parses `links.next` (a fully-qualified Klaviyo URL) with urlparse, then returns the ENTIRE decoded query string as the next-page token dict — and `request_params` returns that dict verbatim as the next request's params, discarding everything it would otherwise have computed. So the token is extracted from a URL's query (hence `cursor` + `tokenFrom: url_query`, NOT `next_url`), but what is resent is the whole parameter set (`page[cursor]` plus whatever `filter`, `sort`, `page[size]`, `additional-fields[profile]` Klaviyo echoed into the link), not one named parameter. The path is unchanged because Klaviyo's next link keeps the same path. Classifying this as `next_url` would be wrong (the URL is never followed verbatim; only its query survives) and classifying it as a single-param `cursor` understates that all params are replaced wholesale.",
+      "proposedShape": {
+        "type": "cursor_query_replacement",
+        "cursorPath": "links.next",
+        "tokenFrom": "url_query",
+        "tokenTo": "query_param",
+        "carriesParam": "page[cursor]",
+        "replacesAllParams": true,
+        "terminateOn": "absent_token"
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "The incremental bound is not `param=value`. It is a Klaviyo filter-expression string packed into one `filter` query param, e.g. `greater-or-equal(updated,2024-01-01T00:00:00+00:00)` — and for `events` two clauses comma-joined, `greater-or-equal(datetime,X),less-or-equal(datetime,Y)`. Streams also declare which comparison operator the endpoint supports (`greater-or-equal` by default; `profiles`/`global_exclusions` only support `greater-than`, and compensate by subtracting one second from the stored cursor). `{param, format}` cannot express operator choice, the off-by-one-second compensation, or the two-sided bound.",
+      "proposedShape": {
+        "param": "filter",
+        "encoding": "predicate_expression",
+        "template": "<op>(<cursorField>,<isoTimestamp>)",
+        "lowerBoundOperator": "greater-or-equal|greater-than",
+        "lowerBoundSkewSeconds": -1,
+        "upperBound": { "operator": "less-or-equal", "lagMinutes": 110, "appliesTo": ["events"] },
+        "additionalClauses": ["equals(messages.channel,'email')", "equals(archived,true)"]
+      }
+    },
+    {
+      "where": "streams[campaigns].pull, streams[flows].pull",
+      "description": "`campaigns` and `flows` each perform TWO full paginated sweeps per sync against the SAME path, differing only in filter and in which state sub-key they read/write. The mixin first reads the normal sweep, then re-reads the same endpoint with `equals(archived,true)` AND-ed on, checkpointing archived progress under a separate `archived` sub-object in the stream state. The schema's backfill/incremental/snapshot triple has no slot for 'a second, differently-filtered leg of the same binding with its own independent cursor'.",
+      "proposedShape": {
+        "legs": [
+          { "name": "live", "filterSuffix": null, "statePath": "<cursorField>" },
+          { "name": "archived", "filterSuffix": "equals(archived,true)", "statePath": "archived.<cursorField>" }
+        ]
+      }
+    },
+    {
+      "where": "streams[lists].pull, streams[metrics].pull",
+      "description": "`lists` and `metrics` are 'semi-incremental': the Klaviyo endpoints support neither filtering nor sorting on the cursor, so the connector re-reads the entire collection every sync and drops records whose cursor is not strictly greater than the stored one, using a raw STRING comparison rather than a parsed timestamp. Modelled here as `snapshot` because the HTTP request is an unbounded full re-read, but the binding is nonetheless advertised as `incremental` in the discovered resource config, so `snapshot` alone is misleading.",
+      "proposedShape": { "kind": "full_read_client_side_cursor", "comparison": "string_gt", "advertisedSyncMode": "incremental" }
+    },
+    {
+      "where": "streams[global_exclusions]",
+      "description": "`global_exclusions` is not a distinct endpoint: it subclasses the `profiles` stream, issues the identical request to `/api/profiles`, and then discards every record lacking `attributes.subscriptions.email.marketing.suppressions`. Two bindings therefore duplicate the same (expensive, 100-per-page) traversal of the profiles collection. `streams[]` has no way to express 'same source read, different post-filter'.",
+      "proposedShape": { "derivedFrom": "profiles", "postFilter": "attributes.subscriptions.email.marketing.suppressions is non-empty" }
+    },
+    {
+      "where": "streams[events].pull",
+      "description": "The `events` stream performs an out-of-band enrichment that no PullSpec field describes: on the first response of a sweep (and again every 100000 records) it synchronously walks four hard-coded, fully-qualified `/api/campaigns/` URLs to completion — email/sms x live/archived — with its own inline while-loop pagination, building an in-memory set of campaign ids. Each event whose `event_properties.$message` is in that set gets a synthesized top-level `campaign_id`; `event_properties.$flow` is copied to a top-level `flow_id`. This is a second request pattern hidden inside a single binding, and its own pagination loop follows `links.next` VERBATIM as a full URL (`url = data['links']['next']`), i.e. the enrichment loop is `next_url` while the main paginator is not.",
+      "proposedShape": {
+        "enrichment": {
+          "trigger": "first page of sweep, then every 100000 records",
+          "sourcePaths": ["campaigns?filter=equals(messages.channel,'email')", "campaigns?filter=equals(messages.channel,'sms')", "campaigns?filter=and(equals(messages.channel,'email'),equals(archived,true))", "campaigns?filter=and(equals(messages.channel,'sms'),equals(archived,true))"],
+          "paginator": { "type": "next_url", "nextUrlPath": "links.next" },
+          "producesFields": ["campaign_id", "flow_id"]
+        }
+      }
+    },
+    {
+      "where": "transports[0].spec.apiVersionPinning",
+      "description": "`apiVersionPinning` is a single string, but the pin is per-stream: the base class sends `Revision: 2023-10-15` while `events` sends `Revision: 2024-07-15`. A connector-level field cannot hold a per-binding pin.",
+      "proposedShape": { "mechanism": "header", "header": "Revision", "default": "2023-10-15", "overrides": { "events": "2024-07-15" } }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "This is a legacy airbyte-cdk connector run through estuary-cdk's `shim_airbyte_cdk.CaptureShim`. Neither the connector nor the resource config schema (whose only fields are stream/syncMode/cursorField/namespace/_meta) expresses any interval or cron; scheduling is imposed entirely by the surrounding Flow runtime. There is no in-repo schedule fact to record, which is different from 'the schedule is continuous'.",
+      "proposedShape": { "kind": "externally_scheduled", "description": "cadence set by the host runtime, not the connector" }
+    },
+    {
+      "where": "connector-level (mechanism note vs source-klaviyo-native)",
+      "description": "Requested comparison: this legacy connector is an Airbyte-Python-CDK `AbstractSource` (sync `requests`, `HttpStream`, `next_page_token`/`request_params`, `airbyte-cdk = ^0.52`) that only reaches Flow through estuary-cdk's `airbyte-shim` compatibility layer, constructed with `oauth2=None`. `source-klaviyo-native` is by naming convention the rewrite onto estuary-cdk's own async capture framework, and the two therefore differ materially in mechanism even where the wire protocol is identical. I did not read `source-klaviyo-native` (out of scope for this task), so I assert nothing about ITS paginator, streams, or auth — do not assume the values in this document carry over to it.",
+      "proposedShape": { "framework": "airbyte_cdk_v0.52_via_estuary_shim", "notComparedAgainst": "source-klaviyo-native" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "73",
+      "snippet": "    url_base = \"https://a.klaviyo.com/api/\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "95-100",
+      "snippet": "        return {\n            \"Accept\": \"application/json\",\n            \"Revision\": self.api_revision,"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "75, 430",
+      "snippet": "    api_revision = \"2023-10-15\"\n    api_revision = \"2024-07-15\"  # Events"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "99",
+      "snippet": "            \"Authorization\": f\"Klaviyo-API-Key {self._api_key}\","
+    },
+    "credentialModes[0].tier": {
+      "file": "source_klaviyo/__main__.py",
+      "lines": "10-14",
+      "snippet": "    shim_airbyte_cdk.CaptureShim(\n        delegate=SourceKlaviyo(),\n        oauth2=None,"
+    },
+    "configFields[0]": {
+      "file": "source_klaviyo/spec.json",
+      "lines": "9-15, 26",
+      "snippet": "      \"api_key\": {\n        \"airbyte_secret\": true,\n      \"required\": [\"api_key\"]"
+    },
+    "configFields[1]": {
+      "file": "source_klaviyo/spec.json",
+      "lines": "16-24",
+      "snippet": "      \"start_date\": {\n        \"pattern\": \"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$\","
+    },
+    "configFields[2]": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "resourceConfigSchema.properties",
+      "snippet": "\"stream\": {\"description\": \"Name of this stream\"}, \"syncMode\": {\"enum\": [\"full_refresh\", \"incremental\"]}"
+    },
+    "streamMode": {
+      "file": "source_klaviyo/source.py",
+      "lines": "51-60",
+      "snippet": "        return [\n            Campaigns(api_key=api_key, start_date=start_date),\n            Events(api_key=api_key, start_date=start_date),"
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "111-117",
+      "snippet": "        next = links.get(\"next\")\n        next_url = urllib.parse.urlparse(next)\n        return {str(k): str(v) for (k, v) in urllib.parse.parse_qsl(next_url.query)}"
+    },
+    "streams[*].pull.*.paginator.tokenTo": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "126-129",
+      "snippet": "        if next_page_token:\n            return next_page_token\n        return {\"page[size]\": self.page_size} if self.page_size else {}"
+    },
+    "streams[*].pull.*.recordsPath": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "134-135",
+      "snippet": "        response_json = response.json()\n        for record in response_json.get(\"data\", []):"
+    },
+    "streams[*].pull.incremental.incrementalParam": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "232-253",
+      "snippet": "                params[\"filter\"] = f\"{self.lower_bound_comparison_operator}({self.cursor_field},{latest_cursor.isoformat()})\"\n            params[\"sort\"] = self.cursor_field"
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "383-390",
+      "snippet": "class Campaigns(ArchivedRecordsMixin, IncrementalKlaviyoStream):\n    cursor_field = \"updated_at\"\n        return \"campaigns\""
+    },
+    "streams[0].pull.incremental.params": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "387",
+      "snippet": "    additional_filter_condition = \"equals(messages.channel,'email')\""
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "425-439",
+      "snippet": "class Events(IncrementalKlaviyoStream):\n    cursor_field = \"datetime\"\n        return \"events\""
+    },
+    "streams[1].pull.incremental.params": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "25, 240-251",
+      "snippet": "LAG = 110\n                    upper_bound = datetime.now(tz=UTC) - timedelta(minutes=LAG)\n                    params[\"filter\"] += f\",less-or-equal({self.cursor_field},{upper_bound.isoformat()})\""
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "403-413",
+      "snippet": "class GlobalExclusions(Profiles):\n    This stream takes data from 'profiles' endpoint, but suppressed records only"
+    },
+    "streams[3].pull.snapshot.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "393-400",
+      "snippet": "class Lists(SemiIncrementalKlaviyoStream):\n    cursor_field = \"updated\"\n        return \"lists\""
+    },
+    "streams[4].pull.snapshot.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "416-422",
+      "snippet": "class Metrics(SemiIncrementalKlaviyoStream):\n    cursor_field = \"updated\"\n        return \"metrics\""
+    },
+    "streams[3].pull.snapshot": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "265-266, 289",
+      "snippet": "class SemiIncrementalKlaviyoStream(KlaviyoStream, ABC):\n    \"\"\"...cursor field, but underlying API does not support either sorting or filtering\"\"\"\n            if starting_point and record[self.cursor_field] > starting_point or not starting_point:"
+    },
+    "streams[5].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "501-508",
+      "snippet": "class Flows(ArchivedRecordsMixin, IncrementalKlaviyoStream):\n    cursor_field = \"updated\"\n        return \"flows\""
+    },
+    "streams[6].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "511-518",
+      "snippet": "class EmailTemplates(IncrementalKlaviyoStream):\n    cursor_field = \"updated\"\n        return \"templates\""
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "359-370",
+      "snippet": "class Profiles(IncrementalKlaviyoStream):\n    cursor_field = \"updated\"\n        return \"profiles\""
+    },
+    "streams[7].pull.incremental.params": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "365-366, 379",
+      "snippet": "    lower_bound_comparison_operator = \"greater-than\"\n    page_size = 100\n        params.update({\"additional-fields[profile]\": \"predictive_analytics,subscriptions\"})"
+    },
+    "streams[*].primaryKey": {
+      "file": "acmeCo/flow.yaml",
+      "lines": "21-22 (repeated per collection)",
+      "snippet": "    key:\n      - /id"
+    },
+    "streams[*].writeDisposition": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "documentSchema.then",
+      "snippet": "\"then\": {\"reduce\": {\"delete\": true, \"strategy\": \"merge\"}}"
+    },
+    "streams[*].supportedSyncModes": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "resourceConfigSchema.properties.syncMode",
+      "snippet": "\"enum\": [\"full_refresh\", \"incremental\"]"
+    },
+    "unionMisfits[2]": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "318-322, 355-356",
+      "snippet": "        archived_filter = \"equals(archived,true)\"\n        yield from super().read_records(...)\n        yield from self.archived_campaigns.read_records(...)"
+    },
+    "unionMisfits[5]": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "443-446, 459-461",
+      "snippet": "        urls = [\"https://a.klaviyo.com/api/campaigns/?filter=and(equals(messages.channel,'email'),equals(archived,true))\", ...]\n                    if data[\"links\"][\"next\"] is not None:\n                        url = data[\"links\"][\"next\"]"
+    },
+    "unionMisfits[8]": {
+      "file": "pyproject.toml",
+      "lines": "8-10",
+      "snippet": "airbyte-cdk = \"^0.52\"\nestuary-cdk = {path=\"../estuary-cdk\", develop = true, extras = [\"airbyte-shim\"]}"
+    },
+    "execution.mode": {
+      "file": "source_klaviyo/streams.py",
+      "lines": "70",
+      "snippet": "class KlaviyoStream(HttpStream, ABC):"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[1].pull.incremental.path": "high",
+    "streams[2].pull.incremental.path": "high",
+    "streams[3].pull.snapshot.path": "high",
+    "streams[4].pull.snapshot.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[7].pull.incremental.path": "high",
+    "streams[*].pull.*.paginator.type": "high",
+    "streams[*].pull.*.paginator.tokenFrom": "high",
+    "streams[*].pull.*.paginator.tokenTo": "high",
+    "streams[*].pull.*.paginator.cursorParam": "medium",
+    "streams[*].pull.*.paginator.terminateOn": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].writeDisposition": "medium",
+    "streams[*].supportedSyncModes": "high",
+    "streams[3].pull.snapshot": "medium",
+    "streams[4].pull.snapshot": "medium",
+    "streams[*].pull.backfill": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "category": "high"
+  },
+
+  "abstained": {
+    "streams[*].pull.*.paginator.cursorParam": "Recorded as \"page[cursor]\" from Klaviyo's documented cursor pagination (linked in the code comment at streams.py:105), NOT from a literal in this repo. The connector never names the parameter: it copies every query parameter out of `links.next` wholesale. If Klaviyo renamed or added parameters the connector would carry them through unchanged, so treat the specific name as inferred rather than mined.",
+    "streams[*].pull.*.paginator.pageSize": "Only `Profiles` (and its subclass `GlobalExclusions`) sets `page_size = 100`; the base class leaves `page_size = None`, so no `page[size]` is sent for every other stream and Klaviyo's server-side default applies. The per-stream `state_checkpoint_interval` values (200 for events, 50 for flows, 10 for email_templates) are described in comments as the API maximum page size but are NOT sent as request parameters, so they are not page sizes in the request sense and are deliberately not recorded as such.",
+    "execution.defaultSchedule": "No interval, cron, or duration appears anywhere in the connector or in its resource config schema (stream / syncMode / cursorField / namespace / _meta only). Cadence is imposed by the Flow runtime that invokes the shim, which is outside this connector's source. Set null rather than guessing an interval.",
+    "streams[*].schedules": "Same reason as execution.defaultSchedule — the per-binding resource config has no schedule field. Emitted as empty lists rather than fabricated intervals.",
+    "streams[*].pull.backfill": "The connector has no distinct backfill leg: the same request is issued whether or not state exists, differing only in whether the `filter` lower bound comes from stream state or from the optional `start_date`. If `start_date` is also absent, no `filter` and no `sort` are sent at all and the endpoint is read unbounded. The backfill PullSpec is therefore recorded as identical to the incremental one; do not read it as evidence of a separate historical strategy.",
+    "streams[*].writeDisposition": "Recorded as \"merge\" from the discover snapshot's `reduce: {strategy: merge, delete: true}` on a `/id`-keyed collection. The connector itself never emits deletions — nothing sets `_meta.op = \"d\"` — so the tombstone branch of that schema is dead in practice and \"snapshot_with_tombstone\" would be wrong.",
+    "streams[3].pull / streams[4].pull": "`lists` and `metrics` are classified as `snapshot` because the HTTP request is an unfiltered full re-read, but they are advertised as `incremental` bindings with a client-side string-comparison cursor. Neither `snapshot` nor `incremental` alone is faithful; see the corresponding unionMisfit before relying on this classification.",
+    "transports (events campaign enrichment)": "The `events` stream's hard-coded `/api/campaigns/` enrichment calls the same host and auth as the primary transport, so it is NOT recorded as a sidecar transport. It is a second request pattern inside one binding; captured as a unionMisfit instead.",
+    "source-klaviyo-native comparison": "Only `source-klaviyo` and `estuary-cdk` were in scope for this extraction. The mechanism difference asserted in the final unionMisfit is grounded in what this connector is (airbyte-cdk ^0.52 via the estuary shim, oauth2=None) and in the `-native` naming convention, not in a reading of `source-klaviyo-native`. No claim is made about that connector's paths, paginator, or credential modes."
+  }
+}

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, PlugsConnectedIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -528,6 +528,24 @@ export const ALL_APPS_FRONTEND = {
         <p>Workflows lets you write durable background automations in TypeScript and run them on Hexclave&apos;s infrastructure.</p>
         <p>Trigger them from platform events like <code>user.created</code>, from your own custom events, or on a cron schedule, and let the engine handle retries, sleeps, and versioning for you.</p>
         <p>Every run is inspectable in the dashboard down to the individual step, so you can see exactly where an automation is and replay it when something goes wrong.</p>
+      </>
+    ),
+  },
+  "data-sources-alpha": {
+    icon: PlugsConnectedIcon,
+    // As with Deployments and Workflows, only the app id carries the `-alpha`
+    // suffix — the route stays /projects/<id>/data-sources, and the source
+    // detail route /data-sources/<id> matches as a child of it.
+    href: "data-sources",
+    navigationItems: [
+      { displayName: "Sources", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Data Sources imports data from the tools you already use, like Stripe, Klaviyo and Intercom, on a schedule you control.</p>
+        <p>Imported data sits alongside your own users, teams and events, so one query can match a Stripe customer to the user who signed up with the same email.</p>
+        <p>Credentials are encrypted at rest and can never be read back. Every sync shows its status, duration, rows synced, and the exact error if something breaks.</p>
       </>
     ),
   },

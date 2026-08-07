@@ -1,0 +1,799 @@
+{
+  "id": "mailchimp-native",
+  "estuaryDir": "source-mailchimp-native",
+  "displayName": "Mailchimp",
+  "description": "Imports Mailchimp Marketing audiences, members, segments, tags, interests, campaigns, automations and per-recipient email engagement activity.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{dc}.api.mailchimp.com/3.0",
+          "placeholders": {
+            "dc": "Resolved once at connector startup by `resolve_base_url`, differently per credential mode. API Key mode: the substring after the FINAL '-' of the key itself (rpartition); a key with no suffix raises a user-facing ValidationError. OAuth mode: the connector GETs https://login.mailchimp.com/oauth2/metadata with the access token and uses the returned `api_endpoint` verbatim, appending '/3.0' — so in that mode the whole origin, not just {dc}, comes from the lookup."
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: the literal `/3.0` at the end of the base URL. No version header or query param is sent."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key (HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "",
+        "passwordField": "credentials.api_key"
+      }
+    },
+    {
+      "name": "OAuth (long-lived access token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://login.mailchimp.com/oauth2/authorize",
+        "tokenUrl": "https://login.mailchimp.com/oauth2/token",
+        "scopes": [],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "schedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Nothing is lost by pausing: every incremental leg is a server-side time-window filter (`since_*`/`before_*`, or `since` for email-activity) anchored on our own checkpoint, so a longer pause simply widens the next window. Two soft edges exist. (1) `email_activity`'s dedup suppression lives in the CDK's in-process `emitted_changes_cache`, so a restart re-emits events inside the 10-minute lookback — duplicates only, and the collection key absorbs them. (2) `campaigns` is filtered on `create_time`, which never changes, so campaign mutations that occur while paused are never observed by the incremental leg at all; only the daily cron re-backfill recovers them.",
+      "resumeWindow": "unbounded — no server-side retention window is consumed",
+      "releasedOnShutdown": true,
+      "notes": "Pure poll-mode HTTP connector. It creates no slot, publication, subscription, scratch table, consumer group, webhook, or batch job on Mailchimp's side — every request is a plain GET. Nothing accrues on the customer's infra between cron ticks. Parent IDs (list ids) are re-resolved from `/lists` on every connector startup, and `_patch_missing_subtask_states` seeds fresh per-list subtasks for lists created while we were stopped, so a long gap does not orphan new lists."
+    }
+  },
+
+  "configFields": [
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "type": "date",
+      "description": "UTC date and time in the format YYYY-MM-DDTHH:MM:SSZ. Data generated before this is not replicated. Defaults to 30 days before the present. Bounds every backfill window and the email-activity `since`."
+    },
+    {
+      "name": "credentials.api_key",
+      "displayName": "API Key",
+      "required": false,
+      "secret": true,
+      "type": "string",
+      "description": "Required when the 'API Key' authentication variant is selected. Mailchimp API key including its data center suffix (e.g. ends in -us21); the suffix after the final '-' becomes the {dc} of the base URL and a key without one is rejected at validation. Sent as HTTP Basic with an empty, non-user-supplied username."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": false,
+      "secret": true,
+      "type": "string",
+      "description": "Required when the 'OAuth Credentials' variant is selected. Standalone the user must register their own Mailchimp OAuth app; Estuary's hosted control plane instead fills this from its pre-registered provider ('x-oauth2-provider': 'mailchimp')."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": false,
+      "secret": true,
+      "type": "string",
+      "description": "Required when the 'OAuth Credentials' variant is selected. Same provenance as client_id."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": false,
+      "secret": true,
+      "type": "string",
+      "description": "Required when the 'OAuth Credentials' variant is selected. Mailchimp issues a single non-expiring access token and no refresh token, so this is the durable secret (the CDK's LongLivedClientCredentialsOAuth2Credentials shape) and is replayed as 'Authorization: Bearer <token>' on every request without any refresh exchange. With this variant the data center comes from the OAuth metadata endpoint, not from the token."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "lists",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": { "exclude_fields": "lists._links,_links" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "automations",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "automations",
+          "httpMethod": "GET",
+          "recordsPath": "automations",
+          "params": { "exclude_fields": "automations._links,_links" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "interests",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/interest-categories/{category_id}/interests",
+          "httpMethod": "GET",
+          "recordsPath": "interests",
+          "params": { "exclude_fields": "interests._links,_links" },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id, sorted by string form for determinism.",
+            "category_id": "Drained, per list_id, from GET lists/{list_id}/interest-categories with params fields=categories.id. Two-level fan-out: one leaf request per (list, category)."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "segment_members",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/segments/{segment_id}/members",
+          "httpMethod": "GET",
+          "recordsPath": "members",
+          "params": {
+            "include_cleaned": "true",
+            "include_transactional": "true",
+            "include_unsubscribed": "true"
+          },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id.",
+            "segment_id": "Drained, per list_id, from GET lists/{list_id}/segments with params fields=segments.id. Segment ids are integers and may legitimately be 0."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "interest_categories",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/interest-categories",
+          "httpMethod": "GET",
+          "recordsPath": "categories",
+          "params": { "exclude_fields": "categories._links,_links" },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id; one leaf request per list."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/tag-search",
+          "httpMethod": "GET",
+          "recordsPath": "tags",
+          "params": { "exclude_fields": "tags._links,_links" },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id; the id is also stamped into _meta because the tag-search response omits it."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "automation_emails",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 3600 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "automations/{workflow_id}/emails",
+          "httpMethod": "GET",
+          "recordsPath": "emails",
+          "params": { "exclude_fields": "emails._links,_links" },
+          "pathPlaceholders": {
+            "workflow_id": "Drained from GET /automations with params fields=automations.id; an empty id is rejected rather than templated into 'automations//emails'. Stamped into _meta."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "create_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 300 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": {
+            "sort_field": "create_time",
+            "sort_dir": "ASC",
+            "exclude_fields": "campaigns._links,_links",
+            "before_create_time": "<computed: cutoff − 1s, the frozen backfill window end, ISO-8601>"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_create_time", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": {
+            "sort_field": "create_time",
+            "sort_dir": "ASC",
+            "exclude_fields": "campaigns._links,_links",
+            "before_create_time": "<computed: last fully-elapsed second (now − 1s), ISO-8601>"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_create_time", "format": "iso8601" }
+        }
+      }
+    },
+    {
+      "name": "email_activity",
+      "origin": "static",
+      "primaryKey": ["/_meta/campaign_id", "/_meta/email_id", "/action", "/timestamp"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 1200 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "reports/{campaign_id}/email-activity",
+          "httpMethod": "GET",
+          "recordsPath": "emails",
+          "params": { "exclude_fields": "emails._links,_links" },
+          "pathPlaceholders": {
+            "campaign_id": "Drained once from GET /reports with params fields=reports.id,reports.send_time,reports.opens.last_open,reports.clicks.last_click,reports.bounces.hard_bounces,reports.bounces.soft_bounces, then filtered to campaigns with an open/click after start_date OR send_time >= start_date. The surviving id set IS the backfill page cursor; one campaign is drained per invocation and removed by a JSON merge patch."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "reports/{campaign_id}/email-activity",
+          "httpMethod": "GET",
+          "recordsPath": "emails",
+          "params": { "exclude_fields": "emails._links,_links" },
+          "pathPlaceholders": {
+            "campaign_id": "Re-drained from GET /reports on EVERY poll with the same fields projection, then gated: descend only into campaigns whose opens.last_open or clicks.last_click is strictly after (cursor − 10min), or whose send_time is within the last 5 days and which have any hard/soft bounces. Bounces move no recency field, so the 5-day settle window is the only mechanism that observes them."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since", "format": "iso8601" }
+        }
+      }
+    },
+    {
+      "name": "list_members",
+      "origin": "static",
+      "primaryKey": ["/list_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "last_changed",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 300 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/members",
+          "httpMethod": "GET",
+          "recordsPath": "members",
+          "params": {
+            "sort_field": "last_changed",
+            "sort_dir": "ASC",
+            "exclude_fields": "members._links,_links",
+            "before_last_changed": "<computed: cutoff − 1s, the frozen backfill window end, ISO-8601>",
+            "status": "<'archived' on the second of two independent sweeps per list; absent on the first. See unionMisfits.>"
+          },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id at connector startup; each (list, sweep) pair becomes its own subtask with its own cursor and its own frozen backfill window."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_last_changed", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "lists/{list_id}/members",
+          "httpMethod": "GET",
+          "recordsPath": "members",
+          "params": {
+            "sort_field": "last_changed",
+            "sort_dir": "ASC",
+            "exclude_fields": "members._links,_links",
+            "before_last_changed": "<computed: last fully-elapsed second (now − 1s), ISO-8601>",
+            "status": "<'archived' on the second of two independent sweeps per list; absent on the first. See unionMisfits.>"
+          },
+          "pathPlaceholders": {
+            "list_id": "Same per-(list, sweep) subtask fan-out as the backfill leg."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_last_changed", "format": "iso8601" }
+        }
+      }
+    },
+    {
+      "name": "segments",
+      "origin": "static",
+      "primaryKey": ["/list_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 300 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "lists/{list_id}/segments",
+          "httpMethod": "GET",
+          "recordsPath": "segments",
+          "params": {
+            "exclude_fields": "segments._links,_links",
+            "before_updated_at": "<computed: cutoff − 1s, the frozen backfill window end, ISO-8601>"
+          },
+          "pathPlaceholders": {
+            "list_id": "Drained from GET /lists with params fields=lists.id at connector startup; one subtask per list (segments have no archived state, so a single sweep is the full population)."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_updated_at", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "lists/{list_id}/segments",
+          "httpMethod": "GET",
+          "recordsPath": "segments",
+          "params": {
+            "exclude_fields": "segments._links,_links",
+            "before_updated_at": "<computed: last fully-elapsed second (now − 1s), ISO-8601>"
+          },
+          "pathPlaceholders": {
+            "list_id": "Same per-list subtask fan-out as the backfill leg."
+          },
+          "paginator": { "type": "offset", "limitParam": "count", "offsetParam": "offset", "pageSize": 1000, "terminateOn": "short_page" },
+          "incrementalParam": { "param": "since_updated_at", "format": "iso8601" }
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The easiest mode offered is a single self-serve Mailchimp API key pasted into one field and sent over HTTP Basic with an empty username — no app registration, no token exchange, and the data center is derived from the key itself. The OAuth mode is materially harder standalone and is scored T3_BYO_REFRESH: its config schema requires client_id, client_secret AND access_token, so outside Estuary's hosted control plane the user must register their own Mailchimp OAuth app and complete the authorization-code exchange themselves. Mailchimp issues no refresh token, so the long-lived access_token occupies the slot T3 normally reserves for a refresh token — the user work is the same shape (bring a durable token), which is why it is scored T3 rather than T2. Estuary ships a pre-registered provider ('x-oauth2-provider': 'mailchimp'), so inside their hosted UI the OAuth mode is effectively one click; that is a control-plane property, not a property of this connector.",
+
+  "unionMisfits": [
+    {
+      "where": "credentialModes[1].scheme",
+      "description": "The OAuth mode is two different things at two different times and the union forces a choice. At CONFIG time it is an authorization_code flow (authUrl/tokenUrl/accessTokenBody templates in OAUTH2_SPEC, response mapped as {access_token: /access_token}). At REQUEST time there is no flow at all: the CDK's TokenSource returns ('Bearer', credentials.access_token) verbatim for LongLivedClientCredentialsOAuth2Credentials, with no expiry tracking and no refresh exchange — it is a static bearer header. Encoded here as oauth2 because the T3 tier only makes sense with the flow described, but a consumer that expects to run a token refresh against tokenUrl at runtime would be wrong.",
+      "proposedShape": {
+        "type": "oauth2",
+        "grant": "authorization_code",
+        "authUrl": "https://login.mailchimp.com/oauth2/authorize",
+        "tokenUrl": "https://login.mailchimp.com/oauth2/token",
+        "scopes": [],
+        "requestTimeScheme": { "type": "bearer", "field": "credentials.access_token" },
+        "tokenLifetime": "non_expiring",
+        "refreshTokenIssued": false
+      }
+    },
+    {
+      "where": "credentialModes[0].scheme.usernameField",
+      "description": "The basic scheme requires a usernameField, but there is no user-supplied username: ApiKey hides it from the config schema (SkipJsonSchema) and hardcodes it to the empty string, so the header is base64(':<api_key>'). Recorded as \"\" for shape conformance only — a UI that renders usernameField as a form input would produce a field the user must be told to leave blank.",
+      "proposedShape": { "type": "basic", "usernameField": null, "passwordField": "credentials.api_key", "usernameLiteral": "" }
+    },
+    {
+      "where": "configFields",
+      "description": "configFields is a flat list, but `credentials` is a Pydantic discriminated one-of on `credentials_title` with two mutually exclusive branches ('API Key' vs 'OAuth Credentials'). Every field inside a branch is required WITHIN that branch and forbidden outside it; flattening loses both facts, so all five credential fields are recorded required:false with the branch named in the description. The discriminator field itself (credentials.credentials_title) is omitted entirely.",
+      "proposedShape": {
+        "oneOf": {
+          "discriminator": "credentials.credentials_title",
+          "branches": [
+            { "value": "API Key", "requiredFields": ["credentials.api_key"] },
+            { "value": "OAuth Credentials", "requiredFields": ["credentials.client_id", "credentials.client_secret", "credentials.access_token"] }
+          ]
+        }
+      }
+    },
+    {
+      "where": "streams[9].pull.*.params.status",
+      "description": "STILL A MISFIT in v2. list_members is not one request with a params map: it is TWO independent sweeps per list (bare, and status=archived), each registered as its own CDK subtask with its own incremental cursor and its own frozen backfill window. The sweeps' cursors must stay independent — a member unarchived between two sweeps of a shared-cursor walk would be missed until its next change. `pull.backfill`/`pull.incremental` gave us the leg split we needed for other streams, but there is still no axis for 'walk this same leg N times with different filters and N independent cursors'. Recorded as a described placeholder in `status` rather than a literal.",
+      "proposedShape": {
+        "sweeps": [
+          { "key": "{list_id}.default", "params": {}, "independentCursor": true },
+          { "key": "{list_id}.archived", "params": { "status": "archived" }, "independentCursor": true }
+        ]
+      }
+    },
+    {
+      "where": "streams[8].pull",
+      "description": "email_activity is doubly derived and the emitted document is not the paginated item. (a) Each leg first drains /reports with a fields projection and applies a recency gate before touching any campaign — a filtering pre-request that pathPlaceholders can describe but not model. (b) recordsPath 'emails' names the ENVELOPE key: each emails[] item is a recipient row carrying a nested activity[] array, and the connector emits one flattened document per (recipient, event), dissolving the recipient row into _meta. A consumer treating recordsPath as the document path would emit ~1 doc per recipient instead of ~1 per event. (c) The incremental leg rewinds `since` by a 10-minute lookback and relies on an in-process dedup cache to suppress the overlap, and drops events with timestamp > horizon client-side; the endpoint has no `before`-style upper bound.",
+      "proposedShape": {
+        "gate": { "path": "reports", "recordsPath": "reports", "projection": "fields=reports.id,reports.send_time,reports.opens.last_open,reports.clicks.last_click,reports.bounces.hard_bounces,reports.bounces.soft_bounces", "selectWhen": ["opens.last_open > cursor − lookback", "clicks.last_click > cursor − lookback", "send_time > now − 5d AND (hard_bounces + soft_bounces) > 0"] },
+        "explodePath": "activity",
+        "envelopeToMeta": ["campaign_id", "email_id"],
+        "lookbackSeconds": 600,
+        "upperBound": "client-side filter on horizon; no server-side before-param exists"
+      }
+    },
+    {
+      "where": "streams[7].schedule",
+      "description": "campaigns carries TWO schedules at once and the union holds one. Its resourceConfig is {interval: PT5M, schedule: '0 0 * * *'}: the interval drives the incremental poll, and the cron independently triggers a full re-backfill. The cron is not an alternative to the interval, it is a second axis — and here it is load-bearing rather than cosmetic, because /campaigns only exposes a create_time filter, so campaign MUTATIONS are invisible to the incremental leg and are recovered solely by that nightly re-backfill. Recorded as the interval; the cron is lost.",
+      "proposedShape": { "pollSchedule": { "kind": "interval", "seconds": 300 }, "rebackfillSchedule": { "kind": "cron", "expr": "0 0 * * *" } }
+    },
+    {
+      "where": "streams[0..6].pull",
+      "description": "The seven snapshot streams have neither a backfill nor an incremental leg in the intended sense: they are a full re-list of the whole collection every hour, with the CDK diffing the emitted byte stream to infer deletions and emit tombstones. Recorded under `backfill` with `incremental: null` because it is the bounded full pull, but 'backfill' implies a one-time catch-up that later hands off to an incremental leg, and no handoff ever happens here. This is also why parent-ID fan-out order is sorted: an unstable order would re-emit every child document each poll.",
+      "proposedShape": { "snapshot": { "kind": "http", "cadence": "PT1H", "deletionInference": "digest of emitted byte stream; absent rows tombstoned" } }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "The template variant fits the API-key path exactly but overstates the OAuth path. Under OAuth the connector does not substitute a {dc} into the template at all — it takes the `api_endpoint` string returned by https://login.mailchimp.com/oauth2/metadata and concatenates '/3.0'. The observed result happens to match the template, but the resolution is 'resolved', not 'template'. One connector therefore needs both baseUrl variants, selected by which credentialMode is active.",
+      "proposedShape": {
+        "perCredentialMode": {
+          "API key (HTTP Basic)": { "kind": "template", "template": "https://{dc}.api.mailchimp.com/3.0", "placeholders": { "dc": "substring after the final '-' of credentials.api_key" } },
+          "OAuth (long-lived access token)": { "kind": "resolved", "resolution": "GET https://login.mailchimp.com/oauth2/metadata with the bearer token; use /api_endpoint verbatim and append '/3.0'" }
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull.*.pathPlaceholders",
+      "description": "pathPlaceholders (new in v2) captures WHICH ids fill each path segment, which is a real improvement, but it is a free-text description field, so the fan-out mechanics stay unmodeled: that the parent collection is drained with a fields=<items_key>.id projection, that it is fully materialized before any child request, that ids are sorted for determinism, that an empty id is rejected rather than templated, that two-level streams (interests, segment_members) chain two drains, and that for some children the parent id must additionally be stamped into _meta because the response omits it (tags, segment_members, automation_emails) while for others injecting it would be a duplicate (interest_categories, interests).",
+      "proposedShape": {
+        "parentFanout": [
+          { "level": 1, "path": "lists", "itemsKey": "lists", "projection": "fields=lists.id", "binds": "list_id", "injectIntoMeta": false },
+          { "level": 2, "path": "lists/{list_id}/segments", "itemsKey": "segments", "projection": "fields=segments.id", "binds": "segment_id", "injectIntoMeta": true }
+        ],
+        "rejectEmptyIds": true,
+        "deterministicOrder": "sorted by str(id)"
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "34-35",
+      "snippet": "API = \"https://{dc}.api.mailchimp.com/3.0\"\nOAUTH_METADATA_URL = \"https://login.mailchimp.com/oauth2/metadata\""
+    },
+    "transports[0].spec.baseUrl.placeholders.dc": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "47-63",
+      "snippet": "if isinstance(credentials, ApiKey):\n    _, sep, dc = credentials.password.rpartition(\"-\")\n    return API.format(dc=dc)"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "64-83",
+      "snippet": "class ApiKey(BasicAuth):\n    username: SkipJsonSchema[str] = \"\"\n    password: str = Field(title=\"API Key\", ..., alias=\"api_key\")"
+    },
+    "credentialModes[0].scheme.type": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n    return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode())"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "35-53",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"mailchimp\",\n    accessTokenUrlTemplate=\"https://login.mailchimp.com/oauth2/token\","
+    },
+    "credentialModes[1].tier": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "n/a (spec snapshot, LongLivedClientCredentialsOAuth2Credentials)",
+      "snippet": "\"required\": [\"client_id\", \"client_secret\", \"access_token\"]"
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "292-305",
+      "snippet": "if isinstance(self.credentials, (AccessToken, LongLivedClientCredentialsOAuth2Credentials, RotatingOAuth2Credentials)):\n    return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "execution.mode": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "395-412",
+      "snippet": "return [*snapshot_resources(http, base_url), campaigns(...), email_activity(...), *incremental_list_children(...)]"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "86-89",
+      "snippet": "_, body = await http.request_stream(log, f\"{base_url}/{path}\", params=params)"
+    },
+    "execution.continuity.notes": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "219-229",
+      "snippet": "\"\"\"List IDs resolve at connector startup, so a list created after the last checkpoint has no subtask entries in the recovered state. Seed fresh ones\"\"\""
+    },
+    "configFields[0]": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "98-107",
+      "snippet": "class EndpointConfig(BaseModel):\n    start_date: AwareDatetime = Field(..., default_factory=default_start_date)\n    credentials: OAuth2Credentials | ApiKey = Field(discriminator=\"credentials_title\")"
+    },
+    "configFields[1].description": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "47-58",
+      "snippet": "if not sep or not dc:\n    raise ValidationError([(\"Mailchimp API key is missing its data center suffix\""
+    },
+    "configFields[4].description": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "31-34",
+      "snippet": "# Mailchimp's OAuth flow returns a single non-expiring access token and no\n# refresh token, so credentials take the long-lived client-credentials shape."
+    },
+    "streamMode": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "58-61",
+      "snippet": "SNAPSHOT_RESOURCES: list[type[MailchimpEntity]] = [\n    MailchimpList,\n    Automation,\n]"
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "118-139",
+      "snippet": "{\"count\": MAX_PAGE_SIZE, \"offset\": offset, **(params or {})}\noffset += count\nif count < MAX_PAGE_SIZE: return"
+    },
+    "streams[*].pull.*.paginator.terminateOn": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "112-117",
+      "snippet": "Completion is the short-page signal: a page smaller than the requested `count` (including an empty one) is the last page. This holds regardless of whether the endpoint ... reports a `total_items` that disagrees"
+    },
+    "streams[*].pull.*.paginator.pageSize": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "66-67",
+      "snippet": "# Documented maximum `count` across Mailchimp collection endpoints.\nMAX_PAGE_SIZE = 1000"
+    },
+    "streams[*].pull.*.params.exclude_fields": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "86-88",
+      "snippet": "if \"fields\" not in params and \"exclude_fields\" not in params:\n    params = {\"exclude_fields\": f\"{items_key}._links,_links\", **params}"
+    },
+    "streams[*].pull.*.pathPlaceholders": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "246-260",
+      "snippet": "return sorted([item.id async for item in snapshot_collection(..., IdOnly, log, params={\"fields\": f\"{items_key}.id\"})], key=str)"
+    },
+    "streams[0].primaryKey": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "467-484",
+      "snippet": "class SnapshotResource(...):\n    key: list[str] = field(default_factory=lambda: [\"/_meta/row_id\"])"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "55-57",
+      "snippet": "# Top-level collections captured as snapshots: small, mutable, and without any\n# updated_at-style cursor field, so periodic full re-lists with tombstoned\n# deletions beat a created-time cursor"
+    },
+    "streams[0].schedule": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "115-129",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=model.NAME, interval=timedelta(hours=1))"
+    },
+    "streams[2].pull.backfill.pathPlaceholders": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "171-186",
+      "snippet": "for list_id in await fetch_parent_ids(...):\n    categories_path = InterestCategory.PATH_TEMPLATE.format(list_id=list_id)\n    for category_id in await fetch_parent_ids(...)"
+    },
+    "streams[3].pull.backfill.params": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "191-195",
+      "snippet": "_SEGMENT_MEMBER_PARAMS = {\"include_cleaned\": \"true\", \"include_transactional\": \"true\", \"include_unsubscribed\": \"true\"}"
+    },
+    "streams[5].pull.backfill.pathPlaceholders": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "324-336",
+      "snippet": "ChildSpec(model=Tag, parent=LISTS_PARENT, inject_parent_id=True),"
+    },
+    "streams[7].pull.incremental.incrementalParam": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "314-321",
+      "snippet": "\"since_create_time\": since.isoformat(),\n\"before_create_time\": before.isoformat(),\n\"sort_field\": \"create_time\", \"sort_dir\": \"ASC\""
+    },
+    "streams[7].cursorField": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "378-380",
+      "snippet": "if item.create_time > last_seen:\n    last_seen = item.create_time"
+    },
+    "streams[7].schedule": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "167-171",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=Campaign.NAME, interval=timedelta(minutes=5), schedule=DEFAULT_SCHEDULE)"
+    },
+    "streams[7].pull.backfill.params.before_create_time": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "419-421",
+      "snippet": "offset = 0\nwindow_end = cutoff - timedelta(seconds=1)\nparams = _campaign_params(offset, start_date, window_end)"
+    },
+    "streams[8].primaryKey": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "201-205",
+      "snippet": "key=[\"/_meta/campaign_id\", \"/_meta/email_id\", \"/action\", \"/timestamp\"]"
+    },
+    "streams[8].pull.incremental.pathPlaceholders": {
+      "file": "source_mailchimp_native/api/email_activity.py",
+      "lines": "106-113",
+      "snippet": "selected = [campaign for campaign in email_campaigns if campaign.has_activity_after(lookback_floor) or campaign.has_bounces_settling(settle_floor)]"
+    },
+    "streams[8].pull.backfill.pathPlaceholders": {
+      "file": "source_mailchimp_native/api/email_activity.py",
+      "lines": "193-201",
+      "snippet": "cursor = EmailActivityBackfillCursor.from_campaign_ids([stub.id for stub in email_campaigns if stub.has_activity_after(start_date) or stub.send_time >= start_date])"
+    },
+    "streams[8].pull.*.path": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "570-572",
+      "snippet": "PATH_TEMPLATE: ClassVar[str] = \"reports/{campaign_id}/email-activity\"\nITEMS_KEY: ClassVar[str] = \"emails\"\nSINCE_PARAM: ClassVar[str] = \"since\""
+    },
+    "streams[8].schedule": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "211-214",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=EmailActivityEvent.NAME, interval=timedelta(minutes=20))"
+    },
+    "streams[9].cursorField": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "380-396",
+      "snippet": "SINCE_PARAM: ClassVar[str] = \"since_last_changed\"\nBEFORE_PARAM: ClassVar[str] = \"before_last_changed\"\n    def get_cursor(self): return self.last_changed"
+    },
+    "streams[9].pull.*.params.status": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "304-311",
+      "snippet": "member_subtasks[f\"{list_id}.default\"] = _ListChildSubtask(list_id, {**_MEMBER_SORT})\nmember_subtasks[f\"{list_id}.archived\"] = _ListChildSubtask(list_id, {**_MEMBER_SORT, \"status\": \"archived\"})"
+    },
+    "streams[9].primaryKey": {
+      "file": "source_mailchimp_native/resources.py",
+      "lines": "366-369",
+      "snippet": "# Member ids are the MD5 of the lowercase email — unique only\n# within a list — so both streams key on the composite.\nkey=[\"/list_id\", \"/id\"]"
+    },
+    "streams[10].cursorField": {
+      "file": "source_mailchimp_native/models.py",
+      "lines": "406-420",
+      "snippet": "SINCE_PARAM: ClassVar[str] = \"since_updated_at\"\nBEFORE_PARAM: ClassVar[str] = \"before_updated_at\"\n    def get_cursor(self): return self.updated_at"
+    },
+    "streams[*].pull.incremental.params.before_*": {
+      "file": "source_mailchimp_native/api/shared.py",
+      "lines": "471-495",
+      "snippet": "horizon = datetime.now(tz=UTC).replace(microsecond=0) - timedelta(seconds=1)\n{... model.SINCE_PARAM: log_cursor.isoformat(), model.BEFORE_PARAM: horizon.isoformat()}"
+    },
+    "streams[*].name": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "n/a (discover snapshot, 11 bindings in this order)",
+      "snippet": "lists, automations, interests, segment_members, interest_categories, tags, automation_emails, campaigns, email_activity, list_members, segments"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "medium",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[5].pull.backfill.paginator": "low",
+    "streams[*].pull.*.pathPlaceholders": "high",
+    "streams[*].schedule": "high",
+    "streams[0..6].writeDisposition": "high",
+    "streams[7].writeDisposition": "medium",
+    "streams[8].writeDisposition": "medium",
+    "streams[9].writeDisposition": "medium",
+    "streams[10].writeDisposition": "medium",
+    "streams[7].cursorField": "high",
+    "streams[8].cursorField": "medium",
+    "streams[9].cursorField": "high",
+    "streams[10].cursorField": "high",
+    "streams[*].primaryKey": "high",
+    "streams[1].pull.backfill": "medium",
+    "streams[6].pull.backfill": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "The connector sets no headers of its own; the only header added is the CDK's Authorization. No API-version or revision header is sent — the version lives in the /3.0 path segment.",
+    "execution.schedule": "There is no connector-level schedule. Cadence is entirely per-binding (ResourceConfigWithSchedule.interval), so the value is recorded on each stream and left null here.",
+    "discovery": "Nothing is discovered from the customer's schema: the binding list is a fixed set of model classes assembled in all_resources(). The parent-ID fan-out (which lists/campaigns/automations exist) changes how many requests a static stream makes, not which streams exist, so it is recorded under pathPlaceholders rather than as discovery.",
+    "streams[7..10].writeDisposition": "The connector never states merge-vs-append for the incremental bindings; Flow reduces by collection key, which behaves as a merge, but no code or config asserts it. Recorded as 'merge' on that inference alone.",
+    "streams[1].pull.backfill / streams[6].pull.backfill": "The automations and automation_emails endpoints are feature-gated and returned empty on the test account, so their shapes (ITEMS_KEY, response fields, whether the response carries workflow_id) are docs-based and never live-verified. The connector's own docstrings say so.",
+    "streams[5].pull.backfill.paginator": "tag-search is documented by Mailchimp WITHOUT offset/count support; the connector sends them anyway because they are observed to work. If the provider stops honouring them the walker silently degrades to a single page of up to 1000 tags and reports a clean sync. This is the one paginator here that could be wrong through no fault of the extraction.",
+    "streams[7].pull.*.params.before_create_time / streams[9].before_last_changed / streams[10].before_updated_at": "Computed per invocation (last fully-elapsed second for the incremental leg, cutoff − 1s for the frozen backfill window), not literals. Recorded as described placeholders.",
+    "streams[8].cursorField": "The emitted document's cursor is the flattened event's `timestamp`, but the checkpoint is max(emitted timestamp) and the NEXT poll rewinds it by a 10-minute LOOKBACK, deduping the overlap through an in-process cache. Campaign selection is gated on /reports recency fields (opens.last_open, clicks.last_click, send_time+bounce counts) rather than on the cursor. 'timestamp' is right for the document and understates the mechanism.",
+    "streams[8].pull.*.params": "The exclude_fields default is what the shared page fetcher applies to the email-activity request, which is what is recorded. The `fields=reports.*` projection belongs to the /reports gate call — a different, unmodeled request — and is described under pathPlaceholders instead.",
+    "credentialModes[1].tier": "Judgement call, not a fact in the source. The config schema requires client_id + client_secret + access_token standalone, which is strictly more work than T2_BYO_APP, but Mailchimp issues no refresh token so T3's literal 'refresh token' criterion is not met. Scored T3_BYO_REFRESH on equivalent user effort; a reviewer could defensibly call it T2.",
+    "rateLimits": "No rate-limit, retry, backoff, or concurrency configuration is expressed anywhere in the connector. Mailchimp's documented 10-concurrent-request cap is not referenced. Whatever the CDK's HTTP layer does was not inspected.",
+    "streams[*].supportedSyncModes": "Derived from whether the CDK resource is a SnapshotResource (full_refresh only) or opens with both fetch_changes and fetch_page (both modes). The connector never enumerates sync modes itself; the concept is Airbyte's, not Flow's."
+  }
+}

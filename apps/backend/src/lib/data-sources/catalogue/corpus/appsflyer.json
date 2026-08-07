@@ -1,0 +1,325 @@
+{
+  "id": "appsflyer",
+  "estuaryDir": "source-appsflyer",
+  "displayName": "AppsFlyer",
+  "description": "Imports AppsFlyer mobile-attribution data: aggregate CSV reports pulled from the Pull API over date windows, plus real-time attribution/in-app-event records delivered by the AppsFlyer Push API to a webhook listener.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "AppsFlyer Pull API (aggregate + raw report CSV exports) and the Push API event-types metadata endpoint",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://hq1.appsflyer.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment, per endpoint: report endpoints end in `/v5` (e.g. `geo_by_date_report/v5`); the event-types metadata endpoint is pinned as `/api/pushapi/v1.0/`"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "AppsFlyer API token (V2 bearer token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "an inbound HTTP listener (aiohttp webhook server) started by the connector for the webhook bindings; the customer must independently configure an AppsFlyer Push API export pointing at that endpoint"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Push API events POSTed while the connector is not running are not received; there is no replay/backfill path for webhook bindings in this connector. The pull-report bindings lose nothing (their cursor is a date window and is re-requested).",
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Two very different continuity stories in one connector. The pull side is stateless-by-date: a datetime LogCursor per (binding, app_id) is advanced window by window, so any pause is recovered by re-requesting the window. The webhook side is push-only and lossy while down. Nothing accrues on AppsFlyer's side in either case. Whether AppsFlyer retries failed Push API deliveries is a vendor behaviour not evidenced in this repo."
+    }
+  },
+
+  "configFields": [
+    { "name": "app_ids", "displayName": "App IDs", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-delimited list of AppsFlyer unified App IDs (may carry a platform prefix, e.g. com.example.app, roku-4321, id121244). Each app id becomes a parallel subtask within every pull binding." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "Start date for historical replication (UTC); seeds the backfill page cursor." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "AppsFlyer API token, sent as an Authorization: Bearer header." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant, always \"Private App Credentials\"." },
+    { "name": "advanced.window_size", "displayName": "Window Size", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ISO 8601 duration for each report request window. Default P2D, minimum P1D. Halved automatically when a window returns MAX_ROWS." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Resource name; the resource path pointer is /name." },
+    { "name": "type", "displayName": "Type", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Binding discriminator: \"pull\" (report export) or \"webhook\" (Push API)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Polling interval for pull bindings; discovery emits PT4H." },
+    { "name": "match_rule", "displayName": "Match Rule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Webhook bindings only: routing spec for incoming Push API requests. Discovery emits a BodyMatch on key `event_type` with the event-type name as value." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "AppsFlyer Push API event-types metadata endpoint, plus a per-(report, app_id) capability probe of the Pull API",
+    "querySketch": "GET https://hq1.appsflyer.com/api/pushapi/v1.0/event-types/{entity} for entity in {appsflyer, skadnetwork}; union the returned `event_types` arrays into the set of webhook stream names. Separately, for each shipped report type x each configured app_id, issue a 1-day, 100-row probe request; keep the pair only if it does not fail with a known 'unsupported / not subscribed' error.",
+    "excludes": [
+      "report types whose probe returns HTTP 404",
+      "report types whose error message contains \"isn't supported for this report type\" (platform unsupported)",
+      "report types whose error message contains \"doesn't include raw data reports\" (subscription tier)",
+      "Protect360 report types when the Protect360 subscription/90-day window error is returned"
+    ],
+    "allowlist": "Webhook stream names are whatever the account's event-types endpoint returns (no shipped list). Pull report streams are the intersection of the probe with a hard-coded shipped list, which in this version contains exactly one enabled entry (AggGeoDailyReport); ~24 further raw and aggregate report types are present in the source but commented out."
+  },
+
+  "streams": [
+    {
+      "name": "daily_geo_aggregate_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/app_id", "/Date", "/Country", "/Media Source (pid)", "/Campaign (c)"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "report window sweep", "schedule": { "kind": "interval", "seconds": 14400 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/agg-data/export/app/{app_id}/geo_by_date_report/v5",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "from": "<window start, %Y-%m-%d>", "to": "<window end, %Y-%m-%d>", "maximum_rows": 1000000 },
+          "pathPlaceholders": { "app_id": "one configured AppsFlyer app id; the binding runs one independent subtask per app id" },
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "from", "format": "date" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/agg-data/export/app/{app_id}/geo_by_date_report/v5",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "from": "<window start, %Y-%m-%d>", "to": "<window end, %Y-%m-%d>", "maximum_rows": 1000000 },
+          "pathPlaceholders": { "app_id": "one configured AppsFlyer app id; the binding runs one independent subtask per app id" },
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "from", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+
+    { "name": "install", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "in-app-event", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "install-in-app-event", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "reinstall", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "re-download", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "re-attribution", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "re-attribution-in-app-event", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "re-engagement", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "re-engagement-in-app-event", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "organic-install", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "organic-install-in-app-event", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "organic-reinstall", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "postback", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } },
+    { "name": "postbacks-copy", "origin": "discovered", "kind": "actual", "primaryKey": ["/_meta/estuary_id"], "primaryKeyKind": "synthetic", "cursorField": null, "supportedSyncModes": ["full_refresh"], "writeDisposition": "merge", "schedules": [{ "role": "inbound push delivery", "schedule": { "kind": "continuous" } }], "pull": { "backfill": null, "incremental": null, "snapshot": null } }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is `estuary_cdk.flow.AccessToken` (a single self-serve AppsFlyer API token pasted into the config). `TokenSource(oauth_spec=None, credentials=config.credentials)` short-circuits for AccessToken and returns the literal token, which the CDK sends as `Authorization: Bearer <token>` using the CDK defaults. No OAuth app registration and no refresh token are involved. Note the webhook half of the connector is unauthenticated inbound: AppsFlyer POSTs to a listener the connector starts, and the customer must separately configure a Push API export in the AppsFlyer console — that is manual setup work, but it is not a credential the user supplies to the connector.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull (webhook bindings) / transports",
+      "description": "Fourteen of the fifteen streams are inbound Push API webhooks, not pulls. The connector starts an aiohttp server and routes each incoming POST to a binding by matching a body field; there is no request the connector issues, so no PullSpec member applies, and 'how we reach the source' is inverted (the source reaches us). All three pull slots are null for these streams.",
+      "proposedShape": {
+        "kind": "webhook",
+        "delivery": "inbound HTTP POST to a connector-hosted listener",
+        "routing": { "kind": "body_field", "field": "event_type", "value": "<stream name>" },
+        "routingAlternatives": ["url path match", "header match"],
+        "documentKey": "xxh128 hash of characteristic fields (app_id, appsflyer_id, campaign_type, conversion_type, event_name, event_time, event_type, + app_type and event_value when present), stored at /_meta/estuary_id",
+        "requiresExplicitAcks": true,
+        "replayable": false,
+        "externalSetup": "customer configures an AppsFlyer Push API export targeting the listener URL"
+      }
+    },
+    {
+      "where": "streams[0].pull.*.recordsPath",
+      "description": "The pull report endpoints return a streamed CSV body, not JSON. There is no records path or envelope; rows are parsed by the CDK's IncrementalCSVProcessor from a streaming response and validated against the document model, whose field aliases are the literal CSV column headers (including spaces and parentheses, e.g. 'Media Source (pid)'). PullSpec kind 'http' has no place to record the response format.",
+      "proposedShape": { "kind": "http", "responseFormat": "csv", "csvStreaming": true, "headerRowIsSchema": true }
+    },
+    {
+      "where": "streams[0].pull.*.paginator",
+      "description": "There is no paginator; the endpoint returns a whole window at once, capped at `maximum_rows=1000000`. Volume is handled by an adaptive date window instead: if a window returns >= MAX_ROWS the connector halves `window_size` and re-fetches that window. This is a truncation-avoidance control loop, not pagination, and it has no representation in the Paginator union.",
+      "proposedShape": { "type": "adaptive_window", "windowParams": { "from": "min_date", "to": "max_date" }, "rowCapParam": "maximum_rows", "rowCap": 1000000, "onCapHit": "halve window_size and retry", "initialWindow": "config.advanced.window_size (default P2D, min P1D)" }
+    },
+    {
+      "where": "execution.mode",
+      "description": "The connector is simultaneously poll (report bindings on a PT4H interval) and push (webhook bindings served continuously by an embedded HTTP server). Neither 'poll' nor 'log' describes the whole connector; 'poll' is recorded as the closest fit for the report half.",
+      "proposedShape": { "mode": "hybrid", "legs": [{ "mode": "poll", "streams": ["daily_geo_aggregate_report"] }, { "mode": "push", "streams": ["<the 14 webhook event types>"] }] }
+    },
+    {
+      "where": "streams[].pull (fan-out over app_ids)",
+      "description": "Each pull binding is not a single pull but N independent subtasks, one per configured app id, each with its own incremental cursor and backfill cursor keyed by app id inside the binding state. `pathPlaceholders` records that {app_id} is templated, but the schema has no way to say that one binding produces a parallel cursor set.",
+      "proposedShape": { "fanOut": { "over": "config.app_ids (comma-delimited)", "cursorScope": "per app_id", "stateShape": "{ inc: {app_id: cursor}, backfill: {app_id: {cutoff, next_page}} }", "reconcilesNewMembers": true } }
+    },
+    {
+      "where": "credentialModes",
+      "description": "The webhook half has an authentication posture the credential union cannot express: no credential at all is presented to or by the connector, and integrity depends entirely on the secrecy of the listener URL plus the AppsFlyer-side Push API export configuration.",
+      "proposedShape": { "name": "Inbound webhook (unauthenticated)", "direction": "inbound", "verification": "none evidenced in this connector", "externalSetup": "AppsFlyer console Push API export pointed at the listener URL" }
+    },
+    {
+      "where": "discovery",
+      "description": "Discovery runs two unrelated mechanisms whose results are concatenated: a metadata GET that yields the webhook stream names, and a live capability probe (a real 1-day data request per report x app id, whose error text is pattern-matched) that filters the shipped report list. The single `method` / `querySketch` / `excludes` triple cannot hold both.",
+      "proposedShape": { "methods": [{ "for": "webhook streams", "method": "metadata endpoint enumeration" }, { "for": "pull streams", "method": "live capability probe with error-string classification", "sideEffect": "issues real data requests during discover/validate/open" }] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_appsflyer/models.py",
+      "lines": "213, 218",
+      "snippet": "base_url: ClassVar[str] = \"https://hq1.appsflyer.com/api/raw-data/export/app/\"\n    base_url: ClassVar[str] = \"https://hq1.appsflyer.com/api/agg-data/export/app/\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_appsflyer/models.py",
+      "lines": "377-378",
+      "snippet": "resource_name: ClassVar[str] = \"daily_geo_aggregate_report\"\n    endpoint: ClassVar[str] = \"geo_by_date_report/v5\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "125",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36, 292-305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "configFields": {
+      "file": "source_appsflyer/models.py",
+      "lines": "29-65",
+      "snippet": "app_ids: str = Field(title=\"App IDs\", ...)\n    start_date: datetime = Field(title=\"Start Date\", ...)\n    credentials: AccessToken = Field(title=\"Authentication\", ...)"
+    },
+    "configFields.advanced.window_size": {
+      "file": "source_appsflyer/models.py",
+      "lines": "49-58",
+      "snippet": "window_size: timedelta = Field(title=\"Window Size\", ... default=timedelta(days=2), ge=timedelta(days=1))"
+    },
+    "discovery.querySketch": {
+      "file": "source_appsflyer/api.py",
+      "lines": "103-107",
+      "snippet": "for entity in ATTRIBUTING_ENTITIES:\n        url = urljoin(\"https://hq1.appsflyer.com/api/pushapi/v1.0/event-types/\", entity)\n        response = EventTypesResponse.model_validate_json(await http.request(log, url))"
+    },
+    "discovery.excludes": {
+      "file": "source_appsflyer/api.py",
+      "lines": "187, 194, 214",
+      "snippet": "if \"isn't supported for this report type\" in e.message:\n        if \"doesn't include raw data reports\" in e.message:\n        if e.code == 404:"
+    },
+    "discovery.allowlist": {
+      "file": "source_appsflyer/api.py",
+      "lines": "88-97",
+      "snippet": "AGG_REPORT_TYPES: list[type[AggregateReportDocument]] = [\n    # TODO: Only the AggGeoDailyReport is required for the initial version ...\n    AggGeoDailyReport,\n]"
+    },
+    "streamMode": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "209-213",
+      "snippet": "pull_resources = [\n        make_resource(doc_type, ids) for doc_type, ids in supported.items()\n    ]\n    return [*webhook_resources, *pull_resources]"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "181",
+      "snippet": "key=[\"/_meta/app_id\", *[f\"/{f}\" for f in doc_type.key_fields]],"
+    },
+    "streams[0].primaryKey.fields": {
+      "file": "source_appsflyer/models.py",
+      "lines": "379-384",
+      "snippet": "key_fields: ClassVar[tuple[str, ...]] = (\n        \"Date\", \"Country\", \"Media Source (pid)\", \"Campaign (c)\",\n    )"
+    },
+    "streams[0].schedules[0]": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "201-205",
+      "snippet": "initial_config=PullApiResourceConfig(\n                name=doc_type.resource_name, type=\"pull\",\n                interval=timedelta(hours=4),"
+    },
+    "streams[0].pull.backfill.path": {
+      "file": "source_appsflyer/models.py",
+      "lines": "207-209",
+      "snippet": "def get_api_url(cls, app_id: str) -> str:\n        return reduce(urljoin, [cls.base_url, app_id + \"/\", cls.endpoint])"
+    },
+    "streams[0].pull.backfill.params": {
+      "file": "source_appsflyer/api.py",
+      "lines": "121-127",
+      "snippet": "params = {\n        \"from\": min_date.strftime(doc_type.date_format),\n        \"to\": max_date.strftime(doc_type.date_format), \"maximum_rows\": max_rows, }"
+    },
+    "streams[0].pull.backfill.incrementalParam.format": {
+      "file": "source_appsflyer/models.py",
+      "lines": "219",
+      "snippet": "date_format: ClassVar[str] = \"%Y-%m-%d\""
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_appsflyer/api.py",
+      "lines": "250-260",
+      "snippet": "if row_count >= MAX_ROWS:\n            window_size = window_size / 2\n            log.warning(\"Fetch returned maximum rows, halving window to avoid truncation\", ...)"
+    },
+    "streams[0].pull.incremental": {
+      "file": "source_appsflyer/api.py",
+      "lines": "310-316",
+      "snippet": "now = datetime.now(tz=UTC)\n    window_start = log_cursor\n    while window_start < now:"
+    },
+    "streams[1].primaryKey": {
+      "file": "source_appsflyer/models.py",
+      "lines": "162-164",
+      "snippet": "parts.append(getattr(self, \"event_value\", \"estuary_missing_event_value\"))\n        self.meta_.estuary_id = xxhash.xxh128(\"|\".join(parts).encode()).hexdigest()"
+    },
+    "streams[1..14].name": {
+      "file": "tests/snapshots/snapshots__discover__stdout.json",
+      "lines": "recommendedName entries across the 15 discovered bindings",
+      "snippet": "\"recommendedName\": \"organic-install-in-app-event\", \"resourceConfig\": {\"match_rule\": {\"value\": \"organic-install-in-app-event\", \"key\": \"event_type\", \"type\": \"body\"}, \"type\": \"webhook\"}"
+    },
+    "unionMisfits[0].proposedShape.routing": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "158",
+      "snippet": "discriminator = BodyDiscriminator(key=\"event_type\", known_values=event_types)"
+    },
+    "unionMisfits[1].proposedShape.responseFormat": {
+      "file": "source_appsflyer/api.py",
+      "lines": "131-137",
+      "snippet": "_, body = await http.request_stream(log, url, params=params)\n            async for row in IncrementalCSVProcessor(body(), doc_type, validation_context={\"app_id\": app_id}):"
+    },
+    "unionMisfits[4].proposedShape.fanOut": {
+      "file": "source_appsflyer/resources.py",
+      "lines": "102-116",
+      "snippet": "fetch_changes={ app_id: functools.partial(fetch_report, doc_type, app_id, window_size, http) for app_id in app_ids },\n        fetch_page={ app_id: functools.partial(backfill_report, ...) for app_id in app_ids },"
+    },
+    "execution.continuity.artifacts": {
+      "file": "estuary-cdk/estuary_cdk/capture/webhook/resources.py",
+      "lines": "76-91",
+      "snippet": "if task.stopping.webhook_task is None:\n        from estuary_cdk.capture.webhook.server import start_webhook_server\n        start_webhook_server(webhook_bindings, task)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0]": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.backfill.path": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[1..14].name": "medium",
+    "streams[1..14].writeDisposition": "medium",
+    "discovery": "high",
+    "execution.mode": "medium",
+    "execution.continuity": "medium",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "streams[0].cursorField": "There is no document-level cursor field. Incrementality is driven entirely by the request-side date window: the connector holds a datetime LogCursor per (binding, app_id) and advances it by window_size, sending it as the `from` query param. No column of the returned CSV is compared against a cursor, so naming one would be a fabrication.",
+    "streams[1..14].cursorField": "Webhook streams have no cursor of any kind; documents arrive by push and are keyed by a content hash.",
+    "streams[1..14].pull": "No PullSpec union member describes an inbound webhook. Recorded as unionMisfits[0] rather than forced into `http`.",
+    "streams[1..14].origin_completeness": "The 14 webhook stream names were read from the committed discover snapshot, which was generated against one real AppsFlyer account. The names come from that account's event-types endpoint, so the list is account-dependent — `postbacks-copy` in particular looks like a user-created export rather than a universal AppsFlyer event type. Treat the list as representative of a typical account, not as a fixed catalogue.",
+    "streams[0].pull.*.recordsPath": "Not applicable: the response body is CSV, not a JSON envelope.",
+    "streams[].writeDisposition": "Inferred from the fact that every binding declares a document key and Flow collections reduce by key (so repeated windows upsert rather than duplicate). The connector code contains no explicit disposition/delete handling, and no tombstone logic exists, so 'merge' is a reading of Flow semantics rather than an explicit statement in this connector.",
+    "execution.continuity.resumeWindow": "Nothing in the repo states how long AppsFlyer retains or retries undelivered Push API events, nor whether the Pull API caps how far back `from` may reach for a given subscription. The 90-day Protect360 limit is mentioned only inside an error-message match, and does not apply to the one enabled stream.",
+    "transports[0].spec.defaultHeaders": "No default headers are set anywhere; only the CDK's Authorization header is added.",
+    "credentialModes[].oauth": "The config schema exposes exactly one credentials variant (AccessToken) and TokenSource is constructed with oauth_spec=None, so no OAuth path exists in this connector."
+  }
+}

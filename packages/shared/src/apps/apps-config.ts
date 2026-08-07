@@ -223,6 +223,16 @@ export const ALL_APPS = {
     tags: ["automation", "developers"],
     stage: "alpha",
   },
+  // Same `-alpha` suffix reasoning as Deployments and Workflows above. Kept
+  // top-level rather than under `parentAppId: "analytics"` on purpose: imported
+  // data is a project-wide asset that workflows and emails will read too, not
+  // an analytics sub-feature.
+  "data-sources-alpha": {
+    displayName: "Data Sources",
+    subtitle: "Connect external systems and query their data alongside your own",
+    tags: ["integration", "storage"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {

@@ -1,0 +1,555 @@
+{
+  "id": "mixpanel-native",
+  "estuaryDir": "source-mixpanel-native",
+  "displayName": "Mixpanel",
+  "description": "Imports Mixpanel product-analytics data: raw exported events, user profiles (engage), cohorts and their members, saved funnel results, and project annotations.",
+  "category": "analytics",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Mixpanel Query API (cohorts, engage, funnels, annotations)",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{regionPrefix}mixpanel.com/api/2.0/",
+          "placeholders": {
+            "regionPrefix": "literal 'eu.' when config.region == 'EU', otherwise the empty string; only US and EU are accepted (region enum in spec.json, validated in source.py). The Annotations stream swaps the '/api/2.0/' suffix for '/api/app/projects/' when a project_id is present."
+          }
+        },
+        "defaultHeaders": { "Accept": "application/json" },
+        "apiVersionPinning": "path segment '/api/2.0/' in the base URL (the Annotations project-scoped variant instead uses the unversioned '/api/app/' path)"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Raw event Export API, which lives on a different hostname than the Query API and streams newline-delimited JSON",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://data{regionSuffix}.mixpanel.com/api/2.0/",
+          "placeholders": {
+            "regionSuffix": "literal '-eu' when config.region == 'EU', otherwise the empty string"
+          }
+        },
+        "defaultHeaders": { "Accept": "application/json" },
+        "apiVersionPinning": "path segment '/api/2.0/'"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Service Account (username + secret)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.username",
+        "passwordField": "credentials.secret"
+      }
+    },
+    {
+      "name": "Project Secret",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "Authorization",
+        "field": "credentials.api_secret",
+        "prefix": "Basic (the raw project secret is base64-encoded by the connector before being sent)"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.option_title", "displayName": "Authentication *", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting either 'Service Account' or 'Project Secret'." },
+    { "name": "credentials.username", "displayName": "Username", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Mixpanel Service Account username. Required for the Service Account mode." },
+    { "name": "credentials.secret", "displayName": "Secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Mixpanel Service Account secret. Required for the Service Account mode." },
+    { "name": "credentials.project_id", "displayName": "Project ID", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Mixpanel project ID. Required (and must be an integer) for the Service Account mode; discarded by the connector when the Project Secret mode is used." },
+    { "name": "credentials.api_secret", "displayName": "Project Secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Mixpanel project secret. Required for the Project Secret mode." },
+    { "name": "attribution_window", "displayName": "Attribution Window", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Lookback in days re-read once per day once the export stream is caught up. Default 5; must be a non-negative integer." },
+    { "name": "project_timezone", "displayName": "Project Timezone", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Timezone in which Mixpanel stores integer datetimes. Default 'US/Pacific'. A mismatch causes the connector to stop the affected stream with a warning." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "YYYY-MM-DD. Defaults to one year before today in the project timezone." },
+    { "name": "end_date", "displayName": "End Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "YYYY-MM-DD. Defaults to today in the project timezone; is additionally clamped to today at slice time." },
+    { "name": "region", "displayName": "Region", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Mixpanel data residency: 'US' or 'EU'. Default 'US'. Selects the hostname for both transports." },
+    { "name": "date_window_size", "displayName": "Date slicing window", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Size in days of each date slice. spec.json advertises default 1; the code's fallback when the key is absent is 30. Positive integer. Export caps it at 30; Funnels and Annotations override it to 100000 (single request)." },
+    { "name": "advanced.page_size", "displayName": "Page size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Page size for the paginated engage-backed streams. Minimum 100, default 50000." },
+    { "name": "advanced.minimal_cohort_members_properties", "displayName": "Minimal Cohort Members properties", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When true (default) cohort_members requests only $last_seen, which lets the connector force a 1,000,000-row page size." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the Mixpanel stream bound by this binding." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "'full_refresh' or 'incremental' (from the shared Airbyte-shim ResourceConfig in estuary-cdk)." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Cursor field path for incremental bindings (from the shared Airbyte-shim ResourceConfig)." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace; unused by this connector." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "cohorts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "cohorts/list",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "project_id": "<credentials.project_id, only when set>" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "cohort_members",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["distinct_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "engage",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "project_id": "<credentials.project_id, only when set>",
+            "page_size": "1000000 when advanced.minimal_cohort_members_properties is true, else advanced.page_size",
+            "output_properties": "\"$last_seen\" (only when advanced.minimal_cohort_members_properties is true)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "page_size",
+            "pageParam": "page",
+            "pageSize": 1000000,
+            "startPage": 0,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "funnels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["funnel_id", "date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "funnels",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "project_id": "<credentials.project_id, only when set>",
+            "funnel_id": "<from the parent funnels/list sweep>",
+            "unit": "day",
+            "from_date": "<slice start, YYYY-MM-DD>",
+            "to_date": "<slice end, YYYY-MM-DD>"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "from_date", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "export",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["insert_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "export",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "project_id": "<credentials.project_id, only when set>",
+            "from_date": "<slice start, YYYY-MM-DD>",
+            "to_date": "<slice end, YYYY-MM-DD>",
+            "where": "properties[\"$time\"]>=datetime(<unix seconds of the persisted cursor>), sent only when a cursor exists and the slice is not an attribution-window re-read"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "from_date", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "annotations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "{project_id}/annotations when a project_id is configured (against the .../api/app/projects/ base), otherwise 'annotations' against the .../api/2.0/ base",
+          "httpMethod": "GET",
+          "recordsPath": "results when a project_id is configured, otherwise annotations",
+          "params": {
+            "project_id": "<credentials.project_id, only when set>",
+            "from_date": "<slice start, YYYY-MM-DD>",
+            "to_date": "<slice end, YYYY-MM-DD>"
+          },
+          "pathPlaceholders": { "project_id": "credentials.project_id (Service Account mode only)" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "engage",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["distinct_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "last_seen",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "engage",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "project_id": "<credentials.project_id, only when set>",
+            "page_size": "advanced.page_size (default 50000)",
+            "where": "properties[\"$last_seen\"]><slice start> and properties[\"$last_seen\"]<=<slice end>, both formatted %Y-%m-%dT%H:%M:%S"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "page_size",
+            "pageParam": "page",
+            "pageSize": 50000,
+            "startPage": 0,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Both offered credential modes are self-serve static secrets pasted into the config: a Mixpanel Service Account username+secret (plus the numeric project ID) sent as HTTP Basic, or a single project secret that the connector base64-encodes into an `Authorization: Basic` header. There is no OAuth app registration and no refresh token anywhere in the connector — `__main__.py` explicitly constructs the Estuary shim with `oauth2=None`.",
+
+  "unionMisfits": [
+    {
+      "where": "transports",
+      "description": "This is one logical API with three hostnames/base paths chosen at runtime, not a primary plus a genuinely different sidecar service. Region ('US'|'EU') selects the host prefix, and the Export stream uses an entirely different host family (data.mixpanel.com / data-eu.mixpanel.com) while Annotations swaps the base path to /api/app/projects/ when a project_id is configured. I modelled Export as role 'sidecar' because the schema has no way to say 'one connector, several per-stream hosts', but it is not a second service in the Kafka+schema-registry sense.",
+      "proposedShape": { "transports": [{ "role": "primary", "hostVariants": [{ "name": "query", "template": "https://{regionPrefix}mixpanel.com/api/2.0/", "usedByStreams": ["cohorts", "cohort_members", "funnels", "engage", "annotations (no project_id)"] }, { "name": "app", "template": "https://{regionPrefix}mixpanel.com/api/app/projects/", "usedByStreams": ["annotations (with project_id)"] }, { "name": "export", "template": "https://data{regionSuffix}.mixpanel.com/api/2.0/", "usedByStreams": ["export"] }] }] }
+    },
+    {
+      "where": "streams[3].pull.incremental (export)",
+      "description": "The Export endpoint does not paginate at all. It streams newline-delimited JSON for a whole date window in one response (request_kwargs sets stream=True and the connector reassembles records line by line, bailing out on a literal 'terminated early' line). Progress is made only by advancing the from_date/to_date window, capped at 30 days per slice for this stream. Recorded as paginator {'type':'none'}; the real bounding mechanism is the date window, which the PullSpec union has no slot for.",
+      "proposedShape": { "windowing": { "kind": "date_window", "startParam": "from_date", "endParam": "to_date", "format": "date", "inclusiveEnd": true, "windowDays": "min(config.date_window_size, 30)", "endClamp": "today in project_timezone", "lookback": { "param": "attribution_window", "days": 5, "appliedWhen": "only once the stream is caught up to yesterday" } } }
+    },
+    {
+      "where": "streams[1].pull.snapshot.paginator, streams[5].pull.incremental.paginator (cohort_members, engage)",
+      "description": "The engage-backed paginator is a hybrid the axes cannot express cleanly. Each response body carries `page`, `total` (first page only) and an opaque `session_id`; the next request sends BOTH an incremented `page` number AND that `session_id` back as query parameters. I classified it 'page' because the page number is what advances, but the session_id is a genuine body-sourced opaque cursor riding alongside it. Termination is explicit_total: stop once total <= page_size * (page + 1).",
+      "proposedShape": { "type": "page", "pageParam": "page", "limitParam": "page_size", "startPage": 0, "terminateOn": "explicit_total", "totalPath": "total", "companionToken": { "param": "session_id", "cursorPath": "session_id", "tokenFrom": "body", "tokenTo": "query_param" } }
+    },
+    {
+      "where": "streams[*].writeDisposition",
+      "description": "No stream in this connector emits deletes or tombstones, including the two full-refresh ones (cohort_members, annotations). Records are keyed documents reduced last-write-wins by the destination collection, so I used 'merge' throughout; 'snapshot_with_tombstone' would be wrong (nothing is tombstoned) but 'merge' also understates that cohort_members re-reads the entire membership every run and a removed cohort member simply stops being refreshed rather than being deleted.",
+      "proposedShape": { "writeDisposition": "merge", "staleHandling": "none — removed source rows are never retracted" }
+    },
+    {
+      "where": "streams[1] (cohort_members) and streams[2] (funnels)",
+      "description": "Both are parent-scoped streams whose slices come from a second, undeclared HTTP call, and neither parent appears as a bindable stream. cohort_members first reads cohorts/list and iterates the cohorts whose count > 0, sending {\"filter_by_cohort\": {\"id\": <cohort id>}} in the POST body. funnels first reads funnels/list and iterates funnel_ids. The PullSpec union has pathPlaceholders for parent scoping via the URL but nothing for parent scoping via a request body or a query param.",
+      "proposedShape": { "parentSweep": { "path": "cohorts/list", "recordsPath": null, "filter": "count > 0", "childScopeSentAs": "request_body_json.filter_by_cohort.id" } }
+    },
+    {
+      "where": "execution.defaultSchedule and streams[*].schedules",
+      "description": "There is no schedule anywhere in the connector or in the shared Airbyte-shim ResourceConfig (whose only fields are stream, syncMode, namespace, cursorField). What the connector does have is a self-imposed rate limiter: after every response it sleeps (3600 / reqs_per_hour_limit) seconds minus the response-processing time, with a default limit of 60 requests/hour, overridable by the REQS_PER_HOUR_LIMIT environment variable. That is pacing inside a run, not a schedule between runs, so the schedule fields are left empty.",
+      "proposedShape": { "rateLimit": { "kind": "requests_per_hour", "default": 60, "envOverride": "REQS_PER_HOUR_LIMIT", "implementation": "post-response sleep", "note": "ExportSchema helper sets it to 0 to disable sleeping" } }
+    },
+    {
+      "where": "credentialModes[1].scheme",
+      "description": "The Project Secret mode is neither a plain 'bearer' nor a plain 'basic': the connector base64-encodes the raw project secret itself and sends 'Authorization: Basic <b64(secret)>'. It is basic-auth-shaped on the wire but the user supplies a single opaque value, not a username/password pair, so I used the 'header' variant with the encoding described in the prefix field.",
+      "proposedShape": { "type": "header", "header": "Authorization", "scheme": "Basic", "field": "credentials.api_secret", "encoding": "base64 of the raw field value, applied by the connector" }
+    },
+    {
+      "where": "configFields[10] (date_window_size)",
+      "description": "spec.json advertises default 1 while the code's fallback when the key is absent is 30, and three streams then override the user's value outright (Export clamps to at most 30; Funnels and Annotations hard-set 100000 to force a single request). The flat configFields shape cannot express 'declared default disagrees with code default and is per-stream overridden'.",
+      "proposedShape": { "name": "date_window_size", "declaredDefault": 1, "codeFallback": 30, "perStreamOverrides": { "export": "min(value, 30)", "funnels": 100000, "annotations": 100000 } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_mixpanel_native/streams/base.py",
+      "lines": "29-32",
+      "snippet": "prefix = \"eu.\" if self.region == \"EU\" else \"\"\nreturn f\"https://{prefix}mixpanel.com/api/2.0/\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_mixpanel_native/streams/base.py",
+      "lines": "75-78",
+      "snippet": "return {\"Accept\": \"application/json\"}"
+    },
+    "transports[1].spec.baseUrl": {
+      "file": "source_mixpanel_native/streams/export.py",
+      "lines": "136-139",
+      "snippet": "prefix = \"-eu\" if self.region == \"EU\" else \"\"\nreturn f\"https://data{prefix}.mixpanel.com/api/2.0/\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_mixpanel_native/source.py",
+      "lines": "44-49",
+      "snippet": "username = credentials.get(\"username\")\nif username and secret:\n    return BasicHttpAuthenticator(username=username, password=secret)"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_mixpanel_native/source.py",
+      "lines": "33-36",
+      "snippet": "class TokenAuthenticatorBase64(TokenAuthenticator):\n    token = base64.b64encode(token.encode(\"utf8\")).decode(\"utf8\")\n    super().__init__(token=token, auth_method=\"Basic\")"
+    },
+    "credentialModes": {
+      "file": "source_mixpanel_native/spec.json",
+      "lines": "14-49",
+      "snippet": "\"oneOf\": [ { \"title\": \"Service Account\", \"required\": [\"username\", \"secret\", \"project_id\"] },\n           { \"title\": \"Project Secret\", \"required\": [\"api_secret\"] } ]"
+    },
+    "authTierOverall": {
+      "file": "source_mixpanel_native/__main__.py",
+      "lines": "10-15",
+      "snippet": "shim_airbyte_cdk.CaptureShim(\n    delegate=SourceMixpanel(),\n    oauth2=None,"
+    },
+    "streamMode": {
+      "file": "source_mixpanel_native/source.py",
+      "lines": "40",
+      "snippet": "STREAMS = [Cohorts, CohortMembers, Funnels, Export, Annotations, Engage]"
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_mixpanel_native/streams/cohorts.py",
+      "lines": "45-46",
+      "snippet": "def path(self, **kwargs) -> str:\n    return \"cohorts/list\""
+    },
+    "streams[0].cursorField": {
+      "file": "source_mixpanel_native/streams/cohorts.py",
+      "lines": "40-43",
+      "snippet": "primary_key: str = \"id\"\ncursor_field = \"created\""
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_mixpanel_native/streams/cohort_members.py",
+      "lines": "47-48",
+      "snippet": "def path(self, **kwargs) -> str:\n    return \"engage\""
+    },
+    "streams[1].pull.snapshot.paginator": {
+      "file": "source_mixpanel_native/streams/cohort_members.py",
+      "lines": "80-84",
+      "snippet": "if self._total and page_number is not None and self._total > self.page_size * (page_number + 1):\n    return {\"session_id\": response_json.get(\"session_id\"), \"page\": page_number + 1}"
+    },
+    "streams[1].pull.snapshot.params": {
+      "file": "source_mixpanel_native/streams/cohort_members.py",
+      "lines": "63-66",
+      "snippet": "params = {**params, \"page_size\": self.page_size}\nif self.minimal_cohort_members_properties:\n    params['output_properties'] = '\"$last_seen\"'"
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_mixpanel_native/streams/funnels.py",
+      "lines": "63-64",
+      "snippet": "def path(self, **kwargs) -> str:\n    return \"funnels\""
+    },
+    "streams[2].pull.incremental.params": {
+      "file": "source_mixpanel_native/streams/funnels.py",
+      "lines": "125-127",
+      "snippet": "params[\"funnel_id\"] = stream_slice[\"funnel_id\"]\nparams[\"unit\"] = \"day\""
+    },
+    "streams[2].primaryKey": {
+      "file": "source_mixpanel_native/streams/funnels.py",
+      "lines": "33-35",
+      "snippet": "primary_key: List[str] = [\"funnel_id\", \"date\"]\ndata_field: str = \"data\"\ncursor_field: str = \"date\""
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_mixpanel_native/streams/export.py",
+      "lines": "141-142",
+      "snippet": "def path(self, **kwargs) -> str:\n    return \"export\""
+    },
+    "streams[3].primaryKey": {
+      "file": "source_mixpanel_native/streams/export.py",
+      "lines": "91-92",
+      "snippet": "primary_key: str = \"insert_id\"\ncursor_field: str = \"time\""
+    },
+    "streams[3].pull.incremental.paginator": {
+      "file": "source_mixpanel_native/streams/base.py",
+      "lines": "71-73",
+      "snippet": "def next_page_token(self, response: requests.Response) -> Optional[Mapping[str, Any]]:\n    \"\"\"Define abstract method\"\"\"\n    return None"
+    },
+    "streams[3].pull.incremental.params.where": {
+      "file": "source_mixpanel_native/streams/export.py",
+      "lines": "241-243",
+      "snippet": "timestamp = int(pendulum.parse(cursor_param).timestamp())\nparams[\"where\"] = f'properties[\"$time\"]>=datetime({timestamp})'"
+    },
+    "streams[3].pull.incremental.incrementalParam": {
+      "file": "source_mixpanel_native/streams/base.py",
+      "lines": "263-267",
+      "snippet": "return {**params, \"from_date\": stream_slice[\"start_date\"], \"to_date\": stream_slice[\"end_date\"]}"
+    },
+    "streams[4].pull.snapshot.path": {
+      "file": "source_mixpanel_native/streams/annotations.py",
+      "lines": "56-59",
+      "snippet": "if self.project_id:\n    return f\"{self.project_id}/annotations\"\nreturn \"annotations\""
+    },
+    "streams[4].pull.snapshot.recordsPath": {
+      "file": "source_mixpanel_native/streams/annotations.py",
+      "lines": "45-47",
+      "snippet": "def data_field(self):\n    return \"results\" if self.project_id else \"annotations\""
+    },
+    "streams[4].supportedSyncModes": {
+      "file": "source_mixpanel_native/streams/annotations.py",
+      "lines": "24-26",
+      "snippet": "NOTE: annotation date - is the date for which annotation was added, this is not the date when annotation was added\nThat's why stream does not support incremental sync."
+    },
+    "streams[5].pull.incremental.path": {
+      "file": "source_mixpanel_native/streams/engage.py",
+      "lines": "82-83",
+      "snippet": "def path(self, **kwargs) -> str:\n    return \"engage\""
+    },
+    "streams[5].pull.incremental.httpMethod": {
+      "file": "source_mixpanel_native/streams/engage.py",
+      "lines": "31-33",
+      "snippet": "http_method: str = \"POST\"\ndata_field: str = \"results\"\nprimary_key: str = \"distinct_id\""
+    },
+    "streams[5].pull.incremental.paginator": {
+      "file": "source_mixpanel_native/streams/engage.py",
+      "lines": "115-119",
+      "snippet": "if self._total and page_number is not None and self._total > self.page_size * (page_number + 1):\n    return {\"session_id\": decoded_response.get(\"session_id\"), \"page\": page_number + 1}"
+    },
+    "streams[5].cursorField": {
+      "file": "source_mixpanel_native/streams/engage.py",
+      "lines": "37-39",
+      "snippet": "def cursor_field(self) -> str:\n    return \"last_seen\""
+    },
+    "streams[*].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file (6 bindings)",
+      "snippet": "{\"recommendedName\": \"export\", \"resourceConfig\": {\"stream\": \"export\", \"syncMode\": \"incremental\", \"cursorField\": [\"time\"]}, \"key\": [\"/insert_id\"]}"
+    },
+    "configFields": {
+      "file": "source_mixpanel_native/spec.json",
+      "lines": "8-138",
+      "snippet": "\"properties\": { \"credentials\": {...}, \"attribution_window\": {...}, \"project_timezone\": {...},\n  \"start_date\": {...}, \"end_date\": {...}, \"region\": {...}, \"date_window_size\": {...}, \"advanced\": {...} }"
+    },
+    "configFields[13]": {
+      "file": "estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "63-82",
+      "snippet": "class ResourceConfig(common.BaseResourceConfig, extra=\"forbid\"):\n    stream: Annotated[str, Field(description=\"Name of this stream\")]\n    sync_mode: Literal[\"full_refresh\", \"incremental\"] = Field(alias=\"syncMode\", ...)"
+    },
+    "execution.mode": {
+      "file": "source_mixpanel_native/streams/base.py",
+      "lines": "109-113",
+      "snippet": "remaining_wait_time = (3600 / self.reqs_per_hour_limit) - response_processing_duration\nif remaining_wait_time > 0:\n    time.sleep(remaining_wait_time)"
+    },
+    "unionMisfits[1]": {
+      "file": "source_mixpanel_native/streams/export.py",
+      "lines": "110-113",
+      "snippet": "# This stream has a ton of data, so we can't use large date windows or we'll OOM the connector.\nMAX_DATE_WINDOW_SIZE = 30\nsmaller_date_window = min([date_window_size, MAX_DATE_WINDOW_SIZE])"
+    },
+    "unionMisfits[4]": {
+      "file": "source_mixpanel_native/streams/cohort_members.py",
+      "lines": "94-99",
+      "snippet": "cohorts = Cohorts(**self.get_stream_params()).read_records(SyncMode.full_refresh)\nfiltered_cohorts = [cohort for cohort in cohorts if cohort[\"count\"] > 0]\nfor cohort in filtered_cohorts: yield {\"id\": cohort[\"id\"]}"
+    },
+    "unionMisfits[5]": {
+      "file": "source_mixpanel_native/source.py",
+      "lines": "154-156",
+      "snippet": "reqs_per_hour_limit = int(os.environ.get(\"REQS_PER_HOUR_LIMIT\", stream.DEFAULT_REQS_PER_HOUR_LIMIT))\nstream.reqs_per_hour_limit = reqs_per_hour_limit"
+    },
+    "unionMisfits[7]": {
+      "file": "source_mixpanel_native/source.py",
+      "lines": "70-71",
+      "snippet": "config.get(\"date_window_size\", 30),"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[1].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[1].scheme": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[2].pull.incremental.path": "high",
+    "streams[3].pull.incremental.path": "high",
+    "streams[4].pull.snapshot.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[1].pull.snapshot.paginator": "medium",
+    "streams[5].pull.incremental.paginator": "medium",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[2].pull.incremental.paginator": "high",
+    "streams[3].pull.incremental.paginator": "high",
+    "streams[4].pull.snapshot.paginator": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].writeDisposition": "low",
+    "streams[1].pull.snapshot.paginator.pageSize": "medium",
+    "execution.mode": "high",
+    "configFields": "high",
+    "category": "high",
+    "unionMisfits": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Nothing in the connector or in the shared Airbyte-shim ResourceConfig expresses a schedule. The only timing construct is an in-run rate limiter (60 requests/hour by default, REQS_PER_HOUR_LIMIT override) implemented as a post-response sleep, which is pacing within a single run rather than a cadence between runs. Recorded in unionMisfits instead of guessed at.",
+    "streams[*].schedules": "Same reason — the resource config has only stream, syncMode, namespace and cursorField; there is no per-binding interval or cron anywhere.",
+    "execution.continuity": "mode is 'poll', so continuity is optional. The connector leaves no server-side artifact behind: every stream is a stateless HTTP read and the only persisted state is a client-side cursor. Nothing accrues on Mixpanel's side if we stop, and the only loss on ours would be Mixpanel's own data-retention policy expiring history before we resume, which the connector source does not state. Set null rather than inventing a resume window.",
+    "streams[5].pull.incremental.incrementalParam": "Engage does not carry its cursor in a dedicated parameter. It bounds each slice with a Mixpanel filter expression in the `where` query param comparing properties[\"$last_seen\"] against slice start/end formatted %Y-%m-%dT%H:%M:%S, then advances state to the slice end. The {param, format} shape cannot represent a two-sided expression filter, and naming `where` as the incrementalParam would be misleading.",
+    "streams[1].pull.snapshot.incrementalParam": "cohort_members is full_refresh in discover output and has no cursor_field at all; the parent cohorts sweep is deliberately re-read in full each run because membership changes. The test.flow.yaml binding nonetheless declares syncMode incremental with cursorField last_seen — see FLAG — so I did not assert an incremental parameter.",
+    "streams[4].pull.snapshot.incrementalParam": "Annotations sends from_date/to_date, but its date_window_size is hard-set to 100000 days so exactly one all-time window is ever produced, and the stream docstring states it cannot sync incrementally because the annotation date is the annotated-for date, not the created date. Calling from_date an incrementalParam here would misrepresent it as a watermark.",
+    "streams[3].pull.backfill": "The Export stream has no separate backfill leg in the code. The same date-window slicer produces both the historical sweep and the ongoing tail; the only difference is the attribution-window lookback, which is applied solely when the stream is already caught up to yesterday. I put the single shape in `incremental` rather than duplicating it into `backfill`.",
+    "discovery": "streamMode is static — SourceMixpanel.STREAMS is a fixed list of six classes and the discover snapshot returns exactly those six bindings, so there is no discovery mechanism to describe.",
+    "transports[0].spec.apiVersionPinning (Annotations variant)": "The project-scoped Annotations base path (/api/app/projects/) carries no version segment at all, so the connector effectively pins two different API surfaces. Recorded in the transports misfit rather than forced into the single apiVersionPinning string.",
+    "credentialModes[*].appliesToTransport": "Both credential modes are applied by a single authenticator constructed once in source.py and handed to every stream, including the Export stream on the data.mixpanel.com host. I marked both 'primary' because the schema requires one value, but they in fact apply to both transports."
+  }
+}

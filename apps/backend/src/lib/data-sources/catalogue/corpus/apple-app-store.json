@@ -1,0 +1,291 @@
+{
+  "id": "apple-app-store",
+  "estuaryDir": "source-apple-app-store",
+  "displayName": "Apple App Store",
+  "description": "Imports App Store Connect analytics reports (sessions, crashes, downloads, installs/deletions, discovery & engagement) and customer reviews for one or more apps.",
+  "category": "analytics",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "App Store Connect REST API",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.appstoreconnect.apple.com/v1" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1` baked into the base URL constant; the signed JWT also carries the audience claim `appstoreconnect-v1`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Downloading analytics report segment files: Apple returns pre-signed, absolute URLs on a separate host, fetched WITHOUT the Authorization header and gunzipped as TSV.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "resolved", "resolution": "absolute pre-signed URL taken from analyticsReportSegments[].attributes.url; the connector explicitly passes with_token=False because sending Authorization causes HTTP 400" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "App Store Connect API key (locally-signed ES256 JWT)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "The user supplies three values from App Store Connect > Users and Access > Keys: the .p8 private key file contents (`credentials.private_key`), the Key ID (`credentials.key_id`), and the Issuer ID (`credentials.issuer_id`). The connector signs a JWT locally with ES256 (headers: alg=ES256, kid=<key_id>, typ=JWT; claims: iss=<issuer_id>, iat, exp=iat+20min, aud=appstoreconnect-v1), assigns it to the hidden `credentials.access_token` field, and the CDK TokenSource then sends it as `Authorization: Bearer <jwt>`. No token endpoint and no network round-trip is involved in obtaining the token; it is regenerated locally 5 minutes before its 20-minute expiry."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "interval", "seconds": 3600 },
+    "continuity": {
+      "artifacts": [
+        "analyticsReportRequests resource with accessType=ONGOING, created per app_id on the customer's App Store Connect account",
+        "analyticsReportRequests resource with accessType=ONE_TIME_SNAPSHOT, created per app_id for the backfill leg"
+      ],
+      "customerSideAccrual": "Nothing that grows in size. Apple generates daily report instances for the ONGOING request on the customer's account regardless of whether we read them; no queue, log, or storage grows on our behalf.",
+      "ourSideLoss": "Apple marks an ONGOING analytics report request `stoppedDueToInactivity` if it is not consumed; the connector detects that flag and logs that the ONGOING request may need to be re-created. Report instances that stop being generated while a request is inactive are a data gap that only a new ONE_TIME_SNAPSHOT request can partly recover. The connector also emits a warning when an expected instance never appears, referencing per-report completeness lags of 2-5 days.",
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "The report requests are created with POST /analyticsReportRequests and are never deleted by the connector; a 409 on create is treated as 'already exists' and the existing request id is reused. Both artifacts therefore persist on the customer's account after the capture stops. The exact inactivity threshold Apple applies before setting stoppedDueToInactivity is not stated anywhere in the connector, so resumeWindow is left null."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant, always \"Private App Credentials\"." },
+    { "name": "credentials.private_key", "displayName": "Private Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Contents of the .p8 private key file downloaded from App Store Connect, including BEGIN/END markers. Rendered multiline." },
+    { "name": "credentials.key_id", "displayName": "Key ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The Key ID shown in App Store Connect when the API key was created." },
+    { "name": "credentials.issuer_id", "displayName": "Issuer ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The Issuer ID shown in App Store Connect under Users and Access > Keys." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Hidden field (x-hidden-field), defaults to empty; populated at runtime with the locally-generated JWT. Not user-supplied." },
+    { "name": "app_ids", "displayName": "App IDs", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Specific App IDs to sync. If empty, all accessible apps are discovered via GET /apps." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig binding name (path pointer /name)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig poll interval; the connector ships PT1H for every binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "app_reviews",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/app_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.createdDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/apps/{app_id}/customerReviews",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": 200, "include": "response", "sort": "-createdDate" },
+          "pathPlaceholders": { "app_id": "each id from endpoint config `app_ids`, or every id returned by GET /apps when that list is empty" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/apps/{app_id}/customerReviews",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": 200, "include": "response", "sort": "-createdDate" },
+          "pathPlaceholders": { "app_id": "each id from endpoint config `app_ids`, or every id returned by GET /apps when that list is empty" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "app_sessions_detailed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/filename", "/row_number"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "processingDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": { "backfill": null, "incremental": null, "snapshot": null }
+    },
+    {
+      "name": "app_crashes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/filename", "/row_number"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "processingDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": { "backfill": null, "incremental": null, "snapshot": null }
+    },
+    {
+      "name": "app_downloads_detailed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/filename", "/row_number"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "processingDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": { "backfill": null, "incremental": null, "snapshot": null }
+    },
+    {
+      "name": "app_store_installs_and_deletions_detailed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/filename", "/row_number"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "processingDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": { "backfill": null, "incremental": null, "snapshot": null }
+    },
+    {
+      "name": "app_store_discovery_and_engagement_detailed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/filename", "/row_number"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "processingDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": { "backfill": null, "incremental": null, "snapshot": null }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Only one credential mode exists. The user self-serves an App Store Connect API key (Users and Access > Keys), downloads the .p8 file once, and pastes its contents plus the Key ID and Issuer ID. There is no OAuth app to register (ConnectorSpec sets oauth2=None and TokenSource is constructed with oauth_spec=None) and no refresh token to obtain — the JWT is minted locally by the connector on every run. Three fields instead of one is more typing, but it is still a single self-serve credential with no third-party app registration, which is T1_SIMPLE. Caveat for the tier judgement: the .p8 file is downloadable exactly once from Apple, so a user who lost it must issue a new key.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[1..5].pull (the five analytics report streams)",
+      "description": "The five analytics streams are NOT a single HTTP GET and cannot be expressed as a PullSpec. Each sync is a request/poll/fetch pipeline across five distinct endpoints plus an off-API file download: (1) POST /analyticsReportRequests with a JSON:API body {data:{type:analyticsReportRequests, attributes:{accessType: ONGOING|ONE_TIME_SNAPSHOT}, relationships:{app:{data:{type:apps,id:<app_id>}}}}} — a 409 means the request already exists and the connector falls back to GET /apps/{app_id}/analyticsReportRequests?filter[accessType]=...&fields[analyticsReportRequests]=accessType,stoppedDueToInactivity; (2) GET /analyticsReportRequests/{request_id}/reports to list reports, then GET /analyticsReports/{report_id} on each to match attributes.name against the stream's report_name literal; (3) GET /analyticsReports/{report_id}/instances?filter[granularity]=DAILY&fields[analyticsReportInstances]=granularity,processingDate,segments, client-side filtered by processingDate window and reduced with min(); (4) GET /analyticsReportInstances/{instance_id}/segments?fields[analyticsReportSegments]=checksum,sizeInBytes,url; (5) streamed GET of each segment's pre-signed absolute URL with NO Authorization header, gunzipped and parsed as tab-delimited TSV, each row keyed by (filename, row_number). The cursor is not a request parameter at all — it is the report instance's processingDate, advanced one instance per invocation. Steps 1-4 all use the shared cursor paginator; step 5 is a single non-paginated file stream. There is also a poll/wait behaviour with no PullSpec equivalent: on a 409 race the connector sleeps 60s, and backfill sleeps 30s and re-yields its cursor unchanged when the prerequisite ONGOING request does not yet exist.",
+      "proposedShape": {
+        "kind": "report_job",
+        "requestStep": { "method": "POST", "path": "/analyticsReportRequests", "bodySketch": "JSON:API resource with attributes.accessType and relationships.app.data.id", "existingResourceOn409": "GET /apps/{app_id}/analyticsReportRequests?filter[accessType]=<accessType>" },
+        "resolveSteps": [
+          { "method": "GET", "path": "/analyticsReportRequests/{request_id}/reports" },
+          { "method": "GET", "path": "/analyticsReports/{report_id}", "selectBy": "attributes.name == <report_name literal>" },
+          { "method": "GET", "path": "/analyticsReports/{report_id}/instances", "params": { "filter[granularity]": "DAILY" }, "selectBy": "min(attributes.processingDate) within [start_date, cutoff]" },
+          { "method": "GET", "path": "/analyticsReportInstances/{instance_id}/segments" }
+        ],
+        "fetchStep": { "urlFrom": "segments[].attributes.url", "authenticated": false, "compression": "gzip", "format": "tsv", "delimiter": "\t", "recordKey": ["filename", "row_number"] },
+        "waitPolicy": { "on409": "sleep 60s then re-list", "onMissingPrerequisite": "sleep 30s, re-yield unchanged cursor", "expectedLagDays": { "app_downloads_detailed": 2, "app_store_discovery_and_engagement_detailed": 3, "app_sessions_detailed": 5, "app_crashes": 5, "app_store_installs_and_deletions_detailed": 5 } }
+      }
+    },
+    {
+      "where": "streams[].pull / per-binding fan-out",
+      "description": "Every binding is fanned out over N app_ids inside a single stream. The CDK state for one binding is a dict keyed by app_id holding an independent (inc cursor, backfill cursor) pair per app, and open_binding is handed a dict of fetch functions rather than one. The schema's PullSpec models one path per stream and treats {app_id} as an ordinary path placeholder, which loses the fact that the resumable unit is (binding, app_id), not the binding — and that app_id itself may be discovered at connect time via GET /apps rather than configured.",
+      "proposedShape": { "pull": { "fanOut": { "over": "app_ids", "source": "config.app_ids, else GET /apps (limit=200, cursor-paginated)", "stateKeyedBy": "app_id", "independentCursorsPerKey": true } } }
+    },
+    {
+      "where": "streams[1..5].cursorField",
+      "description": "The analytics cursor is not a field on the emitted record. Records carry a `Date` column (aliased to record_date), but the checkpointed cursor is the report INSTANCE's processingDate, a property of the API resource that produced the file, not of any row. Backfill additionally applies the cutoff against row.record_date while advancing its page cursor on processingDate — two different date fields in one loop. `cursorField` has been filled with \"processingDate\" for usefulness, but a reader should not expect to find that key in the record.",
+      "proposedShape": { "cursorField": { "name": "processingDate", "locus": "api_resource|record", "recordDateField": "record_date (alias of TSV column \"Date\")" } }
+    },
+    {
+      "where": "streams[].supportedSyncModes / pull.backfill vs pull.incremental",
+      "description": "The two legs are not two shapes of the same read — they hit different server-side objects. Incremental reads instances of the ONGOING report request; backfill reads instances of a separately created ONE_TIME_SNAPSHOT request, and refuses to run at all until an ONGOING request exists. The schema's backfill/incremental split implies one dataset read two ways; here it is two provisioned datasets whose overlap the connector's own docstring admits it cannot guarantee.",
+      "proposedShape": { "pull": { "backfill": { "provisionedSource": "ONE_TIME_SNAPSHOT report request", "prerequisite": "an ONGOING report request must already exist" }, "incremental": { "provisionedSource": "ONGOING report request" } } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_apple_app_store/client.py", "lines": "37", "snippet": "API_BASE = \"https://api.appstoreconnect.apple.com/v1\"" },
+    "transports[1].spec.baseUrl": { "file": "source_apple_app_store/client.py", "lines": "300-304", "snippet": "_, body_generator = await self.http.request_stream(\n    self.log, download_url,\n    with_token=False, # Apple's API returns signed/authenticated URLs; using Authorization header causes HTTP 400 errors" },
+    "credentialModes[0].scheme": { "file": "source_apple_app_store/auth.py", "lines": "68-79", "snippet": "payload = {\"iss\": self._apple_credentials.issuer_id, \"iat\": now, \"exp\": now + self._TOKEN_LIFETIME, \"aud\": \"appstoreconnect-v1\"}\nheaders = {\"alg\": self._ALGORITHM, \"kid\": self._apple_credentials.key_id, \"typ\": \"JWT\"}" },
+    "credentialModes[0].tier": { "file": "source_apple_app_store/models.py", "lines": "52-56", "snippet": "private_key: str = Field(title=\"Private Key\", description=\"The contents of the private key file (.p8) downloaded from App Store Connect...\")" },
+    "authTierOverall": { "file": "source_apple_app_store/auth.py", "lines": "31-33", "snippet": "def __init__(self, credentials: AppleCredentials):\n    super().__init__(oauth_spec=None, credentials=credentials)" },
+    "credentialModes[0].scheme.description": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36, 305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\nreturn (self.authorization_token_type, self.credentials.access_token)" },
+    "streams[0].pull.incremental.path": { "file": "source_apple_app_store/client.py", "lines": "335-341", "snippet": "url = f\"{API_BASE}/apps/{app_id}/customerReviews\"\nparams = {\"limit\": limit, \"include\": \"response\", \"sort\": sort}" },
+    "streams[0].pull.incremental.paginator": { "file": "source_apple_app_store/client.py", "lines": "359-364", "snippet": "if next_link and \"cursor=\" in next_link:\n    next_cursor = next_link.split(\"cursor=\")[1].split(\"&\")[0]\nreturn response.data, next_cursor" },
+    "streams[0].pull.incremental.paginator.tokenTo": { "file": "source_apple_app_store/client.py", "lines": "343-344", "snippet": "if cursor:\n    params[\"cursor\"] = cursor" },
+    "streams[0].pull.incremental.paginator.cursorPath": { "file": "source_apple_app_store/models.py", "lines": "106-112", "snippet": "@property\ndef cursor(self) -> str | None:\n    return self.links.next.split(\"?cursor=\")[-1]" },
+    "streams[0].pull.incremental.paginator.pageSize": { "file": "source_apple_app_store/client.py", "lines": "38", "snippet": "MAX_PAGE_SIZE = 200" },
+    "streams[0].cursorField": { "file": "source_apple_app_store/api.py", "lines": "358-362", "snippet": "for review in reviews:\n    if review.attributes.createdDate >= log_cursor:" },
+    "streams[0].primaryKey": { "file": "source_apple_app_store/models.py", "lines": "144-145", "snippet": "name: ClassVar[str] = \"app_reviews\"\nprimary_keys: ClassVar[list[str]] = [\"/app_id\", \"/id\"]" },
+    "streams[1].primaryKey": { "file": "source_apple_app_store/models.py", "lines": "176-179", "snippet": "primary_keys: ClassVar[list[str]] = [\n    \"/filename\",\n    \"/row_number\",\n]" },
+    "streams[1].cursorField": { "file": "source_apple_app_store/api.py", "lines": "231-235", "snippet": "new_cursor = datetime.combine(report_instance.attributes.processingDate, datetime.min.time()).replace(tzinfo=UTC)\nyield new_cursor" },
+    "streamMode": { "file": "source_apple_app_store/resources.py", "lines": "35-46", "snippet": "ANALYTICS_RESOURCES: list[type[AppleAnalyticsRow]] = [AppSessionsDetailedReportRow, AppCrashesReportRow, ...]\nAPI_RESOURCES: ... = [(AppReview, fetch_backfill_reviews, fetch_incremental_reviews)]" },
+    "execution.defaultSchedule": { "file": "source_apple_app_store/resources.py", "lines": "176-178", "snippet": "initial_config=ResourceConfig(name=model.resource_name, interval=timedelta(hours=1))" },
+    "execution.continuity.artifacts": { "file": "source_apple_app_store/client.py", "lines": "114-131", "snippet": "url = f\"{API_BASE}/analyticsReportRequests\"\nbody = {\"data\": {\"type\": \"analyticsReportRequests\", \"attributes\": {\"accessType\": report_type.value}," },
+    "execution.continuity.ourSideLoss": { "file": "source_apple_app_store/api.py", "lines": "209-212", "snippet": "f\"The {model.report_name} report is not yet available after waiting for {current_lag.days} days. \"\n\"If the issue persists, the ONGOING report request may need to be re-created.\"" },
+    "execution.continuity.releasedOnShutdown": { "file": "source_apple_app_store/client.py", "lines": "268-285", "snippet": "except HTTPError as e:\n    if e.code == 409:\n        report_requests = await self.list_analytics_report_requests(app_id, report_type)" },
+    "configFields": { "file": "source_apple_app_store/models.py", "lines": "74-84", "snippet": "credentials: AppleCredentials = Field(..., title=\"Apple App Store Connect Credentials\")\napp_ids: list[str] = Field(default_factory=list, title=\"App IDs\")" },
+    "unionMisfits[0]": { "file": "source_apple_app_store/api.py", "lines": "84-99", "snippet": "analytics_reports = await client.list_analytics_reports(report_request_id)\nreport_details = await client.get_analytics_report_details(report.id)\nreport_instances = await client.list_analytic_report_instances(target_report.id, granularity)" },
+    "unionMisfits[1]": { "file": "source_apple_app_store/resources.py", "lines": "126-129, 144-156", "snippet": "app_ids = config.app_ids\nelse: app_ids = await client.list_apps()\nfor app_id in app_ids: fetch_changes_fns[app_id] = functools.partial(...)" },
+    "unionMisfits[3]": { "file": "source_apple_app_store/api.py", "lines": "275-291", "snippet": "ongoing_report_exists = await _ongoing_analytics_report_request_exists(client, app_id)\nif not ongoing_report_exists:\n    await asyncio.sleep(30)" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[1]": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streams[0].pull.backfill.path": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].cursorField": "high",
+    "streams[*].primaryKey": "high",
+    "streamMode": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "medium",
+    "execution.continuity.ourSideLoss": "medium",
+    "streams[1..5].cursorField": "medium",
+    "streams[*].writeDisposition": "medium",
+    "streams[*].supportedSyncModes": "high",
+    "configFields": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "streams[1].pull.backfill": "The analytics streams have no single-request pull shape. See unionMisfits[0]: it is a five-endpoint request/resolve/download pipeline terminating in an unauthenticated gzipped-TSV file fetch. Forcing any one of those five endpoints into a PullSpec would misdescribe where the records come from, so all analytics pull slots are null and the full endpoint chain is recorded in the misfit instead.",
+    "streams[2].pull.backfill": "Same as streams[1].pull.backfill.",
+    "streams[3].pull.backfill": "Same as streams[1].pull.backfill.",
+    "streams[4].pull.backfill": "Same as streams[1].pull.backfill.",
+    "streams[5].pull.backfill": "Same as streams[1].pull.backfill.",
+    "streams[1..5].pull.incremental": "Same as streams[1].pull.backfill; the incremental leg differs from backfill only in which accessType of report request it reads (ONGOING vs ONE_TIME_SNAPSHOT), not in shape.",
+    "streams[1..5].pull.snapshot": "Not a snapshot binding: each invocation advances a processingDate cursor by exactly one report instance and never re-reads the whole collection.",
+    "streams[0].pull.backfill.incrementalParam": "There is no server-side date filter on customerReviews. The connector requests sort=-createdDate and filters client-side against the cursor/cutoff, breaking out of the loop when it sees an older record. Recording a request parameter here would be fabrication.",
+    "discovery": "Streams are a fixed list of six shipped by the connector, so the discovery block does not apply. GET /apps IS a discovery call, but it discovers app_ids (a fan-out dimension inside every stream), not streams; see unionMisfits[1].",
+    "transports[0].spec.defaultHeaders": "No static default headers are set. Authorization is injected per-request by the CDK's token source; nothing else is pinned.",
+    "execution.continuity.resumeWindow": "Apple's inactivity threshold for flagging an analytics report request `stoppedDueToInactivity` is read but never asserted anywhere in the connector, and the code carries no constant for it. The per-report `completeness_lag` values (2-5 days) describe report availability lag, not how long we may pause, and must not be read as a resume window.",
+    "streams[1..5].pull.*.paginator": "The four control-plane list endpoints do share the connector's standard cursor paginator, but they paginate report METADATA, not records; the record-bearing step (the segment file download) is not paginated at all. Since the pull specs themselves are null, no paginator is attached.",
+    "credentialModes[0].scheme.type": "Recorded as `other` deliberately. It presents on the wire as a bearer token, but the schema's `bearer` member implies a user-supplied static token field; here the token is a short-lived ES256 JWT minted locally from a private key every 15 minutes and never supplied by the user. Classifying it as `bearer` with field `credentials.access_token` would point an implementer at a hidden field the user never fills in."
+  }
+}

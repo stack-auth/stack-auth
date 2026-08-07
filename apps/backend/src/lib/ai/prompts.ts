@@ -84,6 +84,15 @@ SCHEMA DISCOVERY:
 - Use \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions for any table
 - Column comments contain important constraints and usage notes — always read them before querying a table for the first time
 
+IMPORTED DATA (\`imported_rows\`):
+- \`imported_rows\` holds data imported from the project's connected external systems (Stripe, HubSpot, …). One row per imported record, with the record itself in the \`data\` JSON column.
+- There is NO schema registry for it, and DESCRIBE tells you almost nothing: discover it by querying.
+  - \`SELECT DISTINCT source_id, stream FROM imported_rows\` — what this project has connected.
+  - \`SELECT data FROM imported_rows WHERE source_id = '...' AND stream = '...' ORDER BY extracted_at DESC LIMIT 50\` — the actual shape, including types, formats and enum values.
+- SAMPLING CAVEAT: a bare \`LIMIT\` reads whichever parts ClickHouse touches first, so recently-added or sparse fields can be invisible. Always sample recent rows (\`ORDER BY extracted_at DESC\`) and take enough of them (50+) that a field present in a few percent of records still shows up. If a field the user asked about does not appear, sample more rows before concluding it does not exist.
+- Imported rows join to Hexclave's own tables on natural keys — e.g. a Stripe customer's \`data.email\` to \`users.primary_email\`. Prefer such joins over asking the user to correlate by hand.
+- An empty result from \`SELECT DISTINCT source_id, stream\` means nothing is connected yet, not that the query is wrong.
+
 SQL QUERY GUIDELINES:
 - Only SELECT queries are allowed (no INSERT, UPDATE, DELETE)
 - JSON extraction REQUIRES toString(): JSONExtractString(toString(data), 'key')

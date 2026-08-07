@@ -1,0 +1,319 @@
+{
+  "id": "ringcentral",
+  "estuaryDir": "source-ringcentral",
+  "displayName": "RingCentral",
+  "description": "Imports RingCentral communications data: account extensions, internal directory and external address-book contacts, per-extension call logs, and message-store messages (SMS, fax, pager, voicemail).",
+  "category": "support",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://platform.ringcentral.com/restapi/v1.0" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/restapi/v1.0` baked into the constant base URL"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "OAuth token endpoint used to exchange the user-supplied JWT assertion for a short-lived bearer access token; separate host path from the REST base URL.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://platform.ringcentral.com/restapi/oauth" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "JWT Auth app (private app credentials)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://platform.ringcentral.com/restapi/oauth/token",
+        "scopes": ["ReadAccounts", "ReadContacts", "ReadCallLog", "ReadMessages"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant; only value is \"Private App Credentials\"." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client ID from the user's own RingCentral JWT Auth app." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client Secret from the user's own RingCentral JWT Auth app." },
+    { "name": "credentials.jwt", "displayName": "JWT Credential", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "JWT credential generated in the RingCentral Developer Console and authorized for the JWT Auth app." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Hidden field (x-hidden-field); populated at runtime by the token source, not supplied by the user." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data before this is not replicated. Defaults to 7 days ago." },
+    { "name": "advanced.lookback_window", "displayName": "Call Log Lookback Window (Hours)", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Hours to re-fetch call logs on incremental sync once per day, to catch post-creation modifications. Default 24, range 1-168." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK ResourceConfig)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; connector ships 5 minutes as the initial value for every binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "extensions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "full snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100" },
+          "pathPlaceholders": { "accountId": "always the literal `~` (self-reference: the account owning the authenticated JWT credential); not configurable" },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "internal_contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "full snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/account/{accountId}/directory/entries",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100" },
+          "pathPlaceholders": { "accountId": "always the literal `~` (self-reference: the account owning the authenticated JWT credential); not configurable" },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "external_contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "full snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension/{extensionId}/address-book/contact",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100" },
+          "pathPlaceholders": {
+            "accountId": "always the literal `~` (self-reference: the account owning the authenticated JWT credential); not configurable",
+            "extensionId": "always the literal `~` (self-reference: the extension the JWT credential authenticates as); not configurable, so this stream covers only that one extension's personal address book"
+          },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_call_log",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "startTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill pages", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension/{extensionId}/call-log",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100", "dateFrom": "<endpoint start_date>", "dateTo": "<cutoff captured at connector startup>" },
+          "pathPlaceholders": {
+            "accountId": "always the literal `~` (self-reference to the JWT credential's account)",
+            "extensionId": "always the literal `~` (self-reference to the JWT credential's extension)"
+          },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "dateFrom", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension/{extensionId}/call-log",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100", "dateFrom": "<log cursor, minus lookback_window hours once per day>", "dateTo": "<now>" },
+          "pathPlaceholders": {
+            "accountId": "always the literal `~` (self-reference to the JWT credential's account)",
+            "extensionId": "always the literal `~` (self-reference to the JWT credential's extension)"
+          },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "dateFrom", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "messages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "creationTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill pages", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension/{extensionId}/message-store",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100", "dateFrom": "<endpoint start_date>", "dateTo": "<cutoff captured at connector startup>" },
+          "pathPlaceholders": {
+            "accountId": "always the literal `~` (self-reference to the JWT credential's account)",
+            "extensionId": "always the literal `~` (self-reference to the JWT credential's extension)"
+          },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "dateFrom", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/account/{accountId}/extension/{extensionId}/message-store",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": { "view": "Detailed", "perPage": "100", "dateFrom": "<log cursor>", "dateTo": "<now>" },
+          "pathPlaceholders": {
+            "accountId": "always the literal `~` (self-reference to the JWT credential's account)",
+            "extensionId": "always the literal `~` (self-reference to the JWT credential's extension)"
+          },
+          "paginator": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "dateFrom", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Only one credential mode is offered. The user must (1) register their own private JWT Auth app in the RingCentral Developer Console to obtain client_id + client_secret (T2), and (2) additionally generate a long-lived JWT credential in the console and authorize it for that app. The JWT is a long-lived assertion the connector repeatedly exchanges for short-lived bearer access tokens via the urn:ietf:params:oauth:grant-type:jwt-bearer grant — functionally the same user burden as supplying a refresh token, hence T3. The README states explicitly that Estuary does not host an OAuth app (RingCentral charges per registered app) and that a hosted flow is only a future plan; spec() returns oauth2=None, so there is no control-plane-assisted path today.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "The response envelope carries `navigation.nextPage.uri` (a full next-page URL), but the connector never follows or parses that URL — it uses only its PRESENCE as a has-more boolean and independently increments its own `page` query parameter. This is neither `next_url` (URL not followed) nor a pure `terminateOn: envelope_flag` (the field is a URL object, not a flag), so it is recorded as type `page` with terminateOn `absent_token`. A more faithful shape would let a page paginator name the envelope field whose absence terminates it.",
+      "proposedShape": { "type": "page", "limitParam": "perPage", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "absent_envelope_field", "terminationField": "navigation.nextPage" }
+    },
+    {
+      "where": "credentialModes[0].scheme",
+      "description": "RFC 7523 jwt-bearer is not one of the `grant` enum values. The exchange POSTs form fields grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer plus assertion=<user JWT>, authenticated with HTTP Basic (base64 client_id:client_secret) on the token endpoint; the resulting access_token is then sent to the API as `Authorization: Bearer <token>`. That is three schemes composed (basic on the token endpoint, jwt-bearer grant, bearer on the API) which the flat union cannot express — `grant: refresh_token` was chosen as the nearest fit because the JWT plays the role of a user-supplied long-lived refresh credential.",
+      "proposedShape": { "type": "oauth2", "grant": "jwt_bearer", "tokenUrl": "https://platform.ringcentral.com/restapi/oauth/token", "tokenEndpointAuth": { "type": "basic", "usernameField": "credentials.client_id", "passwordField": "credentials.client_secret" }, "assertionField": "credentials.jwt", "apiScheme": { "type": "bearer", "field": "credentials.access_token" }, "scopesFrom": "space-delimited `scope` string in the token response" }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "Every request is bounded on BOTH sides — dateFrom (cursor) and dateTo (now, or the startup cutoff for backfill) — but `incrementalParam` models only the lower bound. The upper bound is load-bearing here: backfill uses it to define its cutoff and the incremental leg uses it to advance the cursor when no records are returned.",
+      "proposedShape": { "lowerBound": { "param": "dateFrom", "format": "iso8601" }, "upperBound": { "param": "dateTo", "format": "iso8601" } }
+    },
+    {
+      "where": "streams[3] (user_call_log) incremental strategy",
+      "description": "The call-log API filters by startTime, not lastModifiedTime, so the connector cannot query 'modified since'. It tracks max startTime as the cursor and, once per day (when the cursor crosses a date boundary), rewinds dateFrom by `lookback_window` hours to re-fetch and re-emit updated records, deduplicating via the CDK emitted_changes_cache keyed on lastModifiedTime. The schema has no place to record a cursor-rewind/lookback policy.",
+      "proposedShape": { "cursorRewind": { "trigger": "cursor date differs from today's date", "amount": "lookback_window hours (default 24, range 1-168)", "dedupe": "estuary_cdk emitted_changes_cache on lastModifiedTime" } }
+    },
+    {
+      "where": "transports",
+      "description": "Rate limiting is a first-class, hand-rolled part of this connector (per-API-group 60-second sliding windows: heavy=10/min for call logs, medium=40/min for extensions and internal contacts, light=50/min for messages and external contacts) because RingCentral imposes a 60-second penalty on any 429. The transport spec has nowhere to record per-endpoint rate classes, yet they materially bound throughput.",
+      "proposedShape": { "rateLimits": [ { "group": "heavy", "requestsPer60s": 10, "streams": ["user_call_log"] }, { "group": "medium", "requestsPer60s": 40, "streams": ["extensions", "internal_contacts"] }, { "group": "light", "requestsPer60s": 50, "streams": ["messages", "external_contacts"] } ] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_ringcentral/constants.py", "lines": "4", "snippet": "API_BASE_URL = \"https://platform.ringcentral.com/restapi/v1.0\"" },
+    "transports[1].spec.baseUrl": { "file": "source_ringcentral/constants.py", "lines": "5", "snippet": "OAUTH_BASE_URL = \"https://platform.ringcentral.com/restapi/oauth\"" },
+    "credentialModes[0].scheme.tokenUrl": { "file": "source_ringcentral/auth.py", "lines": "77", "snippet": "url = f\"{OAUTH_BASE_URL}/token\"" },
+    "credentialModes[0].scheme.grant": { "file": "source_ringcentral/auth.py", "lines": "88-93", "snippet": "headers={\"Authorization\": f\"Basic {auth}\"},\n form={\n     \"grant_type\": \"urn:ietf:params:oauth:grant-type:jwt-bearer\"," },
+    "credentialModes[0].tier": { "file": "README.md", "lines": "9-17", "snippet": "The connector uses **JWT authentication** for server-to-server integrations. Users must create their own private JWT Auth app in their RingCentral Developer Console" },
+    "credentialModes[0].scheme.scopes": { "file": "source_ringcentral/constants.py", "lines": "39-45", "snippet": "class Scope(StrEnum):\n    READ_ACCOUNTS = \"ReadAccounts\"\n    READ_CALL_LOG = \"ReadCallLog\"" },
+    "configFields": { "file": "source_ringcentral/models.py", "lines": "18-89", "snippet": "class JWTCredentials(AccessToken):\n    client_id: str = Field(title=\"Client ID\"," },
+    "execution.mode": { "file": "source_ringcentral/resources.py", "lines": "61-65", "snippet": "fetch_snapshot=functools.partial(\n    fetch_snapshot,\n    http," },
+    "streams[0].pull.snapshot.path": { "file": "source_ringcentral/models.py", "lines": "132-133", "snippet": "NAME: ClassVar[str] = \"extensions\"\nENDPOINT: ClassVar[str] = \"/account/~/extension\"" },
+    "streams[1].pull.snapshot.path": { "file": "source_ringcentral/models.py", "lines": "145-146", "snippet": "NAME: ClassVar[str] = \"internal_contacts\"\nENDPOINT: ClassVar[str] = \"/account/~/directory/entries\"" },
+    "streams[2].pull.snapshot.path": { "file": "source_ringcentral/models.py", "lines": "152-153", "snippet": "NAME: ClassVar[str] = \"external_contacts\"\nENDPOINT: ClassVar[str] = \"/account/~/extension/~/address-book/contact\"" },
+    "streams[3].pull.incremental.path": { "file": "source_ringcentral/models.py", "lines": "159-161", "snippet": "NAME: ClassVar[str] = \"user_call_log\"\nENDPOINT: ClassVar[str] = \"/account/~/extension/~/call-log\"\nCURSOR_FIELD: ClassVar[CursorField] = CursorField.START_TIME" },
+    "streams[4].pull.incremental.path": { "file": "source_ringcentral/models.py", "lines": "174-176", "snippet": "NAME: ClassVar[str] = \"messages\"\nENDPOINT: ClassVar[str] = \"/account/~/extension/~/message-store\"\nCURSOR_FIELD: ClassVar[CursorField] = CursorField.CREATION_TIME" },
+    "streams[*].pull.*.paginator": { "file": "source_ringcentral/api.py", "lines": "53-57", "snippet": "has_more = False\nif response.navigation and response.navigation.nextPage:\n    has_more = True" },
+    "streams[*].pull.*.paginator.pageParam": { "file": "source_ringcentral/api.py", "lines": "69-73", "snippet": "params: dict[str, str] = {\n    QueryParam.PAGE: str(page),\n    QueryParam.PER_PAGE: str(PAGE_SIZE)," },
+    "streams[*].pull.*.paginator.pageSize": { "file": "source_ringcentral/constants.py", "lines": "6-7", "snippet": "PAGE_SIZE = 100\nDETAILED_VIEW = \"Detailed\"" },
+    "streams[*].pull.*.recordsPath": { "file": "source_ringcentral/models.py", "lines": "198-200", "snippet": "class PaginatedResponse(BaseModel, Generic[TResource], extra=\"allow\"):\n    records: list[TResource] = Field(default_factory=list)\n    navigation: Navigation | None = None" },
+    "streams[*].pull.incremental.incrementalParam": { "file": "source_ringcentral/api.py", "lines": "126-132", "snippet": "QueryParam.DATE_FROM: fetch_from.isoformat(),\nQueryParam.DATE_TO: now.isoformat()," },
+    "streams[*].schedules": { "file": "source_ringcentral/resources.py", "lines": "78-80", "snippet": "initial_config=ResourceConfig(\n    name=model.NAME, interval=timedelta(minutes=5)\n)" },
+    "streams[0].primaryKey": { "file": "source_ringcentral/models.py", "lines": "112-113", "snippet": "class FullRefreshResource(RingCentralResource):\n    KEY: ClassVar[str] = \"/_meta/row_id\"" },
+    "streams[3].primaryKey": { "file": "source_ringcentral/models.py", "lines": "116-117", "snippet": "class IncrementalResource(RingCentralResource):\n    KEY: ClassVar[str] = \"/id\"" },
+    "streams[0].writeDisposition": { "file": "source_ringcentral/resources.py", "lines": "66-68", "snippet": "tombstone=FullRefreshResource(\n    _meta=FullRefreshResource.Meta(op=\"d\")\n)" },
+    "streamMode": { "file": "source_ringcentral/resources.py", "lines": "32-41", "snippet": "FULL_REFRESH_RESOURCES: list[Type[FullRefreshResource]] = [\n    Extension,\n    InternalContact," },
+    "credentialModes[0].scheme (api-side bearer)": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[1]": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[0].scheme.grant": "medium",
+    "credentialModes[0].scheme.scopes": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.pathPlaceholders": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.incremental.incrementalParam": "high",
+    "streams[*].schedules": "medium",
+    "streams[*].primaryKey": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[3].writeDisposition": "medium",
+    "configFields": "high",
+    "authTierOverall": "high",
+    "category": "low"
+  },
+
+  "abstained": {
+    "transports[0].spec.baseUrl (sandbox host)": "The base URL is a hard-coded constant pointing at the PRODUCTION host platform.ringcentral.com. There is no environment/sandbox toggle anywhere in constants.py, models.py's EndpointConfig, or the spec snapshot, so no sandbox host is recorded. RingCentral's sandbox host is not named anywhere in the connector source; inferring it would be a guess.",
+    "transports[0].spec.defaultHeaders": "No static headers are set by the connector; only the CDK-injected Authorization header. Nothing further is asserted.",
+    "streams[*].pull.*.pathPlaceholders (real ids)": "Both {accountId} and {extensionId} are the literal self-reference `~` in every ENDPOINT constant; the connector never resolves them to numeric ids and exposes no config field for them. The concrete account/extension is therefore whatever the JWT credential authenticates as, which the source does not name.",
+    "streams[*].pull.*.paginator.pageSize (real max)": "PAGE_SIZE=100 is what the connector sends; the README notes the API's per-endpoint maximum varies between 100 and 250, but no per-endpoint maxima are encoded in the source.",
+    "streams[3].writeDisposition": "Recorded as merge because the key is /id and the lookback re-emits updated call-log records for the same id, but no explicit reduction/merge annotation appears in the connector — this follows from CDK defaults for keyed incremental bindings rather than an explicit statement in this connector.",
+    "credentialModes[0].scheme.scopes (ReadAccountCallLog)": "Scope.READ_ACCOUNT_CALL_LOG is defined in constants.py but is not referenced by any resource's REQUIRED_SCOPES, so it is not listed among the scopes actually required. Whether it is dead code or intended for a future account-wide call-log stream is not determinable from the source.",
+    "execution.continuity": "mode is poll over a stateless REST API; no server-side artifacts (slots, consumer groups, scratch tables) are created and nothing accrues on the customer side between ticks. The only pause-related risk is RingCentral's own data retention, which is not encoded in the connector."
+  }
+}

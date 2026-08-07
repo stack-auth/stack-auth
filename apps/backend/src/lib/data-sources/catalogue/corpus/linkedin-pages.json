@@ -1,0 +1,332 @@
+{
+  "id": "linkedin-pages",
+  "estuaryDir": "source-linkedin-pages",
+  "displayName": "LinkedIn Pages",
+  "description": "Imports a single LinkedIn organization page's profile, follower statistics, share statistics, and total follower count from the LinkedIn v2 REST API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.linkedin.com/v2/" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: the API version `v2` is baked into `url_base`. No `X-Restli-Protocol-Version` header and no `LinkedIn-Version` header is sent by this connector (the sibling source-linkedin-ads-v2 does send `X-Restli-Protocol-Version: 2.0.0`; this one does not)."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Access token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    },
+    {
+      "name": "OAuth2.0 (client id + secret + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://www.linkedin.com/oauth/v2/authorization",
+        "tokenUrl": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scopes": [
+          "r_organization_followers",
+          "r_organization_social",
+          "rw_organization_admin",
+          "r_organization_social_feed",
+          "w_member_social",
+          "w_organization_social",
+          "r_basicprofile",
+          "w_organization_social_feed",
+          "w_member_social_feed",
+          "r_1st_connections_size"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "org_id", "displayName": "Organization ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The numeric LinkedIn organization id whose page is captured. Marked airbyte_secret:true in the spec even though it is not really a secret." },
+    { "name": "credentials.auth_method", "displayName": "Authentication method", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator: \"oAuth2.0\" or \"access_token\". Absent means legacy top-level access_token config." },
+    { "name": "credentials.access_token", "displayName": "Access token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required in the Access token variant. Generated with the LinkedIn Developers OAuth Token Tools; TTL ~2 months per the code comment." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required in the OAuth2.0 variant. Client id of the LinkedIn developer application." },
+    { "name": "credentials.client_secret", "displayName": "Client secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required in the OAuth2.0 variant." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required in the OAuth2.0 variant. TTL ~1 year; each refresh revokes previously issued access tokens per the code comment." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the bound stream (from the shim's ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh | incremental. All four streams are discovered as full_refresh." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace; unused by this connector." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Shim ResourceConfig field; not populated for any stream here." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "organization_lookup",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "organizations/{org_id}",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": { "org_id": "endpoint config field `org_id`" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "follower_statistics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "organizationalEntityFollowerStatistics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "organizationalEntity",
+            "organizationalEntity": "urn:li:organization:{org_id}"
+          },
+          "pathPlaceholders": { "org_id": "endpoint config field `org_id`" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "share_statistics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "organizationalEntityShareStatistics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "organizationalEntity",
+            "organizationalEntity": "urn:li:organization:{org_id}"
+          },
+          "pathPlaceholders": { "org_id": "endpoint config field `org_id`" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "total_follower_count",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "networkSizes/urn:li:organization:{org_id}",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "edgeType": "CompanyFollowedByMember" },
+          "pathPlaceholders": { "org_id": "endpoint config field `org_id`" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two alternative credential modes are offered. The 'Access token' mode requires exactly one secret (credentials.access_token) pasted into the config and is sent as a plain bearer token, so by the field-shape definition it is T1_SIMPLE — with the honest caveat that LinkedIn only issues such a token through its Developers OAuth Token Tools, which in practice requires the user to already own a LinkedIn developer app with Community Management products approved, and the token expires in ~2 months (per the in-code comment), so it is operationally closer to T2 and needs manual rotation. The 'OAuth2.0' mode is unambiguously T3_BYO_REFRESH: the user supplies client_id, client_secret AND refresh_token, and the connector performs a refresh_token grant against https://www.linkedin.com/oauth/v2/accessToken. Estuary's hosted control plane can shortcut this: __main__.py registers a flow.OAuth2Spec with provider 'linkedin' and authorization_code templates, so in the hosted UI the user just clicks through consent — but standalone, without that control plane, the OAuth mode is T3. authTierOverall reports the easiest offered mode.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.snapshot.params",
+      "description": "This connector does not use the CDK's request_params hook at all. Query strings are urlencoded and concatenated onto the value returned by path() (e.g. base_path 'organizationalEntityFollowerStatistics?' + urlencode({...})). I have split them back into `path` + `params` for the schema, which is semantically faithful but does not mirror the code's structure; a reader diffing against the source will find no params dict.",
+      "proposedShape": { "pathIsPreEncoded": true, "rawPathTemplate": "organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=urn%3Ali%3Aorganization%3A{org_id}" }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "Neither 'merge', 'append', nor 'snapshot_with_tombstone' cleanly fits. The shim synthesizes the key /_meta/row_id from a per-binding counter (ResourceState.rowId) that is monotonic across the whole task lifetime and never reset between refreshes, and emits op='u' with no deletion of prior rows. Practically that behaves like append (each refresh lands at fresh row_ids), but the intent of a full_refresh binding is a snapshot. There is no tombstone emission anywhere in the shim.",
+      "proposedShape": { "writeDisposition": "append_with_synthetic_row_id", "keySource": "connector-synthesized monotonic counter, not source data" }
+    },
+    {
+      "where": "streams[].pull",
+      "description": "organization_lookup and total_follower_count return a single JSON object which parse_response wraps as one record ([response.json()]) — a one-document 'stream'. There is no records envelope, so recordsPath is null; that null means 'the whole body is the record', not 'unknown'.",
+      "proposedShape": { "recordsPath": null, "recordsPathSemantics": "whole_body_is_one_record" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "29-31",
+      "snippet": "class LinkedinPagesStream(HttpStream, ABC):\n    url_base = \"https://api.linkedin.com/v2/\"\n    primary_key = None"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "154-161",
+      "snippet": "if not auth_method or auth_method == \"access_token\":\n    access_token = (config[\"credentials\"][\"access_token\"] if auth_method else config[\"access_token\"])\n    return TokenAuthenticator(token=access_token)"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "162-168",
+      "snippet": "elif auth_method == \"oAuth2.0\":\n    return Oauth2Authenticator(token_refresh_endpoint=\"https://www.linkedin.com/oauth/v2/accessToken\", client_id=config[\"credentials\"][\"client_id\"], client_secret=config[\"credentials\"][\"client_secret\"], refresh_token=config[\"credentials\"][\"refresh_token\"])"
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source_linkedin_pages/__main__.py",
+      "lines": "25-38",
+      "snippet": "scopes = \" \".join([\"r_organization_followers\", \"r_organization_social\", \"rw_organization_admin\", \"r_organization_social_feed\", \"w_member_social\", \"w_organization_social\", \"r_basicprofile\", \"w_organization_social_feed\", \"w_member_social_feed\", \"r_1st_connections_size\"])"
+    },
+    "credentialModes[1].scheme.authUrl": {
+      "file": "source_linkedin_pages/__main__.py",
+      "lines": "49-57",
+      "snippet": "url = urllib.parse.urlunsplit([\"https\", \"www.linkedin.com\", \"/oauth/v2/authorization\", query, \"\"])"
+    },
+    "streams": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "193-200",
+      "snippet": "def streams(self, config): \n    config[\"authenticator\"] = self.get_authenticator(config)\n    return [OrganizationLookup(config), FollowerStatistics(config), ShareStatistics(config), TotalFollowerCount(config)]"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "72-77",
+      "snippet": "class OrganizationLookup(LinkedinPagesStream):\n    def path(self, stream_state, **kwargs):\n        path = f\"organizations/{self.org}\""
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "84-90",
+      "snippet": "base_path = \"organizationalEntityFollowerStatistics?\"\npath = base_path + urllib.parse.urlencode({\"q\": \"organizationalEntity\", \"organizationalEntity\": f\"urn:li:organization:{self.org}\"})"
+    },
+    "streams[1].pull.snapshot.recordsPath": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "98-99",
+      "snippet": "    ) -> Iterable[Mapping]:\n        yield from response.json().get(\"elements\")"
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "106-113",
+      "snippet": "base_path = \"organizationalEntityShareStatistics?\"\npath = base_path + urllib.parse.urlencode({\"q\": \"organizationalEntity\", \"organizationalEntity\": f\"urn:li:organization:{self.org}\"})"
+    },
+    "streams[3].pull.snapshot.path": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "128-133",
+      "snippet": "base_path = f\"networkSizes/urn:li:organization:{self.org}?\"\npath = base_path + urllib.parse.urlencode({\"edgeType\": \"CompanyFollowedByMember\"})"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "46-49",
+      "snippet": "def next_page_token(self, response: requests.Response) -> Optional[Mapping[str, Any]]:\n    return None"
+    },
+    "streams[0].primaryKey": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "251-253",
+      "snippet": "elif resource_config.sync_mode == \"full_refresh\":\n    # Synthesize a key based on the record's order within each stream refresh.\n    key = [\"/_meta/row_id\"]"
+    },
+    "streams[0].supportedSyncModes": {
+      "file": "tests/snapshots/discover.stdout.json",
+      "lines": "n/a (discover snapshot)",
+      "snippet": "{\"recommendedName\": \"organization_lookup\", \"resourceConfig\": {\"stream\": \"organization_lookup\", \"syncMode\": \"full_refresh\"}, \"key\": [\"/_meta/row_id\"]}"
+    },
+    "streams[0].writeDisposition": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "434-435",
+      "snippet": "doc.meta_ = Document.Meta(op=\"u\", row_id=entry[1].rowId)\nentry[1].rowId += 1"
+    },
+    "configFields[0]": {
+      "file": "source_linkedin_pages/spec.json",
+      "lines": "7-20",
+      "snippet": "\"required\": [\"org_id\"], ... \"org_id\": {\"title\": \"Organization ID\", \"type\": \"string\", \"airbyte_secret\": true}"
+    },
+    "streamMode": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "193-200",
+      "snippet": "return [OrganizationLookup(config), FollowerStatistics(config), ShareStatistics(config), TotalFollowerCount(config)]"
+    },
+    "execution.mode": {
+      "file": "source_linkedin_pages/source.py",
+      "lines": "29-30",
+      "snippet": "class LinkedinPagesStream(HttpStream, ABC):\n    url_base = \"https://api.linkedin.com/v2/\""
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "medium",
+    "credentialModes[0].tier": "medium",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "high",
+    "execution.mode": "high",
+    "streamMode": "high",
+    "streams": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[2].pull.snapshot.path": "high",
+    "streams[3].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.recordsPath": "high",
+    "streams[3].pull.snapshot.recordsPath": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].writeDisposition": "low",
+    "configFields": "high",
+    "authTierOverall": "medium"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No headers are set anywhere in this connector. request_headers is never overridden and no X-Restli-Protocol-Version / LinkedIn-Version header is added, unlike the sibling source-linkedin-ads-v2. Whatever the airbyte-cdk HttpStream and the authenticator add is all that is sent; I did not read the pinned airbyte-cdk (^0.52) source, which is outside the provided tree.",
+    "credentialModes[0].scheme.prefix": "TokenAuthenticator is imported from airbyte_cdk.sources.streams.http.auth and constructed with only token=..., so the prefix is the CDK default. The airbyte-cdk package is not in the provided tree, so I did not verify the default is 'Bearer' from source (it is bearer by strong convention, hence type 'bearer' with medium confidence).",
+    "execution.defaultSchedule": "Nothing in the connector or in shim_airbyte_cdk.py declares an interval, cron, or Go-duration schedule. Cadence is entirely decided by the Flow runtime outside this code.",
+    "execution.continuity": "mode is 'poll' over a stateless REST API; continuity is optional for poll mode and no server-side artifact of any kind is created (no slot, cursor registration, or scratch object). Nothing accrues on LinkedIn's side if we stop.",
+    "streams[].cursorField": "All four streams are full_refresh only. LinkedinPagesStream never sets cursor_field, get_updated_state, or an incremental param; discover emits no cursorField. There is genuinely no cursor.",
+    "streams[].schedules": "No per-binding schedule exists in the resource config schema (stream/syncMode/namespace/cursorField only).",
+    "streams[].pull.backfill / incremental": "There is no historical/ongoing split — one unparameterized GET returns the current state each run, so only `snapshot` is populated.",
+    "rateLimits": "The code only logs a message on HTTP 429 saying LinkedIn limits reset at midnight UTC; no numeric quota, no backoff_time override, and no page-size control exist in this connector, so I record no concrete rate-limit figure."
+  }
+}

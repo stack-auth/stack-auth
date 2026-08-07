@@ -1,0 +1,2980 @@
+{
+  "id": "jira-legacy",
+  "estuaryDir": "source-jira-legacy",
+  "displayName": "Jira (legacy)",
+  "description": "Imports Jira Cloud issues, projects, boards, sprints, workflows, users and their related administrative objects from the Jira REST v3 and Agile 1.0 APIs.",
+  "category": "engineering",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{domain}/rest/api/3/",
+          "placeholders": {
+            "domain": "the `domain` endpoint config field, e.g. acme.atlassian.net; supplied without a scheme (a 404/InvalidURL is reported as 'do not include protocol')"
+          }
+        },
+        "defaultHeaders": {
+          "Accept": "application/json"
+        },
+        "apiVersionPinning": "path segment: API_VERSION = 3 interpolated into /rest/api/{3}/. Two further path-pinned API families share the same host: /rest/agile/1.0/ (boards, board_issues, sprints, sprint_issues) and /rest/dev-status/1.0/ (the experimental pull_requests stream)."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Atlassian account email + API token (HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "email",
+        "passwordField": "api_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "api_token",
+      "displayName": "API Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Jira API token used with the account email for HTTP Basic authorization."
+    },
+    {
+      "name": "domain",
+      "displayName": "Domain",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Jira host without scheme, e.g. estuary.atlassian.net, estuary.jira.com, jira.your-domain.com."
+    },
+    {
+      "name": "email",
+      "displayName": "Email",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Account email that generated the API token; the Basic-auth username."
+    },
+    {
+      "name": "projects",
+      "displayName": "Projects",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "array",
+      "description": "Project keys to restrict replication to; empty means all projects."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "YYYY-MM-DDTHH:MM:SSZ lower bound; applies only to the incremental/start-date streams."
+    },
+    {
+      "name": "lookback_window_minutes",
+      "displayName": "Lookback window",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "number",
+      "description": "Subtracted from the stored cursor on each run; 0..576000, default 0."
+    },
+    {
+      "name": "enable_experimental_streams",
+      "displayName": "Enable Experimental Streams",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Adds the pull_requests stream, which reads the undocumented /rest/dev-status/1.0/ endpoint."
+    },
+    {
+      "name": "issues_stream_expand_with",
+      "displayName": "Expand Issues stream",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "array",
+      "description": "Advertised as selecting renderedFields/transitions/changelog expansion on issues; not read anywhere in the connector code (see unionMisfits)."
+    },
+    {
+      "name": "expand_issue_changelog",
+      "displayName": "Expand Issue Changelog",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Marked DEPRECATED in the spec; unused by the code."
+    },
+    {
+      "name": "render_fields",
+      "displayName": "Render Issue Fields",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Marked DEPRECATED in the spec; accepted by FilterSharing.__init__ and discarded."
+    },
+    {
+      "name": "expand_issue_transition",
+      "displayName": "Expand Issue Transitions",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Marked DEPRECATED in the spec; unused by the code."
+    },
+    {
+      "name": "stream",
+      "displayName": "Stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of the Airbyte stream this binding captures."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "full_refresh or incremental."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Cursor field path; defaulted from the stream's default_cursor_field at discovery."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace; never set by this source."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "application_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "key"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/applicationrole",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "avatars",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/avatar/{avatar_type}/system",
+          "httpMethod": "GET",
+          "recordsPath": "system",
+          "params": null,
+          "pathPlaceholders": {
+            "avatar_type": "static loop over the literal tuple ('issuetype','project','user')"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "boards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/agile/1.0/board",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "board_issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/agile/1.0/board/{board_id}/issue",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "fields": [
+              "key",
+              "created",
+              "updated"
+            ],
+            "jql": "<cursor_field> >= 'YYYY/MM/DD HH:MM' (omitted when no start_date/state)"
+          },
+          "pathPlaceholders": {
+            "board_id": "id of each record from the boards stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "dashboards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/dashboard",
+          "httpMethod": "GET",
+          "recordsPath": "dashboards",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "filters",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/filter/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "expand": "description,owner,jql,viewUrl,searchUrl,favourite,favouritedCount,sharePermissions,isWritable,subscriptions"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "filter_sharing",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/filter/{filter_id}/permission",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "filter_id": "id of each record from the filters stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "groupId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/group/bulk",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/search",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "fields": "*all",
+            "jql": "[updated >= 'YYYY/MM/DD HH:MM'] [and project in (<project_id>)] ORDER BY updated asc",
+            "expand": "renderedFields,transitions,changelog"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/comment",
+          "httpMethod": "GET",
+          "recordsPath": "comments",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream, read incrementally"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/field",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_field_configurations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/fieldconfiguration",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_custom_field_contexts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/field/{field_id}/context",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "field_id": "id of each issue_fields record where custom == true"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_custom_field_options",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/field/{field_id}/context/{context_id}/option",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "field_id": "fieldId of each issue_custom_field_contexts record whose fieldType == 'option'",
+            "context_id": "id of that same context record"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_link_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issueLinkType",
+          "httpMethod": "GET",
+          "recordsPath": "issueLinkTypes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_navigator_settings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "value"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/settings/columns",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_notification_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/notificationscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_priorities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/priority/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_properties",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "key"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{issue_key}/properties/{key}",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "issue_key": "issue key from the issues stream (full refresh)",
+            "key": "each property key returned by GET issue/{key}/properties"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_remote_links",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/remotelink",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_resolutions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/resolution/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_security_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issuesecurityschemes",
+          "httpMethod": "GET",
+          "recordsPath": "issueSecuritySchemes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_transitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "issueId",
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/transitions",
+          "httpMethod": "GET",
+          "recordsPath": "transitions",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_type_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issuetypescheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issuetype",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_type_screen_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issuetypescreenscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_votes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "self"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/votes",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_watchers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "self"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/watchers",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_worklogs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/issue/{key}/worklog",
+          "httpMethod": "GET",
+          "recordsPath": "worklogs",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "issue key from the issues stream, read incrementally"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "jira_settings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/application-properties",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "labels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "label"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/label",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "permissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "key"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/permissions",
+          "httpMethod": "GET",
+          "recordsPath": "permissions",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "permission_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/permissionscheme",
+          "httpMethod": "GET",
+          "recordsPath": "permissionSchemes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "expand": "description,lead",
+            "status": [
+              "live",
+              "archived",
+              "deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/role",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_avatars",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/{key}/avatars",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "key": "key of each non-deleted record from the projects stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/projectCategory",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_components",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/{key}/component",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "key of each non-deleted record from the projects stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_email",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "projectId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/{project_id}/email",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "project_id": "id of each non-deleted record from the projects stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_permission_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/{key}/securitylevel",
+          "httpMethod": "GET",
+          "recordsPath": "levels",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "key of each non-deleted record from the projects stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "key"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/type",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_versions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/project/{key}/version",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "key": "key of each non-deleted record from the projects stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screens",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/screens",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_tabs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/screens/{screen_id}/tabs",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "screen_id": "id of each record from the screens stream"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_tab_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/screens/{screen_id}/tabs/{tab_id}/fields",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "screen_id": "id of each record from the screens stream",
+            "tab_id": "id of each tab from the screen_tabs stream for that screen"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/screenscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sprints",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/agile/1.0/board/{board_id}/sprint",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "board_id": "id of each boards record whose type is 'scrum' or 'simple'"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sprint_issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/agile/1.0/sprint/{sprint_id}/issue",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "fields": "key,status,created,updated plus the field ids named 'Story Points' / 'Story point estimate'",
+            "jql": "updated >= 'YYYY/MM/DD HH:MM' (omitted when no start_date/state)"
+          },
+          "pathPlaceholders": {
+            "sprint_id": "id of each record from the sprints stream"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "time_tracking",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "key"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/configuration/timetracking/list",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "accountId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/users/search",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users_groups_detailed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "accountId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/user",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "accountId": "accountId of each record from the users stream",
+            "expand": "groups,applicationRoles"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "entity_id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/workflow/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/workflowscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_statuses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/status",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_status_categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://{domain}/rest/api/3/statuscategory",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "pull_requests",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://{domain}/rest/dev-status/1.0/issue/detail",
+          "httpMethod": "GET",
+          "recordsPath": "detail",
+          "params": {
+            "issueId": "<issue id>",
+            "applicationType": "GitHub",
+            "dataType": "branch"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 50,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode exists. source.py builds a BasicHttpAuthenticator(config['email'], config['api_token']) unconditionally, and __main__.py constructs the Estuary shim with oauth2=None, so no OAuth path is registered at all. The user self-serves a token from id.atlassian.com and pastes it plus their account email and Jira host; there is no app registration and no refresh token. That is T1_SIMPLE.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.paginator.terminateOn",
+      "description": "Termination is a runtime disjunction inside ONE shared next_page_token(): if the body is a dict with startAt, prefer isLast, else compare startAt >= total, else (dict with startAt but neither field) return a token forever; if the body is a bare list, stop when the page is shorter than page_size. The schema forces a single static enum per stream, which cannot express either the fallback chain or the non-terminating third branch.",
+      "proposedShape": {
+        "terminateOn": [
+          {
+            "kind": "envelope_flag",
+            "field": "isLast",
+            "priority": 1
+          },
+          {
+            "kind": "explicit_total",
+            "field": "total",
+            "priority": 2
+          },
+          {
+            "kind": "short_page",
+            "priority": 3
+          }
+        ],
+        "nonTerminatingWhen": "dict envelope carries startAt but neither isLast nor total"
+      }
+    },
+    {
+      "where": "streams[].pull.*.paginator (offset advance)",
+      "description": "The offset does NOT advance by page size and does NOT advance by records received. For envelope responses it advances by the SERVER-ECHOED response_json['maxResults'], which Jira may cap below the requested value; for bare-list responses it advances by the CLIENT-side page_size constant, which silently skips records if Jira caps the page lower than 50. The Paginator union has no place to record which quantity the offset advances by.",
+      "proposedShape": {
+        "type": "offset",
+        "advanceBy": "response_field:maxResults | client_constant:page_size",
+        "advanceByField": "maxResults"
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.incrementalParam",
+      "description": "The incremental bound is not a query parameter carrying a timestamp; it is a fragment of a JQL query string (\"updated >= '2024/01/31 09:05'\", Jira's slash-separated local-time format) concatenated with an optional project filter and an ORDER BY clause into the `jql` param. The declared formats (iso8601/unix_seconds/date) cannot describe it.",
+      "proposedShape": {
+        "incrementalParam": {
+          "param": "jql",
+          "kind": "query_language_predicate",
+          "language": "jql",
+          "template": "<cursor> >= '%Y/%m/%d %H:%M'",
+          "combinedWith": [
+            "project in (<ids>)",
+            "ORDER BY <cursor> asc"
+          ]
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental (issue_comments, issue_worklogs)",
+      "description": "These two send no server-side bound at all. They iterate the parent issues stream incrementally and fetch every child page in full, then drop records whose cursor is below the start point in Python. So the binding is 'incremental' in state/emission terms but 'snapshot per parent' in request terms. The PullSpec union has no way to say the filtering is client-side.",
+      "proposedShape": {
+        "incrementalStrategy": "client_side_filter",
+        "serverSideBound": null,
+        "parentDrivenBy": "issues"
+      }
+    },
+    {
+      "where": "streams[] (parent fan-out)",
+      "description": "Roughly half of the streams are child streams that re-run a parent stream in full for every sync, and some chain three deep (screens -> screen_tabs -> screen_tab_fields; issues -> issue_property_keys -> issue_properties). pathPlaceholders records WHAT fills the slot but not that the parent is a separate, separately-billed full sweep whose cost dominates. There is also no way to record that Issues is instantiated three times over (once per child stream) rather than shared.",
+      "proposedShape": {
+        "parents": [
+          {
+            "stream": "screens",
+            "readMode": "full_refresh",
+            "shared": false
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[] (skip-on-status)",
+      "description": "Every stream carries a per-stream list of HTTP status codes that cause a slice to be logged and silently dropped rather than failed (400 everywhere by default; 401/403/404 added on ~8 streams). This is a data-completeness property with no home in the schema: a customer missing project permissions gets a clean sync with missing rows.",
+      "proposedShape": {
+        "skipOnStatus": [
+          400,
+          403,
+          404
+        ],
+        "onSkip": "log_warning_and_continue"
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "One host serves three independently versioned API families (/rest/api/3/, /rest/agile/1.0/, /rest/dev-status/1.0/) selected per stream by a class attribute. A single baseUrl plus a single apiVersionPinning string cannot represent a per-stream base path.",
+      "proposedShape": {
+        "baseUrls": [
+          {
+            "id": "platform",
+            "template": "https://{domain}/rest/api/3/"
+          },
+          {
+            "id": "agile",
+            "template": "https://{domain}/rest/agile/1.0/"
+          },
+          {
+            "id": "devstatus",
+            "template": "https://{domain}/rest/dev-status/1.0/",
+            "documented": false
+          }
+        ]
+      }
+    },
+    {
+      "where": "execution / streamMode",
+      "description": "This connector is an Airbyte-CDK v0.52 source wrapped by estuary_cdk.shim_airbyte_cdk.CaptureShim, not a native Estuary connector. Consequences the schema cannot express: the stream list is code-static but is still delivered through an Airbyte discover() call; state is Airbyte per-stream STREAM state stored under bindingStateV1; a checkpoint is emitted on every Airbyte state message; and the process performs exactly one sweep then exits, so all cadence lives in the Flow spec above the connector.",
+      "proposedShape": {
+        "runtime": "airbyte_cdk_shim",
+        "cdk": "airbyte-cdk ^0.52",
+        "shim": "estuary_cdk.shim_airbyte_cdk.CaptureShim",
+        "stateModel": "airbyte_stream_state",
+        "sweep": "one_shot"
+      }
+    }
+  ],
+  "evidence": {
+    "streams[0].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "207",
+      "snippet": "(streams.py:207) path() returns \"applicationrole\""
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "219",
+      "snippet": "(streams.py:219) path() returns \"avatar/{avatar_type}/system\""
+    },
+    "streams[1].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "235",
+      "snippet": "(streams.py:235) path() returns \"board\""
+    },
+    "streams[2].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "266",
+      "snippet": "(streams.py:266) path() returns \"board/{board_id}/issue\""
+    },
+    "streams[3].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[4].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "354",
+      "snippet": "(streams.py:354) path() returns \"dashboard\""
+    },
+    "streams[4].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[5].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "365",
+      "snippet": "(streams.py:365) path() returns \"filter/search\""
+    },
+    "streams[5].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[6].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "383",
+      "snippet": "(streams.py:383) path() returns \"filter/{filter_id}/permission\""
+    },
+    "streams[7].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "403",
+      "snippet": "(streams.py:403) path() returns \"group/bulk\""
+    },
+    "streams[7].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[8].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "428",
+      "snippet": "(streams.py:428) path() returns \"search\""
+    },
+    "streams[8].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[9].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "500",
+      "snippet": "(streams.py:500) path() returns \"issue/{key}/comment\""
+    },
+    "streams[9].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[10].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "520",
+      "snippet": "(streams.py:520) path() returns \"field\""
+    },
+    "streams[11].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "537",
+      "snippet": "(streams.py:537) path() returns \"fieldconfiguration\""
+    },
+    "streams[11].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[12].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "560",
+      "snippet": "(streams.py:560) path() returns \"field/{field_id}/context\""
+    },
+    "streams[12].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[13].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "596",
+      "snippet": "(streams.py:596) path() returns \"field/{field_id}/context/{context_id}/option\""
+    },
+    "streams[13].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[14].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "617",
+      "snippet": "(streams.py:617) path() returns \"issueLinkType\""
+    },
+    "streams[14].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[15].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "628",
+      "snippet": "(streams.py:628) path() returns \"settings/columns\""
+    },
+    "streams[16].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "639",
+      "snippet": "(streams.py:639) path() returns \"notificationscheme\""
+    },
+    "streams[16].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[17].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "650",
+      "snippet": "(streams.py:650) path() returns \"priority/search\""
+    },
+    "streams[17].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[18].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "692",
+      "snippet": "(streams.py:692) path() returns \"issue/{issue_key}/properties/{key}\""
+    },
+    "streams[19].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "719",
+      "snippet": "(streams.py:719) path() returns \"issue/{key}/remotelink\""
+    },
+    "streams[20].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "741",
+      "snippet": "(streams.py:741) path() returns \"resolution/search\""
+    },
+    "streams[20].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[21].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "752",
+      "snippet": "(streams.py:752) path() returns \"issuesecurityschemes\""
+    },
+    "streams[21].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[22].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "804",
+      "snippet": "(streams.py:804) path() returns \"issue/{key}/transitions\""
+    },
+    "streams[22].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[23].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "772",
+      "snippet": "(streams.py:772) path() returns \"issuetypescheme\""
+    },
+    "streams[23].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[24].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "761",
+      "snippet": "(streams.py:761) path() returns \"issuetype\""
+    },
+    "streams[25].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "783",
+      "snippet": "(streams.py:783) path() returns \"issuetypescreenscheme\""
+    },
+    "streams[25].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[26].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "841",
+      "snippet": "(streams.py:841) path() returns \"issue/{key}/votes\""
+    },
+    "streams[27].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "877",
+      "snippet": "(streams.py:877) path() returns \"issue/{key}/watchers\""
+    },
+    "streams[28].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "906",
+      "snippet": "(streams.py:906) path() returns \"issue/{key}/worklog\""
+    },
+    "streams[28].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[29].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "922",
+      "snippet": "(streams.py:922) path() returns \"application-properties\""
+    },
+    "streams[30].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "934",
+      "snippet": "(streams.py:934) path() returns \"label\""
+    },
+    "streams[30].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[31].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "949",
+      "snippet": "(streams.py:949) path() returns \"permissions\""
+    },
+    "streams[31].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[32].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "965",
+      "snippet": "(streams.py:965) path() returns \"permissionscheme\""
+    },
+    "streams[32].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[33].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "976",
+      "snippet": "(streams.py:976) path() returns \"project/search\""
+    },
+    "streams[33].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[34].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1130",
+      "snippet": "(streams.py:1130) path() returns \"role\""
+    },
+    "streams[35].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1006",
+      "snippet": "(streams.py:1006) path() returns \"project/{key}/avatars\""
+    },
+    "streams[36].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1037",
+      "snippet": "(streams.py:1037) path() returns \"projectCategory\""
+    },
+    "streams[37].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1052",
+      "snippet": "(streams.py:1052) path() returns \"project/{key}/component\""
+    },
+    "streams[37].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[38].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1080",
+      "snippet": "(streams.py:1080) path() returns \"project/{project_id}/email\""
+    },
+    "streams[39].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1107",
+      "snippet": "(streams.py:1107) path() returns \"project/{key}/securitylevel\""
+    },
+    "streams[39].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[40].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1141",
+      "snippet": "(streams.py:1141) path() returns \"project/type\""
+    },
+    "streams[41].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1163",
+      "snippet": "(streams.py:1163) path() returns \"project/{key}/version\""
+    },
+    "streams[41].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[42].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1248",
+      "snippet": "(streams.py:1248) path() returns \"screens\""
+    },
+    "streams[42].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[43].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1263",
+      "snippet": "(streams.py:1263) path() returns \"screens/{screen_id}/tabs\""
+    },
+    "streams[44].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1303",
+      "snippet": "(streams.py:1303) path() returns \"screens/{screen_id}/tabs/{tab_id}/fields\""
+    },
+    "streams[45].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1330",
+      "snippet": "(streams.py:1330) path() returns \"screenscheme\""
+    },
+    "streams[45].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[46].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1358",
+      "snippet": "(streams.py:1358) path() returns \"board/{board_id}/sprint\""
+    },
+    "streams[46].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[47].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1388",
+      "snippet": "(streams.py:1388) path() returns \"sprint/{sprint_id}/issue\""
+    },
+    "streams[47].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[48].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1434",
+      "snippet": "(streams.py:1434) path() returns \"configuration/timetracking/list\""
+    },
+    "streams[49].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1445",
+      "snippet": "(streams.py:1445) path() returns \"users/search\""
+    },
+    "streams[50].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1460",
+      "snippet": "(streams.py:1460) path() returns \"user\""
+    },
+    "streams[51].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1487",
+      "snippet": "(streams.py:1487) path() returns \"workflow/search\""
+    },
+    "streams[51].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[52].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1510",
+      "snippet": "(streams.py:1510) path() returns \"workflowscheme\""
+    },
+    "streams[52].pull.snapshot.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[53].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1519",
+      "snippet": "(streams.py:1519) path() returns \"status\""
+    },
+    "streams[54].pull.snapshot.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1528",
+      "snippet": "(streams.py:1528) path() returns \"statuscategory\""
+    },
+    "streams[55].pull.incremental.path": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "1199",
+      "snippet": "(streams.py:1199) path() returns \"issue/detail\""
+    },
+    "streams[55].pull.incremental.recordsPath": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "118-125",
+      "snippet": "records = response_json if not self.extract_field else response_json.get(self.extract_field, [])"
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "85-113",
+      "snippet": "startAt += response_json[\"maxResults\"] ; if \"isLast\" ... elif \"total\" ... return {\"startAt\": startAt} ; params = {\"maxResults\": self.page_size}"
+    },
+    "streams[8].pull.incremental.paginator": {
+      "file": "unit_tests/test_pagination.py",
+      "lines": "36-94",
+      "snippet": "{\"startAt\": 0, \"maxResults\": 2, \"total\": 6, \"issues\": [...]}  (no isLast -> total governs)"
+    },
+    "streams[49].pull.snapshot.paginator": {
+      "file": "unit_tests/test_pagination.py",
+      "lines": "98-122",
+      "snippet": "bare JSON list responses; last page is short (1 record) and ends pagination"
+    },
+    "streams[33].pull.snapshot.paginator": {
+      "file": "unit_tests/test_pagination.py",
+      "lines": "15-32",
+      "snippet": "{\"startAt\": 4, \"maxResults\": 2, \"total\": 6, \"isLast\": True, \"values\": [...]}"
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "66-70",
+      "snippet": "if self.api_v1: return f\"https://{self._domain}/rest/agile/1.0/\"  /  return f\"https://{self._domain}/rest/api/{API_VERSION}/\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "25",
+      "snippet": "API_VERSION = 3"
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_jira_legacy/streams.py",
+      "lines": "115-116",
+      "snippet": "def request_headers(self, **kwargs): return {\"Accept\": \"application/json\"}"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_jira_legacy/source.py",
+      "lines": "92-94",
+      "snippet": "def get_authenticator(config): return BasicHttpAuthenticator(config[\"email\"], config[\"api_token\"])"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_jira_legacy/__main__.py",
+      "lines": "11-16",
+      "snippet": "shim_airbyte_cdk.CaptureShim(delegate=SourceJira(), oauth2=None, schema_inference=True)"
+    },
+    "configFields": {
+      "file": "source_jira_legacy/spec.json",
+      "lines": "7-98",
+      "snippet": "\"required\": [\"api_token\", \"domain\", \"email\"]"
+    },
+    "streamMode": {
+      "file": "source_jira_legacy/source.py",
+      "lines": "162-218",
+      "snippet": "return [ApplicationRoles(**args), Avatars(**args), Boards(**args), ...] + experimental_streams"
+    },
+    "execution.mode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "415-521",
+      "snippet": "for message in self.delegate.read(...): ... # Emit a final checkpoint before exiting."
+    },
+    "streams[55]": {
+      "file": "source_jira_legacy/source.py",
+      "lines": "157-161",
+      "snippet": "if config.get(\"enable_experimental_streams\", False): experimental_streams.append(PullRequests(...))"
+    }
+  },
+  "confidence": {
+    "streams[0].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.paginator": "low",
+    "streams[2].pull.snapshot.path": "high",
+    "streams[2].pull.snapshot.paginator": "medium",
+    "streams[3].pull.incremental.path": "high",
+    "streams[3].pull.incremental.paginator": "medium",
+    "streams[4].pull.snapshot.path": "high",
+    "streams[4].pull.snapshot.paginator": "medium",
+    "streams[5].pull.snapshot.path": "high",
+    "streams[5].pull.snapshot.paginator": "medium",
+    "streams[6].pull.snapshot.path": "high",
+    "streams[6].pull.snapshot.paginator": "high",
+    "streams[7].pull.snapshot.path": "high",
+    "streams[7].pull.snapshot.paginator": "medium",
+    "streams[8].pull.incremental.path": "high",
+    "streams[8].pull.incremental.paginator": "high",
+    "streams[9].pull.incremental.path": "high",
+    "streams[9].pull.incremental.paginator": "medium",
+    "streams[10].pull.snapshot.path": "high",
+    "streams[10].pull.snapshot.paginator": "high",
+    "streams[11].pull.snapshot.path": "high",
+    "streams[11].pull.snapshot.paginator": "medium",
+    "streams[12].pull.snapshot.path": "high",
+    "streams[12].pull.snapshot.paginator": "medium",
+    "streams[13].pull.snapshot.path": "high",
+    "streams[13].pull.snapshot.paginator": "medium",
+    "streams[14].pull.snapshot.path": "high",
+    "streams[14].pull.snapshot.paginator": "medium",
+    "streams[15].pull.snapshot.path": "high",
+    "streams[15].pull.snapshot.paginator": "high",
+    "streams[16].pull.snapshot.path": "high",
+    "streams[16].pull.snapshot.paginator": "medium",
+    "streams[17].pull.snapshot.path": "high",
+    "streams[17].pull.snapshot.paginator": "medium",
+    "streams[18].pull.snapshot.path": "high",
+    "streams[18].pull.snapshot.paginator": "low",
+    "streams[19].pull.snapshot.path": "high",
+    "streams[19].pull.snapshot.paginator": "high",
+    "streams[20].pull.snapshot.path": "high",
+    "streams[20].pull.snapshot.paginator": "medium",
+    "streams[21].pull.snapshot.path": "high",
+    "streams[21].pull.snapshot.paginator": "medium",
+    "streams[22].pull.snapshot.path": "high",
+    "streams[22].pull.snapshot.paginator": "high",
+    "streams[23].pull.snapshot.path": "high",
+    "streams[23].pull.snapshot.paginator": "medium",
+    "streams[24].pull.snapshot.path": "high",
+    "streams[24].pull.snapshot.paginator": "low",
+    "streams[25].pull.snapshot.path": "high",
+    "streams[25].pull.snapshot.paginator": "medium",
+    "streams[26].pull.snapshot.path": "high",
+    "streams[26].pull.snapshot.paginator": "low",
+    "streams[27].pull.snapshot.path": "high",
+    "streams[27].pull.snapshot.paginator": "low",
+    "streams[28].pull.incremental.path": "high",
+    "streams[28].pull.incremental.paginator": "medium",
+    "streams[29].pull.snapshot.path": "high",
+    "streams[29].pull.snapshot.paginator": "high",
+    "streams[30].pull.snapshot.path": "high",
+    "streams[30].pull.snapshot.paginator": "high",
+    "streams[31].pull.snapshot.path": "high",
+    "streams[31].pull.snapshot.paginator": "low",
+    "streams[32].pull.snapshot.path": "high",
+    "streams[32].pull.snapshot.paginator": "medium",
+    "streams[33].pull.snapshot.path": "high",
+    "streams[33].pull.snapshot.paginator": "high",
+    "streams[34].pull.snapshot.path": "high",
+    "streams[34].pull.snapshot.paginator": "medium",
+    "streams[35].pull.snapshot.path": "high",
+    "streams[35].pull.snapshot.paginator": "low",
+    "streams[36].pull.snapshot.path": "high",
+    "streams[36].pull.snapshot.paginator": "high",
+    "streams[37].pull.snapshot.path": "high",
+    "streams[37].pull.snapshot.paginator": "medium",
+    "streams[38].pull.snapshot.path": "high",
+    "streams[38].pull.snapshot.paginator": "low",
+    "streams[39].pull.snapshot.path": "high",
+    "streams[39].pull.snapshot.paginator": "medium",
+    "streams[40].pull.snapshot.path": "high",
+    "streams[40].pull.snapshot.paginator": "medium",
+    "streams[41].pull.snapshot.path": "high",
+    "streams[41].pull.snapshot.paginator": "high",
+    "streams[42].pull.snapshot.path": "high",
+    "streams[42].pull.snapshot.paginator": "medium",
+    "streams[43].pull.snapshot.path": "high",
+    "streams[43].pull.snapshot.paginator": "high",
+    "streams[44].pull.snapshot.path": "high",
+    "streams[44].pull.snapshot.paginator": "high",
+    "streams[45].pull.snapshot.path": "high",
+    "streams[45].pull.snapshot.paginator": "medium",
+    "streams[46].pull.snapshot.path": "high",
+    "streams[46].pull.snapshot.paginator": "medium",
+    "streams[47].pull.incremental.path": "high",
+    "streams[47].pull.incremental.paginator": "medium",
+    "streams[48].pull.snapshot.path": "high",
+    "streams[48].pull.snapshot.paginator": "high",
+    "streams[49].pull.snapshot.path": "high",
+    "streams[49].pull.snapshot.paginator": "high",
+    "streams[50].pull.snapshot.path": "high",
+    "streams[50].pull.snapshot.paginator": "low",
+    "streams[51].pull.snapshot.path": "high",
+    "streams[51].pull.snapshot.paginator": "medium",
+    "streams[52].pull.snapshot.path": "high",
+    "streams[52].pull.snapshot.paginator": "medium",
+    "streams[53].pull.snapshot.path": "high",
+    "streams[53].pull.snapshot.paginator": "high",
+    "streams[54].pull.snapshot.path": "high",
+    "streams[54].pull.snapshot.paginator": "high",
+    "streams[55].pull.incremental.path": "high",
+    "streams[55].pull.incremental.paginator": "low",
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].writeDisposition": "medium"
+  },
+  "abstained": {
+    "streams[*].pull.*.paginator.terminateOn": "next_page_token() picks the termination rule at RUNTIME from the response body: it prefers the envelope flag `isLast`, falls back to `total`, and for bare-list responses falls back to a short page. Only issues/projects/users are pinned by unit-test fixtures; for the remaining streams the recorded value is the branch most likely taken and is marked low/medium confidence. The mechanism itself (startAt/maxResults offset) is certain for every stream.",
+    "streams[*].schedules": "No per-binding schedule exists. The shim runs one Airbyte read() sweep and exits; cadence is imposed by the Flow runtime, not by anything in this connector.",
+    "streams[*].pull.incremental.incrementalParam": "The incremental lower bound is not a standalone query parameter: it is spliced into a JQL expression (\"updated >= 'YYYY/MM/DD HH:MM'\") sent as the `jql` param, in Jira's own slash-separated local-time format. issue_comments/issue_worklogs send no bound at all and filter client-side. See unionMisfits.",
+    "streams[18].primaryKey": "issue_properties is keyed on /key (the property key) alone in the discovered catalog even though records from different issues share property keys; issueId is added by transform but is not part of the key. Recorded as the source states it, not as it should be.",
+    "execution.defaultSchedule": "Nothing in the connector or in its resourceConfigSchema carries an interval or cron. The shim performs a single read() sweep and exits; the cadence is set by the Flow capture spec outside this repository directory.",
+    "execution.continuity": "mode is poll over a stateless REST API. No server-side artifact is created, nothing accrues on the customer's side while we are stopped, and the only state is a client-held `updated` timestamp, so there is nothing for this field to describe.",
+    "discovery": "streamMode is static: source.py returns a hard-coded list of 55 stream classes (56 with the experimental one). The Airbyte discover() call that the shim makes only re-emits that fixed list, so there is no customer-schema discovery to describe.",
+    "streams[55].primaryKey": "pull_requests is absent from the discover snapshot (enable_experimental_streams defaults to false); the key ['id'] is taken from schemas/pull_requests.json `required`, not from an observed catalog."
+  }
+}

@@ -1,0 +1,409 @@
+{
+  "id": "calendly",
+  "estuaryDir": "source-calendly",
+  "displayName": "Calendly",
+  "description": "Imports Calendly scheduling data — event types, scheduled events and their invitees, organization memberships, groups, and routing forms and submissions — for a single Calendly organization.",
+  "category": "other",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.calendly.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (personal access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; only value is \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Calendly access token sent as an Authorization: Bearer header." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data generated before this is not replicated. Defaults to 30 days before the present." },
+    { "name": "scheduled_event_lookback_months", "displayName": "Scheduled Event Lookback (Months)", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Months before now to include when fetching scheduled events. Default 1, minimum 1." },
+    { "name": "scheduled_event_lookahead_months", "displayName": "Scheduled Event Lookahead (Months)", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Months after now to include when fetching scheduled events. Default 6, minimum 1." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig: name of this resource/binding." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig: ISO-8601 duration between updates for this binding. The connector recommends PT5M for every binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "event_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/uri"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/event_types",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "organization": "<organization uri from GET /users/me>", "sort": "updated_at:desc", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/event_types",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "organization": "<organization uri from GET /users/me>", "sort": "updated_at:desc", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "scheduled_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/uri"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/scheduled_events",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": {
+            "organization": "<organization uri from GET /users/me>",
+            "sort": "start_time:asc",
+            "min_start_time": "<now - scheduled_event_lookback_months*30 days, ISO-8601>",
+            "max_start_time": "<now + scheduled_event_lookahead_months*30 days, ISO-8601>",
+            "count": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "event_invitees",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/uri"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/scheduled_events/{scheduled_event_uuid}/invitees",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "count": 100 },
+          "pathPlaceholders": {
+            "{scheduled_event_uuid}": "The child URL is built by string-concatenating the parent ScheduledEvent's own `uri` field (an absolute https://api.calendly.com/scheduled_events/<uuid> URL returned in the parent record) with the literal suffix \"/invitees\". Parents are enumerated by the same windowed GET /scheduled_events call used by the scheduled_events stream (organization + sort=start_time:asc + min_start_time/max_start_time)."
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "organization_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/organization_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "organization": "<organization uri from GET /users/me>", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "routing_forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/routing_forms",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "organization": "<organization uri from GET /users/me>", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/groups",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "organization": "<organization uri from GET /users/me>", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "routing_form_submissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "binding poll interval (recommended default)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/routing_form_submissions",
+          "httpMethod": "GET",
+          "recordsPath": "collection",
+          "params": { "form": "<parent routing form uri>", "count": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "pagination.next_page_token",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The endpoint config offers exactly one credential shape: estuary_cdk.flow.AccessToken, a single secret string titled \"Access Token\" under the \"Private App Credentials\" discriminator. The connector constructs TokenSource(oauth_spec=None, credentials=config.credentials), so no OAuth app registration, client id/secret, or refresh token is ever requested and no hosted control-plane OAuth flow exists for this connector. The user pastes one self-serve Calendly personal access token — T1_SIMPLE. The CDK sends it as `Authorization: Bearer <token>` (DEFAULT_AUTHORIZATION_HEADER / DEFAULT_AUTHORIZATION_TOKEN_TYPE).",
+
+  "unionMisfits": [
+    {
+      "where": "streams[scheduled_events].pull / streams[event_invitees].pull",
+      "description": "These two bindings are registered through the CDK's `fetch_changes` (incremental) slot, but they perform no cursor filtering at all: the passed LogCursor is only asserted to be a datetime and is otherwise unused, every item in the [now-lookback, now+lookahead] window is re-emitted on every 5-minute tick, and the checkpoint yielded at the end is simply `now`. Semantically this is a repeating windowed full re-read, not an incremental leg — but it is also NOT the schema's `snapshot` shape, because it has no tombstone and merges by /uri rather than replacing the collection. Neither `incremental` nor `snapshot` fits; it was placed in `incremental` to match the CDK slot actually used.",
+      "proposedShape": { "pull": { "windowed_refresh": { "windowFrom": "now - lookback", "windowTo": "now + lookahead", "reemitsEntireWindow": true, "emitsDeletes": false, "cursorUsed": false } } }
+    },
+    {
+      "where": "streams[*] (parent scoping)",
+      "description": "Calendly scoping is a QUERY PARAMETER (`organization=<org uri>` on most streams, `form=<routing form uri>` on routing_form_submissions), not a path placeholder — so `pathPlaceholders` cannot express it and it has been folded into `params` as an angle-bracket description. Only event_invitees is genuinely path-scoped, and even there the connector does not template a path: it concatenates the parent record's absolute `uri` URL with \"/invitees\", so the base URL for that request comes from the response body rather than from the connector's constant base URL.",
+      "proposedShape": { "parentScope": { "kind": "query_param", "param": "organization", "valueFrom": "GET /users/me -> resource.current_organization" } }
+    },
+    {
+      "where": "streamMode / streams[*].origin",
+      "description": "The stream list is a hard-coded static set, but at discover/validate time the connector probes GET /routing_forms?count=1 and, on HTTP 403, removes the three `teams_only` streams (routing_forms, groups, routing_form_submissions) from the offered bindings. So the emitted binding list is entitlement-filtered static, which is neither \"static\", \"discovered\", nor the per-stream \"mixed\" the schema describes.",
+      "proposedShape": { "streamMode": "static_filtered", "entitlementProbe": { "path": "/routing_forms", "onStatus": 403, "removesStreams": ["routing_forms", "groups", "routing_form_submissions"] } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_calendly/models.py", "lines": "17", "snippet": "API_BASE_URL = \"https://api.calendly.com\"" },
+    "credentialModes[0].scheme": { "file": "source_calendly/resources.py", "lines": "223-224", "snippet": "if http.token_source is None:\n    http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)" },
+    "credentialModes[0].tier": { "file": "source_calendly/models.py", "lines": "25-29", "snippet": "credentials: AccessToken = Field(\n    discriminator=\"credentials_title\",\n    title=\"Authentication\"," },
+    "authTierOverall": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "115-122", "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"] = Field(\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True})" },
+    "authTierRationale": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36, 305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\nreturn (self.authorization_token_type, self.credentials.access_token)" },
+    "streams[0].pull.incremental.paginator": { "file": "source_calendly/api.py", "lines": "67, 82-87", "snippet": "params = {**params, \"count\": MAX_PAGE_SIZE}\nnext_token = remainder.pagination.next_page_token if remainder else None\nif not next_token: break\nparams = {**params, \"page_token\": next_token}" },
+    "streams[0].pull.incremental.paginator.cursorPath": { "file": "source_calendly/models.py", "lines": "67-72", "snippet": "class PaginationInfo(BaseModel, extra=\"allow\"):\n    next_page_token: str | None = None\nclass CalendlyResponse(...): pagination: PaginationInfo" },
+    "streams[0].pull.incremental.recordsPath": { "file": "source_calendly/api.py", "lines": "71-76", "snippet": "processor = IncrementalJsonProcessor(\n    body(), \"collection.item\", entity_cls, remainder_cls=CalendlyResponse,\n)" },
+    "streams[0].pull.incremental.params": { "file": "source_calendly/api.py", "lines": "180-181", "snippet": "url = API_BASE_URL + entity_cls.path\nparams: dict[str, str | int] = {\"organization\": org_uri, \"sort\": \"updated_at:desc\"}" },
+    "streams[0].pull.backfill.params": { "file": "source_calendly/api.py", "lines": "154-155", "snippet": "url = f\"{API_BASE_URL}{entity_cls.path}\"\nparams: dict[str, str | int] = {\"organization\": org_uri, \"sort\": \"updated_at:desc\"}" },
+    "streams[0].cursorField": { "file": "source_calendly/api.py", "lines": "185-189", "snippet": "async for item in _fetch_entity(url, entity_cls, http, log, params):\n    if item.updated_at <= cursor: break\n    new_cursor = max(new_cursor, item.updated_at)" },
+    "streams[0].primaryKey": { "file": "source_calendly/resources.py", "lines": "79-82", "snippet": "Resource(\n    name=entity_cls.name,\n    key=[\"/uri\"]," },
+    "streams[0].name": { "file": "source_calendly/models.py", "lines": "92-94, 168-170", "snippet": "class EventType(CalendlyEntity):\n    name: ClassVar[str] = \"event_types\"\n    path: ClassVar[str] = \"/event_types\"" },
+    "streams[1].pull.incremental.params": { "file": "source_calendly/api.py", "lines": "205-213", "snippet": "start_date = now - timedelta(days=scheduled_event_lookback_months * 30)\nreturn {\"organization\": org_uri, \"sort\": \"start_time:asc\",\n  \"min_start_time\": start_date.isoformat(), \"max_start_time\": end_date.isoformat()}" },
+    "streams[1].cursorField": { "file": "source_calendly/api.py", "lines": "233-239", "snippet": "async for item in _fetch_entity(url, ScheduledEvent, http, log, params):\n    yield item\nyield now" },
+    "streams[2].pull.incremental.pathPlaceholders": { "file": "source_calendly/models.py", "lines": "133-147", "snippet": "class EventInvitee(CalendlyChildEntity):\n    path: ClassVar[str] = \"/invitees\"\n    def get_child_url(cls, parent_uri): return parent_uri + cls.path" },
+    "streams[2].pull.incremental.path": { "file": "source_calendly/api.py", "lines": "253-263", "snippet": "url = API_BASE_URL + ScheduledEvent.path\nasync for parent in _fetch_entity(url, ScheduledEvent, http, log, params):\n    child_url = EventInvitee.get_child_url(parent.uri)" },
+    "streams[3].writeDisposition": { "file": "source_calendly/resources.py", "lines": "113-120", "snippet": "open_binding(..., fetch_snapshot=functools.partial(snapshot_fn, entity_cls, org_uri, http),\n    tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\")))" },
+    "streams[3].primaryKey": { "file": "source_calendly/resources.py", "lines": "123-125", "snippet": "Resource(\n    name=entity_cls.name,\n    key=[\"/_meta/row_id\"]," },
+    "streams[3].pull.snapshot.params": { "file": "source_calendly/api.py", "lines": "96-101", "snippet": "url = API_BASE_URL + entity_cls.path\nasync for item in _fetch_entity(url, entity_cls, http, log, {\"organization\": org_uri}):" },
+    "streams[6].pull.snapshot.params": { "file": "source_calendly/models.py", "lines": "150-165", "snippet": "class RoutingFormSubmission(CalendlyChildEntity):\n    def get_child_url(cls, parent_uri): return API_BASE_URL + cls.path\n    def get_child_params(cls, parent_uri): return {\"form\": parent_uri}" },
+    "streams[*].schedules": { "file": "source_calendly/resources.py", "lines": "88-91", "snippet": "initial_config=ResourceConfig(\n    name=entity_cls.name,\n    interval=timedelta(minutes=5),\n)" },
+    "streamMode": { "file": "source_calendly/models.py", "lines": "168-177", "snippet": "INCREMENTAL_STREAMS: list[type[CalendlyEntity]] = [EventType]\nSNAPSHOT_STREAMS: list[type[CalendlyEntity]] = [OrganizationMembership, RoutingForm, Group, RoutingFormSubmission]" },
+    "unionMisfits[2]": { "file": "source_calendly/api.py", "lines": "30-40", "snippet": "url = API_BASE_URL + \"/routing_forms\"\nparams = {\"organization\": org_uri, \"count\": 1}\nif err.code == 403: return False" },
+    "unionMisfits[1]": { "file": "source_calendly/resources.py", "lines": "226-227", "snippet": "user_info = await fetch_user_info(http, log)\norg_uri = user_info.current_organization" },
+    "execution.mode": { "file": "source_calendly/resources.py", "lines": "72-76", "snippet": "fetch_changes=functools.partial(fetch_entity, entity_cls, org_uri, http),\nfetch_page=functools.partial(backfill_entity, entity_cls, org_uri, config.start_date, http)" },
+    "configFields": { "file": "tests/snapshots/snapshots__spec__stdout.json", "lines": "spec configSchema", "snippet": "\"required\": [\"credentials\"], properties: credentials / start_date / scheduled_event_lookback_months / scheduled_event_lookahead_months" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "medium",
+    "streams[0]": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].cursorField": "high",
+    "streams[1].pull.incremental": "high",
+    "streams[1].cursorField": "high",
+    "streams[2].pull.incremental.path": "medium",
+    "streams[2].pull.incremental.pathPlaceholders": "high",
+    "streams[3]": "high",
+    "streams[4]": "high",
+    "streams[5]": "high",
+    "streams[6]": "high",
+    "streams[*].schedules": "medium",
+    "streams[*].supportedSyncModes": "low",
+    "category": "low"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "The connector sets no static headers of its own anywhere in source_calendly/. Every header beyond Authorization (and whatever estuary_cdk.http.HTTPSession adds by default) is CDK-internal; nothing Calendly-specific is pinned, so null rather than an invented value.",
+    "transports[0].spec.apiVersionPinning": "Genuinely absent: no version header, no /vN path segment (all paths are bare, e.g. /event_types), and no version query param anywhere in the connector.",
+    "streams[*].pull.*.incrementalParam": "Null for every stream, deliberately. No stream sends its replication cursor as a request parameter. event_types requests sort=updated_at:desc and terminates the page loop CLIENT-SIDE when item.updated_at <= cursor (api.py:186) / <= min_date (api.py:162). scheduled_events and event_invitees send min_start_time/max_start_time, but those are computed from datetime.now() plus the static lookback/lookahead config (api.py:205-213) and not from the stream's LogCursor — encoding them as an incrementalParam would be wrong and would silently change sync semantics.",
+    "streams[1].cursorField": "scheduled_events has an incremental LogCursor in state, but it is a wall-clock timestamp (`yield now`, api.py:239) that is never used to filter the request or the records — no record field acts as a cursor. Naming updated_at or start_time here would be a guess.",
+    "streams[2].cursorField": "Same as scheduled_events: fetch_event_invitees asserts the cursor is a datetime, ignores it, and yields `now` (api.py:250, 271). No record field drives resumption.",
+    "streams[2].pull.incremental.path": "The literal path is not written in the connector: get_child_url concatenates the parent ScheduledEvent's `uri` (an absolute URL from the response body) with \"/invitees\". \"/scheduled_events/{scheduled_event_uuid}/invitees\" is the shape that concatenation yields for Calendly's documented event URIs, but the connector never templates it and would follow whatever host/path the API returns in `uri`.",
+    "streams[*].supportedSyncModes": "Low confidence / poor fit. The connector is not Airbyte and has no sync-mode concept. event_types is the only binding with both a backfill and an incremental leg. scheduled_events and event_invitees have ONLY an incremental leg (no backfill state at all), which the two-option enum cannot express, so they were coded as [\"full_refresh\",\"incremental\"]. The four snapshot bindings are re-read wholesale each interval with a tombstone, coded [\"full_refresh\"].",
+    "execution.defaultSchedule": "There is no connector-wide schedule; every Resource carries its own recommended ResourceConfig(interval=timedelta(minutes=5)). Recorded per stream instead.",
+    "execution.continuity": "Null because mode is poll: the connector is a stateless HTTP reader. It creates no server-side artifact on Calendly (no webhook subscription, no export job, no slot), nothing accrues on the customer side if we stop between ticks, and state is purely local (a datetime LogCursor). The one real risk is data loss rather than continuity: scheduled_events/event_invitees only ever read the [now-lookback, now+lookahead] window, so a pause longer than the lookback window permanently misses events that fall out of it — but that is not a continuity artifact and is recorded as a misfit/flag instead.",
+    "discovery": "Null: there is no schema/catalog discovery. `discover` just calls all_resources(), which returns the hard-coded INCREMENTAL_STREAMS/SNAPSHOT_STREAMS/scheduled-event list minus the teams_only entries when the /routing_forms probe 403s. That entitlement filtering is recorded under unionMisfits, not as discovery.",
+    "category": "Calendly is meeting scheduling; it maps cleanly to none of the offered categories (it is arguably crm-adjacent, sales-adjacent, and hr-adjacent). \"other\" chosen rather than guessing a wrong bucket."
+  }
+}

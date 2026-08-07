@@ -1,0 +1,296 @@
+{
+  "id": "alpaca",
+  "estuaryDir": "source-alpaca",
+  "displayName": "Alpaca",
+  "description": "Captures US stock trade records for a user-supplied list of symbols from the Alpaca Market Data API, combining a historical REST backfill with a real-time websocket trade stream.",
+  "category": "finance",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Historical market data REST API: windowed multi-symbol trade queries used for the backfill and the ongoing catch-up sweeps.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": null,
+        "defaultHeaders": null,
+        "apiVersionPinning": "Implied by the SDK import path github.com/alpacahq/alpaca-trade-api-go/v2/marketdata; no version is expressed in connector code."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Real-time market data websocket (Alpaca stocks stream). Co-equal with the REST leg, not subordinate to it; 'sidecar' is the only non-primary role this schema offers. See unionMisfits[0] and unionMisfits[1].",
+      "spec": {
+        "kind": "stream",
+        "system": "other",
+        "endpointConfig": "marketdataStream.NewStocksClient(feed) — the endpoint is selected solely by the `feed` config value (\"iex\" or \"sip\"); the connector supplies no host or URL of its own."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Alpaca API key ID + secret key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "A key-id / secret-key pair handed to the vendor Go SDK (marketdata.ClientOpts{ApiKey, ApiSecret} for REST; marketdataStream.WithCredentials(id, secret) for the websocket). The same pair authenticates BOTH transports. The connector never constructs the HTTP request itself, so the on-the-wire scheme (Alpaca documents APCA-API-KEY-ID / APCA-API-SECRET-KEY headers) is not observable from this repository — not asserted here."
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "An open Alpaca market-data websocket subscription (trades, for the configured symbol list) while the connector runs. No server-side object is created on the customer's own infrastructure."
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Everything the websocket would have delivered while we are disconnected. README: the stream can only be initiated from the present moment and cannot resume from a previous time. Loss is bounded in practice because the REST backfill leg later re-covers the same wall-clock window from the persisted BackfilledUntil checkpoint.",
+      "resumeWindow": "REST backfill: effectively unbounded — Alpaca serves history back to 2016-01-01T00:00:00Z (minStartTimeNanos), and resumption is from the BackfilledUntil checkpoint. Websocket: zero — no resume at all.",
+      "releasedOnShutdown": true,
+      "notes": "The process is long-lived: Pull() starts a backfill goroutine that loops forever (catch up, then sleep min_backfill_interval and sweep again) plus a streaming goroutine that starts only once the backfill signals caughtUp. Streaming emits an empty checkpoint `{}` per document, so no stream position is ever persisted; the backfill checkpoint (per-binding StateKey -> end time of the last completed window) is the only durable progress. Consequently, stopping between ticks costs nothing durable but does produce duplicate documents on restart overlap — the connector already emits duplicates by design (README notes the collection combines both legs and requires last-write-wins reductions)."
+    }
+  },
+  "configFields": [
+    { "name": "api_key_id", "displayName": "Alpaca API Key ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Your Alpaca API key ID." },
+    { "name": "api_secret_key", "displayName": "Alpaca API Secret Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Your Alpaca API Secret key." },
+    { "name": "feed", "displayName": "Feed", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The feed to pull market data from. Enum: iex, sip. Free plans only work properly with iex." },
+    { "name": "symbols", "displayName": "Symbols", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma separated list of symbols to monitor; split on ',' with no validation (invalid symbols simply return no data)." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "Backfill start. Must be no earlier than 2016-01-01T00:00:00Z. Ignored after the capture has started (checkpoint wins)." },
+    { "name": "advanced.is_free_plan", "displayName": "Free Plan", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Free plans cannot query the last 15 minutes; sets the backfill end bound to now-15m instead of now-1m." },
+    { "name": "advanced.stop_date", "displayName": "Stop Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "Stop backfilling historical data at this date. Must not be before start_date. Does not stop the websocket leg." },
+    { "name": "advanced.disable_real_time", "displayName": "Disable Real-Time Streaming", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Disables the websocket leg. Cannot be set together with disable_backfill." },
+    { "name": "advanced.disable_backfill", "displayName": "Disable Historical Data Backfill", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Disables the REST backfill leg. Cannot be set together with disable_real_time." },
+    { "name": "advanced.max_backfill_interval", "displayName": "Maximum Backfill Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Largest time window requested per backfill chunk. Go duration string; default 15m." },
+    { "name": "advanced.min_backfill_interval", "displayName": "Minimum Backfill Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Smallest window requested after the initial backfill completes, and the sleep between catch-up sweeps. Go duration string; default 1m. Must be <= max_backfill_interval." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Unique name for this binding. Cannot be changed once set. It is the sole resource field — it selects nothing; the data captured is determined entirely by endpoint-level feed + symbols." }
+  ],
+  "streamMode": "static",
+  "discovery": {
+    "method": "No remote describe. Discover() unconditionally synthesizes exactly one binding whose recommended name is the configured `feed` value, with a hardcoded trade-document schema.",
+    "querySketch": null,
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<feed>",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["/ID", "/Symbol", "/Exchange", "/Timestamp"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "Timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "historical backfill / catch-up sweep gap", "schedule": { "kind": "other", "literal": "min_backfill_interval (Go duration string, default \"1m\")", "description": "After the backfill reaches the present, it sleeps min_backfill_interval and sweeps again, forever. Windows within a sweep are at most max_backfill_interval (default 15m) wide." } },
+        { "role": "real-time websocket trade subscription", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": null,
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "Start": "window start (from start_date, or the BackfilledUntil checkpoint on resume)",
+            "End": "window end = min(start+max_backfill_interval, effective end); effective end = stop_date if set, else now-15m on a free plan, else now-1m",
+            "Feed": "the `feed` config value (iex|sip)",
+            "Currency": "usd (hardcoded constant defaultCurrency)",
+            "symbols": "the full comma-split symbol list, requested together via GetMultiTradesAsync"
+          },
+          "pathPlaceholders": null,
+          "paginator": null,
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": null,
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "Start": "end of the previously checkpointed window (checkpoint BackfilledUntil[stateKey])",
+            "End": "recomputed effective end at each sweep",
+            "Feed": "the `feed` config value (iex|sip)",
+            "Currency": "usd"
+          },
+          "pathPlaceholders": null,
+          "paginator": null,
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a self-serve Alpaca API key ID + secret key pair generated from the user's own Alpaca dashboard (README links the Alpaca 'finding your API keys' page). There is no OAuth client registration, no refresh token, and no hosted control-plane involvement anywhere in the connector.",
+  "unionMisfits": [
+    {
+      "where": "transports[1].spec",
+      "description": "The websocket streaming leg is a genuine second transport of a kind the union does not have: it is not http (no request/response, no path, no pagination) and not a partitioned log broker (no kafka/kinesis/pubsub semantics, no offsets, no consumer group, no replay). It was forced into kind:\"stream\", system:\"other\", which loses the two facts that actually matter operationally: the connection is a subscribe-by-key push channel, and it is strictly non-resumable (present-moment-only, no offset of any kind). Its role is also wrong: it is co-equal with the REST leg, not a sidecar, but the role enum offers only primary|sidecar.",
+      "proposedShape": {
+        "kind": "websocket",
+        "urlSelector": "feed name selects the endpoint (iex|sip)",
+        "subscribeModel": "subscribe-after-connect, by symbol list",
+        "channels": ["trades"],
+        "resumable": false,
+        "offsetKind": null,
+        "notes": "Present-moment-only; a disconnect is unrecoverable data loss for this leg unless a separate backfill re-covers the window."
+      }
+    },
+    {
+      "where": "transports[].role",
+      "description": "A connector may have two co-equal primary transports covering the same logical stream at different latencies (websocket for low latency, REST for completeness). The role enum primary|sidecar cannot express this; labelling the websocket a 'sidecar' understates it, and the two roles also share one credential set, which credentialModes[].appliesToTransport (a single enum value) cannot express either.",
+      "proposedShape": {
+        "role": "co_primary",
+        "appliesToTransport": ["primary", "co_primary"]
+      }
+    },
+    {
+      "where": "streams[0].pull",
+      "description": "The websocket leg is a third pull shape alongside backfill/incremental/snapshot: a continuous push subscription with no path, no paginator, no cursor, and an explicitly empty checkpoint (`{}` emitted per document). It cannot be represented as a PullSpec and has therefore been omitted from `pull` rather than forced into `incremental` — which would have been the dangerous option, since it would imply resumable cursor semantics that do not exist.",
+      "proposedShape": {
+        "push": {
+          "kind": "subscription",
+          "transportRole": "co_primary",
+          "channel": "trades",
+          "subscriptionKeys": "configured symbol list",
+          "checkpointing": "none (empty checkpoint emitted; position never persisted)",
+          "startsAfter": "the backfill goroutine signals caught-up"
+        }
+      }
+    },
+    {
+      "where": "streamMode / streams[0].name",
+      "description": "Neither static nor discovered fits cleanly. Exactly one binding shape exists (trade documents), so the list is fixed, but its name is config-derived (Discover recommends the `feed` value) and the user may create arbitrarily many bindings with arbitrary names — the tests use \"first\", \"second\", \"trades\" — all of which capture the identical data, because symbols and feed are endpoint-level, not resource-level. Marked static + kind:\"archetype\" as the least-wrong encoding.",
+      "proposedShape": {
+        "streamMode": "singleton",
+        "nameSource": "config-derived, user-overridable",
+        "bindingCardinality": "unbounded, but all bindings are duplicates of one another"
+      }
+    },
+    {
+      "where": "execution.mode",
+      "description": "Neither poll nor log. The connector is a long-lived process running two concurrent legs: a never-terminating REST poll loop and a continuous push subscription. Recorded as \"poll\" because that is the leg that carries durable checkpoints, but a scheduler treating this as a cron-tick poll job would be wrong — the process is meant to stay resident.",
+      "proposedShape": { "mode": "hybrid_resident", "legs": ["poll", "push"] }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-alpaca/worker.go",
+      "lines": "232-239",
+      "snippet": "params := marketdata.GetTradesParams{ Start: start, End: end, Feed: c.feed, Currency: defaultCurrency }\n\ttChan := c.dataClient.GetMultiTradesAsync(c.symbols, params)"
+    },
+    "transports[1].spec": {
+      "file": "source-alpaca/pull.go",
+      "lines": "116-119",
+      "snippet": "streamClient := marketdataStream.NewStocksClient(\n\t\tc.config.Feed,\n\t\tmarketdataStream.WithCredentials(c.config.ApiKeyID, c.config.ApiSecretKey),\n\t)"
+    },
+    "transports[1].purpose": {
+      "file": "source-alpaca/worker.go",
+      "lines": "119-125",
+      "snippet": "if err := c.streamClient.Connect(ctx); err != nil {\n\t\treturn fmt.Errorf(\"streaming client connect: %w\", err)\n\tif err := c.streamClient.SubscribeToTrades(streamedTradeHandler, c.symbols...); err != nil {"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-alpaca/driver.go",
+      "lines": "63-66",
+      "snippet": "_, err := marketdata.NewClient(marketdata.ClientOpts{\n\t\tApiKey:    cfg.ApiKeyID,\n\t\tApiSecret: cfg.ApiSecretKey,\n\t})"
+    },
+    "credentialModes[0].tier": {
+      "file": "source-alpaca/main.go",
+      "lines": "37-38",
+      "snippet": "ApiKeyID     string `json:\"api_key_id\" jsonschema:\"title=Alpaca API Key ID...\" jsonschema_extras:\"secret=true\"`\n\tApiSecretKey string `json:\"api_secret_key\" ... jsonschema_extras:\"secret=true\"`"
+    },
+    "execution.mode": {
+      "file": "source-alpaca/pull.go",
+      "lines": "137-160",
+      "snippet": "if !c.config.Advanced.DisableBackfill { eg.Go(func() error { return worker.backfillTrades(...) })\n\tif !c.config.Advanced.DisableRealTime { eg.Go(func() error { ... return worker.streamTrades(ctx) })"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-alpaca/README.md",
+      "lines": "34-37",
+      "snippet": "It can only be initiated from the present moment in time, and if the stream is interrupted there is no way to resume streaming from a previous time."
+    },
+    "execution.continuity.notes": {
+      "file": "source-alpaca/worker.go",
+      "lines": "76-78",
+      "snippet": "eg.Go(func() error {\n\t\t\treturn c.handleDocuments(docsChan, []byte(emptyCheckpoint))\n\t\t})"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source-alpaca/pull.go",
+      "lines": "63-71",
+      "snippet": "// If we have persisted a checkpoint indicating progress for this resource, use that instead\n\t\t// of the configured startDate.\n\t\tif got, ok := checkpoint.BackfilledUntil[boilerplate.StateKey(binding.StateKey)]; ok {"
+    },
+    "streams[0].primaryKey": {
+      "file": "source-alpaca/driver.go",
+      "lines": "97-99",
+      "snippet": "DocumentSchemaJson: documentSchema,\n\t\t\tKey:                []string{\"/ID\", \"/Symbol\", \"/Exchange\", \"/Timestamp\"},"
+    },
+    "streams[0].name": {
+      "file": "source-alpaca/driver.go",
+      "lines": "86-96",
+      "snippet": "resourceJSON, err := json.Marshal(resource{ Name: cfg.Feed })\n\t\t\tRecommendedName:    cfg.Feed,"
+    },
+    "streams[0].schedules": {
+      "file": "source-alpaca/main.go",
+      "lines": "11-13",
+      "snippet": "defaultMaxBackfillInterval = 15 * time.Minute\n\tdefaultMinBackfillInterval = 1 * time.Minute"
+    },
+    "streams[0].pull.backfill.params": {
+      "file": "source-alpaca/worker.go",
+      "lines": "303-320",
+      "snippet": "// Free plans can't get data from within the last 15 minutes.\n\tif freePlan { now = now.Add(-1 * 15 * time.Minute) } else { now = now.Add(-1 * backfillDely) }"
+    },
+    "streams[0].pull.incremental": {
+      "file": "source-alpaca/worker.go",
+      "lines": "212-217",
+      "snippet": "if start.Add(maxInterval).Before(endLimit) { end = start.Add(maxInterval)\n\t\t} else if endLimit.Sub(start) >= minInterval { end = endLimit"
+    },
+    "discovery.method": {
+      "file": "source-alpaca/.snapshots/TestDiscover",
+      "lines": "1-6",
+      "snippet": "Binding 0:\n    \"recommended_name\": \"iex\",\n    \"resource_config_json\": { \"name\": \"iex\" }"
+    },
+    "configFields": {
+      "file": "source-alpaca/.snapshots/TestSpec",
+      "lines": "87-93",
+      "snippet": "\"required\": [ \"api_key_id\", \"api_secret_key\", \"feed\", \"symbols\", \"start_date\" ]"
+    },
+    "category": {
+      "file": "source-alpaca/README.md",
+      "lines": "3-4",
+      "snippet": "This is a Flow capture connector which captures trade data from the [Alpaca Market Data API](https://alpaca.markets/)."
+    }
+  },
+  "confidence": {
+    "transports[0].spec.kind": "high",
+    "transports[1].spec": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[0].scheme": "medium",
+    "execution.mode": "medium",
+    "execution.continuity": "high",
+    "streamMode": "medium",
+    "streams[0].primaryKey": "high",
+    "streams[0].name": "high",
+    "streams[0].cursorField": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[0].pull.backfill.params": "high",
+    "streams[0].pull.backfill.path": "low",
+    "configFields": "high",
+    "category": "high"
+  },
+  "abstained": {
+    "transports[0].spec.baseUrl": "No URL, host, or base-path string exists anywhere in the connector, tests, or snapshots. The REST base URL is a default baked into the third-party vendor SDK github.com/alpacahq/alpaca-trade-api-go/v2/marketdata, which is not vendored in this directory and was out of scope for this extraction. The connector never overrides it (marketdata.ClientOpts is populated with ApiKey/ApiSecret only).",
+    "transports[0].spec.defaultHeaders": "Same reason — all header construction happens inside the vendor SDK.",
+    "streams[0].pull.backfill.path": "The connector calls the SDK method GetMultiTradesAsync(symbols, params); the URL path is chosen inside the SDK. Guessing a path would be a fabrication.",
+    "streams[0].pull.incremental.path": "Same as backfill — the identical SDK call is used for both legs.",
+    "streams[0].pull.backfill.recordsPath": "The SDK yields already-decoded items over a Go channel; no response envelope is visible in connector code.",
+    "streams[0].pull.backfill.paginator": "HIGH-RISK FIELD, DELIBERATELY NULL. The connector never paginates: it hands a symbol list plus a Start/End window to GetMultiTradesAsync and drains a channel until it closes. Any page-token loop lives entirely inside the vendor SDK and is invisible here. Note that the connector's own bounding mechanism is time-window chunking (max_backfill_interval, default 15m) plus a min-window floor — that is recorded in params, and must not be mistaken for pagination.",
+    "streams[0].pull.incremental.paginator": "Same call, same reason.",
+    "streams[0].pull.backfill.incrementalParam": "Ambiguous by construction: the Start/End window params serve both the historical sweep and the ongoing one — there is no separate 'updated since' parameter to name. Recorded in params rather than asserted as an incrementalParam.",
+    "credentialModes[0].scheme.type": "Recorded as 'other' rather than 'header'. Alpaca publicly documents APCA-API-KEY-ID / APCA-API-SECRET-KEY headers, but the connector source contains no header name at all, so naming them here would be outside-knowledge, not extraction.",
+    "streams[0].writeDisposition": "Recorded as 'merge' on the strength of the four-pointer collection key, but the README states the collection intentionally contains duplicate trade documents produced by both legs and recommends Delta Updates with last-write-wins reductions — which reads more like 'append'. The connector does not decide this; the materialization does.",
+    "streams[0].cursorField": "Timestamp is the field the Start/End window bounds semantically select on, but the persisted checkpoint (BackfilledUntil) stores the requested window END TIME, not a value read from any record. A strict record-cursor reading would be null.",
+    "execution.defaultSchedule": "Recorded as continuous because the process is resident, but see unionMisfits[4] — the backfill leg is really an internal self-scheduling loop, not a connector-level schedule."
+  }
+}

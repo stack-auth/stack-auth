@@ -1,0 +1,564 @@
+{
+  "id": "looker",
+  "estuaryDir": "source-looker",
+  "displayName": "Looker",
+  "description": "Imports Looker BI metadata — dashboards, dashboard elements, folders, groups, LookML models and explores, roles, users and their credentials/roles/attributes — from a self-hosted or Looker-hosted instance via the Looker API 4.0.",
+  "category": "analytics",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{subdomain}/api/4.0",
+          "placeholders": {
+            "subdomain": "user-supplied endpoint config field `subdomain`, the full host of the customer's Looker instance (e.g. estuarydemo.cloud.looker.com); validated against ^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}$"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: API_VERSION = \"4.0\" interpolated into /api/{version}"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Looker API credentials (client_id + client_secret exchanged at /login for a short-lived access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://{subdomain}/api/4.0/login",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "subdomain",
+      "displayName": "Looker Subdomain",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "The full host of the user's Looker instance, e.g. estuarydemo.cloud.looker.com. Used to build both the API base URL and the login/token URL."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator, const \"OAuth Credentials\". Only one credential variant exists."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Looker API credential client id."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Looker API credential client secret."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource (binding); defaults to the stream name."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this binding. The connector ships every binding with a default of 30 minutes."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": {
+    "method": "Accessibility probe of each shipped parent stream URL: issue GET {base}/{stream.path} with a 10 second wait; a 404 within that window means the credentials cannot see the endpoint and the stream (plus its children) is dropped from the discovered set. A timeout is treated as accessible.",
+    "querySketch": null,
+    "excludes": [],
+    "allowlist": "Discovery never adds streams — it only intersects the hard-coded STREAMS list with what the credentials can read. Child streams are included/excluded with their parent, never probed independently."
+  },
+
+  "streams": [
+    {
+      "name": "dashboards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "dashboards/search",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array, streamed item-by-item)",
+          "params": {
+            "sorts": "id",
+            "limit": 100,
+            "offset": "<advanced by page>",
+            "fields": "comma-joined explicit field allowlist of 42 dashboard fields; deliberately excludes dashboard_elements, dashboard_filters, dashboard_layouts and folder"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 100,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "dashboards_elements",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "dashboard_elements/search",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array, streamed item-by-item)",
+          "params": { "sorts": "id", "limit": 1000, "offset": "<advanced by page>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 1000,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "folders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "folders",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "groups",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "lookml_models",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "lookml_models",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "lookml_model_explores",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "lookml_models/{model_name}/explores/{explore_name}",
+          "httpMethod": "GET",
+          "recordsPath": "$ (single object per request)",
+          "params": null,
+          "pathPlaceholders": {
+            "model_name": "each `name` from GET /lookml_models",
+            "explore_name": "each `explores[].name` in that model's nav listing; 404s with a JSON error envelope (abstract explores, non-compiling models, unpermitted explores) are skipped with a warning"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "roles",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_credentials_embed",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users/{user_id}/credentials_embed",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": {
+            "user_id": "each `id` from GET /users, skipped when the parent's `can.show_creds` is false; 25 parents fetched concurrently with order preserved"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users/{user_id}/roles",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": {
+            "user_id": "each `id` from GET /users, skipped when the parent's `can.show_details` is false"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_attribute_values",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users/{user_id}/attribute_values",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": {
+            "user_id": "each `id` from GET /users, skipped when the parent's `can.show_details` is false"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "user_attributes",
+          "httpMethod": "GET",
+          "recordsPath": "$ (whole response parsed as list)",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a Looker API credential pair (client_id + client_secret) that an admin generates self-serve on a user's Admin > Users page inside their own Looker instance. Despite the CDK class names (OAuth2, ResourceOwnerPasswordOAuth2Credentials) there is no OAuth app registration, no redirect URI, no consent screen and no user-supplied refresh token: the connector POSTs the pair to https://{subdomain}/api/4.0/login and gets back a short-lived access_token (Looker returns refresh_token: null, which the connector models explicitly). Estuary's control plane is not involved in issuing the credential. That is a single self-serve key pair, i.e. T1_SIMPLE, not T2_BYO_APP — the client_id/client_secret naming is the only thing that superficially suggests otherwise.",
+
+  "unionMisfits": [
+    {
+      "where": "credentialModes[0].scheme.grant",
+      "description": "The CDK sends grant_type=\"password\" (ResourceOwnerPasswordOAuth2Credentials) but the form body contains only client_id and client_secret — no username/password. Semantically it is a client-credentials exchange with a non-standard grant_type literal. The schema's grant enum (authorization_code|refresh_token|client_credentials) has no member for this; \"client_credentials\" was chosen as the closest behavioural match.",
+      "proposedShape": { "type": "oauth2", "grant": "password|client_credentials|custom", "grantTypeLiteral": "password" }
+    },
+    {
+      "where": "credentialModes[0].scheme",
+      "description": "The access token is not sent as a Bearer token. LookerTokenSource overrides the CDK to emit the header `Authorization: token <access_token>` (literal prefix \"token \", not \"Bearer\"). The oauth2 scheme member has no place to record how the resulting token is presented, so a consumer implementing from this record would default to Bearer and get 401s.",
+      "proposedShape": { "type": "oauth2", "tokenPresentation": { "header": "Authorization", "prefix": "token " } }
+    },
+    {
+      "where": "streams[*].pull",
+      "description": "Every binding is a whole-collection re-read with tombstones for rows that disappear (CDK open_binding with fetch_snapshot + tombstone). This maps onto `snapshot`, but the schema has no field for the tombstone/no-change-detection contract, which here depends on documents being yielded in a STABLE ORDER between sweeps (why child fetches use buffer_ordered with concurrency 25 rather than plain gather).",
+      "proposedShape": { "snapshot": { "orderingStability": "required", "tombstones": true } }
+    },
+    {
+      "where": "discovery",
+      "description": "Discovery here is neither a schema query nor a shipped list: it is a per-stream permission probe with a 10-second timeout heuristic (timeout => assume accessible; 404 => assume inaccessible). `method`/`querySketch` do not express a probe-with-timeout, and streamMode static/discovered/mixed does not express 'static list, dynamically filtered'.",
+      "proposedShape": { "streamMode": "static_filtered", "discovery": { "method": "permission_probe", "probeTimeoutSeconds": 10, "inaccessibleSignal": "HTTP 404" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_looker/api.py", "lines": "19-20", "snippet": "def url_base(subdomain: str) -> str:\n    return f\"https://{subdomain}/api/{API_VERSION}\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_looker/models.py", "lines": "19", "snippet": "API_VERSION = \"4.0\"" },
+    "credentialModes[0].scheme.tokenUrl": { "file": "source_looker/models.py", "lines": "43", "snippet": "accessTokenUrlTemplate=f\"https://DOMAIN/api/{API_VERSION}/login\"," },
+    "credentialModes[0].scheme.grant": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "207-208", "snippet": "class ResourceOwnerPasswordOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"password\"" },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "409-413", "snippet": "form.update({\n    \"client_id\": credentials.client_id,\n    \"client_secret\": credentials.client_secret,})" },
+    "unionMisfits[1]": { "file": "source_looker/models.py", "lines": "31-33", "snippet": "        _, access_token = await super().fetch_token(log, session)\n        return (\"Authorization\", f\"token {access_token}\")" },
+    "configFields[0]": { "file": "source_looker/models.py", "lines": "58-61", "snippet": "    subdomain: str = Field(\n        title=\"Looker Subdomain\",\n        pattern=SUBDOMAIN_REGEX,)" },
+    "configFields[5]": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "160-162", "snippet": "    interval: timedelta = Field(\n        default=timedelta(),\n        description=\"Interval between updates for this resource\",)" },
+    "streamMode": { "file": "source_looker/models.py", "lines": "226-232", "snippet": "STREAMS = [\n    {\n        \"stream\": Dashboards," },
+    "discovery.method": { "file": "source_looker/resources.py", "lines": "75-82", "snippet": "        await asyncio.wait_for(http.request(log, url), timeout=10)\n    except asyncio.TimeoutError:\n        is_accessible = True" },
+    "discovery.allowlist": { "file": "source_looker/resources.py", "lines": "197-202", "snippet": "        if await is_accessible_endpoint(http, log, url):\n            resources.append(full_refresh_resource(base_stream, log, http, config))" },
+    "streams[0].pull.snapshot.paginator": { "file": "source_looker/api.py", "lines": "47-51", "snippet": "    params: dict[str, int | str] = {\n        \"sorts\": \"id\",\n        \"limit\": limit," },
+    "streams[0].pull.snapshot.paginator.terminateOn": { "file": "source_looker/api.py", "lines": "69-72", "snippet": "        if count < limit:\n            break\n\n        offset += limit" },
+    "streams[0].pull.snapshot.params.fields": { "file": "source_looker/api.py", "lines": "53-54", "snippet": "    if fields:\n        params[\"fields\"] = \",\".join(fields)" },
+    "streams[0].pull.snapshot.path": { "file": "source_looker/models.py", "lines": "107-110", "snippet": "class Dashboards(LookerSearchStream):\n    path: ClassVar[str] = \"dashboards/search\"\n    limit: ClassVar[int] = 100" },
+    "streams[1].pull.snapshot.paginator.pageSize": { "file": "source_looker/models.py", "lines": "163-166", "snippet": "class DashboardElements(LookerSearchStream):\n    path: ClassVar[str] = \"dashboard_elements/search\"\n    limit: ClassVar[int] = 1000" },
+    "streams[2].pull.snapshot.paginator": { "file": "source_looker/api.py", "lines": "95-98", "snippet": "    resources = TypeAdapter(list[FullRefreshResource]).validate_json(await http.request(log, url))\n\n    for resource in resources:\n        yield resource" },
+    "streams[5].pull.snapshot.path": { "file": "source_looker/api.py", "lines": "195", "snippet": "            explore_url = f\"{lookml_models_url}/{model_name}/explores/{explore_name}\"" },
+    "streams[8].pull.snapshot.path": { "file": "source_looker/api.py", "lines": "139", "snippet": "        child_url = f\"{parent_url}/{parent_id}/{stream.path}\"" },
+    "streams[8].pull.snapshot.pathPlaceholders": { "file": "source_looker/api.py", "lines": "122-126", "snippet": "        if (can_permissions and stream.required_can_permission\n            and not can_permissions.get(stream.required_can_permission, False)):\n            should_be_accessible = False" },
+    "streams[*].primaryKey": { "file": "source_looker/resources.py", "lines": "125-126", "snippet": "        name=stream.name,\n        key=[\"/_meta/row_id\"]," },
+    "streams[*].writeDisposition": { "file": "source_looker/resources.py", "lines": "118-120", "snippet": "            fetch_snapshot=fetch_snapshot,\n            tombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))" },
+    "streams[*].schedules": { "file": "source_looker/resources.py", "lines": "130-132", "snippet": "        initial_config=ResourceConfig(\n            name=stream.name, interval=timedelta(minutes=30)\n        )," },
+    "unionMisfits[2]": { "file": "source_looker/api.py", "lines": "134-137", "snippet": "    # this is a snapshot function; the CDK relies on documents being yielded in the\n    # same order between snapshots to determine if the snapshot has changed between\n    # sweeps." },
+    "execution.mode": { "file": "source_looker/resources.py", "lines": "114-121", "snippet": "        common.open_binding(\n            binding, binding_index, state, task,\n            fetch_snapshot=fetch_snapshot," }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme.tokenUrl": "high",
+    "credentialModes[0].scheme.grant": "medium",
+    "credentialModes[0].tier": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2].pull.snapshot.paginator": "high",
+    "streams[3].pull.snapshot.paginator": "high",
+    "streams[4].pull.snapshot.paginator": "high",
+    "streams[5].pull.snapshot.paginator": "high",
+    "streams[6].pull.snapshot.paginator": "high",
+    "streams[7].pull.snapshot.paginator": "high",
+    "streams[8].pull.snapshot.paginator": "high",
+    "streams[9].pull.snapshot.paginator": "high",
+    "streams[10].pull.snapshot.paginator": "high",
+    "streams[11].pull.snapshot.paginator": "high",
+    "streams[*].pull.snapshot.path": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].writeDisposition": "high",
+    "streams[*].schedules": "high",
+    "streams[*].cursorField": "high",
+    "streams[0].pull.snapshot.recordsPath": "medium",
+    "authTierOverall": "high",
+    "category": "high"
+  },
+
+  "abstained": {
+    "credentialModes[0].scheme.scopes": "The login exchange sends no scope parameter and the OAuth2TokenFlowSpec has no scopes field; effective permissions come from the Looker role attached to the API credential, which the connector never names. Emitted as an empty list rather than invented values.",
+    "credentialModes[0].scheme.authUrl": "There is no authorization/redirect leg at all — only a token endpoint. Not applicable rather than unknown.",
+    "transports[0].spec.defaultHeaders": "No default headers are set anywhere in the connector or in the HTTPSession construction it uses; only the Authorization header produced by LookerTokenSource is added per request.",
+    "streams[*].cursorField": "No incremental leg exists in this connector. Every binding is a full snapshot; no request carries a since/updated_at filter and ResourceState.Incremental is never populated. Left null deliberately, not for lack of evidence.",
+    "streams[2..11].pull.snapshot.paginator.pageSize": "The non-search endpoints (folders, groups, lookml_models, roles, users, user_attributes and all child endpoints) are fetched with a single unparameterised GET and the entire response is parsed as a list. Whether Looker itself imposes a server-side cap on these endpoints is not knowable from this source, so no paginator is asserted beyond {type: none}; if Looker caps them the connector would silently truncate.",
+    "execution.continuity": "Poll-mode HTTP connector: no server-side artifact (slot, cursor registration, consumer group, scratch table) is created on the customer's Looker instance, nothing accrues between ticks, and there is no retention window to miss. The access token is short-lived but is re-fetched on demand from client_id/client_secret, so a long pause loses nothing. Recorded as null per the schema's 'nothing accrues' guidance.",
+    "streams[*].pull.snapshot.recordsPath": "Responses are decoded either by TypeAdapter(list[...]) over the whole body or by IncrementalJsonProcessor with the 'item' prefix — both mean a bare top-level JSON array with no envelope. No dotted records path exists to cite; described in prose instead.",
+    "description.dashboards_elements_naming": "The stream is named `dashboards_elements` (plural-plural) while its endpoint is `dashboard_elements/search`. Recorded verbatim; no evidence this is intentional or a typo."
+  }
+}

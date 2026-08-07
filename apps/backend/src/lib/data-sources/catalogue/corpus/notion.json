@@ -1,0 +1,453 @@
+{
+  "id": "notion",
+  "estuaryDir": "source-notion",
+  "displayName": "Notion",
+  "description": "Imports Notion workspace users, databases, pages, page blocks, and comments via the Notion REST API.",
+  "category": "other",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.notion.com/v1/" },
+        "defaultHeaders": { "Notion-Version": "2022-06-28" },
+        "apiVersionPinning": "request header `Notion-Version: 2022-06-28`, injected on every request by the stream base class (also sent explicitly on the connection-check call)"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Internal integration access token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.token" }
+    },
+    {
+      "name": "OAuth2.0 (public Notion integration)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://api.notion.com/v1/oauth/authorize",
+        "tokenUrl": "https://api.notion.com/v1/oauth/token",
+        "scopes": [],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date-time; records edited before it are skipped. Defaults to 2 years before now when blank." },
+    { "name": "credentials", "displayName": "Authentication Method", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminated union on `auth_type`: either \"OAuth2.0\" or \"token\"." },
+    { "name": "credentials.auth_type", "displayName": "Authentication Type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Const \"OAuth2.0\" or \"token\"; selects the credential branch." },
+    { "name": "credentials.token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Access token of a private/internal Notion integration (token branch)." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client ID of the user's Notion OAuth integration (OAuth branch)." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client Secret of the user's Notion OAuth integration (OAuth branch)." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Token obtained by completing the OAuth flow (OAuth branch)." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the captured stream (shim ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "\"full_refresh\" or \"incremental\" (shim ResourceConfig)." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace; unused by Notion (shim ResourceConfig)." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Source-defined cursor field, e.g. [\"last_edited_time\"] (shim ResourceConfig)." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "page_size": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "databases",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "last_edited_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "_note": "sent as a JSON request body, not query string",
+            "sort": { "direction": "ascending", "timestamp": "last_edited_time" },
+            "filter": { "property": "object", "value": "database" },
+            "page_size": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "start_cursor",
+            "cursorPath": "next_cursor",
+            "hasMorePath": "has_more",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "_note": "identical request to the backfill leg; incrementality is enforced CLIENT-SIDE by dropping records whose last_edited_time is below max(state, start_date)",
+            "sort": { "direction": "ascending", "timestamp": "last_edited_time" },
+            "filter": { "property": "object", "value": "database" },
+            "page_size": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "start_cursor",
+            "cursorPath": "next_cursor",
+            "hasMorePath": "has_more",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "pages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "last_edited_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "_note": "sent as a JSON request body, not query string",
+            "sort": { "direction": "ascending", "timestamp": "last_edited_time" },
+            "filter": { "property": "object", "value": "page" },
+            "page_size": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "start_cursor",
+            "cursorPath": "next_cursor",
+            "hasMorePath": "has_more",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "_note": "identical request to the backfill leg; incrementality is enforced CLIENT-SIDE by dropping records whose last_edited_time is below max(state, start_date)",
+            "sort": { "direction": "ascending", "timestamp": "last_edited_time" },
+            "filter": { "property": "object", "value": "page" },
+            "page_size": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "start_cursor",
+            "cursorPath": "next_cursor",
+            "hasMorePath": "has_more",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "blocks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "last_edited_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "blocks/{block_id}/children",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "page_size": 100 },
+          "pathPlaceholders": {
+            "block_id": "top of a depth-first block-id stack: seeded with each parent `pages` record's id, then pushed with any child block whose has_children is true; recursion capped at depth 30"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "blocks/{block_id}/children",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "page_size": 100,
+            "_note": "identical request to the backfill leg; parent pages are always read in full_refresh mode and record filtering is client-side"
+          },
+          "pathPlaceholders": {
+            "block_id": "top of a depth-first block-id stack: seeded with each parent `pages` record's id, then pushed with any child block whose has_children is true; recursion capped at depth 30"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "page_last_edited_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "comments",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "block_id": "{parent page id}", "page_size": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "comments",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "block_id": "{parent page id}",
+            "page_size": 100,
+            "_note": "identical request to the backfill leg; the cursor value page_last_edited_time is synthesized onto each record from the parent page and compared client-side"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_cursor",
+            "cursorPath": "next_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The 'token' credential branch needs only a single self-serve access token from an internal Notion integration, sent as a bearer header — T1_SIMPLE. The alternative OAuth2.0 branch is T2_BYO_APP: its spec marks client_id, client_secret and access_token all as required, so a standalone user must register their own public Notion integration; no refresh token is requested or stored (Notion access tokens do not expire), so it never reaches T3. Estuary's hosted control plane can supply the OAuth app itself — the connector ships a flow.OAuth2Spec with provider 'notion' and templated authorize/token URLs and a Basic client_id:client_secret token-exchange header — but the standalone tier is what is scored here. authTierOverall is the easiest mode: T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.backfill vs .incremental",
+      "description": "For every incremental Notion stream the backfill and incremental legs issue byte-identical HTTP requests. There is no server-side time filter at all: /search is only sorted ascending by last_edited_time, and record dropping against state and start_date happens client-side in parse_response. The schema's backfill/incremental split therefore duplicates one pull shape and cannot express 'the filter is applied after the response'.",
+      "proposedShape": { "pull": { "shared": "<PullSpec>", "incrementalFilter": { "kind": "client_side", "field": "last_edited_time", "comparison": ">= max(state, start_date)" } } }
+    },
+    {
+      "where": "streams[].pull.*.paginator.pageSize",
+      "description": "page_size is not a constant. It starts at 100, is halved (floor 10) on every HTTP 504 Gateway Timeout, and is restored to 100 on the next 200. A static pageSize int cannot express an adaptive page size.",
+      "proposedShape": { "pageSize": { "kind": "adaptive", "initial": 100, "min": 10, "shrinkOn": "http_504", "shrinkFactor": 0.5, "restoreOn": "http_200" } }
+    },
+    {
+      "where": "streams[blocks].pull.*.pathPlaceholders",
+      "description": "blocks is not a one-level parent/child substream: it recurses depth-first into itself, re-requesting blocks/{id}/children for any record with has_children, up to depth 30. pathPlaceholders describes a flat parent scope and cannot express self-recursion or its depth cap.",
+      "proposedShape": { "recursion": { "parentStream": "pages", "seedField": "id", "descendOn": "has_children", "childIdField": "id", "maxDepth": 30 } }
+    },
+    {
+      "where": "streams[comments].cursorField",
+      "description": "page_last_edited_time is not a field the API returns; the connector injects the parent page's last_edited_time onto each comment record because comment ordering across pages is not guaranteed. The schema has no way to mark a cursor field as connector-synthesized.",
+      "proposedShape": { "cursorField": { "name": "page_last_edited_time", "origin": "synthesized_from_parent", "parentField": "last_edited_time" } }
+    },
+    {
+      "where": "credentialModes[1].scheme (oauth2)",
+      "description": "The connector's runtime auth for the OAuth branch is still a plain bearer header on credentials.access_token; the oauth2 scheme member describes only how that token is obtained (by the control plane or the user), not how it is sent. Both facts matter and only one fits.",
+      "proposedShape": { "type": "oauth2", "acquisition": { "authUrl": "…", "tokenUrl": "…", "grant": "authorization_code" }, "presentation": { "type": "bearer", "field": "credentials.access_token" } }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "This is an Airbyte-shimmed connector: neither the connector nor estuary_cdk/shim_airbyte_cdk.py encodes any interval or cron. Cadence is decided entirely by the Flow runtime outside the connector, so every schedule field is empty rather than merely unknown.",
+      "proposedShape": { "defaultSchedule": { "kind": "external", "description": "cadence owned by the runtime, not the connector" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_notion/streams.py", "lines": "42", "snippet": "url_base = \"https://api.notion.com/v1/\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_notion/streams.py", "lines": "118-122", "snippet": "params = super().request_headers(**kwargs)\n# Notion API version, see https://developers.notion.com/reference/versioning\nparams[\"Notion-Version\"] = \"2022-06-28\"" },
+    "transports[0].spec.defaultHeaders": { "file": "source_notion/source.py", "lines": "73-75", "snippet": "ping_endpoint = \"https://api.notion.com/v1/users/me\"\nnotion_version = {\"Notion-Version\": \"2022-06-28\"}\nresponse = requests.get(ping_endpoint, auth=authenticator, headers=notion_version)" },
+    "credentialModes[0].scheme": { "file": "source_notion/source.py", "lines": "24-27", "snippet": "token = credentials.get(\"access_token\") if auth_type == \"OAuth2.0\" else credentials.get(\"token\")\nif credentials and token:\n    return TokenAuthenticator(token)" },
+    "credentialModes[0].tier": { "file": "source_notion/spec.json", "lines": "62-74", "snippet": "\"required\": [\"auth_type\", \"token\"],\n\"token\": { \"title\": \"Access Token\"," },
+    "credentialModes[1].scheme": { "file": "source_notion/__main__.py", "lines": "27-36", "snippet": "authUrlTemplate=(f\"https://api.notion.com/v1/oauth/authorize?\"\naccessTokenUrlTemplate=(f\"https://api.notion.com/v1/oauth/token\")" },
+    "credentialModes[1].tier": { "file": "source_notion/spec.json", "lines": "28-33", "snippet": "\"required\": [\n  \"auth_type\",\n  \"client_id\",\n  \"client_secret\",\n  \"access_token\"\n]" },
+    "streamMode": { "file": "source_notion/source.py", "lines": "94", "snippet": "return [Users(**args), Databases(**args), pages, blocks, comments]" },
+    "streams[0].pull.snapshot.path": { "file": "source_notion/streams.py", "lines": "246-247", "snippet": "def path(self, **kwargs) -> str:\n    return \"users\"" },
+    "streams[0].pull.snapshot.paginator": { "file": "source_notion/streams.py", "lines": "249-253", "snippet": "params = {\"page_size\": self.page_size}\nif next_page_token:\n    params[\"start_cursor\"] = next_page_token[\"next_cursor\"]" },
+    "streams[0].supportedSyncModes": { "file": "test.flow.yaml", "lines": "13-16", "snippet": "- resource:\n    stream: users\n    syncMode: full_refresh" },
+    "streams[1].pull.incremental.path": { "file": "source_notion/streams.py", "lines": "185-186", "snippet": "def path(self, **kwargs) -> str:\n    return \"search\"" },
+    "streams[1].pull.incremental.httpMethod": { "file": "source_notion/streams.py", "lines": "174", "snippet": "http_method = \"POST\"" },
+    "streams[1].pull.incremental.paginator": { "file": "source_notion/streams.py", "lines": "194-201", "snippet": "body = {\"sort\": ..., \"filter\": ..., \"page_size\": self.page_size}\nif next_page_token:\n    body[\"start_cursor\"] = next_page_token[\"next_cursor\"]" },
+    "streams[1].pull.incremental.params": { "file": "source_notion/streams.py", "lines": "195-197", "snippet": "\"sort\": {\"direction\": \"ascending\", \"timestamp\": \"last_edited_time\"},\n\"filter\": {\"property\": \"object\", \"value\": self.obj_type}," },
+    "streams[1].cursorField": { "file": "source_notion/streams.py", "lines": "172", "snippet": "cursor_field = \"last_edited_time\"" },
+    "streams[1].pull.incremental.incrementalParam": { "file": "source_notion/streams.py", "lines": "222-224", "snippet": "if (not stream_state or record_lmd >= state_lmd) and record_lmd >= self.start_date:\n    yield from transform_properties(record)" },
+    "streams[2].origin": { "file": "source_notion/streams.py", "lines": "290-291", "snippet": "def __init__(self, **kwargs):\n    super().__init__(obj_type=\"page\", **kwargs)" },
+    "streams[3].pull.backfill.path": { "file": "source_notion/streams.py", "lines": "304-305", "snippet": "def path(self, **kwargs) -> str:\n    return f\"blocks/{self.block_id_stack[-1]}/children\"" },
+    "streams[3].pull.backfill.httpMethod": { "file": "source_notion/streams.py", "lines": "299", "snippet": "http_method = \"GET\"" },
+    "streams[3].pull.backfill.pathPlaceholders": { "file": "source_notion/streams.py", "lines": "323-330, 356-369", "snippet": "page_id = page[\"parent\"][\"id\"]\nself.block_id_stack.append(page_id)\nif len(self.block_id_stack) > MAX_BLOCK_DEPTH: return" },
+    "streams[3].pull.backfill.paginator": { "file": "source_notion/streams.py", "lines": "307-311", "snippet": "params = {\"page_size\": self.page_size}\nif next_page_token:\n    params[\"start_cursor\"] = next_page_token[\"next_cursor\"]" },
+    "streams[4].pull.backfill.path": { "file": "source_notion/streams.py", "lines": "406-407", "snippet": "def path(self, **kwargs) -> str:\n    return \"comments\"" },
+    "streams[4].pull.backfill.params": { "file": "source_notion/streams.py", "lines": "412-416", "snippet": "block_id = stream_slice.get(\"block_id\")\nparams = {\"block_id\": block_id, \"page_size\": self.page_size}" },
+    "streams[4].cursorField": { "file": "source_notion/streams.py", "lines": "402-404", "snippet": "# We can use the \"last edited time\" of the parent Page as the cursor field,\ncursor_field = \"page_last_edited_time\"" },
+    "streams[4].pull.backfill.pathPlaceholders": { "file": "source_notion/streams.py", "lines": "447-453", "snippet": "parent_records = self.parent.read_records(sync_mode=SyncMode.full_refresh, ...)\nyield {\"block_id\": record[\"id\"], \"page_last_edited_time\": record[\"last_edited_time\"]}" },
+    "streams[0].pull.snapshot.recordsPath": { "file": "source_notion/streams.py", "lines": "141-144", "snippet": "data = response.json().get(\"results\", [])\nyield from data" },
+    "streams[0].pull.snapshot.paginator.cursorPath": { "file": "source_notion/streams.py", "lines": "137-139", "snippet": "next_cursor = response.json().get(\"next_cursor\")\nif next_cursor:\n    return {\"next_cursor\": next_cursor}" },
+    "streams[0].primaryKey": { "file": "acmeCo/flow.yaml", "lines": "19-22", "snippet": "acmeCo/users:\n  schema: users.schema.yaml\n  key:\n    - /id" },
+    "streams[0].primaryKeyKind": { "file": "source_notion/streams.py", "lines": "44", "snippet": "primary_key = \"id\"" },
+    "configFields[0]": { "file": "source_notion/spec.json", "lines": "9-14", "snippet": "\"start_date\": { \"title\": \"Start Date\", \"type\": \"string\", \"format\": \"date-time\" }" },
+    "configFields[7]": { "file": "../estuary-cdk/estuary_cdk/shim_airbyte_cdk.py", "lines": "63-82", "snippet": "class ResourceConfig(common.BaseResourceConfig, extra=\"forbid\"):\n    stream: Annotated[str, Field(description=\"Name of this stream\")]\n    sync_mode: Literal[\"full_refresh\", \"incremental\"]" },
+    "streams[0].writeDisposition": { "file": "../estuary-cdk/estuary_cdk/shim_airbyte_cdk.py", "lines": "360, 434", "snippet": "destination_sync_mode=\"append\",\ndoc.meta_ = Document.Meta(op=\"u\", row_id=entry[1].rowId)" },
+    "execution.mode": { "file": "source_notion/run.py", "lines": "12-14", "snippet": "source = SourceNotion()\nlaunch(source, sys.argv[1:])" },
+    "unionMisfits[1].proposedShape": { "file": "source_notion/streams.py", "lines": "82-88, 104-114", "snippet": "throttled_page_size = max(current_page_size // 2, 10)\nif response.status_code == 504: self.page_size = self.throttle_request_page_size(self.page_size)" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].tier": "high",
+    "credentialModes[1].scheme.scopes": "low",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot": "high",
+    "streams[1].pull.incremental.paginator": "high",
+    "streams[1].pull.backfill": "medium",
+    "streams[2].pull.incremental.paginator": "high",
+    "streams[3].pull.backfill.path": "high",
+    "streams[3].pull.backfill.pathPlaceholders": "high",
+    "streams[4].pull.backfill.params": "high",
+    "streams[4].cursorField": "high",
+    "streams[].writeDisposition": "medium",
+    "streams[].primaryKey": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Neither source-notion nor estuary_cdk/shim_airbyte_cdk.py contains any interval, cron, or duration literal; the shim's ResourceConfig exposes only stream/syncMode/namespace/cursorField. Cadence is set by the Flow runtime outside the connector, so no connector-level default exists to record.",
+    "streams[].schedules": "Same reason: no per-binding schedule is expressible in the shim ResourceConfig, so the list is empty rather than guessed.",
+    "credentialModes[1].scheme.scopes": "The Notion authorize URL template built in __main__.py passes only client_id, redirect_uri, response_type, owner=user and state. No `scope` parameter is sent and the spec declares none, so the scope list is left empty rather than invented.",
+    "streams[0].cursorField": "Users derives from NotionStream, not IncrementalNotionStream, and declares no cursor_field; the discover snapshot and test.flow.yaml both give it syncMode full_refresh with no cursorField.",
+    "streams[].pull.*.incrementalParam": "Null for every stream by evidence, not by uncertainty: no request parameter or body field carries the cursor. /search is only sorted ascending on last_edited_time, and records below state/start_date are dropped in parse_response after the response arrives.",
+    "streams[].writeDisposition": "Recorded as `merge` because the shim always emits op=\"u\" documents against keyed collections (destination_sync_mode=\"append\", Flow reduces by key), including for the full_refresh `users` binding. No tombstone or delete document is ever produced by this connector, so deleted Notion objects are never removed downstream. Marked medium confidence because the disposition is a property of the shim/Flow runtime rather than anything source-notion states.",
+    "streams[1].pull.backfill / streams[2..4].pull.backfill": "Populated with the same PullSpec as the incremental leg because the connector issues an identical request in both cases (full_refresh merely sets stream_state to None). Recorded at medium confidence: the two legs are not distinguishable in the source.",
+    "execution.continuity": "Null and deliberately so: this is a pure poll-mode HTTP connector. It creates no server-side artifact in the customer's Notion workspace (no webhook registration, subscription, or scratch object), nothing accrues on Notion's side if we stop between ticks, and nothing is lost on ours — resumption re-runs /search and /users from scratch and only the client-side last_edited_time watermark advances. The only pause-sensitive value is the per-page `start_cursor`, which is held in memory for the duration of one sweep and never checkpointed across runs."
+  }
+}

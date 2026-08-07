@@ -1,0 +1,698 @@
+{
+  "id": "incident-io",
+  "estuaryDir": "source-incident-io",
+  "displayName": "incident.io",
+  "description": "Imports incidents, incident metadata (statuses, types, roles, severities, timestamps, attachments), custom fields, users, and the service catalog from incident.io.",
+  "category": "engineering",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.incident.io" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment, pinned per stream rather than connector-wide: streams use v1/, v2/ or v3/ prefixes (e.g. v2/incidents, v3/catalog_entries, v1/severities)"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (API key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant; only value is \"Private App Credentials\"."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "incident.io API key, sent as an Authorization: Bearer token."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; connector defaults are PT5M for incremental streams and PT15M for full-refresh streams."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "catalog_resources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "v3/catalog_resources",
+          "httpMethod": "GET",
+          "recordsPath": "resources",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "incident_timestamps",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "v2/incident_timestamps",
+          "httpMethod": "GET",
+          "recordsPath": "incident_timestamps",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "v2/users",
+          "httpMethod": "GET",
+          "recordsPath": "users",
+          "params": { "page_size": 10000 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "pagination_meta.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 10000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "incident_attachments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "v1/incident_attachments",
+          "httpMethod": "GET",
+          "recordsPath": "incident_attachments",
+          "params": { "incident_id": "<one request per incident id, enumerated from the full v2/incidents sweep over EPOCH..now>" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "catalog_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v3/catalog_types",
+          "httpMethod": "GET",
+          "recordsPath": "catalog_types",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v3/catalog_types",
+          "httpMethod": "GET",
+          "recordsPath": "catalog_types",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v2/custom_fields",
+          "httpMethod": "GET",
+          "recordsPath": "custom_fields",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v2/custom_fields",
+          "httpMethod": "GET",
+          "recordsPath": "custom_fields",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "incident_statuses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v1/incident_statuses",
+          "httpMethod": "GET",
+          "recordsPath": "incident_statuses",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v1/incident_statuses",
+          "httpMethod": "GET",
+          "recordsPath": "incident_statuses",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "incident_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v1/incident_types",
+          "httpMethod": "GET",
+          "recordsPath": "incident_types",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v1/incident_types",
+          "httpMethod": "GET",
+          "recordsPath": "incident_types",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "incident_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v1/incident_roles",
+          "httpMethod": "GET",
+          "recordsPath": "incident_roles",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v1/incident_roles",
+          "httpMethod": "GET",
+          "recordsPath": "incident_roles",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "severities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v1/severities",
+          "httpMethod": "GET",
+          "recordsPath": "severities",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v1/severities",
+          "httpMethod": "GET",
+          "recordsPath": "severities",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "catalog_entries",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v3/catalog_entries",
+          "httpMethod": "GET",
+          "recordsPath": "catalog_entries",
+          "params": {
+            "page_size": 250,
+            "catalog_type_id": "<one paginated sweep per catalog type id, enumerated from v3/catalog_types>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "pagination_meta.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v3/catalog_entries",
+          "httpMethod": "GET",
+          "recordsPath": "catalog_entries",
+          "params": {
+            "page_size": 250,
+            "catalog_type_id": "<one paginated sweep per catalog type id, enumerated from v3/catalog_types>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "pagination_meta.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "incidents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "v2/incidents",
+          "httpMethod": "GET",
+          "recordsPath": "incidents",
+          "params": {
+            "page_size": 500,
+            "updated_at[date_range]": "1970-01-01~<backfill cutoff date>",
+            "mode[one_of]": ["standard", "retrospective", "test", "tutorial"]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "pagination_meta.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "v2/incidents",
+          "httpMethod": "GET",
+          "recordsPath": "incidents",
+          "params": {
+            "page_size": 500,
+            "updated_at[date_range]": "<cursor date>~<now date>",
+            "mode[one_of]": ["standard", "retrospective", "test", "tutorial"]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "pagination_meta.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page_size",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The endpoint config exposes exactly one credential variant, the CDK's `AccessToken` model, whose only required field is a single secret `access_token` (UI title \"Private App Credentials\"). No OAuth spec is passed (`TokenSource(oauth_spec=None, ...)`), so no OAuth app registration or refresh token is involved. The CDK sends it as `Authorization: Bearer <access_token>` using its DEFAULT_AUTHORIZATION_HEADER / DEFAULT_AUTHORIZATION_TOKEN_TYPE, which the connector does not override. One self-serve API key = T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[incidents].pull.*.incrementalParam",
+      "description": "`incidents` is the only stream that filters server-side, and it does not fit the {param, format} shape: it sends one query parameter `updated_at[date_range]` whose value is a tilde-joined pair of DATES (\"YYYY-MM-DD~YYYY-MM-DD\", inclusive of BOTH bounds) — a two-sided window, not a single since-timestamp. The incremental leg uses cursor..now; the backfill leg uses 1970-01-01..cutoff. Because the parameter is date-granular but the state cursor is a datetime, the connector re-filters every returned record client-side against the exact datetimes. Emitting a one-sided since-param here would change request semantics, so `incrementalParam` is left null on both legs.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "kind": "two_sided_range",
+          "param": "updated_at[date_range]",
+          "format": "date",
+          "separator": "~",
+          "boundsInclusive": true,
+          "backfillLowerBound": "1970-01-01",
+          "clientSideRefilter": true
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull.*.params",
+      "description": "There is no slot for constant/repeated request params. `incidents` always carries a repeated `mode[one_of]` param with four values (standard, retrospective, test, tutorial) because the API otherwise returns only standard+retrospective. Recorded inside `params` as a JSON array, but that conflates constants with the parent-scoped and windowed values also living in `params`.",
+      "proposedShape": {
+        "constantParams": { "mode[one_of]": ["standard", "retrospective", "test", "tutorial"] }
+      }
+    },
+    {
+      "where": "streams[catalog_entries] / streams[incident_attachments]",
+      "description": "Two streams are parent-child but the parent id is sent as a QUERY parameter, not a path placeholder, so `pathPlaceholders` does not apply and the flat stream shape cannot express the dependency. `catalog_entries` runs one paginated sweep per `catalog_type_id` drawn from v3/catalog_types; `incident_attachments` runs one unpaginated GET per `incident_id` drawn from a complete EPOCH..now sweep of v2/incidents (i.e. the full incidents scan is re-run on every 15-minute attachments tick).",
+      "proposedShape": {
+        "parent": {
+          "catalog_entries": { "parentStream": "catalog_types", "parentField": "id", "childParam": "catalog_type_id", "childParamIn": "query" },
+          "incident_attachments": { "parentStream": "incidents", "parentField": "id", "childParam": "incident_id", "childParamIn": "query" }
+        }
+      }
+    },
+    {
+      "where": "streams[*].supportedSyncModes for the six client-side-filtered incremental streams",
+      "description": "catalog_types, custom_fields, incident_statuses, incident_types, incident_roles, severities and catalog_entries are declared incremental and carry an `updated_at` cursor, but they issue an IDENTICAL unfiltered request on every tick and do the incremental filtering purely in Python. The schema cannot distinguish 'server-side incremental' from 'full re-read with client-side cursor filtering' — a materially different cost profile.",
+      "proposedShape": { "incrementalFiltering": "client_side" }
+    },
+    {
+      "where": "transports[0].spec.apiVersionPinning",
+      "description": "The API version is a path segment but is NOT connector-wide: different streams are pinned to v1, v2 and v3 simultaneously. A single string field cannot express a per-stream version pin.",
+      "proposedShape": { "apiVersionPinning": { "kind": "path_segment", "perStream": true } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_incident_io/api.py",
+      "lines": "22",
+      "snippet": "API = \"https://api.incident.io\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_incident_io/models.py",
+      "lines": "89,95,109,161",
+      "snippet": "path: ClassVar[str] = \"v2/incident_timestamps\"  /  \"v3/catalog_resources\"  /  \"v1/incident_attachments\"  /  \"v3/catalog_entries\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36,304-305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_incident_io/resources.py",
+      "lines": "159",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)"
+    },
+    "configFields[1]": {
+      "file": "source_incident_io/models.py",
+      "lines": "14-19",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: AccessToken = Field(\n        discriminator=\"credentials_title\", title=\"Authentication\","
+    },
+    "execution.mode": {
+      "file": "source_incident_io/api.py",
+      "lines": "36-38",
+      "snippet": "    resp = response_model.model_validate_json(\n        await http.request(log, url, params=params)\n    )"
+    },
+    "streams[*].schedules": {
+      "file": "source_incident_io/resources.py",
+      "lines": "89-90,148-150",
+      "snippet": "name=stream.name, interval=timedelta(minutes=15)\n                name=stream.name, interval=timedelta(minutes=5)"
+    },
+    "streams[*].primaryKey": {
+      "file": "source_incident_io/resources.py",
+      "lines": "85,141",
+      "snippet": "key=[\"/_meta/row_id\"],\n            key=[\"/id\"],"
+    },
+    "streams[*].writeDisposition": {
+      "file": "source_incident_io/resources.py",
+      "lines": "79",
+      "snippet": "tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))"
+    },
+    "streams[*].pull.snapshot.paginator": {
+      "file": "source_incident_io/api.py",
+      "lines": "70-75",
+      "snippet": "remainder = processor.get_remainder()\n        if remainder.pagination_meta.after:\n            params[\"after\"] = remainder.pagination_meta.after"
+    },
+    "streams[users].pull.snapshot.paginator.pageSize": {
+      "file": "source_incident_io/models.py",
+      "lines": "99-103",
+      "snippet": "class Users(PaginatedFullRefreshStream):\n    path: ClassVar[str] = \"v2/users\"\n    page_size: ClassVar[int] = 10_000"
+    },
+    "streams[catalog_entries].pull.incremental.paginator.pageSize": {
+      "file": "source_incident_io/models.py",
+      "lines": "159-163",
+      "snippet": "class CatalogEntries(IncrementalStream, PaginatedMixin):\n    path: ClassVar[str] = \"v3/catalog_entries\"\n    page_size: ClassVar[int] = 250"
+    },
+    "streams[incidents].pull.incremental.paginator.pageSize": {
+      "file": "source_incident_io/models.py",
+      "lines": "166-170",
+      "snippet": "class Incidents(IncrementalStream, PaginatedMixin):\n    path: ClassVar[str] = \"v2/incidents\"\n    page_size: ClassVar[int] = 500"
+    },
+    "streams[*].pull.*.paginator (unpaginated streams)": {
+      "file": "source_incident_io/api.py",
+      "lines": "83-87",
+      "snippet": "if issubclass(stream, PaginatedFullRefreshStream):\n        params: dict[str, str | int] = {\"page_size\": stream.page_size}\n        gen = _paginate_through_resources(http, stream, params, log)"
+    },
+    "streams[*].recordsPath": {
+      "file": "source_incident_io/models.py",
+      "lines": "54-59",
+      "snippet": "    return create_model(\n        f\"{resource_model.__name__}Response\",\n        resources=(list[resource_model], Field(alias=field_name)),"
+    },
+    "streams[incidents].pull.incremental.params": {
+      "file": "source_incident_io/api.py",
+      "lines": "189-197",
+      "snippet": "\"updated_at[date_range]\": f\"{start.date()}~{end.date()}\",\n        \"mode[one_of]\": [\n            \"standard\", \"retrospective\", \"test\", \"tutorial\","
+    },
+    "streams[incidents].pull.backfill.params": {
+      "file": "source_incident_io/api.py",
+      "lines": "241-247",
+      "snippet": "async for incident in _fetch_incidents_between(\n        http, stream, log,\n        start = EPOCH, end = cutoff,"
+    },
+    "streams[catalog_entries].pull.incremental.params.catalog_type_id": {
+      "file": "source_incident_io/api.py",
+      "lines": "136-142",
+      "snippet": "for id in catalog_type_ids:\n        params = {\"page_size\": stream.page_size, \"catalog_type_id\": id}\n        async for r in _paginate_through_resources(http, stream, params, log):"
+    },
+    "streams[incident_attachments].pull.snapshot.params.incident_id": {
+      "file": "source_incident_io/api.py",
+      "lines": "267-272",
+      "snippet": "for id in sorted(incident_ids):\n        params: dict[str, str | int] = {\"incident_id\": id}\n        async for attachment in _snapshot_resources(http, log, stream, params):"
+    },
+    "streamMode": {
+      "file": "source_incident_io/models.py",
+      "lines": "173-189",
+      "snippet": "FULL_REFRESH_RESOURCES: list[type[FullRefreshStream]] = [\nINCREMENTAL_RESOURCES: list[type[IncrementalStream]] = ["
+    },
+    "unionMisfits[3]": {
+      "file": "source_incident_io/api.py",
+      "lines": "103-106",
+      "snippet": "async for r in _snapshot_resources(http, log, stream):\n        if r.updated_at > log_cursor:\n            yield r"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].writeDisposition": "high",
+    "streams[*].schedules": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].pull.*.incrementalParam": "high",
+    "authTierOverall": "high",
+    "unionMisfits": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "The connector itself never constructs a header dict; every call goes through `http.request` / `http.request_stream` with only `params`. The CDK adds `Authorization` (covered by credentialModes) and may add transport-level headers of its own, but no connector-specified default headers exist. Recorded as null meaning 'no connector-specified headers', not 'no headers on the wire'.",
+    "streams[*].pull.*.incrementalParam": "Null on every stream, deliberately. Seven of the eight incremental streams send NO incremental query parameter at all — the identical unfiltered request is re-issued each tick and `updated_at` filtering happens in Python. The eighth (`incidents`) sends a two-sided `updated_at[date_range]` window that does not fit the {param, format} union; see unionMisfits[0]. Emitting a one-sided since-param for any of these would change request semantics.",
+    "transports[0].spec.baseUrl.trailingSlash": "Paths are joined as f\"{API}/{stream.path}\", so the effective URL is https://api.incident.io/v2/incidents etc.; whether incident.io also accepts a versionless base was not determinable from source.",
+    "streams[*].pull.*.httpMethod": "Not written explicitly by the connector — `http.request(log, url, params=...)` is called without a method argument, so GET is the CDK default. Recorded as GET with that reasoning; no verbatim 'GET' literal appears in connector source.",
+    "execution.defaultSchedule": "There is no connector-wide default; the interval is set per binding in `initial_config=ResourceConfig(..., interval=...)` and the ResourceConfig schema default is PT0S. Real per-stream values are on streams[*].schedules."
+  }
+}

@@ -1,0 +1,798 @@
+{
+  "id": "facebook-marketing",
+  "estuaryDir": "source-facebook-marketing",
+  "displayName": "Facebook Marketing",
+  "description": "Imports Meta/Facebook ad account objects (campaigns, ad sets, ads, creatives, images, videos, activities, custom conversions) and pre-aggregated Ads Insights reports from the Facebook Marketing (Graph) API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://graph.facebook.com/{api_version}",
+          "placeholders": {
+            "api_version": "hardcoded to \"v23.0\" by the connector when it initializes the facebook_business SDK (MyFacebookAdsApi.init(api_version=\"v23.0\"))"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: api_version=\"v23.0\" passed to the vendor SDK, which places it as the first path segment of graph.facebook.com URLs"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Facebook user/system-user access token from a self-registered Meta app (access_token + client_id + client_secret)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": null,
+        "scopes": ["ads_management", "ads_read", "read_insights", "business_management"],
+        "grant": "authorization_code"
+      }
+    },
+    {
+      "name": "Estuary-hosted OAuth (provider \"facebook\") — control plane holds client_id/client_secret and runs the code exchange",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://www.facebook.com/v23.0/dialog/oauth",
+        "tokenUrl": "https://graph.facebook.com/v23.0/oauth/access_token",
+        "scopes": ["ads_management", "ads_read", "read_insights", "business_management"],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "account_ids", "displayName": "Account IDs", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated list of Facebook Ad account IDs; split on /,+/ and used as one stream slice per account." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "ISO8601 (YYYY-MM-DDT00:00:00Z) floor for all incremental streams." },
+    { "name": "end_date", "displayName": "End Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "Upper bound; defaults to now at config-parse time." },
+    { "name": "include_deleted", "displayName": "Include Deleted Campaigns, Ads, and AdSets", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Adds a delivery_info status filter covering deleted/archived statuses; also causes the saved bookmark to be ignored on the run that flips it on." },
+    { "name": "fetch_thumbnail_images", "displayName": "Fetch Thumbnail Images from Ad Creative", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Downloads each ad creative thumbnail_url and inlines it as a base64 data: URL in thumbnail_data_url." },
+    { "name": "custom_insights", "displayName": "Custom Insights", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Array of {name, level, fields, breakdowns, action_breakdowns, time_increment, start_date, end_date, insights_lookback_window}; each entry materializes an extra AdsInsights stream named Custom<name>." },
+    { "name": "page_size", "displayName": "Page Size of Requests", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Sent as the `limit` query param on list requests; default 100." },
+    { "name": "insights_lookback_window", "displayName": "Insights Lookback Window", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Attribution window in days (default 28); insights re-read the last N days on every run." },
+    { "name": "max_batch_size", "displayName": "Maximum size of Batched Requests", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Default 50; passed to streams for Graph batch requests." },
+    { "name": "action_breakdowns_allow_empty", "displayName": "Action Breakdowns Allow Empty", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Permits action_breakdowns to be an empty list for custom insights; default true in the spec schema, forced to false by _validate_and_transform when absent." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Marketing API access token with ads_management, ads_read, read_insights, business_management." },
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Meta app client id (used by the OAuth flow; not used by the runtime API calls)." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Meta app client secret (used by the OAuth flow; not used by the runtime API calls)." },
+    { "name": "credentials.auth_type", "displayName": "Auth Type", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Literal discriminator, default \"OAuth Credentials\"; the discriminated union is commented out so only this one variant exists." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the stream to capture (from the shim's ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh | incremental." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace; unused by this connector." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Default cursor field carried over from the Airbyte catalog." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Connector-defined stream list: SourceFacebookMarketing.streams() instantiates 16 fixed stream classes, then get_custom_insights_streams() appends one AdsInsights instance per entry of the `custom_insights` endpoint config array. No customer-schema introspection occurs.",
+    "querySketch": null,
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "ad_account",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).api_get(fields=[...])",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ad_sets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_sets(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "fields": "all top-level properties of the shipped ad_sets JSON schema", "filtering": "[{field: adset.updated_time, operator: GREATER_THAN, value: <start_date as unix seconds>}] (+ adset.delivery_info IN [...] when include_deleted)" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"adset.updated_time\" and operator == \"GREATER_THAN\"", "format": "unix_seconds" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_sets(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "filtering": "[{field: adset.updated_time, operator: GREATER_THAN, value: <max updated_time seen for this account, as unix seconds>}]" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"adset.updated_time\" and operator == \"GREATER_THAN\"", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ads(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "filtering": "[{field: ad.updated_time, operator: GREATER_THAN, value: <start_date as unix seconds>}]" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"ad.updated_time\"", "format": "unix_seconds" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ads(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "filtering": "[{field: ad.updated_time, operator: GREATER_THAN, value: <bookmark as unix seconds>}]" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"ad.updated_time\"", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_campaigns(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "filtering": "[{field: campaign.updated_time, operator: GREATER_THAN, value: <start_date as unix seconds>}]" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"campaign.updated_time\"", "format": "unix_seconds" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_campaigns(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "filtering": "[{field: campaign.updated_time, operator: GREATER_THAN, value: <bookmark as unix seconds>}]" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "filtering[].value where filtering[].field == \"campaign.updated_time\"", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_creatives",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_creatives(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "fields": "shipped ad_creatives schema properties minus the computed thumbnail_data_url" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "custom_conversions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_custom_conversions(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "activities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["object_id", "actor_id", "application_id", "event_time", "event_type"],
+      "primaryKeyKind": "columns",
+      "cursorField": "event_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_activities(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "since": "<start_date as unix seconds>", "fields": "shipped activities schema properties minus account_id" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "since", "format": "unix_seconds" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_activities(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "since": "<bookmark event_time as unix seconds>" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "since", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "images",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_images(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_images(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "videos",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_videos(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)", "fields": "shipped videos schema properties minus account_id" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_ad_videos(params, fields)",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "limit": "page_size (default 100)" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": {
+            "level": "ad (or the custom-insight level)",
+            "breakdowns": "[] for the base stream",
+            "action_breakdowns": "[action_type, action_target_id, action_destination]",
+            "action_attribution_windows": "[1d_click, 7d_click, 28d_click, 1d_view, 7d_view, 28d_view]",
+            "time_increment": "1 (days)",
+            "fields": "all properties of the shipped ads_insights JSON schema",
+            "time_range": "{since: <slice start>, until: <slice end>} as YYYY-MM-DD"
+          },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_age_and_gender",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id", "age", "gender"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[age, gender]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_country",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id", "country"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[country]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_region",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id", "region"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[region]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_dma",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id", "dma"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[dma]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_platform_and_device",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id", "publisher_platform", "platform_position", "impression_device"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[publisher_platform, platform_position, impression_device]", "action_breakdowns": "[action_type]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ads_insights_action_type",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["date_start", "account_id", "ad_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "breakdowns": "[]", "action_breakdowns": "[action_type]", "time_range": "{since, until} as YYYY-MM-DD", "time_increment": "1" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom<Name>  (e.g. customads_insights_publisher_platform)",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["date_start", "account_id", "<level_id_field>", "<...configured breakdowns>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "date_start",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "sdk:AdAccount(act_<account_id>).get_insights(params, is_async=True) -> poll AdReportRun.api_get() -> AdReportRun.get_result(limit=100)",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": { "level": "<configured level: ad|adset|campaign>", "fields": "<configured fields, or all ads_insights schema properties if empty>", "breakdowns": "<configured>", "action_breakdowns": "<configured>", "time_increment": "<configured, 1..89>", "time_range": "{since, until} as YYYY-MM-DD" },
+          "pathPlaceholders": { "account_id": "one per entry of the account_ids config list" },
+          "paginator": { "type": "next_url", "nextUrlPath": "paging.next" },
+          "incrementalParam": { "param": "time_range.since", "format": "date" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T2_BYO_APP",
+  "authTierRationale": "The only credentials model (OAuthCredentials) makes access_token, client_id and client_secret all required, so standalone use requires the customer to register their own Meta app, add the Marketing API product, grant ads_management/ads_read/read_insights/business_management, and generate a token — T2_BYO_APP. It is not T3: no refresh token is collected and no refresh grant exists anywhere in the connector or its OAuth2Spec (accessTokenResponseMap maps only /access_token), so token longevity is entirely the user's problem. Estuary's control plane can run the authorization_code flow on the user's behalf (spec.py sets x-oauth2-provider: facebook and __main__.py supplies flow.OAuth2Spec with Facebook's v23.0 dialog/token URLs), which makes it feel T1 inside Estuary's UI — but the client_id/client_secret fields are still declared required in the config schema, so the standalone tier is T2_BYO_APP.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.path",
+      "description": "This is the LEGACY facebook-marketing connector: it does not issue HTTP itself. Every read goes through the vendor `facebook_business` SDK (AdAccount.get_ads / get_ad_sets / get_campaigns / get_ad_creatives / get_custom_conversions / get_ad_images / get_ad_videos / get_activities / get_insights), which builds the Graph API URL internally. No literal endpoint path string exists in the connector source, so the `path` values here are recorded as `sdk:<method call>` rather than a URL, and the Graph edge names are deliberately NOT reconstructed.",
+      "proposedShape": { "kind": "vendorSdk", "package": "facebook-business==23.0.0", "objectMethod": "AdAccount.get_ads", "scopePlaceholders": { "account_id": "act_<id>" }, "note": "transport is HTTP but the URL is owned by the SDK" }
+    },
+    {
+      "where": "streams[ads_insights*].pull.incremental",
+      "description": "The insights streams are an async-report job, not a request/response read. Per date slice (time_increment days, default 1, per ad account) the connector POSTs get_insights(is_async=True) to create an AdReportRun, then polls async_status/async_percent_completion (batched, up to 50 status checks per batch, 30s between sweeps, 1h per-job timeout, max 20 attempts), and only then GETs the report result with limit=100. Concurrency is governed by the x-fb-ads-insights-throttle response header: no new jobs are started while min(per_account, per_application) > 70, and at most 100 jobs are in flight. A job that fails twice is split into per-campaign, then per-adset, then per-ad sub-jobs.",
+      "proposedShape": { "kind": "asyncJob", "createCall": "get_insights(is_async=True)", "jobIdField": "report_run_id", "statusField": "async_status", "progressField": "async_percent_completion", "terminalStatuses": ["Job Completed", "Job Failed", "Job Skipped"], "pollIntervalSeconds": 30, "jobTimeout": "1h", "resultFetch": "AdReportRun.get_result(limit=100)", "concurrencyControl": { "header": "x-fb-ads-insights-throttle", "limit": 70, "maxInFlight": 100 }, "onFailure": "split job account -> campaign -> adset -> ad" }
+    },
+    {
+      "where": "streams[].pull.*.incrementalParam",
+      "description": "The entity streams do not send a scalar `since`-style query param. They send Graph's structured `filtering` parameter: a JSON array of {field, operator, value} objects, where field is `<entity_prefix>.updated_time`, operator is GREATER_THAN and value is a unix-seconds integer. `include_deleted` merges a second clause on `<entity_prefix>.delivery_info` with operator IN. The `{param, format}` shape cannot express a filter-object path plus operator.",
+      "proposedShape": { "kind": "structuredFilter", "param": "filtering", "clauses": [{ "field": "<entity_prefix>.updated_time", "operator": "GREATER_THAN", "valueFormat": "unix_seconds", "role": "cursor" }, { "field": "<entity_prefix>.delivery_info", "operator": "IN", "role": "include_deleted" }] }
+    },
+    {
+      "where": "streams[images|videos].pull.incremental",
+      "description": "Images and Videos are 'reversed incremental': the Graph API returns them sorted descending by updated_time and accepts no server-side cursor filter (the code comments that filtering stopped working for videos on 2023-01-13). Incrementality is implemented purely client-side — the connector walks the descending page stream and BREAKS as soon as a record's updated_time is older than the stored bookmark. So the wire request is identical between backfill and incremental legs; only the client-side stop condition differs. Images additionally drop deleted records in code rather than via a filter.",
+      "proposedShape": { "kind": "clientSideCursorBreak", "orderAssumption": "descending by cursorField", "stopWhen": "record.cursorField < bookmark", "serverFilter": null }
+    },
+    {
+      "where": "streamMode / discovery",
+      "description": "Neither 'static' nor 'discovered' fits cleanly. 16 streams are a fixed shipped list; additional AdsInsights streams are minted from the ENDPOINT CONFIG (`custom_insights` array), not from the customer's remote schema. Recorded as 'mixed' with the custom-insight stream as an archetype named custom<Name> (snake-cased, so a custom insight named `ads_insights_publisher_platform` becomes the stream `customads_insights_publisher_platform`).",
+      "proposedShape": { "streamMode": "static_plus_config_derived", "derivedFrom": "endpoint config array `custom_insights`" }
+    },
+    {
+      "where": "streams[].schedules / execution.defaultSchedule",
+      "description": "No schedule of any kind is expressed in the connector or in the estuary-cdk airbyte shim. Cadence is imposed entirely by the Flow runtime outside this code.",
+      "proposedShape": { "schedule": "externally_imposed" }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "The base URL never appears in connector source; it is a constant inside the facebook_business SDK. The only in-repo corroboration that the host is graph.facebook.com is the OAuth accessTokenUrlTemplate. The version segment IS set by connector code (api_version=\"v23.0\").",
+      "proposedShape": { "kind": "sdkOwned", "corroboratedBy": "oauth accessTokenUrlTemplate host", "versionPin": "v23.0 from connector code" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_facebook_marketing/api.py",
+      "lines": "164",
+      "snippet": "self.api = MyFacebookAdsApi.init(access_token=access_token, crash_log=False, api_version=\"v23.0\")"
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_facebook_marketing/__main__.py",
+      "lines": "16",
+      "snippet": "accessTokenUrlTemplate=\"https://graph.facebook.com/v23.0/oauth/access_token?client_id=...\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_facebook_marketing/spec.py",
+      "lines": "106-125",
+      "snippet": "class OAuthCredentials(BaseModel):\n    access_token: str = Field(airbyte_secret=True)\n    client_id / client_secret ... schema_extra = {\"x-oauth2-provider\": \"facebook\"}"
+    },
+    "credentialModes[0].tier": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "configSchema.properties.credentials.required",
+      "snippet": "\"required\": [\"access_token\", \"client_id\", \"client_secret\"]"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_facebook_marketing/__main__.py",
+      "lines": "13-18",
+      "snippet": "authUrlTemplate=\"https://www.facebook.com/v23.0/dialog/oauth?...&scope=ads_management,ads_read,read_insights,business_management\""
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "source_facebook_marketing/__main__.py",
+      "lines": "16-17",
+      "snippet": "accessTokenUrlTemplate=\"https://graph.facebook.com/v23.0/oauth/access_token?...&code={{{ code }}}...\"\naccessTokenResponseMap={\"access_token\": \"/access_token\"}"
+    },
+    "streams": {
+      "file": "source_facebook_marketing/source.py",
+      "lines": "104-195",
+      "snippet": "streams = [ AdAccount(...), AdSets(...), Ads(...), AdCreatives(...), AdsInsights(...), ... ]\nreturn streams + self.get_custom_insights_streams(api, config)"
+    },
+    "streams[9].pull.incremental.paginator": {
+      "file": "source_facebook_marketing/streams/patches.py",
+      "lines": "66-76",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"]:\n    path = response[\"paging\"][\"next\"]\n    self._path = urlunparse(urlparse(path)._replace(query={}))"
+    },
+    "streams[1].pull.incremental.paginator": {
+      "file": "source_facebook_marketing/streams/patches.py",
+      "lines": "71-76",
+      "snippet": "self._path = urlunparse(urlparse(path)._replace(query={}))\nself.params = dict(parse_qsl(urlparse(path).query))\nelse: self._finished_iteration = True"
+    },
+    "streams[1].pull.incremental.incrementalParam": {
+      "file": "source_facebook_marketing/streams/base_streams.py",
+      "lines": "224-231",
+      "snippet": "return {\"filtering\": [{\"field\": f\"{self.entity_prefix}.{self.cursor_field}\", \"operator\": \"GREATER_THAN\", \"value\": filter_value.int_timestamp}]}"
+    },
+    "streams[1].cursorField": {
+      "file": "source_facebook_marketing/streams/base_streams.py",
+      "lines": "174-177",
+      "snippet": "class FBMarketingIncrementalStream(FBMarketingStream, ABC):\n    cursor_field = \"updated_time\""
+    },
+    "streams[6].pull.incremental.incrementalParam": {
+      "file": "source_facebook_marketing/streams/streams.py",
+      "lines": "135-145",
+      "snippet": "def _state_filter(self, stream_state):\n    since = self._start_date if not state_value else pendulum.parse(state_value)\n    return {\"since\": since.int_timestamp}"
+    },
+    "streams[6].cursorField": {
+      "file": "source_facebook_marketing/streams/streams.py",
+      "lines": "117-122",
+      "snippet": "class Activities(FBMarketingIncrementalStream):\n    cursor_field = \"event_time\"\n    primary_key = [\"object_id\", \"actor_id\", \"application_id\", \"event_time\", \"event_type\"]"
+    },
+    "streams[7].pull.incremental": {
+      "file": "source_facebook_marketing/streams/base_streams.py",
+      "lines": "296-314",
+      "snippet": "for record in self.list_objects(...):\n    record_cursor_value = pendulum.parse(record[self.cursor_field])\n    if cursor and record_cursor_value < cursor: break"
+    },
+    "streams[9].cursorField": {
+      "file": "source_facebook_marketing/streams/base_insight_streams.py",
+      "lines": "23-27",
+      "snippet": "class AdsInsights(FBMarketingIncrementalStream):\n    cursor_field = \"date_start\""
+    },
+    "streams[9].pull.incremental.params": {
+      "file": "source_facebook_marketing/streams/base_insight_streams.py",
+      "lines": "385-393",
+      "snippet": "return {\"level\": self.level, \"action_breakdowns\": self.action_breakdowns, \"breakdowns\": self.breakdowns, \"fields\": self.fields(), \"time_increment\": self.time_increment, \"action_attribution_windows\": self.action_attribution_windows}"
+    },
+    "streams[9].pull.incremental.path": {
+      "file": "source_facebook_marketing/streams/async_job.py",
+      "lines": "269, 366",
+      "snippet": "self._job = self._edge_object.get_insights(params=self._params, is_async=True)\nreturn self._job.get_result(params={\"limit\": self.page_size})"
+    },
+    "streams[9].pull.incremental.incrementalParam": {
+      "file": "source_facebook_marketing/streams/async_job.py",
+      "lines": "203-206",
+      "snippet": "self._params[\"time_range\"] = {\"since\": self._interval.start.to_date_string(), \"until\": self._interval.end.to_date_string()}"
+    },
+    "streams[10].primaryKey": {
+      "file": "acmeCo/flow.yaml",
+      "lines": "acmeCo/ads_insights_age_and_gender",
+      "snippet": "key:\n  - /date_start\n  - /account_id\n  - /ad_id\n  - /age\n  - /gender"
+    },
+    "streams[0].primaryKey": {
+      "file": "acmeCo/flow.yaml",
+      "lines": "acmeCo/ad_account",
+      "snippet": "acmeCo/ad_account:\n    schema: ad_account.schema.yaml\n    key:\n      - /id"
+    },
+    "streams[16].name": {
+      "file": "source_facebook_marketing/source.py",
+      "lines": "222-236",
+      "snippet": "stream = AdsInsights(api=api, name=f\"Custom{insight.name}\", fields=list(insight_fields), breakdowns=..., is_custom_stream=True)"
+    },
+    "streams[16].primaryKey": {
+      "file": "source_facebook_marketing/streams/base_insight_streams.py",
+      "lines": "160-167",
+      "snippet": "base_key = {\"account_id\", \"date_start\"}\nbase_key.add(self.level_id_field)\nreturn sorted(list(base_key) + self.breakdowns)"
+    },
+    "streams[].supportedSyncModes": {
+      "file": "test.flow.yaml",
+      "lines": "9-30",
+      "snippet": "- resource:\n    stream: ad_account\n    syncMode: full_refresh"
+    },
+    "streamMode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "219-231",
+      "snippet": "catalog = self.delegate.discover(log, config)\nfor stream in catalog.streams:\n    resource_config = ResourceConfig(stream=stream.name, syncMode=\"full_refresh\")"
+    },
+    "execution.mode": {
+      "file": "source_facebook_marketing/streams/base_streams.py",
+      "lines": "126-129",
+      "snippet": "def stream_slices(self, stream_state=None, **kwargs):\n    for account_id in self._account_ids:\n        yield {\"account_id\": account_id, \"stream_state\": account_state}"
+    },
+    "configFields": {
+      "file": "source_facebook_marketing/spec.py",
+      "lines": "137-244",
+      "snippet": "account_ids: str = Field(title=\"Account IDs\", order=0, pattern=ACCOUNT_IDS_PATTERN, ...)"
+    },
+    "configFields[15]": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "70-73",
+      "snippet": "sync_mode: Literal[\"full_refresh\", \"incremental\"] = Field(description=\"Sync this resource incrementally, or fully refresh it every run\")"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec.kind": "high",
+    "transports[0].spec.baseUrl": "medium",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[1]": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "streamMode": "medium",
+    "discovery.method": "high",
+    "streams[].name": "high",
+    "streams[].cursorField": "high",
+    "streams[].supportedSyncModes": "high",
+    "streams[].primaryKey": "medium",
+    "streams[].pull.*.paginator": "high",
+    "streams[].pull.*.path": "low",
+    "streams[].pull.*.recordsPath": "medium",
+    "streams[].pull.*.httpMethod": "low",
+    "streams[].pull.*.incrementalParam": "high",
+    "streams[].writeDisposition": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.baseUrl.kind=constant": "The literal host is never written in connector source — facebook_business owns it. Recorded as a template with only the version segment attributable to connector code.",
+    "transports[0].spec.defaultHeaders": "No headers are set by the connector; the SDK builds them.",
+    "streams[].pull.*.path (literal Graph edges)": "The connector calls vendor SDK methods (get_ads, get_ad_sets, get_insights, ...); no URL path string exists in the source. Reconstructing edge names would be invention, so `sdk:<method>` is recorded instead.",
+    "streams[].pull.*.httpMethod": "Not visible in connector code — the SDK chooses the verb. GET is asserted only for list reads because the patched Cursor issues self._api.call(\"GET\", ...); POST for insights-job creation is inferred from it being a job-creation call and is NOT confirmed in-repo.",
+    "streams[].pull.*.recordsPath": "\"data\" is inferred from the patched Cursor consuming response[\"paging\"] alongside build_objects_from_response(response); the records key itself is read inside the SDK, not in connector code.",
+    "streams[].pull.backfill for ads_insights*": "There is no distinct backfill leg: the same async-job mechanism sweeps date intervals from _get_start_date() forward, so only `incremental` is populated.",
+    "execution.defaultSchedule / streams[].schedules": "No interval, cron, or duration literal exists anywhere in this connector or in the airbyte shim; cadence is set by the Flow runtime.",
+    "execution.continuity": "mode is poll and nothing is created server-side except transient AdReportRun report jobs, which the connector abandons rather than deletes; no lease/slot/consumer-group semantics apply.",
+    "streams[].writeDisposition": "The connector emits records with keys and never emits deletes or tombstones; \"merge\" reflects Flow's keyed-collection reduction rather than an explicit connector declaration. Deleted objects appear as normal records only when include_deleted is set.",
+    "streams[ads_insights*].primaryKey ordering": "Two sources disagree — see the FLAG in unionMisfits/notes. The committed acmeCo/flow.yaml keys (date_start, account_id, level_id, *breakdowns) were used; the current AdsInsights.primary_key property returns sorted(...) which would order them differently, and source.py passes yet another value (source_defined_primary_key=[\"id\"]) for ads_insights_age_and_gender and ads_insights_action_type.",
+    "streams[].pull.*.params.fields": "Field lists are derived at runtime from the shipped JSON schemas (hundreds of properties); enumerated only descriptively."
+  }
+}

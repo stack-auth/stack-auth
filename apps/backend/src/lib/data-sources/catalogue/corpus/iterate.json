@@ -1,0 +1,305 @@
+{
+  "id": "iterate",
+  "estuaryDir": "source-iterate",
+  "displayName": "Iterate",
+  "description": "Imports surveys and their survey responses from the Iterate (iteratehq.com) customer-feedback survey platform.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://iteratehq.com/api/v1" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "two layers: a fixed `/api/v1` path segment in the base URL, plus a `v` query parameter (date-stamp value 20250130) sent on every request; a code comment states the `v` param does not appear to be required for requests to succeed"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "x-api-key",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant, always \"Private App Credentials\"; the union has exactly one member."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Iterate private-app access token, sent verbatim in the x-api-key header."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource (binding)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; connector ships PT5M as the initial value for both bindings."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "surveys",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/surveys",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "v": 20250130 },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "survey_responses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/surveys/{survey_id}/responses",
+          "httpMethod": "GET",
+          "recordsPath": "results.list",
+          "params": { "v": 20250130 },
+          "pathPlaceholders": {
+            "survey_id": "the `id` field of each record returned by the surveys snapshot, which is re-run as a parent sweep before this stream is emitted"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[cursor]",
+            "cursorPath": "links.next",
+            "tokenFrom": "url_query",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Iterate private-app access token (EndpointConfig.credentials is the CDK's AccessToken model, a one-member discriminated union). The connector explicitly passes oauth_spec=None to TokenSource and returns oauth2=None from spec(), so no OAuth app registration or refresh token is ever required. The token is sent raw in the x-api-key header (the CDK omits the token-type prefix whenever authorization_header is not the default \"Authorization\"). One secret, no app registration => T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[1].pull.snapshot",
+      "description": "survey_responses is a parent-scoped stream: each sync re-runs the full surveys snapshot to enumerate survey ids, then fans out one paginated responses walk per survey. The PullSpec's `pathPlaceholders` names the placeholder but cannot express that the parent is another *declared stream of this same connector*, nor that the fan-out multiplies request volume by the survey count and re-pays the parent request on every 5-minute tick.",
+      "proposedShape": {
+        "parentStream": { "stream": "surveys", "recordField": "id", "boundTo": "survey_id", "reFetchedPerSync": true }
+      }
+    },
+    {
+      "where": "transports[0].spec.apiVersionPinning",
+      "description": "Version pinning here is a *query parameter* (`v=20250130`) that is also carried in every stream's `params`, in addition to the `/v1` path segment. The schema has one string slot for apiVersionPinning, so the fact that the same pin is duplicated into per-stream params (and that the connector's own comment says it may be optional) has to be prose rather than structure.",
+        "proposedShape": {
+          "apiVersionPinning": [
+            { "mechanism": "path_segment", "value": "v1" },
+            { "mechanism": "query_param", "param": "v", "value": "20250130", "enforced": "unknown" }
+          ]
+        }
+    },
+    {
+      "where": "streams[*].writeDisposition / pull.snapshot",
+      "description": "Both bindings are CDK `fetch_snapshot` resources with a tombstone document, so `snapshot_with_tombstone` fits, but the deletion semantics live in the *document schema* (a JSON-Schema if/then reduce annotation with strategy merge + delete:true), not in the pull spec. There is no field to record that deletes are expressed as a reduction annotation rather than as emitted delete events.",
+      "proposedShape": { "deleteMechanism": "reduction_annotation", "tombstoneOp": "d" }
+    },
+    {
+      "where": "streams[0].pull.snapshot.paginator",
+      "description": "The surveys endpoint is fetched with a single unpaginated request and its envelope model (SurveysResponse) has no links/cursor field at all, while the sibling responses endpoint on the same API does paginate with page[cursor]. `{\"type\":\"none\"}` records what the code does but cannot record that this may be an unhandled truncation risk if the upstream API ever paginates /surveys.",
+      "proposedShape": { "type": "none", "riskNote": "sibling endpoint on same API paginates; no envelope field is inspected here" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_iterate/api.py",
+      "lines": "13",
+      "snippet": "API = \"https://iteratehq.com/api/v1\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_iterate/api.py",
+      "lines": "15-19",
+      "snippet": "# The docs mention that every request needs a \"v\" query param that's the date\n# of the implementation. It doesn't seem like this is required for API requests\nVERSION = 20250130"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_iterate/resources.py",
+      "lines": "22, 93",
+      "snippet": "AUTHORIZATION_HEADER = \"x-api-key\"\nhttp.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER)"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "115-123",
+      "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"]\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True},)"
+    },
+    "credentialModes[0].scheme.prefix": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "526-534",
+      "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    header_value = f\"{token_type} {token}\" if token_type else token\nelse:\n    header_value = token"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "6-48",
+      "snippet": "\"access_token\": { \"secret\": true, \"title\": \"Access Token\", \"type\": \"string\" }\n\"required\": [ \"access_token\" ]"
+    },
+    "execution.mode": {
+      "file": "source_iterate/resources.py",
+      "lines": "60-70",
+      "snippet": "common.open_binding(binding, binding_index, state, task,\n    fetch_snapshot=functools.partial(snapshot_fn, http,),\n    tombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\")))"
+    },
+    "streamMode": {
+      "file": "source_iterate/resources.py",
+      "lines": "24-27",
+      "snippet": "FULL_REFRESH_RESOURCES: list[tuple[str, FullRefreshFn]] = [\n    (\"surveys\", snapshot_surveys),\n    (\"survey_responses\", snapshot_survey_responses),\n]"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_iterate/resources.py",
+      "lines": "73-83",
+      "snippet": "common.Resource(name=name, key=[\"/_meta/row_id\"], model=FullRefreshResource,\n    initial_config=ResourceConfig(name=name, interval=timedelta(minutes=5)),"
+    },
+    "streams[0].schedules": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "74-77",
+      "snippet": "\"resourceConfig\": { \"name\": \"surveys\", \"interval\": \"PT5M\" }"
+    },
+    "streams[0].pull.snapshot": {
+      "file": "source_iterate/api.py",
+      "lines": "37-45",
+      "snippet": "url = f\"{API}/surveys\"\nparams = {\"v\": VERSION}\nfor survey in response.results:"
+    },
+    "streams[1].schedules": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "4-7",
+      "snippet": "\"resourceConfig\": { \"name\": \"survey_responses\", \"interval\": \"PT5M\" }"
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_iterate/api.py",
+      "lines": "52-55",
+      "snippet": "async for survey in snapshot_surveys(http, log):\n    survey_id = getattr(survey, \"id\")\n    url = f\"{API}/surveys/{survey_id}/responses\""
+    },
+    "streams[1].pull.snapshot.recordsPath": {
+      "file": "source_iterate/models.py",
+      "lines": "36-41",
+      "snippet": "class SurveyResponsesResponse(BaseModel, extra=\"ignore\"):\n    class Results(BaseModel, extra=\"allow\"):\n        count: int\n        list: list[FullRefreshResource]"
+    },
+    "streams[1].pull.snapshot.paginator": {
+      "file": "source_iterate/api.py",
+      "lines": "22-30, 65-70",
+      "snippet": "cursor = query_params.get(\"page[cursor]\", None)\ncursor = _extract_next_page_cursor(response.links.next)\nparams[\"page[cursor]\"] = cursor"
+    },
+    "streams[1].pull.snapshot.paginator.terminateOn": {
+      "file": "source_iterate/models.py",
+      "lines": "46-47",
+      "snippet": "# links is not present on the last page of results.\nlinks: Links | None = None"
+    },
+    "streams[*].writeDisposition": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "61-66",
+      "snippet": "\"then\": { \"reduce\": { \"strategy\": \"merge\", \"delete\": true } }"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.recordsPath": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.recordsPath": "high",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.paginator.terminateOn": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[*].writeDisposition": "high",
+    "configFields": "high",
+    "category": "medium",
+    "displayName": "medium"
+  },
+
+  "abstained": {
+    "streams[*].cursorField": "Both bindings are pure snapshot resources (fetch_snapshot + tombstone) with no ResourceState cursor and no time-filter request parameter anywhere in api.py; there is no incremental leg to carry a cursor field.",
+    "streams[*].pull.incremental": "The connector implements no incremental mode at all — FULL_REFRESH_RESOURCES is the entire resource list and neither api.py function accepts or emits a LogCursor.",
+    "streams[*].pull.backfill": "There is no historical/ongoing split; each tick re-reads the whole collection, so the pull belongs in `snapshot` per rule for v2.1 and `backfill` is deliberately null rather than a stand-in.",
+    "streams[1].pull.snapshot.paginator.pageSize": "No page-size or limit parameter is ever sent; page size is whatever the Iterate API defaults to and is not observable from the code.",
+    "streams[0].pull.snapshot.paginator (whether truly unpaginated)": "Recorded as type `none` because that is literally what the code does, but SurveysResponse ignores extra envelope fields (extra=\"ignore\"), so a `links` object could exist on /surveys and be silently discarded. Cannot confirm from source whether /surveys paginates upstream.",
+    "transports[0].spec.defaultHeaders": "No headers are set beyond the auth header injected by the CDK; the connector passes no `headers` argument to http.request.",
+    "execution.defaultSchedule": "Interval is a per-binding ResourceConfig field (default PT0S from the CDK, overridden to PT5M by the connector's initial_config), so there is no connector-wide default to record.",
+    "streams[1].pull.snapshot.paginator.tokenTo": "Not abstained — recorded implicitly as a query param; noted here only because the schema's Paginator cursor variant lists `tokenTo` in prose but omits it from the cursor member's field list, so it is carried by `cursorParam`.",
+    "discovery": "streamMode is static (a hardcoded two-entry list); the connector's `discover` RPC merely echoes that fixed list, so there is no discovery mechanism to describe."
+  }
+}

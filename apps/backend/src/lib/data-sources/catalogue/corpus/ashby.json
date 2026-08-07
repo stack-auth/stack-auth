@@ -1,0 +1,2044 @@
+{
+  "id": "ashby",
+  "estuaryDir": "source-ashby",
+  "displayName": "Ashby",
+  "description": "Imports recruiting and applicant-tracking data (candidates, applications, jobs, interviews, offers, users) from the Ashby hiring platform.",
+  "category": "hr",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.ashbyhq.com"
+        },
+        "defaultHeaders": {
+          "Content-Type": "application/json"
+        },
+        "apiVersionPinning": null
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Ashby API key (\"Private App Credentials\")",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.access_token",
+        "passwordField": "<none \u2014 the connector hardcodes an empty password>"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": {
+      "kind": "interval",
+      "seconds": 300
+    },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "The per-binding Ashby syncToken (the connector's log cursor) expires after roughly a month of disuse; the API then returns a 'sync_token_expired' error and the connector must re-list the entire collection.",
+      "resumeWindow": "~1 month of not using a given stream's syncToken",
+      "releasedOnShutdown": null,
+      "notes": "Poll-mode HTTP connector; nothing is created or held on the customer's Ashby tenant, so nothing accrues on their side if we stop between ticks. The only continuity risk is ours: an expired syncToken degrades the next run into a full re-listing (handled automatically \u2014 the connector drops the token and retries, but only when the failure occurs on the first page of a sync)."
+    }
+  },
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant; the only accepted value is \"Private App Credentials\"."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Ashby API key. Sent as the HTTP Basic username with an empty password."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; the connector recommends PT5M for every binding."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": {
+    "method": "Fixed shipped stream list, filtered at discover/validate time by the API key's granted scopes",
+    "querySketch": "POST /apiKey.info -> results.scopes; keep each shipped stream whose declared required_scope is present in that set",
+    "excludes": [
+      "Any shipped stream whose required_scope (e.g. offers:read, approvals:read) is absent from the API key's scopes is skipped"
+    ],
+    "allowlist": "The 24 stream classes in INCREMENTAL_STREAMS + SNAPSHOT_STREAMS; discovery can only ever return a subset of these"
+  },
+  "streams": [
+    {
+      "name": "applications",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/application.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/application.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "approvals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/approval.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/approval.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidate_tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/candidateTag.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/candidateTag.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/candidate.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/candidate.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/customField.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/customField.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "departments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/department.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/department.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "feedback_form_definitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/feedbackFormDefinition.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/feedbackFormDefinition.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interview_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/interviewEvent.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "interviewScheduleId": "<id of each parent interview_schedules record, from POST /interviewSchedule.list>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/interviewEvent.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "interviewScheduleId": "<id of each parent interview_schedules record, from POST /interviewSchedule.list>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interview_plans",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/interviewPlan.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/interviewPlan.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interview_schedules",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/interviewSchedule.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/interviewSchedule.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interviewer_pools",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/interviewerPool.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchivedPools": true,
+            "includeArchivedTrainingStages": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/interviewerPool.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchivedPools": true,
+            "includeArchivedTrainingStages": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interviews",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/interview.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true,
+            "includeNonSharedInterviews": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/interview.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true,
+            "includeNonSharedInterviews": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "job_templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/jobTemplate.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/jobTemplate.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "jobs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/job.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeUnpublishedJobPostingsIds": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/job.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeUnpublishedJobPostingsIds": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "locations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/location.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true,
+            "includeLocationHierarchy": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/location.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true,
+            "includeLocationHierarchy": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "offers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/offer.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/offer.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "openings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/opening.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/opening.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/project.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/project.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "survey_form_definitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/surveyFormDefinition.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/surveyFormDefinition.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/user.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeDeactivated": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/user.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeDeactivated": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "archive_reasons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/archiveReason.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "interview_stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/interviewStage.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "interviewPlanId": "<id of each parent interview_plans record, from POST /interviewPlan.list>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "job_postings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/jobPosting.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "poll interval for this binding (ResourceConfig.interval)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/source.list",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "includeArchived": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "nextCursor",
+            "hasMorePath": "moreDataAvailable",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Ashby API key supplied as `credentials.access_token`. The connector wraps it in HTTP Basic (key as username, empty password) itself; there is no OAuth spec (TokenSource is constructed with oauth_spec=None), no client id/secret, and no refresh token. One value, pasted once.",
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "Pagination is an envelope token that travels in the JSON REQUEST BODY of a POST, not in a query string, header, or next-page URL. The response envelope carries {success, moreDataAvailable, nextCursor, syncToken, errors} alongside results[]; the connector resends envelope.nextCursor as body key \"cursor\" on the next POST and loops while envelope.moreDataAvailable is true. v2.1's `body_cursor` member covers this, but the member's documented shape does not name the HTTP method, and every other paginator member implicitly assumes GET \u2014 a consumer that ignores httpMethod on the PullSpec will silently issue GETs and get page one forever. There is also no page-size or limit knob anywhere in this connector.",
+      "proposedShape": {
+        "type": "body_cursor",
+        "httpMethod": "POST",
+        "cursorBodyKey": "cursor",
+        "cursorPath": "nextCursor",
+        "hasMorePath": "moreDataAvailable",
+        "tokenFrom": "body",
+        "tokenTo": "body_field",
+        "terminateOn": "envelope_flag",
+        "pageSizeParam": null,
+        "pageSize": null
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "The incremental cursor is not a timestamp parameter at all. It is an opaque server-issued `syncToken` read off the response envelope, persisted as the binding's log cursor, and sent back in the JSON request BODY on the FIRST request of the next sync only (never on subsequent pages, which carry `cursor` instead). `incrementalParam` has no body-field variant and no opaque-token format, so it is left null.",
+      "proposedShape": {
+        "kind": "body_sync_token",
+        "tokenBodyKey": "syncToken",
+        "tokenPath": "syncToken",
+        "sentOnFirstRequestOfSyncOnly": true,
+        "format": "opaque",
+        "expiryErrorSentinel": "sync_token_expired",
+        "errorsPath": "errors",
+        "onExpiry": "drop the token and re-list the full collection"
+      }
+    },
+    {
+      "where": "streams[*].pull.*.params",
+      "description": "This connector sends ZERO query parameters. The values recorded under `params` are JSON request-body fields (per-stream static flags such as includeArchived / includeDeactivated, plus the injected parent id for child streams). PullSpec has no `body` field, so they are recorded in `params` \u2014 a consumer that renders them as a query string will silently drop archived rows and break the child streams.",
+      "proposedShape": {
+        "queryParams": null,
+        "jsonBody": {
+          "<static per-stream flags>": true,
+          "<parentIdField>": "<parent id>"
+        }
+      }
+    },
+    {
+      "where": "streams[interview_events, interview_stages].pull",
+      "description": "Parent-scoped streams are scoped by a BODY field, not a path placeholder: the connector lists parents (interview_schedules / interview_plans) and then issues one child POST per parent id with `interviewScheduleId` / `interviewPlanId` in the body. `pathPlaceholders` cannot express this. Additionally, interview_events' incremental cursor is the PARENT's syncToken \u2014 the child endpoint itself has no incremental support \u2014 so a checkpoint advances only when at least one parent changed.",
+      "proposedShape": {
+        "parentScoping": {
+          "via": "json_body_field",
+          "parentStream": "interview_schedules",
+          "parentPath": "/interviewSchedule.list",
+          "bodyField": "interviewScheduleId"
+        },
+        "cursorOwner": "parent_stream"
+      }
+    },
+    {
+      "where": "streams[*].pull.backfill vs pull.incremental",
+      "description": "Ashby has no separate historical sweep. The same function performs both legs: with no stored syncToken the POST returns the entire collection (the backfill), and the envelope's syncToken then makes every later run return only changes. The two PullSpecs here are byte-identical apart from whether `syncToken` is present in the first request body; they are not independently schedulable or independently resumable.",
+      "proposedShape": {
+        "pull": {
+          "kind": "unified",
+          "spec": "<single http spec>",
+          "note": "backfill is the first invocation of the incremental leg"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_ashby/api.py",
+      "lines": "17",
+      "snippet": "API_BASE_URL = \"https://api.ashbyhq.com\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_ashby/api.py",
+      "lines": "21-24",
+      "snippet": "# Ashby requires Content-Type: application/json on all POST requests.\n# Passing json={} ensures aiohttp sets the header automatically."
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_ashby/resources.py",
+      "lines": "161-168",
+      "snippet": "http.token_source = TokenSource(\n    oauth_spec=None,\n    credentials=BasicAuth(username=config.credentials.access_token, password=\"\"),"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "115-122",
+      "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"]\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True})"
+    },
+    "credentialModes[0].scheme.encoding": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n    return (\"Basic\", base64.b64encode(f\"{...username}:{...password}\".encode()).decode())"
+    },
+    "streams[*].pull.*.httpMethod": {
+      "file": "source_ashby/api.py",
+      "lines": "61",
+      "snippet": "_, response = await http.request_stream(log, url, method=\"POST\", json=body)"
+    },
+    "streams[*].pull.*.path": {
+      "file": "source_ashby/api.py",
+      "lines": "51",
+      "snippet": "url = f\"{API_BASE_URL}/{entity_cls.path}\""
+    },
+    "streams[*].pull.*.recordsPath": {
+      "file": "source_ashby/api.py",
+      "lines": "62-64",
+      "snippet": "processor = IncrementalJsonProcessor(\n    response(), \"results.item\", entity_cls, remainder_cls=ResponseMeta\n)"
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_ashby/api.py",
+      "lines": "58-94",
+      "snippet": "if next_page_cursor:\n    body[\"cursor\"] = next_page_cursor\n... if not meta.moreDataAvailable: return; next_page_cursor = meta.nextCursor"
+    },
+    "streams[*].pull.*.paginator.cursorPath": {
+      "file": "source_ashby/models.py",
+      "lines": "28-33",
+      "snippet": "class ResponseMeta(BaseModel, extra=\"allow\"):\n    success: bool\n    moreDataAvailable: bool = False; nextCursor: str | None = None"
+    },
+    "streams[*].schedules": {
+      "file": "source_ashby/resources.py",
+      "lines": "113-116",
+      "snippet": "initial_config=ResourceConfig(\n    name=entity_cls.name,\n    interval=timedelta(minutes=5),\n)"
+    },
+    "streams[incremental].primaryKey": {
+      "file": "source_ashby/resources.py",
+      "lines": "105-108",
+      "snippet": "return Resource(\n    name=entity_cls.name,\n    key=[\"/id\"],"
+    },
+    "streams[snapshot].primaryKey": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "470-484",
+      "snippet": "class SnapshotResource(...):\n    key: list[str] = field(default_factory=lambda: [\"/_meta/row_id\"])"
+    },
+    "streams[snapshot].writeDisposition": {
+      "file": "source-ashby/tests/snapshots/snapshots__discover__stdout.json",
+      "lines": "1655-1663",
+      "snippet": "\"then\": { \"reduce\": { \"strategy\": \"merge\", \"delete\": true } }"
+    },
+    "streamMode": {
+      "file": "source_ashby/models.py",
+      "lines": "239-267",
+      "snippet": "INCREMENTAL_STREAMS: list[type[AshbyEntity]] = [Applications, ...]\nSNAPSHOT_STREAMS: list[type[AshbySnapshotEntity]] = [ArchiveReasons, ...]"
+    },
+    "discovery.method": {
+      "file": "source_ashby/resources.py",
+      "lines": "172-181",
+      "snippet": "resources: list[AshbyResource] = [\n    _create_incremental_resource(stream_cls, http)\n    for stream_cls in INCREMENTAL_STREAMS if _has_required_scope(log, stream_cls, available_scopes)]"
+    },
+    "discovery.querySketch": {
+      "file": "source_ashby/api.py",
+      "lines": "23-41",
+      "snippet": "response = await http.request(log, f\"{API_BASE_URL}/apiKey.info\", method=\"POST\", json={})\n... return set(info.results.scopes)"
+    },
+    "execution.mode": {
+      "file": "source_ashby/resources.py",
+      "lines": "100-103",
+      "snippet": "# Since incremental fetches couldn't begin until a complete backfill was performed,\n# it is impossible to define two discrete functions \u2014 the fetch function does both.\nfetch_changes=functools.partial(fetch_fn, entity_cls, http),"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_ashby/api.py",
+      "lines": "71-79",
+      "snippet": "# Tokens expire after ~1 month of disuse. Recovery is a fresh listing \u2014\nif \"sync_token_expired\" in meta.errors and next_page_cursor is None:\n    sync_token = None"
+    },
+    "configFields": {
+      "file": "source-ashby/tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "6-49",
+      "snippet": "\"access_token\": { \"secret\": true, \"title\": \"Access Token\", \"type\": \"string\" }"
+    },
+    "unionMisfits[1]": {
+      "file": "source_ashby/api.py",
+      "lines": "55-59",
+      "snippet": "body: dict[str, JsonValue] = {**base_body}\nif sync_token and next_page_cursor is None:\n    body[\"syncToken\"] = sync_token"
+    },
+    "unionMisfits[3]": {
+      "file": "source_ashby/api.py",
+      "lines": "197-203",
+      "snippet": "for parent_id in updated_parent_ids:\n    body = {**entity_cls.base_request_body, entity_cls.parent_id_field: parent_id}"
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "59-62",
+      "snippet": "name: ClassVar[str] = \"applications\"\npath: ClassVar[str] = \"application.list\""
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "65-68",
+      "snippet": "name: ClassVar[str] = \"approvals\"\npath: ClassVar[str] = \"approval.list\""
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "71-75",
+      "snippet": "name: ClassVar[str] = \"candidate_tags\"\npath: ClassVar[str] = \"candidateTag.list\""
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "78-81",
+      "snippet": "name: ClassVar[str] = \"candidates\"\npath: ClassVar[str] = \"candidate.list\""
+    },
+    "streams[4].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "84-88",
+      "snippet": "name: ClassVar[str] = \"custom_fields\"\npath: ClassVar[str] = \"customField.list\""
+    },
+    "streams[5].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "91-95",
+      "snippet": "name: ClassVar[str] = \"departments\"\npath: ClassVar[str] = \"department.list\""
+    },
+    "streams[6].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "98-102",
+      "snippet": "name: ClassVar[str] = \"feedback_form_definitions\"\npath: ClassVar[str] = \"feedbackFormDefinition.list\""
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "123-128",
+      "snippet": "name: ClassVar[str] = \"interview_events\"\npath: ClassVar[str] = \"interviewEvent.list\""
+    },
+    "streams[8].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "105-109",
+      "snippet": "name: ClassVar[str] = \"interview_plans\"\npath: ClassVar[str] = \"interviewPlan.list\""
+    },
+    "streams[9].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "112-115",
+      "snippet": "name: ClassVar[str] = \"interview_schedules\"\npath: ClassVar[str] = \"interviewSchedule.list\""
+    },
+    "streams[10].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "131-138",
+      "snippet": "name: ClassVar[str] = \"interviewer_pools\"\npath: ClassVar[str] = \"interviewerPool.list\""
+    },
+    "streams[11].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "141-148",
+      "snippet": "name: ClassVar[str] = \"interviews\"\npath: ClassVar[str] = \"interview.list\""
+    },
+    "streams[12].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "151-154",
+      "snippet": "name: ClassVar[str] = \"job_templates\"\npath: ClassVar[str] = \"jobTemplate.list\""
+    },
+    "streams[13].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "157-163",
+      "snippet": "name: ClassVar[str] = \"jobs\"\npath: ClassVar[str] = \"job.list\""
+    },
+    "streams[14].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "166-173",
+      "snippet": "name: ClassVar[str] = \"locations\"\npath: ClassVar[str] = \"location.list\""
+    },
+    "streams[15].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "176-179",
+      "snippet": "name: ClassVar[str] = \"offers\"\npath: ClassVar[str] = \"offer.list\""
+    },
+    "streams[16].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "182-185",
+      "snippet": "name: ClassVar[str] = \"openings\"\npath: ClassVar[str] = \"opening.list\""
+    },
+    "streams[17].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "188-191",
+      "snippet": "name: ClassVar[str] = \"projects\"\npath: ClassVar[str] = \"project.list\""
+    },
+    "streams[18].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "194-197",
+      "snippet": "name: ClassVar[str] = \"survey_form_definitions\"\npath: ClassVar[str] = \"surveyFormDefinition.list\""
+    },
+    "streams[19].pull.incremental.path": {
+      "file": "source_ashby/models.py",
+      "lines": "200-204",
+      "snippet": "name: ClassVar[str] = \"users\"\npath: ClassVar[str] = \"user.list\""
+    },
+    "streams[20].pull.snapshot.path": {
+      "file": "source_ashby/models.py",
+      "lines": "211-215",
+      "snippet": "name: ClassVar[str] = \"archive_reasons\"\npath: ClassVar[str] = \"archiveReason.list\""
+    },
+    "streams[21].pull.snapshot.path": {
+      "file": "source_ashby/models.py",
+      "lines": "231-236",
+      "snippet": "name: ClassVar[str] = \"interview_stages\"\npath: ClassVar[str] = \"interviewStage.list\""
+    },
+    "streams[22].pull.snapshot.path": {
+      "file": "source_ashby/models.py",
+      "lines": "218-221",
+      "snippet": "name: ClassVar[str] = \"job_postings\"\npath: ClassVar[str] = \"jobPosting.list\""
+    },
+    "streams[23].pull.snapshot.path": {
+      "file": "source_ashby/models.py",
+      "lines": "224-228",
+      "snippet": "name: ClassVar[str] = \"sources\"\npath: ClassVar[str] = \"source.list\""
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.httpMethod": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].pull.*.params": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].writeDisposition": "medium",
+    "streams[*].schedules": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[1].pull.incremental.path": "high",
+    "streams[2].pull.incremental.path": "high",
+    "streams[3].pull.incremental.path": "high",
+    "streams[4].pull.incremental.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[7].pull.incremental.path": "high",
+    "streams[8].pull.incremental.path": "high",
+    "streams[9].pull.incremental.path": "high",
+    "streams[10].pull.incremental.path": "high",
+    "streams[11].pull.incremental.path": "high",
+    "streams[12].pull.incremental.path": "high",
+    "streams[13].pull.incremental.path": "high",
+    "streams[14].pull.incremental.path": "high",
+    "streams[15].pull.incremental.path": "high",
+    "streams[16].pull.incremental.path": "high",
+    "streams[17].pull.incremental.path": "high",
+    "streams[18].pull.incremental.path": "high",
+    "streams[19].pull.incremental.path": "high",
+    "streams[20].pull.snapshot.path": "high",
+    "streams[21].pull.snapshot.path": "high",
+    "streams[22].pull.snapshot.path": "high",
+    "streams[23].pull.snapshot.path": "high"
+  },
+  "abstained": {
+    "streams[*].cursorField": "There is no document-level cursor field. Incrementality is driven by an opaque `syncToken` carried on the response envelope (ResponseMeta.syncToken) and stored as the binding's log cursor; no record attribute is compared against anything (api.py:140-165). Naming any document field here would be invented.",
+    "streams[*].pull.incremental.incrementalParam": "Not expressible: the incremental token is a body field (`syncToken`) sent only on the first request of a sync, and its format is opaque rather than iso8601/unix_seconds/date. See unionMisfits[1].",
+    "streams[*].pull.*.paginator.pageSize": "No page-size or limit parameter exists anywhere in the connector; page size is entirely server-chosen.",
+    "streams[interview_events].cursorField": "interview_events checkpoints on the PARENT interview_schedules syncToken, not on anything belonging to the child records (api.py:168-219).",
+    "transports[0].spec.apiVersionPinning": "No API version appears in the base URL, in any path, in a header, or as a parameter \u2014 paths are bare `<entity>.list` under https://api.ashbyhq.com.",
+    "streams[*].writeDisposition (incremental)": "Recorded as `merge` from key=[\"/id\"] plus the CDK's default incremental reduction; the connector never emits a delete/tombstone for incremental streams, so hard deletes in Ashby are not represented. Whether Ashby's syncToken feed itself surfaces deletions is not determinable from this repository.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable: the connector creates no server-side artifacts to release. Left null rather than asserting a behaviour.",
+    "credentialModes[0].scheme.passwordField": "There is no user-facing password field at all \u2014 the connector passes password=\"\" literally. The recorded string is a description, not a config field name.",
+    "streams (completeness)": "The 24 streams listed are the full shipped set, but a live discovery returns only the subset the API key's scopes permit; a given deployment may legitimately expose fewer.",
+    "streams[7].pull.backfill.params.interviewScheduleId": "Not a literal value: the connector first lists parents via POST /interviewSchedule.list and then issues one child POST per parent id, injecting it into the JSON body under this key. There is no path placeholder \u2014 the parent scoping is a body field."
+  }
+}

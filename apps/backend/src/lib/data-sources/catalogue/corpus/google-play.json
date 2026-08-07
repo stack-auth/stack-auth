@@ -1,0 +1,419 @@
+{
+  "id": "google-play",
+  "estuaryDir": "source-google-play",
+  "displayName": "Google Play",
+  "description": "Imports Google Play Console app reporting (installs, crashes, and user reviews) from the CSV report files Google delivers to the developer's pubsite_prod Google Cloud Storage bucket.",
+  "category": "analytics",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "objectStore",
+        "store": "gcs"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Google service account JSON key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["credentials.service_account"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure read-only polling of a customer-owned GCS bucket over the JSON API; the connector creates no server-side objects (no leases, no listing sessions, no scratch storage) and holds only its own datetime/month cursors in connector state. Nothing accrues on the customer side if we stop between ticks. Whether we can lose data by pausing depends on how long Google Play retains report CSVs in the pubsite_prod bucket, which the connector code never asserts — see abstained['execution.continuity.ourSideLoss']."
+    }
+  },
+
+  "configFields": [
+    {
+      "name": "bucket",
+      "displayName": "Bucket",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "The GCS bucket containing the Google Play data; the name starts with pubsite_prod."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime (YYYY-MM-DDTHH:MM:SSZ); data generated before this is not replicated. Defaults to 30 days before the present, and is rounded down to the start of its month before use."
+    },
+    {
+      "name": "credentials.service_account",
+      "displayName": "Google Service Account",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Service account JSON key (multiline)."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant, always \"Google Service Account\"."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; the connector seeds every binding with PT1H."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "crashes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Date", "/Package Name"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval (initial_config)", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "stats/crashes",
+          "matchExpr": "**_YYYYMM_overview.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "GCS objects.list (GET /storage/v1/b/{bucket}/o) with prefix + matchGlob, maxResults=1000, paginated by nextPageToken echoed back as the pageToken query param and terminating when nextPageToken is absent. The page cursor of the backfill itself is a month string: the glob's YYYYMM is pinned to the cursor month, and after each month's files are drained the cursor advances one calendar month, stopping at the cutoff (start of the current month, captured when the binding opened). The starting month is start_of_month(start_date).",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "stats/crashes",
+          "matchExpr": "**_[0-9][0-9][0-9][0-9][0-9][0-9]_overview.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Every sweep re-lists all matching objects under the prefix (all months) via objects.list with prefix + matchGlob, paginated by nextPageToken, then filters client-side to objects whose GCS `updated` metadata timestamp is >= the log cursor. The new log cursor is max(updated) over the processed files plus 1 millisecond; the cursor is initialised to the start of the current month.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "installs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Date", "/Package Name"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval (initial_config)", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "stats/installs",
+          "matchExpr": "**_YYYYMM_overview.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Identical month-walking backfill to the crashes stream, with prefix stats/installs: the glob's YYYYMM is pinned to the page-cursor month and advances one month per page until the cutoff.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "stats/installs",
+          "matchExpr": "**_[0-9][0-9][0-9][0-9][0-9][0-9]_overview.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Identical to the crashes stream: full re-listing each sweep, client-side filter on GCS object `updated` >= log cursor, new cursor = max(updated) + 1ms.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "reviews",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Month", "/Package Name", "/Row Number", "/Year"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "Review Last Update Date And Time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval (initial_config)", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "reviews",
+          "matchExpr": "**_YYYYMM.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Same month-walking backfill as the statistics streams but with no _overview suffix in the glob; prefix `reviews`. Year and month for the synthetic primary key are parsed out of the object name (reviews_<package>_YYYYMM[_extra].csv), and Row Number is the running row index within that file.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "reviews",
+          "matchExpr": "**_[0-9][0-9][0-9][0-9][0-9][0-9].csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Full re-listing each sweep filtered on GCS object `updated` >= log cursor, then a second, record-level filter: only rows whose \"Review Last Update Date And Time\" is >= the log cursor are emitted. The new cursor is max(row updated_at) + 1 second, advanced only when at least one row was emitted (unlike the statistics streams, which advance off file metadata).",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode is offered and it is not OAuth (the connector spec sets oauth2=None): the user pastes a single Google service account JSON key, from which the CDK mints scoped access tokens locally via google.oauth2.service_account and sends them as an Authorization: Bearer header. No OAuth application registration (no client id/secret) and no refresh token are ever requested from the user, which rules out T2 and T3. It is the heavy end of T1 — the user must create a GCP service account, download its key, and grant it read access to the pubsite_prod bucket — but it is still a single self-serve secret with a single scope, https://www.googleapis.com/auth/devstorage.read_only.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec (kind: objectStore)",
+      "description": "The objectStore variant carries only `store`, so there is nowhere to record that this connector talks to the GCS JSON REST API at a hardcoded base URL with an explicit API version pinned in the path segment (/storage/v1). That is real, verifiable configuration (it is not the GCS client library, it is a hand-rolled async HTTP client) and it is lost by the current shape.",
+      "proposedShape": {
+        "kind": "objectStore",
+        "store": "gcs",
+        "accessVia": "json_api",
+        "baseUrl": { "kind": "constant", "value": "https://storage.googleapis.com/storage/v1" },
+        "apiVersionPinning": "path segment /storage/v1"
+      }
+    },
+    {
+      "where": "streams[*].pull.*.listing (PullSpec kind: objects)",
+      "description": "PullSpec `objects` has no paginator slot, but the object listing here is genuinely paginated with a well-formed mechanism worth typing: nextPageToken read from the response body and resent as the pageToken query param, page size via maxResults=1000, terminating on absent token. Encoding it as English prose inside `listing` means it cannot be validated or diffed against other object-store connectors.",
+      "proposedShape": {
+        "kind": "objects",
+        "listingPaginator": {
+          "type": "cursor",
+          "cursorParam": "pageToken",
+          "cursorPath": "nextPageToken",
+          "tokenFrom": "body",
+          "tokenTo": "query_param",
+          "terminateOn": "absent_token",
+          "pageSizeParam": "maxResults",
+          "pageSize": 1000
+        }
+      }
+    },
+    {
+      "where": "streams[*].cursorField",
+      "description": "`cursorField` assumes the cursor is a record field, but for crashes and installs the incremental cursor is object METADATA (the GCS `updated` timestamp), not anything inside the CSV. Reviews mixes both: it filters files by object `updated` and then filters rows by the record field. There is no way to express \"metadata cursor\" or a two-level cursor, so crashes/installs are recorded here as null with the mechanism narrated in `listing`.",
+      "proposedShape": {
+        "cursor": {
+          "level": "object_metadata|record|both",
+          "objectMetadataField": "updated",
+          "recordField": "Review Last Update Date And Time",
+          "advanceRule": "max seen + 1ms (metadata) / + 1s (record)"
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull.backfill (PullSpec kind: objects)",
+      "description": "The backfill's resumption unit is a calendar MONTH interpolated into the match glob, not an object-listing continuation token. `objects` has no field for a partition/window key, so a materially different resume mechanism (walk months forward from start_date to the cutoff, re-globbing each month) has to be buried in `listing` prose next to the unrelated GCS page-token pagination.",
+      "proposedShape": {
+        "kind": "objects",
+        "window": { "unit": "month", "encodedIn": "matchExpr", "placeholder": "YYYYMM", "from": "start_of_month(start_date)", "to": "start_of_month(now) exclusive" }
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source_google_play/gcs.py",
+      "lines": "58",
+      "snippet": "self.base_url = \"https://storage.googleapis.com/storage/v1\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_google_play/models.py",
+      "lines": "49-52",
+      "snippet": "credentials: GoogleServiceAccount = Field(\n        discriminator=\"credentials_title\",\n        title=\"Authentication\",\n    )"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "256-265",
+      "snippet": "class GoogleServiceAccount(BaseModel):\n    service_account: str = Field(\n        title=\"Google Service Account\", description=\"Service account JSON key\","
+    },
+    "authTierOverall": {
+      "file": "source_google_play/models.py",
+      "lines": "26-30",
+      "snippet": "GOOGLE_SPEC = GoogleServiceAccountSpec(\n    scopes=[\n        \"https://www.googleapis.com/auth/devstorage.read_only\","
+    },
+    "authTierRationale": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "313-319",
+      "snippet": "elif isinstance(self.credentials, GoogleServiceAccount):\n    GoogleServiceAccountCredentials.from_service_account_info(\n        json.loads(self.credentials.service_account), scopes=self.google_spec.scopes,"
+    },
+    "execution.mode": {
+      "file": "source_google_play/api.py",
+      "lines": "26-29",
+      "snippet": "async for file in gcs_client.list_files(prefix=model.prefix, globPattern=model.get_glob_pattern()):\n        if file.updated >= log_cursor:\n            files.append(file)"
+    },
+    "streamMode": {
+      "file": "source_google_play/models.py",
+      "lines": "182-186",
+      "snippet": "RESOURCES: list[type[GooglePlayRow]] = [\n    Crashes,\n    Installs,\n    Reviews,\n]"
+    },
+    "streams[0].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "discover output, crashes binding",
+      "snippet": "\"recommendedName\": \"crashes\", \"key\": [\"/Date\", \"/Package Name\"]"
+    },
+    "streams[0].pull.incremental": {
+      "file": "source_google_play/models.py",
+      "lines": "113-114",
+      "snippet": "class Crashes(Statistics):\n    name: ClassVar[str] = \"crashes\"\n    prefix: ClassVar[str] = \"stats/crashes\""
+    },
+    "streams[0].pull.incremental.listing": {
+      "file": "source_google_play/api.py",
+      "lines": "38-40",
+      "snippet": "if len(files) > 0:\n        latest_file = max(files, key=lambda f: f.updated)\n        yield latest_file.updated + timedelta(milliseconds=1)"
+    },
+    "streams[0].pull.backfill.listing": {
+      "file": "source_google_play/api.py",
+      "lines": "92, 103-108",
+      "snippet": "async for file in gcs_client.list_files(prefix=model.prefix, globPattern=model.get_glob_pattern(cursor_month)):\n    next_page = next_month(cursor_month)"
+    },
+    "streams[0].pull.backfill.matchExpr": {
+      "file": "source_google_play/models.py",
+      "lines": "76-85",
+      "snippet": "year_month_pattern =  f\"{date.year:04d}{date.month:02d}\"\n        pattern = f\"**_{year_month_pattern}\"\n        if cls.suffix: pattern += f\"_{cls.suffix}\""
+    },
+    "streams[1].pull.incremental": {
+      "file": "source_google_play/models.py",
+      "lines": "117-119",
+      "snippet": "class Installs(Statistics):\n    name: ClassVar[str] = \"installs\"\n    prefix: ClassVar[str] = \"stats/installs\""
+    },
+    "streams[2].primaryKey": {
+      "file": "source_google_play/models.py",
+      "lines": "156",
+      "snippet": "primary_keys: ClassVar[list[str]] = [f\"/{YEAR_FIELD}\", f\"/{MONTH_FIELD}\", f\"/{PACKAGE_NAME_FIELD}\", f\"/{ROW_NUMBER_FIELD}\"]"
+    },
+    "streams[2].cursorField": {
+      "file": "source_google_play/models.py",
+      "lines": "162",
+      "snippet": "updated_at: AwareDatetime = Field(alias=\"Review Last Update Date And Time\")"
+    },
+    "streams[2].pull.incremental.listing": {
+      "file": "source_google_play/api.py",
+      "lines": "63-69",
+      "snippet": "if row.updated_at >= log_cursor:\n    last_review_updated_at = max(last_review_updated_at, row.updated_at)\n... yield last_review_updated_at + timedelta(seconds=1)"
+    },
+    "streams[*].schedules": {
+      "file": "source_google_play/resources.py",
+      "lines": "106-108",
+      "snippet": "initial_config=ResourceConfig(\n                name=model.name, interval=timedelta(minutes=60)\n            ),"
+    },
+    "streams[*].supportedSyncModes": {
+      "file": "source_google_play/resources.py",
+      "lines": "77-89",
+      "snippet": "common.open_binding(binding, binding_index, state, task,\n            fetch_changes=fetch_changes,\n            fetch_page=functools.partial(backfill_resources, ...))"
+    },
+    "unionMisfits[1].proposedShape": {
+      "file": "source_google_play/gcs.py",
+      "lines": "71-83",
+      "snippet": "params: Dict[str, Any] = {\"maxResults\": max_results}\n        if globPattern: params[\"matchGlob\"] = globPattern\n        if page_token: params[\"pageToken\"] = page_token"
+    },
+    "configFields[0]": {
+      "file": "source_google_play/models.py",
+      "lines": "39-42",
+      "snippet": "bucket: str = Field(\n        description=\"The bucket containing your Google Play data. The bucket starts with pubsite_prod...\","
+    },
+    "configFields[1]": {
+      "file": "source_google_play/models.py",
+      "lines": "33-35, 43-48",
+      "snippet": "def default_start_date():\n    dt = datetime.now(tz=UTC) - timedelta(days=30)"
+    },
+    "streams[*].pull.*.format": {
+      "file": "source_google_play/gcs.py",
+      "lines": "12-14, 126",
+      "snippet": "CSV_CONFIG = CSVConfig(encoding=\"utf-16\",)\n        params = {\"alt\": \"media\"}"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.kind": "high",
+    "transports[0].spec.store": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].primaryKeyKind": "high",
+    "streams[*].pull.incremental": "high",
+    "streams[*].pull.backfill": "high",
+    "streams[*].pull.*.format": "high",
+    "streams[2].cursorField": "high",
+    "streams[*].schedules": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].writeDisposition": "medium",
+    "configFields": "high",
+    "category": "medium",
+    "description": "medium"
+  },
+
+  "abstained": {
+    "streams[0].cursorField": "The crashes incremental cursor is not a record field at all — it is the GCS object's `updated` metadata timestamp (api.py fetch_statistics filters `file.updated >= log_cursor` and emits max(updated)+1ms). Forcing a CSV column name here would be wrong, so it is null; the mechanism is recorded in pull.incremental.listing and in unionMisfits.",
+    "streams[1].cursorField": "Same as crashes: installs uses the same fetch_statistics path, cursoring on GCS object `updated` metadata rather than any column in the CSV.",
+    "execution.continuity.ourSideLoss": "Nothing in the connector or CDK states how long Google Play retains report CSVs in the pubsite_prod bucket, so whether a long pause loses data is not determinable from this source. Note the code does contain a latent risk it never comments on: the statistics streams cursor on object `updated`, so if a paused-then-resumed connector's cursor is older than the objects it must still be correct, but if a file is rewritten with an OLDER `updated` than the stored cursor it would be skipped — this is a code property, not a retention fact, and the retention question remains unanswered.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable in a meaningful sense — the connector allocates no server-side artifacts to release, so there is no shutdown release path in the code to observe.",
+    "execution.continuity.resumeWindow": "Depends entirely on the unstated bucket retention above.",
+    "transports[0].spec.baseUrl": "The objectStore transport variant has no baseUrl field. The value exists and is constant (https://storage.googleapis.com/storage/v1, gcs.py:58) and is reported under unionMisfits[0] instead of being dropped.",
+    "streams[*].pull.*.compression": "The connector never sets or inspects Content-Encoding and passes the object body straight to the CSV processor with alt=media; it only pins the character encoding (utf-16). No evidence either way about compressed objects, so null rather than \"none\".",
+    "streams[*].pull.*.objectChunking": "Objects are read whole via a single streaming GET with alt=media (gcs.py stream_csv). There is incremental CSV *parsing* of the response stream, but no byte-range or Range-header chunking of the object itself, so null is the correct value rather than a chunking description.",
+    "discovery": "Left null deliberately: `discover` returns the fixed three-item RESOURCES list (resources.py all_resources -> resources), so nothing is discovered from the customer's data. streamMode is static and all three streams are kind \"actual\", not archetypes.",
+    "streams[*].writeDisposition": "Marked \"merge\" at medium confidence by inference from the connector declaring per-stream keys and Estuary's keyed-collection reduction semantics; no explicit reduction annotation or write-mode declaration appears in this connector's code or in the discover snapshot (documentSchema carries only x-infer-schema and required)."
+  }
+}

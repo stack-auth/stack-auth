@@ -1,0 +1,1597 @@
+{
+  "id": "salesforce-native",
+  "estuaryDir": "source-salesforce-native",
+  "displayName": "Salesforce",
+  "description": "Imports Salesforce CRM records (standard SObjects such as Account, Contact, Lead, Opportunity, Case, plus the org's own custom objects) by running generated SOQL against the Salesforce Bulk 2.0 and REST query APIs.",
+  "category": "crm",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "Per-tenant Salesforce org instance_url, resolved at connect time by _fetch_instance_url and then used for every request as f\"{instance_url}/services/data/v62.0/...\". Three sources, one per credential mode: (1) OAuth -> read verbatim from config.credentials.instance_url, which the control plane persisted from the token response's /instance_url; (2) Client Credentials -> the instance_url field of the client_credentials token response, cached on the token source; (3) Username/Password -> the instance_url returned by the simple_salesforce SOAP login against the My Domain / login / test host (https:// prefixed if missing)."
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "Path segment. VERSION = \"62.0\" is interpolated into every REST path as /services/data/v62.0/... (sobjects, sobjects/{name}/describe, queryAll, jobs/query) and is additionally passed as sf_version to the simple_salesforce SOAP login. No version header or query param is used."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Username, Password, & Security Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "SOAP login. SalesforceTokenSource special-cases UserPass and calls simple_salesforce.login.SalesforceLogin(username, password, security_token, domain, sf_version=62.0) against the My Domain subdomain, else test.salesforce.com when is_sandbox, else login.salesforce.com. The returned session id is then sent as the standard CDK Authorization: Bearer <token> header, and the login also yields the instance_url. No OAuth app registration is involved. The token source assumes a 1-hour expires_in (Salesforce returns none) and re-logs in at 75% of that."
+      }
+    },
+    {
+      "name": "OAuth (refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://login.salesforce.com/services/oauth2/authorize",
+        "tokenUrl": "https://login.salesforce.com/services/oauth2/token",
+        "scopes": [],
+        "grant": "refresh_token"
+      }
+    },
+    {
+      "name": "Client Credentials",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://{my_domain}/services/oauth2/token",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "schedule": {
+      "kind": "interval",
+      "seconds": 300
+    },
+    "continuity": {
+      "artifacts": [
+        "Bulk API 2.0 query jobs created by POST /services/data/v62.0/jobs/query (operation=queryAll). The connector never issues a DELETE for a job; completed jobs and their results are left for Salesforce to expire.",
+        "Salesforce Login History rows for each SOAP login / token exchange (Username-Password and Client Credentials modes re-authenticate on token expiry)."
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "Nothing accrues on the customer's Salesforce org if we stop consuming: there is no replication slot, change table, or subscription. State is entirely connector-side (a datetime log cursor per incremental binding, a Salesforce record Id as the backfill page cursor), and both are absolute values re-queried with SOQL, so an arbitrarily long pause is resumable with no data loss. The one real cost is quota, and it is spent while running rather than while stopped: each backfill/snapshot page is a Bulk API 2.0 query job counting against the org's per-24h job-count and result-volume limits, which the connector detects by error string and reacts to by falling back to the REST API. Deletes are not captured on any path (queries are queryAll, but SOQL cannot see hard-deleted rows once they leave the recycle bin), so a long pause silently loses delete visibility. Incremental sweeps also deliberately lag 5 minutes behind now() to work around Salesforce's eventual consistency."
+    }
+  },
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Authentication",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Pydantic discriminator selecting one of the three credential modes: 'OAuth', 'Username, Password, & Security Token', or 'Client Credentials'."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id / Consumer Key",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "OAuth and Client Credentials modes. Consumer Key of the Salesforce Connected App / External Client App. Titled 'Client Id' by the CDK base class for OAuth, retitled 'Consumer Key' by the Client Credentials model."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret / Consumer Secret",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "OAuth and Client Credentials modes. Consumer Secret of the same app."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "OAuth mode only. The connector never performs an authorization-code exchange itself; BaseOAuth2Credentials pins grant_type='refresh_token', so a refresh token must already be in the config."
+    },
+    {
+      "name": "credentials.instance_url",
+      "displayName": "Instance URL",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "OAuth mode only. Per-tenant API host (e.g. https://acme.my.salesforce.com). Persisted into the config by the OAuth flow via accessTokenResponseMap {'instance_url': '/instance_url'}; read straight out of config at runtime."
+    },
+    {
+      "name": "credentials.username",
+      "displayName": "Username",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Username/Password mode only. Used for the simple_salesforce SOAP login."
+    },
+    {
+      "name": "credentials.password",
+      "displayName": "Password",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "Username/Password mode only."
+    },
+    {
+      "name": "credentials.security_token",
+      "displayName": "Security Token",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "Username/Password mode only. Salesforce per-user security token, self-serve from the user's own Salesforce settings."
+    },
+    {
+      "name": "is_sandbox",
+      "displayName": "Sandbox",
+      "required": false,
+      "secret": false,
+      "type": "boolean",
+      "description": "Selects test.salesforce.com instead of login.salesforce.com as the login/token host when My Domain is blank. Defaults to false."
+    },
+    {
+      "name": "my_domain",
+      "displayName": "My Domain",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Org's My Domain login host; must match ^$|^[A-Za-z0-9][A-Za-z0-9.-]*\\.my\\.salesforce\\.com$ because the control plane interpolates it verbatim into the OAuth authorize/token URLs. Blank means the standard login/test host. A model validator makes it REQUIRED when the Client Credentials mode is selected, because login.salesforce.com does not support the client_credentials grant."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "type": "date",
+      "description": "UTC RFC3339 datetime; data older than this is not replicated. Defaults to Salesforce's founding date 1999-02-03T00:00:00Z; constrained to >= 1700-01-01."
+    },
+    {
+      "name": "advanced.window_size",
+      "displayName": "Window size",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Discriminated union on window_type: {window_type:'days', days:int>0} or {window_type:'interval', interval:ISO-8601 duration > 1 minute}. Defaults to 18250 days. A bare integer from legacy configs is coerced to the days form. Bounds each incremental date window and the legacy date-window backfill."
+    },
+    {
+      "name": "<resource>.schedule",
+      "displayName": "Formula Field Refresh Schedule",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "PER-BINDING resource config (not endpoint config). Cron expression, defaulted to '55 23 * * *' for every incremental binding and '' for full-refresh bindings. Drives the connector-initiated formula-field refresh."
+    },
+    {
+      "name": "<resource>.interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "PER-BINDING resource config. Poll interval, defaulted by the connector to 5 minutes for every binding."
+    }
+  ],
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Salesforce REST global describe (GET /services/data/v62.0/sobjects), keeping only objects with queryable == true, then resolved against a shipped table of 1676 standard-object entries plus custom-object name-suffix rules. Fields for each bound object come from a per-object GET /services/data/v62.0/sobjects/{name}/describe, deferred out of discovery to open/validate time to save API calls.",
+    "querySketch": "list every SObject in the org, drop those where queryable == false; for each survivor decide details by (a) suffix __c / __Feed / __mdt / _hd -> incremental on SystemModstamp, (b) suffix __Share -> incremental on LastModifiedDate, (c) suffix __History -> incremental on CreatedDate, (d) otherwise case-insensitive lookup in the shipped SUPPORTED_STANDARD_OBJECTS table; a None result yields no binding at all. An entry with a cursor_field becomes an incremental resource keyed /Id with ReductionStrategy.MERGE; an entry without one becomes a full-refresh snapshot resource keyed /_meta/row_id with a tombstone.",
+    "excludes": [
+      "SObjects where queryable == false",
+      "Standard SObjects absent from the shipped SUPPORTED_STANDARD_OBJECTS table (name not in the table and not matching a custom-object suffix -> no binding)",
+      "All but 17 of the shipped standard objects are disabled by default (enabled_by_default is absent -> disable=True)"
+    ],
+    "allowlist": "SUPPORTED_STANDARD_OBJECTS: 1676 entries \u2014 1162 with cursor SystemModstamp, 268 with CreatedDate, 221 with LastModifiedDate, 1 (LoginHistory) with LoginTime, and 24 with no cursor at all. 13 entries are additionally flagged is_supported_by_bulk_api=False. 3 entries (Contract, ContractLineItem, ServiceContract) carry additional_fields_to_include_in_refresh=['Status']."
+  },
+  "streams": [
+    {
+      "name": "Account",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Account WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Account WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Account WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Campaign",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Campaign WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Campaign WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Campaign WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Case",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Case WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Case WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Case WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Contact",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Contact WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Contact WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Contact WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Entitlement",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Entitlement WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Entitlement WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Entitlement WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Lead",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Lead WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Lead WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Lead WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "LeadHistory",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "CreatedDate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM LeadHistory WHERE CreatedDate > <start_date> AND CreatedDate <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM LeadHistory WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE CreatedDate > start AND <= end ORDER BY CreatedDate ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM LeadHistory WHERE CreatedDate > <log_cursor> AND CreatedDate <= <min(now-5min, log_cursor+window_size)> ORDER BY CreatedDate ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "LiveChatTranscript",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM LiveChatTranscript WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM LiveChatTranscript WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM LiveChatTranscript WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "MessagingSession",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM MessagingSession WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM MessagingSession WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM MessagingSession WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Opportunity",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Opportunity WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Opportunity WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Opportunity WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "ServiceAppointment",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM ServiceAppointment WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM ServiceAppointment WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM ServiceAppointment WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "ServiceContract",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM ServiceContract WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM ServiceContract WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM ServiceContract WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "Task",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM Task WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM Task WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM Task WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "User",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM User WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM User WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM User WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "UserServicePresence",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM UserServicePresence WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM UserServicePresence WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM UserServicePresence WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "WorkOrder",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM WorkOrder WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM WorkOrder WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM WorkOrder WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "WorkOrderLineItem",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "SystemModstamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM WorkOrderLineItem WHERE SystemModstamp > <start_date> AND SystemModstamp <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM WorkOrderLineItem WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE SystemModstamp > start AND <= end ORDER BY SystemModstamp ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM WorkOrderLineItem WHERE SystemModstamp > <log_cursor> AND SystemModstamp <= <min(now-5min, log_cursor+window_size)> ORDER BY SystemModstamp ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "LoginHistory",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "LoginTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM LoginHistory WHERE LoginTime > <start_date> AND LoginTime <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM LoginHistory WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE LoginTime > start AND <= end ORDER BY LoginTime ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM LoginHistory WHERE LoginTime > <log_cursor> AND LoginTime <= <min(now-5min, log_cursor+window_size)> ORDER BY LoginTime ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "AccountShare",
+      "origin": "static",
+      "primaryKey": [
+        "Id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "LastModifiedDate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 23 * * *"
+      },
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every field returned by the object's /describe> FROM AccountShare WHERE LastModifiedDate > <start_date> AND LastModifiedDate <= <cutoff> AND Id > '<last_id>' ORDER BY Id ASC LIMIT <page_limit>  -- keyset pagination on the primary key. Bulk leg uses LIMIT 500000 and runs the statement as a Bulk API 2.0 queryAll job. REST leg instead first probes for the page's closing Id with `SELECT Id FROM AccountShare WHERE <same window> AND Id > '<last_id>' ORDER BY Id ASC LIMIT 1 OFFSET 1999`, then issues one statement per field-chunk with the identical closed range `AND Id <= '<boundary_id>'` (field lists are chunked to keep URI+headers under 16384 bytes) and merges the chunks on Id. A legacy date-window backfill path (WHERE LastModifiedDate > start AND <= end ORDER BY LastModifiedDate ASC) is retained only for backfills whose persisted page cursor is still a datetime.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Bulk API 2.0 by default; falls back to REST queryAll at runtime when the object is one of the 13 flagged is_supported_by_bulk_api=False, when its describe reports a soapType in {base64Binary, tns:json, urn:address, urn:location, searchLayout*}, or when the job errors with compound-data / not-supported-by-bulk / daily bulk quota exceeded."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <field chunk> FROM AccountShare WHERE LastModifiedDate > <log_cursor> AND LastModifiedDate <= <min(now-5min, log_cursor+window_size)> ORDER BY LastModifiedDate ASC  -- one statement per field chunk, merged on Id; the object's fields are re-described on every invocation so newly added custom fields are picked up. Records whose cursor moved past the window end while the chunk queries ran are dropped and left for the next sweep.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": null,
+            "cursorPath": "/nextRecordsUrl",
+            "tokenFrom": "url_path_segment",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": 2000,
+            "notes": "REST queryAll paging. The response envelope carries nextRecordsUrl; the connector does NOT follow it verbatim. It strips slashes, splits on '/', and takes the LAST path segment as an opaque query locator, which is then appended as a PATH suffix to {instance_url}/services/data/v62.0/queryAll/{locator} (the 'q' query param is dropped on subsequent pages). A url with other than 5 parts yields a null locator. Termination is the envelope's `done` boolean. Page size is server-chosen, capped at 2000, and Salesforce shrinks it dynamically for wide rows."
+          },
+          "incrementalParam": null,
+          "transportNote": "The incremental leg ALWAYS uses the REST queryAll manager; the Bulk API is never used for incremental sweeps (only for backfills and full-refresh snapshots)."
+        }
+      }
+    },
+    {
+      "name": "ApexPageInfo",
+      "origin": "static",
+      "primaryKey": [
+        "_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": null,
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every described field> FROM ApexPageInfo  -- unbounded, re-run in full every 5-minute poll; the prior snapshot is replaced via a tombstone document keyed on /_meta/row_id",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Snapshots always go through the Bulk API 2.0 job manager; there is no REST fallback on the snapshot path."
+        }
+      }
+    },
+    {
+      "name": "AppDefinition",
+      "origin": "static",
+      "primaryKey": [
+        "_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": null,
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "soql",
+          "querySketch": "SELECT <every described field> FROM AppDefinition  -- unbounded, re-run in full every 5-minute poll; the prior snapshot is replaced via a tombstone document keyed on /_meta/row_id",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "locator",
+            "cursorPath": "Sforce-Locator",
+            "tokenFrom": "header",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxRecords",
+            "pageSize": 25000,
+            "notes": "Bulk API 2.0 results paging. GET /services/data/v62.0/jobs/query/{job_id}/results returns CSV; the next-page token arrives in the Sforce-Locator RESPONSE HEADER and is echoed back as the 'locator' query param. Terminates when the header is absent, empty, or the literal string 'null'. A separate Sforce-NumberOfRecords header is used to verify each page's row count. Requests add Accept-Encoding: gzip."
+          },
+          "transportNote": "Snapshots always go through the Bulk API 2.0 job manager; there is no REST fallback on the snapshot path."
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Judging each mode separately: (1) Username/Password/Security Token is T1_SIMPLE \u2014 the user supplies three self-serve values from their own Salesforce account and the connector performs a SOAP login directly; no app registration, no token exchange the user has to run. That is the easiest mode offered, so authTierOverall is T1_SIMPLE. (2) Client Credentials is T2_BYO_APP \u2014 the user must create a Connected App / External Client App with a Run As user, enable the client_credentials flow, supply its Consumer Key + Secret, AND supply My Domain (a model validator rejects the config without it, because login.salesforce.com does not serve that grant). (3) OAuth is T3_BYO_REFRESH standing alone: SalesforceOAuth2Credentials extends the CDK's BaseOAuth2Credentials, which pins grant_type='refresh_token', and the connector implements no authorization-code exchange \u2014 the authorize/token/body templates are mustache strings the source itself annotates as 'not interpolated within the connector'. An adopter without a control plane must register their own app and separately obtain a refresh token plus the instance_url. IMPORTANT NUANCE (retained from v1): on Estuary's hosted control plane the browser OAuth flow is driven by Estuary's own registered 'salesforce' provider app and the accessTokenResponseMap auto-populates refresh_token and instance_url, so the end user only clicks Authorize and the effective tier for that mode is T1. The T3 recorded here is the STANDALONE tier \u2014 what the connector code alone demands from its config \u2014 which is the number that matters for anyone adopting this connector without that control plane.",
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.<leg>.paginator on a PullSpec of kind 'query'",
+      "description": "The v2 PullSpec union declares `paginator` only on kind 'http'; kind 'query' (soql) has no paginator slot. But the SOQL pull is unambiguously paginated \u2014 Bulk 2.0 by Sforce-Locator header, REST by nextRecordsUrl path segment \u2014 so the paginator has been attached to the query PullSpec anyway. This is the one structural place v2 still forces a choice between dropping real pagination facts and adding an undeclared key.",
+      "proposedShape": {
+        "kind": "query",
+        "language": "soql",
+        "querySketch": "<statement shape>",
+        "paginator": "<Paginator, allowed on query as well as http>"
+      }
+    },
+    {
+      "where": "Paginator \u2014 the axis says where a token is READ FROM, not where it is SENT",
+      "description": "Both Salesforce paginators read and write the token in different places, and only the read side is expressible. Bulk: read from the Sforce-Locator response HEADER, sent as the 'locator' QUERY param. REST: read as the last PATH SEGMENT of the body field nextRecordsUrl, sent as a PATH SUFFIX on /services/data/v62.0/queryAll/{locator} (with the 'q' param dropped). Encoding either as tokenFrom alone loses half the mechanism, which is exactly the silent-truncation class of error the schema warns about. A `tokenTo` axis mirroring `tokenFrom` would close this.",
+      "proposedShape": {
+        "type": "cursor",
+        "tokenFrom": "header|url_path_segment|body",
+        "tokenTo": "url_query|url_path_suffix|header|body",
+        "cursorParam": "<name, or null when tokenTo is a path suffix>"
+      }
+    },
+    {
+      "where": "streams[*].pull.backfill \u2014 a THIRD pagination layer inside the SOQL itself",
+      "description": "Above the two HTTP-level paginators, backfills page by keyset on the primary key inside the statement: `AND Id > '<last_id>' ORDER BY Id ASC LIMIT n` (n = 500000 for Bulk, 2000 for REST), and the emitted page cursor is a Salesforce record Id, not a token from any response. The REST leg additionally probes for the page's closing Id with a `LIMIT 1 OFFSET 1999` query so that every field-chunk query shares an identical closed range. No member of the Paginator union describes query-embedded keyset paging, and it coexists with \u2014 rather than replaces \u2014 the transport paginator.",
+      "proposedShape": {
+        "type": "keyset",
+        "keyColumns": [
+          "Id"
+        ],
+        "order": "asc",
+        "pageSize": 500000,
+        "boundaryProbe": "LIMIT 1 OFFSET pageSize-1",
+        "layeredOver": "<the transport paginator>"
+      }
+    },
+    {
+      "where": "streams[*].pull \u2014 fan-out into N parallel queries per page (REST field chunking)",
+      "description": "On the REST leg a single logical page is not one request but one request PER FIELD CHUNK: the field list is split so URI+headers stay under 16384 bytes, each chunk becomes its own SOQL statement with an identical WHERE clause and its own independent paginator, and partial records are merged on Id until every chunk has contributed. Records whose cursor advances mid-fan-out are dropped and deferred to the next sweep. A PullSpec that models one request per page cannot express this.",
+      "proposedShape": {
+        "fanOut": {
+          "kind": "field_chunks",
+          "boundedBy": "URI+headers <= 16384 bytes",
+          "mergeKey": "Id",
+          "mergeMode": "shallow_union",
+          "skipIfCursorAdvanced": true
+        }
+      }
+    },
+    {
+      "where": "streams[*].schedule \u2014 the cron is a formula-field REFRESH, not a re-run of the binding",
+      "description": "v2 now holds the '55 23 * * *' cron, but the semantics are narrower than 'run this binding on this schedule'. On the cron tick the CDK fires a connector-initiated backfill in which the connector rewrites the field list down to Id + cursor field + calculated (formula) fields, forces is_supported_by_bulk_api=True, returns immediately if the object has no formula fields, and emits PARTIAL documents that the top-level MERGE reduction folds into existing rows. The schedule slot cannot say that the scheduled run reads a different projection and emits partial documents.",
+      "proposedShape": {
+        "schedule": {
+          "kind": "cron",
+          "expr": "55 23 * * *",
+          "scope": "calculated_fields_plus_key_and_cursor",
+          "emits": "partial_documents",
+          "reduction": "merge"
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull \u2014 a full-refresh binding has neither a backfill nor an incremental leg",
+      "description": "pull splits into backfill/incremental, but the 24 cursorless objects have a third shape: a snapshot re-executed in full on every 5-minute poll, replacing the prior snapshot via a tombstone. It is not a backfill (it never completes and hands off) and not incremental (it has no cursor). Recorded here under an undeclared `pull.snapshot` key rather than mislabelled as a backfill that never finishes.",
+      "proposedShape": {
+        "pull": {
+          "backfill": null,
+          "incremental": null,
+          "snapshot": "<PullSpec>"
+        }
+      }
+    },
+    {
+      "where": "transports[0] \u2014 the auth host is a control-plane mustache template, and it is not the API host",
+      "description": "The OAuth authorize/token ORIGIN is a mustache fragment the control plane renders (my_domain if set, else test.salesforce.com when is_sandbox, else login.salesforce.com), and the connector separately rewrites accessTokenUrlTemplate in-process at open/validate time so refresh requests hit the same host the tokens were issued from. That host is a different, independently-resolved host from the transport baseUrl (the org instance_url). credentialModes[].scheme.oauth2 offers only flat authUrl/tokenUrl strings, so the recorded values are the default (no My Domain, not a sandbox) production form only.",
+      "proposedShape": {
+        "type": "oauth2",
+        "hostResolution": {
+          "kind": "config_template",
+          "template": "https://{{my_domain}}{{^my_domain}}{{#is_sandbox}}test{{/is_sandbox}}{{^is_sandbox}}login{{/is_sandbox}}.salesforce.com{{/my_domain}}",
+          "sourceFields": [
+            "my_domain",
+            "is_sandbox"
+          ]
+        },
+        "authPath": "/services/oauth2/authorize",
+        "tokenPath": "/services/oauth2/token",
+        "tokenResponseMap": {
+          "refresh_token": "/refresh_token",
+          "instance_url": "/instance_url"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "294-302",
+      "snippet": "if isinstance(config.credentials, (UserPass, SalesforceClientCredentials)):\n        return await http.token_source.fetch_instance_url(log, http)\n    return config.credentials.instance_url"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_salesforce_native/shared.py",
+      "lines": "6",
+      "snippet": "VERSION = \"62.0\""
+    },
+    "transports[0].spec.kind": {
+      "file": "source_salesforce_native/rest_query_manager.py",
+      "lines": "132",
+      "snippet": "self.base_url = f\"{instance_url}/services/data/v{VERSION}/queryAll\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_salesforce_native/auth.py",
+      "lines": "95-110",
+      "snippet": "access_token, instance_url = SalesforceLogin(\n            username=self.username,\n            password=self.password,"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_salesforce_native/auth.py",
+      "lines": "35-46",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"salesforce\",\n    authUrlTemplate=(_OAUTH_LOGIN_ORIGIN + \"/services/oauth2/authorize?...\")"
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "233-239",
+      "snippet": "class BaseOAuth2Credentials(_BaseOAuth2CredentialsData, metaclass=abc.ABCMeta):\n    grant_type: ClassVar[str] = \"refresh_token\""
+    },
+    "credentialModes[2].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "211-212",
+      "snippet": "class ClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"client_credentials\""
+    },
+    "credentialModes[2].scheme.tokenUrl": {
+      "file": "source_salesforce_native/models.py",
+      "lines": "118-127",
+      "snippet": "if isinstance(self.credentials, SalesforceClientCredentials) and not self.my_domain:\n            raise ValueError(\"The My Domain field is required when using Client Credentials authentication.\")"
+    },
+    "execution.schedule": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "200-205",
+      "snippet": "initial_config=SalesforceResourceConfigWithSchedule(\n            name=name,\n            interval=timedelta(minutes=5),"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source_salesforce_native/bulk_job_manager.py",
+      "lines": "52-64",
+      "snippet": "body = {\n            \"operation\": \"queryAll\",\n            \"query\" : query,\n        }"
+    },
+    "execution.continuity.notes": {
+      "file": "source_salesforce_native/api.py",
+      "lines": "44",
+      "snippet": "LAG = timedelta(minutes=5)"
+    },
+    "configFields": {
+      "file": "source_salesforce_native/models.py",
+      "lines": "87-116",
+      "snippet": "class EndpointConfig(BaseModel):\n    start_date: AwareDatetime = Field(...)\n    is_sandbox: bool = Field(..."
+    },
+    "configFields[my_domain]": {
+      "file": "source_salesforce_native/models.py",
+      "lines": "111",
+      "snippet": "pattern=r\"^$|^[A-Za-z0-9][A-Za-z0-9.-]*\\.my\\.salesforce\\.com$\","
+    },
+    "configFields[advanced.window_size]": {
+      "file": "source_salesforce_native/models.py",
+      "lines": "130-136",
+      "snippet": "window_size: WindowSizeAsInterval | WindowSizeInDays = Field(\n            ... default_factory=lambda: WindowSizeInDays(days=18250), discriminator=\"window_type\","
+    },
+    "configFields[<resource>.schedule]": {
+      "file": "source_salesforce_native/models.py",
+      "lines": "35-42",
+      "snippet": "class SalesforceResourceConfigWithSchedule(ResourceConfigWithSchedule):\n    schedule: str = Field(default=\"\", title=\"Formula Field Refresh Schedule\", pattern=CRON_REGEX,)"
+    },
+    "streamMode": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "354-363",
+      "snippet": "queryable_object_names = await _fetch_queryable_objects(log, http, instance_url)\n\n    for name in queryable_object_names:\n        r = await _object_to_resource(...)"
+    },
+    "discovery.method": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "58-65",
+      "snippet": "url = f\"{instance_url}/services/data/v{VERSION}/sobjects\"\n    return [o.name for o in response.sobjects if o.queryable]"
+    },
+    "discovery.querySketch": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "240-291",
+      "snippet": "if is_custom_object_with_system_modstamp:\n        details = CUSTOM_OBJECT_WITH_SYSTEM_MODSTAMP_DETAILS\n    else:\n        details = get_standard_object_details(name)"
+    },
+    "discovery.allowlist": {
+      "file": "source_salesforce_native/supported_standard_objects.py",
+      "lines": "37-5073",
+      "snippet": "SUPPORTED_STANDARD_OBJECTS: dict[str, ObjectDetails] = {\n    \"AIApplication\": {\n        \"cursor_field\": CursorFields.SYSTEM_MODSTAMP"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "191-208",
+      "snippet": "resource = common.Resource(\n        name=name,\n        key=[\"/Id\"], ... reduction_strategy=ReductionStrategy.MERGE,"
+    },
+    "streams[0].cursorField": {
+      "file": "source_salesforce_native/supported_standard_objects.py",
+      "lines": "68-71",
+      "snippet": "\"Account\": {\n        \"cursor_field\": CursorFields.SYSTEM_MODSTAMP,\n        \"enabled_by_default\": True,"
+    },
+    "streams[0].schedule": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "200-205",
+      "snippet": "# Default to performing a formula field refresh at 23:55 UTC every day for every enabled binding.\n            schedule=\"55 23 * * *\""
+    },
+    "streams[0].pull.backfill.querySketch": {
+      "file": "source_salesforce_native/shared.py",
+      "lines": "75-88",
+      "snippet": "query = f\"SELECT {','.join(fields)} FROM {object_name}\"\n    query += f\" WHERE {cursor_field} > {dt_to_str(start)} AND {cursor_field} <= {dt_to_str(end)}\"\n    if last_id: query += f\" AND Id > '{last_id}'\""
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_salesforce_native/bulk_job_manager.py",
+      "lines": "149-154",
+      "snippet": "next_page = headers.get('Sforce-Locator', None)\n            if next_page == 'null' or not next_page: return\n            params['locator'] = next_page"
+    },
+    "streams[0].pull.backfill.transportNote": {
+      "file": "source_salesforce_native/api.py",
+      "lines": "367-376",
+      "snippet": "gen = _execute_bulk() if is_supported_by_bulk_api else _execute_rest()\n    except BulkJobError as err:\n        if _should_fallback_to_rest_api(err, name, log):"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_salesforce_native/rest_query_manager.py",
+      "lines": "44-59",
+      "snippet": "parts = next_records_url.strip('/').split('/')\n        if len(parts) == 5: self.query_locator = parts[-1]\n        ... url += f'/{self.query_locator}'"
+    },
+    "streams[0].pull.incremental.transportNote": {
+      "file": "source_salesforce_native/api.py",
+      "lines": "485-491",
+      "snippet": "queries = [build_date_window_query(name, chunk, cursor_field, log_cursor, end) for chunk in chunk_fields(fields, cursor_field)]\n    gen = rest_query_manager.execute(name, queries, model_cls, cursor_field, end)"
+    },
+    "streams[17].cursorField": {
+      "file": "source_salesforce_native/supported_standard_objects.py",
+      "lines": "SUPPORTED_STANDARD_OBJECTS['LoginHistory']",
+      "snippet": "\"LoginHistory\": {\n        \"cursor_field\": CursorFields.LOGIN_TIME\n    },"
+    },
+    "streams[19].writeDisposition": {
+      "file": "source_salesforce_native/resources.py",
+      "lines": "110-118",
+      "snippet": "tombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))\n        )\n    resource = common.Resource(name=name, key=[\"/_meta/row_id\"],"
+    },
+    "streams[19].pull.snapshot.querySketch": {
+      "file": "source_salesforce_native/shared.py",
+      "lines": "40-41",
+      "snippet": "def build_snapshot_query(object_name: str, fields: list[str]) -> str:\n    return f\"SELECT {','.join(fields)} FROM {object_name}\""
+    },
+    "unionMisfits[2].proposedShape": {
+      "file": "source_salesforce_native/api.py",
+      "lines": "201-220",
+      "snippet": "query = build_id_page_query(name, [\"Id\"], cursor_field, start, end, last_id=last_id, limit=1, offset=REST_ID_PAGE_LIMIT - 1,)"
+    },
+    "unionMisfits[3].proposedShape": {
+      "file": "source_salesforce_native/rest_query_manager.py",
+      "lines": "101-125",
+      "snippet": "def chunk_fields(fields: FieldDetailsDict, cursor_field: CursorFields) -> list[list[str]]:\n    mandatory_fields: list[str] = ['Id', cursor_field]"
+    },
+    "unionMisfits[4].proposedShape": {
+      "file": "source_salesforce_native/api.py",
+      "lines": "259-269",
+      "snippet": "if is_connector_initiated:\n        has_fields_to_refresh, fields = _filter_to_only_refresh_fields(fields, cursor_field)\n        is_supported_by_bulk_api = True"
+    },
+    "unionMisfits[6].proposedShape": {
+      "file": "source_salesforce_native/auth.py",
+      "lines": "26-32",
+      "snippet": "_OAUTH_LOGIN_ORIGIN = (\"https://\" r\"{{#config.my_domain}}{{{config.my_domain}}}{{/config.my_domain}}\" ...)"
+    },
+    "authTierRationale": {
+      "file": "source_salesforce_native/auth.py",
+      "lines": "61-67",
+      "snippet": "# Mustache templates in accessTokenUrlTemplate are not interpolated within the connector, so update_oauth_spec reassigns it for use within the connector.\ndef update_oauth_spec(is_sandbox: bool, my_domain: str):"
+    }
+  },
+  "confidence": {
+    "transports[0].spec.kind": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].scheme.grant": "high",
+    "credentialModes[1].scheme.authUrl": "low",
+    "credentialModes[1].scheme.tokenUrl": "low",
+    "credentialModes[1].scheme.scopes": "medium",
+    "credentialModes[2]": "high",
+    "credentialModes[*].tier": "medium",
+    "execution.mode": "high",
+    "execution.schedule": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "medium",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.allowlist": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].primaryKeyKind": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].writeDisposition": "high",
+    "streams[*].schedule": "high",
+    "streams[*].pull.backfill.querySketch": "high",
+    "streams[*].pull.backfill.paginator": "high",
+    "streams[*].pull.incremental.paginator": "high",
+    "streams[*].pull.backfill.transportNote": "medium",
+    "authTierOverall": "medium"
+  },
+  "abstained": {
+    "credentialModes[1].scheme.authUrl": "Not a literal in the source. The origin is a mustache fragment the Estuary control plane renders: my_domain when set, else test.salesforce.com when is_sandbox, else login.salesforce.com. The value recorded is the default production form (no My Domain, not a sandbox) \u2014 treat the host as config-derived, not fixed. See unionMisfits[6].",
+    "credentialModes[1].scheme.tokenUrl": "Same templating as authUrl, plus the connector rewrites OAUTH2_SPEC.accessTokenUrlTemplate in-process (update_oauth_spec) at every open/validate so refresh requests go to the same host the tokens were issued from. Recorded value is the default production form only.",
+    "credentialModes[1].scheme.scopes": "Recorded as [] because the authorize URL the connector builds sends client_id, redirect_uri, response_type and state and NO scope parameter \u2014 granted scopes are whatever the customer's Connected App is configured with. This means 'not requested by the connector', not 'no scopes needed'. api and refresh_token/offline_access are implied by the flow but nowhere asserted in the source.",
+    "credentialModes[2].scheme.authUrl": "Null by construction: client_credentials is a server-to-server grant with no browser authorize step. The OAUTH2_SPEC's authUrlTemplate belongs to the OAuth (refresh_token) mode only.",
+    "credentialModes[*].tier": "Tiers reflect what each mode demands of a user standing alone, without a control plane. The source does not settle which deployment model an adopter uses, and for the OAuth mode that choice moves the tier from T3 to T1 (see authTierRationale).",
+    "transports[0].spec.defaultHeaders": "Null: no headers are pinned globally. The CDK adds Authorization: Bearer <token>; the only connector-added header is Accept-Encoding: gzip on Bulk API result downloads. API version 62.0 is pinned in the path instead.",
+    "streams[*].pull.<leg>.paginator.pageSize (REST)": "2000 is Salesforce's documented ceiling and the constant the connector assumes (MAX_REST_RESPONSE_SIZE), but the source comments state Salesforce dynamically reduces the page size per query depending on row width \u2014 the effective page size is server-chosen and not knowable statically.",
+    "streams[*].pull.backfill.transportNote": "Whether a given stream's backfill runs on Bulk or REST is NOT statically knowable. It depends on (a) the shipped is_supported_by_bulk_api flag (13 objects), (b) the object's describe response reporting a soapType in SOAP_TYPES_NOT_SUPPORTED_BY_BULK_API, which is per-org because custom fields count, and (c) runtime error-string fallback including daily bulk quota exhaustion. The paginator recorded on the backfill leg is the Bulk one because that is the default path; the REST paginator applies verbatim when it falls back.",
+    "streams": "Only the 17 objects enabled by default, plus LoginHistory (the sole LoginTime-cursor object), AccountShare (a representative LastModifiedDate-cursor object), and 2 of the 24 cursorless objects are listed. The shipped table holds 1676 standard objects and the connector additionally binds any customer custom object matching __c / __Feed / __mdt / _hd / __Share / __History, so the real per-org stream list comes from discovery. `origin` is 'static' on every listed stream because their details come from the shipped table; custom-object streams are 'discovered'. streamMode is therefore 'mixed'.",
+    "streams[*].supportedSyncModes": "Objects with a cursor_field get both a backfill and incremental sweeps; objects without one are snapshot-only. Note deletes are never captured on any path \u2014 every query uses operation=queryAll / the queryAll endpoint, which includes archived and recycle-bin rows, but a hard-deleted row simply stops appearing.",
+    "execution.continuity.ourSideLoss": "Null with medium confidence: connector state is an absolute datetime cursor and an absolute record Id, both re-queried with SOQL, so no retention window or resume token can expire. The residual risk the source does not settle is Salesforce's own data retention for archived/recycle-bin rows and the fact that deletes are invisible, so a long pause loses delete visibility rather than losing resumability."
+  }
+}

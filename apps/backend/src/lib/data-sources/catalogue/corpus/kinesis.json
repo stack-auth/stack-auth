@@ -1,0 +1,281 @@
+{
+  "id": "kinesis",
+  "estuaryDir": "source-kinesis",
+  "displayName": "Amazon Kinesis",
+  "description": "Continuously captures JSON records from the shards of one or more Amazon Kinesis Data Streams, optionally decoding AWS Glue Schema Registry framed payloads.",
+  "category": "streaming",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Kinesis Data Streams control + data plane (ListStreams, DescribeStreamSummary, ListShards, GetShardIterator, GetRecords)",
+      "spec": {
+        "kind": "stream",
+        "system": "kinesis",
+        "endpointConfig": "AWS SDK v2 client built from `region` alone; no broker list. An optional `advanced.endpoint` overrides the SDK BaseEndpoint for Kinesis-compatible APIs (the test harness points it at localstack). Per-stream ARNs are resolved at runtime via DescribeStreamSummary, not configured."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "AWS Glue Schema Registry — GetSchemaVersion, used to resolve the 16-byte schema-version UUID in a Glue-framed record header (version byte 3) and emit a SourcedSchema. Optional: if the Glue client cannot connect the connector logs a warning and disables the integration.",
+      "spec": {
+        "kind": "stream",
+        "system": "other",
+        "endpointConfig": "glue.NewFromConfig on the same aws.Config (same region and static credentials); `advanced.endpoint` also overrides the Glue BaseEndpoint."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "AWS static access key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["region", "awsAccessKeyId", "awsSecretAccessKey"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Records are trimmed by Kinesis on the stream's own retention clock regardless of whether we read them, so a pause longer than the stream's retention loses data outright. Concretely: the connector resumes each shard with ShardIteratorType=AFTER_SEQUENCE_NUMBER using the last checkpointed sequence number; once that sequence has aged out of retention (or the stream was deleted and re-created) GetShardIterator returns InvalidArgumentException and the connector silently falls back to TRIM_HORIZON — i.e. it restarts at the oldest record still retained and the gap between the checkpointed sequence and the new trim horizon is never captured, with only a warning log. Separately, an in-flight shard iterator expires after ~5 minutes, but that is recovered transparently by re-deriving an iterator from the last sequence number and is not a data-loss path.",
+      "resumeWindow": "The Kinesis stream's configured retention period — AWS default 24 hours, extendable to 7 days (and, with long-term retention, up to 365 days). The connector neither reads nor configures this value; it is entirely a property of the customer's stream.",
+      "releasedOnShutdown": true,
+      "notes": "Nothing whatsoever is left on the customer's side. This connector does NOT use the KCL: there is no DynamoDB lease table, no consumer group, no registered enhanced-fan-out consumer, no checkpoint table. It only calls read APIs (ListStreams, DescribeStreamSummary, ListShards, GetShardIterator, GetRecords) plus Glue GetSchemaVersion. All resumption state — a map of stateKey -> {shardId -> sequenceNumber} — lives in the Flow checkpoint on our side. Consequently stopping between ticks costs the customer nothing (Kinesis storage cost and trimming are driven by retention, not by consumer lag), and the entire risk is ours: the resume window is the stream retention, and blowing through it degrades to a silent TRIM_HORIZON restart rather than an error. Stale shard ids are pruned from the checkpoint, but only once at startup."
+    }
+  },
+
+  "configFields": [
+    { "name": "region", "displayName": "AWS Region", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The name of the AWS region where the Kinesis stream is located. All bindings must reference streams in this one region." },
+    { "name": "awsAccessKeyId", "displayName": "AWS Access Key ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Part of the AWS credentials that will be used to connect to Kinesis." },
+    { "name": "awsSecretAccessKey", "displayName": "AWS Secret Access Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Part of the AWS credentials that will be used to connect to Kinesis." },
+    { "name": "advanced.endpoint", "displayName": "AWS Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS endpoint URI to connect to, for capturing from a Kinesis-compatible API that isn't provided by AWS. Applied to both the Kinesis and Glue clients." },
+    { "name": "stream", "displayName": "Stream Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the Kinesis stream this binding captures. Validated against ListStreams; a binding naming a stream that does not exist fails Validate." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Kinesis ListStreams (paginated on HasMoreStreams/NextToken), then DescribeStreamSummary per stream name to obtain the stream ARN, at concurrency 5; results sorted by name",
+    "querySketch": "ListStreams -> [streamName]; for each: DescribeStreamSummary(StreamName) -> StreamDescriptionSummary.StreamARN",
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<kinesis stream name>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/sequence_number", "/_meta/partition_key"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "_meta/sequence_number",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "shard read loop", "schedule": { "kind": "continuous" } },
+        { "role": "per-shard GetRecords rate limit", "schedule": { "kind": "other", "literal": "rate.NewLimiter(rate.Every(time.Second), 5)", "description": "Each shard reader self-throttles GetRecords to the Kinesis 5 TPS-per-shard limit; this paces the loop but is not a sync schedule." } },
+        { "role": "throughput/lag stats logging", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "partitioned_log",
+          "unit": "shard",
+          "offsetKind": "ShardIteratorType=TRIM_HORIZON (oldest record still inside the stream's retention window)",
+          "shardable": true,
+          "notes": "There is no historical backfill in the usual sense: with no checkpointed sequence for a shard the connector starts at TRIM_HORIZON, so the 'initial sweep' reaches back only as far as stream retention (24h by default), not to the beginning of time. The same code path and the same read loop then continue straight into ongoing consumption — there is no separate handoff and no cut-over sequence. This TRIM_HORIZON path is also the silent fallback when a checkpointed sequence number has expired."
+        },
+        "incremental": {
+          "kind": "partitioned_log",
+          "unit": "shard",
+          "offsetKind": "Kinesis sequence number per shard; resumed with ShardIteratorType=AFTER_SEQUENCE_NUMBER + StartingSequenceNumber. Checkpoint state shape is {stateKey: {shardId: sequenceNumber}}; a shardId mapped to null is a tombstone that prunes the entry.",
+          "shardable": true,
+          "notes": "One goroutine per shard, all shards of all bound streams read concurrently under one errgroup; each reader loops GetRecords, following res.NextShardIterator until it is nil (shard closed). Rate-limited to 5 GetRecords/sec per shard. RESHARDING IS HANDLED EXPLICITLY AND IS THE MAIN RESUMPTION CONCERN: the shard set is enumerated once per connector run via ListShards; readers start on 'root' shards (no ParentShardId, or a parent that no longer exists) and, when a shard closes, GetRecords returns ChildShards which are dispatched as new readers — so splits and merges discovered mid-run are followed without a restart. Ordering across a reshard is preserved by a shardTracker: a child waits for every parent in ChildShard.ParentShards to reach 'finished' before reading, which covers merges (one child, two parents) as well as splits; a child reachable from two merged parents is deduplicated by setReading() so it is only read once. Two consequences worth naming: (1) NEW root shards created after the run started are NOT picked up — the shard list is only enumerated at startup, and if every reader finishes the connector logs 'finished reading stream' and closes out, so it relies on the capture being restarted to see a fresh shard topology; (2) checkpoint pruning of vanished shardIds also happens only at startup. On resume after a reshard, a checkpointed sequence for a now-nonexistent shard is dropped and its successor shards start from TRIM_HORIZON rather than from the parent's position, since a child shard has no sequence of its own in state."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode is offered: a static AWS access key id + secret access key plus a region, supplied directly in the endpoint config and wired into credentials.NewStaticCredentialsProvider. There is no OAuth of any kind, no assumed-role / STS AssumeRole option, no instance-profile or web-identity path, and no external-id flow — awsConfig.LoadDefaultConfig is called with an explicit static provider so ambient credentials are not consulted. AWS_SESSION_TOKEN is read from the process environment and passed as the session token, but it is a test-harness affordance for temporary credentials (it is not a config field and is not in the JSON schema), so it does not create a second user-facing mode. The user's job is to mint one IAM user access key with Kinesis read (and optionally Glue GetSchemaVersion) permissions — self-serve, single secret, no app registration and no refresh token, i.e. T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].writeDisposition",
+      "description": "Kinesis records are strictly append-only events, but the connector still emits a stable composite key (/_meta/sequence_number + /_meta/partition_key) which makes replays idempotent. That is neither plain 'append' (there IS a merge key, and re-reading a shard after an expired-iterator retry or a restart re-emits the same key) nor a true 'merge' over mutable entities (nothing is ever updated or deleted upstream; no tombstones are produced). Recording it as 'merge' is the closest fit but overstates upstream mutability.",
+      "proposedShape": { "writeDisposition": "append_deduplicated_by_key", "keyIsUpstreamImmutable": true, "emitsDeletes": false }
+    },
+    {
+      "where": "streams[0].pull.backfill vs pull.incremental",
+      "description": "The backfill/incremental split does not really exist here. Both members describe the same loop with a different starting ShardIteratorType, chosen per shard by whether a checkpointed sequence exists (and by whether that sequence is still valid). Modelling them as two PullSpecs implies a phase transition that the code never makes.",
+      "proposedShape": { "pull": { "log": { "kind": "partitioned_log", "startPositions": { "noCheckpoint": "TRIM_HORIZON", "checkpoint": "AFTER_SEQUENCE_NUMBER", "expiredCheckpoint": "TRIM_HORIZON (silent)" } } } }
+    },
+    {
+      "where": "transports[1]",
+      "description": "AWS Glue Schema Registry is a plain AWS API dependency, not a stream system; `kind: \"stream\", system: \"other\"` is a poor fit and `kind: \"http\"` would be worse (there is no user-visible base URL — the SDK derives it from region). A dedicated awsService transport kind would fit.",
+      "proposedShape": { "kind": "awsService", "service": "glue", "regionFrom": "endpoint config region", "optional": true }
+    },
+    {
+      "where": "execution.continuity.artifacts",
+      "description": "The empty list is a genuinely important finding rather than a missing value — it distinguishes this connector from every KCL-based Kinesis consumer, which would leave a DynamoDB lease table behind. The schema has no way to mark 'verified empty' as opposed to 'not investigated'.",
+      "proposedShape": { "artifacts": { "verified": true, "items": [] } }
+    },
+    {
+      "where": "streams[0].schedules",
+      "description": "Two of the three entries are not sync schedules at all: the 5 TPS limiter is a per-shard API-quota pacer and the 5-minute timer only drives a log line. Cramming them into `schedules` risks a reader treating the connector as polled every 5 minutes when it is in fact a continuously running log reader.",
+      "proposedShape": { "schedules": [{ "role": "sync", "schedule": { "kind": "continuous" } }], "rateLimits": [{ "scope": "per shard", "api": "GetRecords", "limit": "5/sec" }], "telemetry": [{ "role": "stats log", "intervalSeconds": 300 }] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "connection.go",
+      "lines": "84-98",
+      "snippet": "func connect(ctx context.Context, cfg *Config) (*kinesis.Client, error) {\n\to.BaseEndpoint = &cfg.Advanced.Endpoint\n\treturn kinesis.NewFromConfig(*awsCfg, clientOpts...), nil"
+    },
+    "transports[1].spec": {
+      "file": "connection.go",
+      "lines": "100-114",
+      "snippet": "func connectGlue(ctx context.Context, cfg *Config) (*glue.Client, error) {\n\treturn glue.NewFromConfig(*awsCfg, clientOpts...), nil"
+    },
+    "transports[1].purpose": {
+      "file": "capture.go",
+      "lines": "459-462",
+      "snippet": "out, err := c.glueClient.GetSchemaVersion(ctx, &glue.GetSchemaVersionInput{\n\tSchemaVersionId: aws.String(schemaVersionID),\n})"
+    },
+    "credentialModes[0].scheme": {
+      "file": "connection.go",
+      "lines": "57-61",
+      "snippet": "awsConfig.WithCredentialsProvider(\n\tcredentials.NewStaticCredentialsProvider(cfg.AWSAccessKeyID, cfg.AWSSecretAccessKey, sessionToken),\n),"
+    },
+    "credentialModes[0].tier": {
+      "file": "connection.go",
+      "lines": "23-29",
+      "snippet": "Region             string `json:\"region\"`\nAWSAccessKeyID     string `json:\"awsAccessKeyId\"`\nAWSSecretAccessKey string `json:\"awsSecretAccessKey\"`"
+    },
+    "execution.mode": {
+      "file": "capture.go",
+      "lines": "369-376",
+      "snippet": "for {\n\tres, err := c.client.GetRecords(ctx, &kinesis.GetRecordsInput{\n\t\tShardIterator: iterator,"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "capture.go",
+      "lines": "294-304",
+      "snippet": "// This error occurs if a stream is deleted and re-created, or\n// if the retention limit of a sequence number is exceeded.\niteratorInput.ShardIteratorType = types.ShardIteratorTypeTrimHorizon"
+    },
+    "execution.continuity.artifacts": {
+      "file": "main.go",
+      "lines": "195-197",
+      "snippet": "func (d *driver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) {\n\treturn &pc.Response_Applied{ActionDescription: \"\"}, nil\n}"
+    },
+    "execution.continuity.notes": {
+      "file": "README.md",
+      "lines": "24-28",
+      "snippet": "The Kinesis connector stores the current offset within each Kinesis Shard in its state. It prunes\nold Kinesis Shards only on startup."
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "capture.go",
+      "lines": "122-137",
+      "snippet": "cp := captureState{\n\tStreams: c.updateState,\n}\n... c.stream.Checkpoint(cpJson, true)"
+    },
+    "configFields": {
+      "file": ".snapshots/TestSpec",
+      "lines": "5-56",
+      "snippet": "\"required\": [\n  \"region\",\n  \"awsAccessKeyId\",\n  \"awsSecretAccessKey\"\n]"
+    },
+    "discovery.method": {
+      "file": "connection.go",
+      "lines": "125-152",
+      "snippet": "input := &kinesis.ListStreamsInput{}\nif !*res.HasMoreStreams { break }\ndesc, err := client.DescribeStreamSummary(groupCtx, &kinesis.DescribeStreamSummaryInput{StreamName: &n})"
+    },
+    "streams[0].primaryKey": {
+      "file": "discovery.go",
+      "lines": "70",
+      "snippet": "Key: []string{fmt.Sprintf(\"/%s/%s\", metaProperty, sequenceNumber), fmt.Sprintf(\"/%s/%s\", metaProperty, partitionKey)},"
+    },
+    "streams[0].cursorField": {
+      "file": "capture.go",
+      "lines": "389-391",
+      "snippet": "if len(res.Records) > 0 {\n\tlastSequence = res.Records[len(res.Records)-1].SequenceNumber\n}"
+    },
+    "streams[0].pull.backfill.offsetKind": {
+      "file": "capture.go",
+      "lines": "280-289",
+      "snippet": "ShardIteratorType: types.ShardIteratorTypeTrimHorizon,\nif startingSequence != nil {\n\titeratorInput.ShardIteratorType = types.ShardIteratorTypeAfterSequenceNumber"
+    },
+    "streams[0].pull.incremental.offsetKind": {
+      "file": "capture.go",
+      "lines": "114-117",
+      "snippet": "if c.updateState[stateKey] == nil {\n\tc.updateState[stateKey] = make(map[string]*string)\n}\nc.updateState[stateKey][shardId] = &sequence"
+    },
+    "streams[0].pull.incremental.shardable": {
+      "file": "capture.go",
+      "lines": "247-253",
+      "snippet": "for _, shard := range rootShards {\n\tactiveReaders++\n\tgroup.Go(func() error { return c.readShard(...) })"
+    },
+    "streams[0].pull.incremental.notes": {
+      "file": "capture.go",
+      "lines": "398-405",
+      "snippet": "if res.NextShardIterator == nil {\n\ttracker.setFinished(shard.shardId)\n\tfor _, s := range res.ChildShards { output <- childShardCompletionEvent{child: s} }"
+    },
+    "streams[0].schedules[1].schedule": {
+      "file": "capture.go",
+      "lines": "366-367",
+      "snippet": "// Respect the kinesis 5 TPS rate limit.\nlimiter := rate.NewLimiter(rate.Every(time.Second), 5)"
+    },
+    "streams[0].schedules[2].schedule": {
+      "file": "capture.go",
+      "lines": "58-61",
+      "snippet": "case <-time.After(5 * time.Minute):"
+    },
+    "streams[0].supportedSyncModes": {
+      "file": "capture.go",
+      "lines": "354-361",
+      "snippet": "var lastSequence *string\nif lastSequence = state[shard.shardId]; lastSequence != nil {\niterator, err := c.getShardIterator(ctx, stream, shard.shardId, lastSequence)"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "transports[1].spec": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].schedules": "medium"
+  },
+
+  "abstained": {
+    "execution.continuity.resumeWindow.exactValue": "The connector never reads, sets, or validates the stream's RetentionPeriodHours — DescribeStreamSummary is called only to extract the StreamARN. The 24h/7d/365d figures are AWS Kinesis platform defaults and limits, not values found in this source; the actual resume window is whatever the customer configured on their stream and is unknowable from the connector code. The capture.go comment at line 269 does say shards of a deleted stream 'remain available to read for 24 hours', which corroborates the default but is not a read of the customer's setting.",
+    "transports[0].spec.baseUrl": "The stream transport union has no baseUrl member, and none is derivable: the AWS SDK constructs the Kinesis endpoint from the region internally. Only the optional `advanced.endpoint` override is user-visible.",
+    "streams[0].name": "streamMode is discovered — the stream list comes entirely from the customer's account via ListStreams, so no literal stream name exists in the source. One archetype is emitted; every discovered stream has the identical shape (same minimalSchema, same composite key, same resource config with a single `stream` field), so a single archetype is exhaustive.",
+    "streams[*].documentSchema": "Discovery ships only a minimal schema with x-infer-schema:true requiring _meta; the real record shape is inferred downstream, or supplied at runtime as a SourcedSchema when a Glue Schema Registry header (version byte 3) is present and the Avro/JSON schema resolves. Payloads are otherwise required to be JSON — the README states no other formats are supported.",
+    "credentialModes[*].iamPolicy": "The source does not declare a required IAM policy or action list; the needed permissions (kinesis:ListStreams, DescribeStreamSummary, ListShards, GetShardIterator, GetRecords, and glue:GetSchemaVersion) are inferred from the API calls made, not documented in the connector.",
+    "execution.continuity.newShardDiscovery": "Whether a long-running capture ever re-enumerates ListShards to pick up shards created after startup could not be established as intentional design: listAllShards is called once per readStream invocation and new root shards are only reachable via ChildShards of a closed shard, but no comment states whether this is deliberate or relies on periodic restarts. Recorded as an observed consequence in pull.incremental.notes rather than asserted as a defect."
+  }
+}

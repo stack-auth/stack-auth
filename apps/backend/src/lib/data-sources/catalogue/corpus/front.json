@@ -1,0 +1,423 @@
+{
+  "id": "front",
+  "estuaryDir": "source-front",
+  "displayName": "Front",
+  "description": "Imports shared-inbox customer communication data from Front — conversations, contacts, events, tags, teammates, teams, inboxes and channels.",
+  "category": "support",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api2.frontapp.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App access token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date and time in the format YYYY-MM-DDTHH:MM:SSZ. Data generated before this date will not be replicated. Defaults to 2000-01-01T00:00:00Z." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Constant discriminator, always \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Front API access token, sent as an Authorization: Bearer header." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK-common ResourceConfig)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Interval between updates for this resource (ISO-8601 duration; CDK-common ResourceConfig)." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "channels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/channels",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "inboxes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/inboxes",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/tags",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "teammates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/teammates",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/teams",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "emitted_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/events",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100, "sort_by": "created_at", "sort_order": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "q[after]", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/contacts",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100, "sort_by": "updated_at", "sort_order": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": { "param": "q[updated_after]", "format": "unix_seconds" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep (5m base + 2m conversations lag)", "schedule": { "kind": "interval", "seconds": 420 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/conversations/search/{query}",
+          "httpMethod": "GET",
+          "recordsPath": "_results",
+          "params": { "limit": 100 },
+          "pathPlaceholders": {
+            "query": "URL-quoted Front search expression 'after:<start_epoch_seconds> before:<end_epoch_seconds>' where the window walks forward from the cursor in at-most-15-day slices, ending no later than now minus 2 minutes; window edges are inclusive so the next start is previous end + 1ms"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page_token",
+            "cursorPath": "_pagination.next",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is estuary_cdk.flow.AccessToken ('Private App Credentials'), a single user-supplied secret string. resources.py constructs TokenSource(oauth_spec=None, credentials=config.credentials), so no OAuth app registration and no refresh token are involved; the CDK's TokenSource returns the AccessToken verbatim with the default 'Bearer' token type on the default 'Authorization' header. A Front admin self-serves this token from Front's developer settings.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[7].pull.incremental (conversations)",
+      "description": "The incremental filter is not a query parameter at all — it is encoded into a URL-quoted PATH SEGMENT (a Front search expression 'after:<ts> before:<ts>'), and it is a bounded WINDOW (both ends), not a single since-watermark. `incrementalParam` cannot express either property, so it is null here and the semantics are carried in prose inside `pathPlaceholders`.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "carrier": "path_segment",
+          "template": "after:{start} before:{end}",
+          "format": "unix_seconds_millis_truncated",
+          "boundsInclusive": true,
+          "maxWindow": "15 days",
+          "lagFromNow": "2 minutes",
+          "checkpointsPerWindow": true
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam.param (events, contacts)",
+      "description": "The incremental parameter is a bracketed sub-key of a filter object, 'q[after]' / 'q[updated_after]', not a flat parameter name; a consumer that URL-encodes the brackets or treats the name as an opaque identifier will build a wrong request.",
+      "proposedShape": { "paramFamily": "q", "paramKey": "after", "encoding": "unencoded_brackets" }
+    },
+    {
+      "where": "streams[0..4] (full-refresh resources)",
+      "description": "models.py comments these five resources as 'do not support pagination', yet the shared snapshot fetcher unconditionally sends limit=100 and follows _pagination.next. The declared paginator is what the code does, not what the comment claims; treat the comment as stale rather than as a contradicting fact.",
+      "proposedShape": { "paginatorAsserted": "cursor", "sourceCommentClaims": "none" }
+    },
+    {
+      "where": "execution.defaultSchedule",
+      "description": "There is no connector-wide schedule; every binding ships its own initial_config interval (5m, or 7m for conversations). The per-stream `schedules` list carries it, and the connector-level field is null — recorded here only so the null is not read as 'unknown'.",
+      "proposedShape": { "defaultSchedule": null, "reason": "per_binding_only" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_front/api.py", "lines": "15", "snippet": "API = \"https://api2.frontapp.com\"" },
+    "credentialModes[0].scheme": { "file": "source_front/models.py", "lines": "27-29", "snippet": "credentials: AccessToken = Field(\n        title=\"Authentication\",\n    )" },
+    "credentialModes[0].tier": { "file": "source_front/resources.py", "lines": "189", "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)" },
+    "configFields[2]": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "119-122", "snippet": "access_token: str = Field(\n        title=\"Access Token\",\n        json_schema_extra={\"secret\": True},\n    )" },
+    "authTierOverall": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36, 305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"" },
+    "streamMode": { "file": "source_front/models.py", "lines": "73-79", "snippet": "FULL_REFRESH_RESOURCES: list[str] = [\n    'channels',\n    'inboxes'," },
+    "streams[0].pull.snapshot.path": { "file": "source_front/api.py", "lines": "42", "snippet": "url = f\"{API}/{path}\"" },
+    "streams[0].pull.snapshot.paginator": { "file": "source_front/api.py", "lines": "58-63", "snippet": "next_page_token = _extract_page_token(response.pagination.next)\n        if next_page_token is None:\n            break" },
+    "streams[0].pull.snapshot.paginator.tokenFrom": { "file": "source_front/api.py", "lines": "31-34", "snippet": "parsed_url = urlparse(url)\n    params: dict[str, str] = parse_qs(parsed_url.query)\n    return params.get(\"page_token\")" },
+    "streams[0].pull.snapshot.paginator.tokenTo": { "file": "source_front/api.py", "lines": "63", "snippet": "params[\"page_token\"] = next_page_token" },
+    "streams[0].pull.snapshot.recordsPath": { "file": "source_front/models.py", "lines": "67-68", "snippet": "results: list[FrontResource] = Field(..., alias='_results')\n    pagination: Pagination = Field(..., alias='_pagination')" },
+    "streams[0].writeDisposition": { "file": "source_front/resources.py", "lines": "71", "snippet": "tombstone=FrontResource(_meta=FrontResource.Meta(op=\"d\"))" },
+    "streams[0].primaryKey": { "file": "source_front/resources.py", "lines": "76", "snippet": "key=[\"/_meta/row_id\"]," },
+    "streams[0].schedules": { "file": "source_front/resources.py", "lines": "80-83", "snippet": "initial_config=ResourceConfig(\n                name=name, interval=timedelta(minutes=5)\n            )," },
+    "streams[5].pull.incremental.params": { "file": "source_front/api.py", "lines": "151-156", "snippet": "params = {\n        f\"q[{q_filter}]\": previous_cursor_ts,\n        \"limit\": 100," },
+    "streams[5].pull.incremental.incrementalParam": { "file": "source_front/models.py", "lines": "88", "snippet": "(\"events\", \"after\", \"created_at\", Event, \"emitted_at\")," },
+    "streams[5].cursorField": { "file": "source_front/models.py", "lines": "44-46", "snippet": "class Event(FrontResource):\n    id: str\n    emitted_at: float" },
+    "streams[6].pull.incremental.incrementalParam": { "file": "source_front/models.py", "lines": "89", "snippet": "(\"contacts\", \"updated_after\", \"updated_at\", Contact, \"updated_at\")," },
+    "streams[5].primaryKey": { "file": "source_front/resources.py", "lines": "126", "snippet": "key=[\"/id\"]," },
+    "streams[7].pull.incremental.path": { "file": "source_front/api.py", "lines": "72-73", "snippet": "query_path = f\"after:{_dt_to_s(start)} before:{_dt_to_s(end)}\"\n    url = f\"{API}/conversations/search/{quote(query_path)}\"" },
+    "streams[7].pull.incremental.pathPlaceholders": { "file": "source_front/api.py", "lines": "110-116", "snippet": "return min(dt + timedelta(days=MAX_DATE_WINDOW_SIZE), cutoff)" },
+    "streams[7].cursorField": { "file": "source_front/api.py", "lines": "102-104", "snippet": "# Conversations do not contain a field that indicate when they were updated, so there's no way of determining\n    # when a conversation was updated." },
+    "streams[7].schedules": { "file": "source_front/resources.py", "lines": "176-178", "snippet": "initial_config=ResourceConfig(\n                name=\"conversations\", interval=timedelta(minutes=5 + CONVERSATIONS_LAG)\n            )," },
+    "execution.mode": { "file": "source_front/resources.py", "lines": "112-121", "snippet": "fetch_changes=functools.partial(\n                fetch_resources_with_cursor_fields," },
+    "configFields[0]": { "file": "source_front/models.py", "lines": "22-26", "snippet": "start_date: AwareDatetime = Field(\n        description=\"UTC date and time in the format YYYY-MM-DDTHH:MM:SSZ...\"," }
+  },
+
+  "confidence": {
+    "id": "high",
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[0].pull.snapshot.paginator.tokenFrom": "high",
+    "streams[0].pull.snapshot.paginator.terminateOn": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[5].pull.incremental.incrementalParam": "high",
+    "streams[6].pull.incremental.incrementalParam": "high",
+    "streams[7].pull.incremental.path": "high",
+    "streams[7].pull.incremental.pathPlaceholders": "high",
+    "streams[*].schedules": "high",
+    "streams[0..4].writeDisposition": "high",
+    "streams[5].supportedSyncModes": "medium",
+    "streams[7].cursorField": "high",
+    "execution.mode": "high",
+    "category": "medium",
+    "transports[0].spec.apiVersionPinning": "medium"
+  },
+
+  "abstained": {
+    "transports[0].spec.apiVersionPinning": "The connector sends no Accept-version or API-version header and no version path segment; the host `api2.frontapp.com` embeds a '2' but nothing in the code treats it as a version knob, so no pinning mechanism is asserted.",
+    "transports[0].spec.defaultHeaders": "Only the Authorization header is set, and that comes from the CDK TokenSource rather than a connector-declared default header map.",
+    "execution.defaultSchedule": "No connector-level schedule exists; scheduling is declared per binding via initial_config.interval. See unionMisfits.",
+    "execution.continuity": "mode is 'poll' with no server-side artifacts — the connector creates nothing on Front's side and holds only its own datetime checkpoints, so the field is null rather than unknown.",
+    "streams[*].pull.backfill": "The connector has no separate historical leg. Full-refresh resources re-snapshot the whole collection each interval; incremental resources start from `start_date` and use the same code path forever. Nothing distinguishes a backfill pull shape.",
+    "streams[7].cursorField": "Conversations records carry no update timestamp — the code says so explicitly. The checkpoint is the search window's end datetime held in connector state, not a field on the record, so no record-level cursorField can be named.",
+    "streams[5].supportedSyncModes.full_refresh": "events/contacts bindings are opened with fetch_changes only (no fetch_snapshot). 'full_refresh' is listed because a from-`start_date` run replays all history through the same incremental path, but the connector does not offer a distinct full-refresh mode for them.",
+    "streams[*].pull.*.params.sort_order": "Present for events/contacts only ('asc'); the full-refresh and conversations paths send no sort parameters, so no connector-wide ordering guarantee is asserted.",
+    "discovery": "streamMode is 'static' — the eight bindings come from FULL_REFRESH_RESOURCES, INCREMENTAL_RESOURCES_WITH_CURSOR_FIELDS and a hardcoded conversations resource. Nothing is read from the customer's account to build the list."
+  }
+}

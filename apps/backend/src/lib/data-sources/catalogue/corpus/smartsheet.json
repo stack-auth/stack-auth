@@ -1,0 +1,253 @@
+{
+  "id": "smartsheet",
+  "estuaryDir": "source-smartsheet",
+  "displayName": "Smartsheet",
+  "description": "Imports Smartsheet sheet metadata and row data, plus report definitions and rendered report rows, from the Smartsheet 2.0 REST API.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "<REGION_BASE_URLS[region]>/2.0",
+          "placeholders": {
+            "region": "Selected from a 4-entry literal map keyed by the `region` endpoint config enum: us -> https://api.smartsheet.com/2.0, eu -> https://api.smartsheet.eu/2.0, gov -> https://api.smartsheetgov.com/2.0, au -> https://api.smartsheet.au/2.0. Not a substring template — a lookup of whole URLs."
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/2.0` baked into every region base URL"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API Access Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date/time; data generated before this is not replicated. Defaults to 30 days before the present." },
+    { "name": "region", "displayName": "Region", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Smartsheet data center (us|eu|gov|au); selects the API base URL. Defaults to us." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; the only value is \"API Access Token\"." },
+    { "name": "credentials.access_token", "displayName": "API Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Smartsheet API Access Token, generated under Account > Apps & Integrations > API Access." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource." },
+    { "name": "schedule", "displayName": "Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Cron expression scheduling an automatic re-backfill of this binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "sheets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "modifiedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 600 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/sheets",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "pageSize": 100 },
+          "pathPlaceholders": null,
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/sheets",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "pageSize": 100 },
+          "pathPlaceholders": null,
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": { "param": "modifiedSince", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sheet_rows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/sheet_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "modifiedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 600 } },
+        { "role": "daily full re-backfill (closes the rowsModifiedSince blind spot for blank/never-cell-written rows)", "schedule": { "kind": "cron", "expr": "0 0 * * *" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/sheets/{sheet_id}",
+          "httpMethod": "GET",
+          "recordsPath": "rows",
+          "params": { "pageSize": 10000 },
+          "pathPlaceholders": { "sheet_id": "each id from the unfiltered GET /sheets list walk, enumerated once when the binding opens" },
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 10000, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/sheets/{sheet_id}",
+          "httpMethod": "GET",
+          "recordsPath": "rows",
+          "params": { "pageSize": 10000 },
+          "pathPlaceholders": { "sheet_id": "each id from the unfiltered GET /sheets list walk, enumerated once when the binding opens" },
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 10000, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": { "param": "rowsModifiedSince", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "reports",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/reports",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "pageSize": 100 },
+          "pathPlaceholders": null,
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 100, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "report_rows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/report_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 1800 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/reports/{report_id}",
+          "httpMethod": "GET",
+          "recordsPath": "rows",
+          "params": { "pageSize": 10000 },
+          "pathPlaceholders": { "report_id": "each id from a GET /reports list walk performed at the start of every snapshot cycle" },
+          "paginator": { "type": "page", "limitParam": "pageSize", "pageParam": "page", "pageSize": 10000, "startPage": 1, "terminateOn": "explicit_total" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single user-generated Smartsheet API Access Token (Account > Apps & Integrations > API Access), passed straight through by the CDK's TokenSource with oauth_spec=None as `Authorization: Bearer <token>`. No OAuth app registration and no refresh token are involved — the connector never calls a token endpoint for this credential type.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator.terminateOn (detail endpoints)",
+      "description": "The detail endpoints (GET /sheets/{id}, GET /reports/{id}) carry NO pageNumber/totalPages and silently CLAMP to the last valid page instead of erroring or returning empty. The walk therefore terminates on two conditions at once: (a) client-side arithmetic `page * pageSize >= totalRowCount` where totalRowCount is read from the response remainder, and (b) an empty page — but (b) is only trusted when no rowsModifiedSince filter is set, because the API paginates BEFORE filtering, so a filtered page can legitimately be empty mid-walk. `terminateOn` is a single enum and cannot express a conditional pair. Recorded as explicit_total because that is the always-correct bound.",
+      "proposedShape": { "terminateOn": ["explicit_total"], "terminateOnSecondary": [{ "condition": "short_page", "onlyWhen": "no incrementalParam is applied" }], "totalPath": "totalRowCount", "totalSemantics": "unfiltered_row_count_client_computed" }
+    },
+    {
+      "where": "streams[0].pull.incremental / backfill (sheets)",
+      "description": "The `sheets` stream is a two-hop pull that one PullSpec cannot express: the list walk over GET /sheets yields only {id, modifiedAt} summaries, and for EACH surviving summary the connector then issues GET /sheets/{id}?page=1&pageSize=1 purely to harvest the detail envelope's metadata remainder (the single embedded row is drained and discarded). The emitted document is the detail envelope, not the list item; the paginator and incrementalParam recorded belong to the list hop only.",
+      "proposedShape": { "hops": [{ "role": "enumerate", "path": "/sheets", "recordsPath": "data", "paginator": "page/100" }, { "role": "hydrate", "path": "/sheets/{id}", "params": { "page": 1, "pageSize": 1 }, "emits": "envelope_remainder" }] }
+    },
+    {
+      "where": "streamMode / discovery",
+      "description": "streamMode is `static` (four fixed bindings) yet the customer's own sheet ids ARE discovered — but they become per-sheet SUB-PARTITIONS of state inside the single `sheet_rows` binding (state.inc / state.backfill keyed by sheet id), not separate streams. Discovery happens only when the binding opens; new sheets appearing between runs are patched into state at the next open. The schema has no place for intra-binding discovered partitions, so `discovery` is null and the fact lives in pathPlaceholders.",
+      "proposedShape": { "streamMode": "static", "partitionDiscovery": { "stream": "sheet_rows", "method": "GET /sheets list walk at binding open", "partitionKey": "sheet id", "refreshedAt": "binding open only, not mid-run" } }
+    },
+    {
+      "where": "streams[0].cursorField (sheets)",
+      "description": "The incremental cursor for `sheets` is read from the LIST item (SheetSummary.modifiedAt) and clamped to `min(max modifiedAt seen, poll_start - 5min)` to absorb a measured 5-65s lag in the list's modifiedSince index. The emitted document (the detail envelope) is not what the cursor is taken from, and the schema has no field for a lag allowance or a cursor clamp."
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_smartsheet/models.py", "lines": "59-64", "snippet": "REGION_BASE_URLS = {\n    \"us\": \"https://api.smartsheet.com/2.0\",\n    \"eu\": \"https://api.smartsheet.eu/2.0\"," },
+    "credentialModes[0].scheme": { "file": "source_smartsheet/models.py", "lines": "22-31", "snippet": "class ApiAccessToken(AccessToken):\n    credentials_title: Literal[\"API Access Token\"] = Field(\n    access_token: str = Field(" },
+    "credentialModes[0].tier": { "file": "source_smartsheet/resources.py", "lines": "277", "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)" },
+    "authTierOverall": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36, 292-305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)" },
+    "streams[0].pull.incremental.paginator": { "file": "source_smartsheet/api.py", "lines": "37, 51, 78", "snippet": "LIST_PAGE_SIZE = 100\n    params: dict[str, JsonValue] = {\"page\": page, \"pageSize\": LIST_PAGE_SIZE}\n        if meta.pageNumber >= meta.totalPages:" },
+    "streams[0].pull.incremental.incrementalParam": { "file": "source_smartsheet/api.py", "lines": "52-53, 220-222", "snippet": "        params[\"modifiedSince\"] = _format_rfc3339(modified_since)" },
+    "streams[1].pull.incremental.paginator": { "file": "source_smartsheet/api.py", "lines": "98, 113, 164-167", "snippet": "DETAIL_PAGE_SIZE = 10_000\n        if page * page_size >= meta.totalRowCount:\n            return" },
+    "streams[1].pull.incremental.incrementalParam": { "file": "source_smartsheet/api.py", "lines": "114-115, 303-310", "snippet": "        params[\"rowsModifiedSince\"] = _format_rfc3339(rows_modified_since)" },
+    "streams[1].pull.backfill.path": { "file": "source_smartsheet/models.py", "lines": "201-203", "snippet": "    def build_url(region: str, sheet_id: int) -> str:\n        return f\"{base_url(region)}/sheets/{sheet_id}\"" },
+    "streams[1].schedules": { "file": "source_smartsheet/resources.py", "lines": "32, 204-208", "snippet": "DEFAULT_SCHEDULE = \"0 0 * * *\"\n            interval=timedelta(minutes=10),\n            schedule=DEFAULT_SCHEDULE," },
+    "streams[1].primaryKey": { "file": "source_smartsheet/resources.py", "lines": "199-200", "snippet": "        name=SheetRow.resource_name,\n        key=[\"/_meta/sheet_id\", \"/id\"]," },
+    "streams[2].writeDisposition": { "file": "source_smartsheet/resources.py", "lines": "226-230", "snippet": "            fetch_snapshot=functools.partial(snapshot_reports, http, config.region),\n            tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\")),\n    return SnapshotResource(" },
+    "streams[2].schedules": { "file": "source_smartsheet/resources.py", "lines": "41", "snippet": "REPORTS_INTERVAL = timedelta(minutes=30)" },
+    "streams[3].pull.snapshot.path": { "file": "source_smartsheet/api.py", "lines": "377-392", "snippet": "        async for report in _iter_list_items(\n            http, log, Report.build_url(region), Report\n        async for row in _iter_detail_rows(" },
+    "streamMode": { "file": "source_smartsheet/resources.py", "lines": "279-284", "snippet": "        await sheets(http, config),\n        await sheet_rows(log, http, config),\n        await reports(http, config)," },
+    "configFields": { "file": "source_smartsheet/models.py", "lines": "39-53", "snippet": "class EndpointConfig(BaseModel):\n    start_date: AwareDatetime = Field(\n    region: Literal[\"us\", \"eu\", \"gov\", \"au\"] = Field(" },
+    "streams[0].schedules": { "file": "source_smartsheet/resources.py", "lines": "153-156", "snippet": "        initial_config=common.ResourceConfig(\n            name=Sheet.resource_name,\n            interval=timedelta(minutes=10)," },
+    "streams[0].pull.backfill": { "file": "source_smartsheet/api.py", "lines": "253-260", "snippet": "    async for summary in _iter_list_items(\n        http, log, SheetSummary.build_url(region), SheetSummary\n    ):" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[1].pull.incremental.paginator": "medium",
+    "streams[1].pull.incremental.incrementalParam": "high",
+    "streams[0].cursorField": "medium",
+    "streams[2].writeDisposition": "high",
+    "streams[3].pull.snapshot": "high",
+    "execution.continuity": "medium",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "discovery": "streamMode is static — the four streams are hard-coded resources in all_resources(). The customer's sheet ids are enumerated at binding-open time, but they become state sub-partitions of the single `sheet_rows` binding rather than discovered streams, so nothing belongs in `discovery`. See unionMisfits[2].",
+    "transports[0].spec.defaultHeaders": "No headers are set anywhere in the connector beyond the CDK's Authorization header; no Content-Type, Accept, or user-agent is configured.",
+    "execution.continuity": "Poll-mode HTTP connector: no server-side artifacts are created on Smartsheet's side (no slots, subscriptions, webhooks, or scratch objects), all state is client-side cursors, and nothing accrues on the customer's infra between polls. Set null rather than fabricating an artifact list. Note the one non-continuity gap the code documents: `rowsModifiedSince` never surfaces blank/never-cell-written rows, which is why sheet_rows carries a daily cron re-backfill.",
+    "credentialModes[0].scheme.field (exact wire form)": "Not abstained on the mechanism (CDK sends `Authorization: Bearer <access_token>`), but the connector never sets authorization_header/authorization_token_type, so the wire form comes entirely from CDK defaults rather than from anything in source-smartsheet itself.",
+    "streams[2].cursorField / streams[3].cursorField": "Deliberately none. models.py documents that GET /reports' own `modifiedSince` reflects the report DEFINITION's modified time (rename/recolumn/create), not the underlying sheet data a report renders, and there is no per-report version endpoint to fall back on — hence full snapshot replication with tombstones."
+  }
+}

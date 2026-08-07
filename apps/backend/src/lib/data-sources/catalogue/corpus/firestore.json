@@ -1,0 +1,365 @@
+{
+  "id": "firestore",
+  "estuaryDir": "source-firestore",
+  "displayName": "Google Firestore",
+  "description": "Captures documents and real-time change events from collections and nested subcollections of a Google Cloud Firestore database.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Firestore gRPC API: the v1 Listen RPC for change streaming plus the cloud.google.com/go/firestore client library for discovery and async backfill collection-group queries.",
+      "spec": {
+        "kind": "stream",
+        "system": "firestore",
+        "endpointConfig": "A database path of the form projects/{projectID}/databases/{databaseID}, supplied via the optional `database` config field. When blank it is autodetected as projects/{creds.ProjectID}/databases/(default) from the service-account JSON. The path is also sent on every RPC as the gRPC metadata header google-cloud-resource-prefix, and as the ListenRequest.Database / Target.Query.Parent (databasePath + \"/documents\") fields."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Google Cloud service account JSON key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["googleCredentials"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "One long-lived gRPC Listen stream per distinct collection-group ID (Target with TargetId=1245678, StructuredQuery over the collection ID with AllDescendants=true), resumed by Target.ResumeType = read_time",
+        "A second Firestore client library connection, opened only when at least one async backfill is outstanding",
+        "Connector-side state checkpoint only: per-binding ReadTime, backfillState{StartAfter, Completed, Cursor (document path), MTime}, Inconsistent flag, and RestartCursorValue"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Resumption is by absolute read_time, not by a durable server-side cursor, so a long pause means the stream reopens far in the past and must re-read a large catch-up backlog. Firestore terminates a Listen RPC that has not reached a consistent point (the code observes ~10 minutes for the sync backfill mode) by sending TargetChange.REMOVE. When that happens while the stream is still in catch-up, the connector gives up on the backlog, marks every binding in that collection group Inconsistent, resets the target read_time to time.Now() — silently skipping all changes in the gap — and schedules a forced process restart (log.Fatal) after backfillRestartDelay + 1h so that a fresh full re-backfill can restore consistency. Individual change events are therefore lost from the stream and only recovered by re-scanning the whole collection group. Firestore's own read_time retention limit is not enforced or named anywhere in the connector.",
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Nothing is provisioned on the customer's Firestore: no replication slot, publication, change table, or named subscription. The Listen stream is purely a client-held gRPC stream and both clients are closed via defer when Pull returns, so shutdown leaves zero server-side residue and nothing grows on the customer's infra while we are stopped. All resumability lives in Flow-side state. The asymmetry is that the entire risk of a long pause is ours: a stale read_time costs a large re-read, and a catch-up failure costs a forced full re-backfill (gated to at most once per 24h by default, or once per 5m when every affected binding defines a restartCursorPath)."
+    }
+  },
+
+  "configFields": [
+    { "name": "googleCredentials", "displayName": "Credentials", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Google Cloud Service Account JSON credentials, used as Application Default Credentials. Rendered multiline." },
+    { "name": "database", "displayName": "Database", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Optional name of the database to capture from; blank autodetects. Must match ^projects/[^/]+/databases/[^/]+$, typically projects/$PROJECTID/databases/(default)." },
+    { "name": "advanced.extra_collections", "displayName": "Extra Collections", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Collection paths in the form foo/*/bar/*/baz which are always assumed to exist even if autodiscovery's sampling never finds them." },
+    { "name": "advanced.skip_discovery", "displayName": "Skip Automatic Discovery", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Skip automatic collection discovery entirely; generally only sensible together with Extra Collections." },
+    { "name": "advanced.minBackfillInterval", "displayName": "Minimum Backfill Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string controlling how often a collection may be re-backfilled after unrecoverable change-stream failure. Overridden by the per-resource setting." },
+
+    { "name": "path", "displayName": "Path to Collection", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Collection path; supports parent/*/nested to capture all nested collections of parent's children." },
+    { "name": "backfillMode", "displayName": "Backfill Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "One of async, none, sync. Determines how preexisting data is handled. Has no effect if changed after a binding is added." },
+    { "name": "initTimestamp", "displayName": "Initial Replication Timestamp", "required": false, "secret": false, "scope": "resource", "type": "date", "description": "RFC3339Nano timestamp overriding the initial replication read time (otherwise Zero or Now depending on backfill mode). Has no effect if changed after a binding is added." },
+    { "name": "restartCursorPath", "displayName": "Restart Cursor Path", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "JSON pointer to a monotonically increasing document property usable as a restart cursor, to optimize re-backfill when streaming consistency is lost. Matters mainly for very high write volume collections." },
+    { "name": "minBackfillInterval", "displayName": "Minimum Backfill Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Per-resource Go duration overriding the endpoint-level minimum re-backfill interval." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Recursive sampling scan of the live Firestore database via the client library: list top-level collections, then per collection list a bounded page of documents and probe a subset of those documents for subcollections, recursing.",
+    "querySketch": "client.Collections().GetAll() for the roots; per collection coll.Limit(500).Documents().GetAll(); for each document, if it is among the first 50 of its resource path or wins a 1% random draw, doc.Ref.Collections().GetAll() and recurse into up to 20 shuffled subcollections. Each concrete collection path is folded to a resource path by replacing document IDs with '*' (users/<id>/messages => users/*/messages) and deduplicated into a set. Caps: 500 docs per collection, ~1000 docs per resource path, 20 subcollections per document, 10000 total collections, 8 concurrent scanner goroutines. Every discovered binding is emitted with backfillMode 'async', key ['/_meta/path'], and a maximally permissive schema carrying only /_meta plus x-infer-schema.",
+    "excludes": [],
+    "allowlist": "Not an intersection but a union and an override: advanced.extra_collections paths are added to the discovered set unconditionally, and advanced.skip_discovery suppresses the scan entirely so that extra_collections becomes the whole list."
+  },
+
+  "streams": [
+    {
+      "name": "<top-level collection>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/path"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "/_meta/mtime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change streaming", "schedule": { "kind": "continuous" } },
+        { "role": "minimum interval before a collection may be re-backfilled after unrecoverable change-stream failure", "schedule": { "kind": "other", "literal": "24h (or 5m when a restartCursorPath is configured); overridable by minBackfillInterval as a Go duration", "description": "Not a recurring sweep. A floor on how soon backfillState.StartAfter may fire again, computed at connector startup as prevBackfill.StartAfter + delay, clamped forward to now." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Async backfill only (backfillMode=async). client.CollectionGroup(<last path segment of the resource path>) [.OrderByPath(restartCursorPath, Asc) when a restart cursor is configured] .StartAfter(<resume DocumentSnapshot, else the saved RestartCursorValue coerced to a time.Time if it parses as RFC3339Nano>) .Limit(256). Keyset chunking: each 256-document chunk advances the cursor to the last document seen and checkpoints {Cursor: document path, MTime: doc.UpdateTime}; an empty chunk ends the backfill. At most 2 backfills run concurrently (semaphore) and every chunk first blocks on streamsInCatchup so change streaming is never starved. The collection-group query is deliberately over-broad (it matches the final collection ID under any parent), so documents whose folded resource path is not in this backfill's ResourcePaths are skipped after advancing the cursor. Emitted documents carry _meta.snapshot=true. On resume, if the cursor document is missing or its UpdateTime no longer equals the stored MTime, the cursor is cleared, a checkpoint is forced, and the connector errors out so the backfill restarts from the beginning."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Absolute read_time (google.protobuf.Timestamp) set as Target.ResumeType on the Listen target, advanced only when the server reports a consistent point (TargetChange.NO_CHANGE with no target IDs after CURRENT) and persisted per collection group in the state checkpoint. The server-supplied TargetChange.ResumeToken is logged for investigation but is NOT used to resume."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<parent>/*/<nested collection>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/path"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "/_meta/mtime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Identical to the top-level archetype, but the collection-group ID is only the LAST segment of the resource path (users/*/messages => 'messages'), so the query also returns documents of sibling nested collections with the same final name (groups/*/messages). Those are filtered out per document by folding the document path back to a resource path and testing membership in this backfill's ResourcePaths. Bindings sharing a collection group ID and an equal resume state are coalesced into one backfill worker."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Same read_time resumption as the top-level archetype. One Listen stream is opened per distinct collection group ID, using the EARLIEST ReadTime among all bindings sharing that ID, with AllDescendants=true; over-broad documents are dropped when their folded resource path has no binding index, and documents whose mtime precedes the binding's ReadTime are dropped."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<a>/*/<b>/*/<c>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/path"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "/_meta/mtime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Arbitrarily deep nesting behaves exactly like the two-level archetype: only the final collection name is the collection group ID, everything above it is matched by resource-path filtering. Such paths may be supplied by hand through advanced.extra_collections when discovery's document sampling is too sparse to find them."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Same read_time resumption as the other archetypes."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a single Google Cloud service account JSON key pasted into `googleCredentials`, used as Application Default Credentials with the scope https://www.googleapis.com/auth/datastore. The user creates one service account in their own GCP project and downloads one key file — no OAuth application registration, no client id/secret, and no refresh token. There is no hosted control plane doing an OAuth handshake on the user's behalf, and no alternative credential mode is offered. Project ID is even read out of the key file itself, so the key is very nearly the only thing the user must supply.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.backfill",
+      "description": "The async backfill is a keyset-chunked collection-group scan: it is neither a `table` pull (no schema/table/columns; the key is a whole document path and chunking is StartAfter(<DocumentSnapshot>) with Limit(256)) nor a `query` pull as specified (which has no chunking field and no place to record that resumption validates the cursor document's UpdateTime before continuing). `kind: \"query\"` was chosen and the chunking, over-broad-match filtering, and cursor-invalidation semantics were stuffed into querySketch.",
+      "proposedShape": {
+        "kind": "keyset_scan",
+        "scanUnit": "collection group id derived from the last segment of the resource path",
+        "overBroad": true,
+        "overBroadFilter": "fold document path to resource path and test membership",
+        "orderBy": ["<optional restartCursorPath>"],
+        "startAfter": "opaque cursor document reference plus its modification time",
+        "chunkSize": 256,
+        "cursorValidation": "re-fetch cursor document and compare UpdateTime; mismatch or 404 restarts the scan from the beginning",
+        "concurrencyLimit": 2,
+        "yieldsTo": "change streaming while any stream is still catching up"
+      }
+    },
+    {
+      "where": "streams[]",
+      "description": "Streams and pull workers are not 1:1. Bindings are grouped by collection group ID for change streaming (one Listen stream per group, started at the earliest ReadTime of the group) and separately grouped by (collection group ID, resume state, restart cursor) for backfill. So one Listen stream feeds N bindings and one backfill worker services N resource paths; the schema's per-stream `pull` cannot express that a pull is shared.",
+      "proposedShape": {
+        "pullGroups": [
+          { "groupKey": "collection group id", "role": "incremental", "memberStreams": ["users/*/messages", "groups/*/messages"], "startFrom": "min(ReadTime) across members" }
+        ]
+      }
+    },
+    {
+      "where": "streams[].supportedSyncModes / writeDisposition",
+      "description": "backfillMode is a per-binding tri-state (async | sync | none) that changes the sync mode itself and is immutable after the binding is created: `none` is incremental-only from now (no historical read at all), `sync` folds the backfill into the Listen stream by opening it at read_time zero (so there is no separate backfill pull, and the README warns it can never complete on large datasets because Firestore kills Listen RPCs that have not reached a consistent point in ~10 minutes), and `async` runs the separate collection-group scan described in `backfill`. The three-valued union does not fit `supportedSyncModes`.",
+      "proposedShape": {
+        "historicalStrategy": {
+          "kind": "enum",
+          "options": ["none", "in_stream_from_epoch", "parallel_keyset_scan"],
+          "immutableAfterBindingCreated": true
+        }
+      }
+    },
+    {
+      "where": "execution.continuity.ourSideLoss",
+      "description": "The failure mode is data loss that is silently self-healed rather than an error: on catch-up failure the connector deliberately skips the gap, sets an Inconsistent flag, and schedules a forced process suicide so a later run re-backfills. There is no field for 'we knowingly drop changes and repair later', which is materially different from 'resumption breaks'.",
+      "proposedShape": {
+        "degradedModes": [
+          { "trigger": "change stream cannot reach a consistent point", "behavior": "skip to now, mark inconsistent, force restart after delay", "repair": "full re-backfill of the collection group", "dataGap": true }
+        ]
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-firestore/pull.go",
+      "lines": "444-461",
+      "snippet": "rpcClient, err := firestore_v1.NewClient(ctx, credsOpt, scopesOpt, keepaliveOpt)\n...\nctx = metadata.AppendToOutgoingContext(ctx, \"google-cloud-resource-prefix\", c.Config.DatabasePath)"
+    },
+    "transports[0].spec.endpointConfig": {
+      "file": "source-firestore/helpers.go",
+      "lines": "83-96",
+      "snippet": "databasePath = fmt.Sprintf(\"projects/%s/databases/(default)\", creds.ProjectID)"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-firestore/main.go",
+      "lines": "70-71",
+      "snippet": "// Service account JSON key to use as Application Default Credentials\nCredentialsJSON string `json:\"googleCredentials\" jsonschema:\"title=Credentials,description=Google Cloud Service Account JSON credentials.\" jsonschema_extras:\"secret=true,multiline=true\"`"
+    },
+    "credentialModes[0].tier": {
+      "file": "source-firestore/pull.go",
+      "lines": "34-36",
+      "snippet": "var firebaseScopes = []string{\n\t\"https://www.googleapis.com/auth/datastore\",\n}"
+    },
+    "execution.mode": {
+      "file": "source-firestore/pull.go",
+      "lines": "773-786",
+      "snippet": "var req = &firestore_pb.ListenRequest{\n\tDatabase: c.Config.DatabasePath,\n\tTargetChange: &firestore_pb.ListenRequest_AddTarget{AddTarget: target},"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-firestore/pull.go",
+      "lines": "752-772",
+      "snippet": "TargetId: watchTargetID,\n...\ntarget.ResumeType = &firestore_pb.Target_ReadTime{ReadTime: timestamppb.New(readTime)}"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source-firestore/pull.go",
+      "lines": "444-471",
+      "snippet": "defer rpcClient.Close()\n...\ndefer libraryClient.Close()"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-firestore/pull.go",
+      "lines": "894-916",
+      "snippet": "logEntry.WithField(\"docs\", numDocuments).Warn(\"replication failed to catch up, skipping to latest changes (go.estuary.dev/YRDsKd)\")\n...\nlogEntry.Fatal(\"forcing connector restart to establish consistency\")\ntarget.ResumeType = &firestore_pb.Target_ReadTime{ReadTime: timestamppb.New(time.Now())}"
+    },
+    "execution.continuity.notes": {
+      "file": "source-firestore/pull.go",
+      "lines": "49-52",
+      "snippet": "backfillRestartDelayNoRestartCursor   = 24 * time.Hour\nbackfillRestartDelayWithRestartCursor = 5 * time.Minute"
+    },
+    "configFields": {
+      "file": "source-firestore/main.go",
+      "lines": "24-31",
+      "snippet": "Path              string `json:\"path\" jsonschema:\"title=Path to Collection,description=Supports parent/*/nested to capture all nested collections of parent's children\"`"
+    },
+    "discovery.method": {
+      "file": "source-firestore/discovery.go",
+      "lines": "168-176",
+      "snippet": "var collections, err = client.Collections(ctx).GetAll()\nfor _, coll := range collections {\n\tstate.handleCollection(ctx, coll)"
+    },
+    "discovery.querySketch": {
+      "file": "source-firestore/discovery.go",
+      "lines": "285-305",
+      "snippet": "if count < discoverSubresourceMinimum || rand.Float64() < discoverSubresourceProbability {\n\tsubcolls, err := doc.Ref.Collections(ctx).GetAll()"
+    },
+    "discovery.allowlist": {
+      "file": "source-firestore/discovery.go",
+      "lines": "189-192",
+      "snippet": "for _, extraCollection := range extraCollections {\n\tstate.shared.resources[extraCollection] = struct{}{}\n}"
+    },
+    "streamMode": {
+      "file": "source-firestore/discovery.go",
+      "lines": "196-209",
+      "snippet": "for resourcePath := range state.shared.resources {\n\tresourceJSON, err := json.Marshal(resource{Path: resourcePath, BackfillMode: backfillModeAsync})"
+    },
+    "streams[0].primaryKey": {
+      "file": "source-firestore/discovery.go",
+      "lines": "204-209",
+      "snippet": "DocumentSchemaJson: minimalSchema,\nKey:                []string{documentPath},"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source-firestore/discovery.go",
+      "lines": "94-98",
+      "snippet": "\"reduce\": map[string]interface{}{\n\t\"strategy\": \"maximize\",\n\t\"key\":      []string{documentMTime},"
+    },
+    "streams[0].cursorField": {
+      "file": "source-firestore/pull.go",
+      "lines": "1013-1016",
+      "snippet": "if delta := mtime.Sub(rtime); delta < 0 {\n\tlog.WithField(\"doc\", doc.Name).Trace(\"ignoring document (mtime < rtime)\")\n\treturn nil"
+    },
+    "streams[0].pull.backfill": {
+      "file": "source-firestore/pull.go",
+      "lines": "648-665",
+      "snippet": "var query firestore.Query = client.CollectionGroup(backfill.CollectionID).Query\n...\nquery = query.Limit(backfillChunkSize)"
+    },
+    "streams[0].pull.incremental.emitsDeletes": {
+      "file": "source-firestore/pull.go",
+      "lines": "1120-1126",
+      "snippet": "metaProperty: &documentMetadata{Path: docName, UpdateTime: &readTime, Deleted: true},"
+    },
+    "streams[0].pull.incremental.resumeTokenKind": {
+      "file": "source-firestore/pull.go",
+      "lines": "882-887",
+      "snippet": "target.ResumeType = &firestore_pb.Target_ReadTime{ReadTime: tc.ReadTime}\nif checkpointJSON, err := c.State.UpdateReadTimes(collectionID, tc.ReadTime.AsTime()); err != nil {"
+    },
+    "streams[1].pull.incremental.resumeTokenKind": {
+      "file": "source-firestore/pull.go",
+      "lines": "396-401",
+      "snippet": "var collectionID = getLastCollectionGroupID(resourceState.path)\nif startTime, ok := watchCollections[collectionID]; !ok || resourceState.ReadTime.Before(startTime) {\n\twatchCollections[collectionID] = resourceState.ReadTime"
+    },
+    "streams[0].schedules[1]": {
+      "file": "source-firestore/pull.go",
+      "lines": "261-283",
+      "snippet": "// Minimum backfill interval priority:\n// - Resource Config\n// - Advanced Endpoint Config"
+    },
+    "unionMisfits[2]": {
+      "file": "source-firestore/pull.go",
+      "lines": "198-207",
+      "snippet": "case backfillModeNone:\n\tstate.ReadTime = now\n\tstate.Backfill = nil"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.releasedOnShutdown": "high",
+    "execution.continuity.resumeWindow": "low",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].cursorField": "medium",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[*].name": "low"
+  },
+
+  "abstained": {
+    "execution.continuity.resumeWindow": "The connector never encodes a maximum pause. It resumes by absolute read_time and simply asks Firestore for changes since that timestamp; Firestore's own limit on how far back a read_time may point is not referenced, validated, or handled anywhere in the source. The only durations present are the 60s retry interval and the 24h/5m re-backfill floors, neither of which is a resume window. Any number here would be an invention.",
+    "streams[*].name": "The connector ships no stream list at all — every binding path comes from the customer's own Firestore contents at discovery time (or from advanced.extra_collections). The three entries are ARCHETYPES marked kind=\"archetype\"; the only literal path anywhere in the repo is the test fixture 'flow_source_tests' in the discovery snapshot, which is test scaffolding, not a shipped stream.",
+    "streams[*].pull.snapshot": "No binding ever re-reads a collection as a plain snapshot. The async backfill is a resumable historical sweep that runs alongside the change stream, so it belongs in `backfill`; a re-backfill after inconsistency is the same mechanism re-triggered, not a snapshot disposition.",
+    "streams[*].pull.backfill.paginator": "Not an HTTP pull. Chunking is Firestore keyset pagination via StartAfter(<DocumentSnapshot>) with Limit(256), which none of the Paginator variants describes; recorded in querySketch and unionMisfits[0] instead.",
+    "transports[0].spec.defaultPort": "gRPC transport is constructed entirely by the Google client libraries (firestore_v1.NewClient / firestore.NewClientWithDatabase); no host, port, or TLS policy is expressed in connector code. Only a keepalive ping of 5 minutes with PermitWithoutStream is configured."
+  }
+}

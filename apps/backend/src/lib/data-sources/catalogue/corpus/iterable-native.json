@@ -1,0 +1,810 @@
+{
+  "id": "iterable-native",
+  "estuaryDir": "source-iterable-native",
+  "displayName": "Iterable",
+  "description": "Imports Iterable marketing-automation data: campaigns and campaign metrics, channels, message types, templates, lists and list membership, user profiles, and message/engagement events.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.iterable.com/api" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Export-job result files are downloaded from pre-signed object-store URLs returned by the Iterable export API, fetched deliberately WITHOUT the Iterable API key (with_token=False). The host is not named anywhere in the connector; only the fact that the URL is pre-signed and expirable is visible.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "resolved", "resolution": "per-file pre-signed URL taken from files[].url in the GET /api/export/{jobId}/files response" },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "Api-Key",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "Iterable async export jobs (created by POST /api/export/start, addressed by jobId) for the `users` and `events` streams"
+      ],
+      "customerSideAccrual": "Nothing accrues in the customer's Iterable account from us pausing: no log, slot, or change table is retained on our behalf. The only server-side residue is export jobs that were already submitted; if the connector stops mid-job they remain enqueued/running in the customer's Iterable export-job queue and occupy their export concurrency until Iterable finishes or expires them.",
+      "ourSideLoss": "Nothing is lost by pausing per se — export windows are re-requested from the stored cursor. Two second-order costs: (a) a long pause makes the next window large, and an export exceeding Iterable's 100GB cap returns exportTruncated, forcing the connector to halve the window and resubmit repeatedly; (b) within an in-flight job the pre-signed result URLs expire (HTTP 403 'Request has expired'), which the connector handles by re-fetching the current file page for fresh URLs.",
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "The connector does not cancel its export jobs on shutdown. It cancels them on the NEXT startup instead: `open()` calls all_resources(..., should_cancel_running_jobs=True), which enumerates GET /api/export/jobs and issues DELETE /api/export/{jobId} for every job in `running` or `enqueued` state. So orphaned jobs persist for the whole pause and are reaped only when we come back. A single job is also given up to MAX_WAIT_SECONDS = 24h to complete before ExportJobTimeoutError, and at most MAX_CONCURRENT_JOBS = 4 run at once."
+    }
+  },
+
+  "configFields": [
+    { "name": "project_type", "displayName": "Project Type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Iterable project type (Email-based | UserID-based | Hybrid). Selects the users stream's identity field: Email-based -> email, UserID-based/Hybrid -> itblUserId." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data generated before it is not replicated. Defaults to 30 days before the present." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant; only value is 'Private App Credentials'." },
+    { "name": "credentials.access_token", "displayName": "API Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Iterable API key, sent as the Api-Key request header." },
+    { "name": "advanced.window_size", "displayName": "Window Size", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ISO 8601 duration bounding each export-job date window. Default PT12H, min PT5S, max P365D." },
+    { "name": "advanced.list_users_timeout", "displayName": "list_users Request Timeout", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ISO 8601 duration total HTTP timeout for /lists/getUsers. Default PT30M, min PT5M." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK ResourceConfig)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO 8601 duration between updates for this binding (CDK ResourceConfig). Default PT0S; per-stream defaults are supplied by the connector." },
+    { "name": "schedule", "displayName": "Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Cron expression to automatically re-backfill this binding (CDK ResourceConfigWithSchedule). Default empty; the connector ships a non-empty default only for list_users." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "channels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot refresh", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/channels",
+          "httpMethod": "GET",
+          "recordsPath": "channels",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "message_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot refresh", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/messageTypes",
+          "httpMethod": "GET",
+          "recordsPath": "messageTypes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot refresh", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "metadata_tables",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot refresh", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/metadata",
+          "httpMethod": "GET",
+          "recordsPath": "metadata",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot refresh", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/templates",
+          "httpMethod": "GET",
+          "recordsPath": "templates",
+          "params": {
+            "templateType": "one of Base | Blast | Triggered | Workflow",
+            "messageMedium": "one of Email | Push | InApp | SMS"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "list_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/list_id", "/user_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding interval (no effect: this binding has only a backfill task, no incremental task)", "schedule": { "kind": "interval", "seconds": 86400 } },
+        { "role": "re-backfill of all list membership", "schedule": { "kind": "cron", "expr": "55 23 * * *" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/lists/getUsers",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "listId": "<one list id per request>" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": null,
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": { "sort": "createdAt" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "pageSize",
+            "pageParam": "page",
+            "pageSize": 1000,
+            "startPage": 1,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": { "sort": "-updatedAt" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "pageSize",
+            "pageParam": "page",
+            "pageSize": 1000,
+            "startPage": 1,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaign_metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/api/campaigns/metrics",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": {
+            "startDateTime": "1970-01-01 (hardcoded epoch date, never advanced)",
+            "campaignId": "repeated param, up to 80 campaign ids per request (URL length cap 2048)"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/email"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "profileUpdatedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/export/start",
+          "httpMethod": "POST",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "user",
+            "startDateTime": "<window start, YYYY-MM-DDTHH:MM:SS.mmmZ>",
+            "endDateTime": "<window end>",
+            "outputFormat": "application/x-json-stream"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/export/start",
+          "httpMethod": "POST",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "user",
+            "startDateTime": "<window start>",
+            "endDateTime": "<window end>",
+            "outputFormat": "application/x-json-stream"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_estuary_id", "/eventType"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/export/start",
+          "httpMethod": "POST",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "<one of 50 event types: emailSend, emailOpen, emailClick, hostedUnsubscribeClick, emailComplaint, emailBounce, emailSendSkip, pushSend, pushOpen, pushUninstall, pushBounce, pushSendSkip, inAppSend, inAppOpen, inAppClick, inAppClose, inAppDelete, inAppDelivery, inAppSendSkip, inAppRecall, inboxSession, inboxMessageImpression, smsSend, smsBounce, smsClick, smsReceived, smsSendSkip, webPushSend, webPushClick, webPushSendSkip, emailSubscribe, emailUnsubscribe, purchase, customEvent, smsUsageInfo, embeddedSend, embeddedSendSkip, embeddedClick, embeddedReceived, embeddedImpression, embeddedSession, unknownSession, journeyExit, whatsAppBounce, whatsAppClick, whatsAppReceived, whatsAppSeen, whatsAppSend, whatsAppSendSkip, whatsAppUsageInfo>",
+            "startDateTime": "<window start>",
+            "endDateTime": "<window end>",
+            "outputFormat": "application/x-json-stream"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/export/start",
+          "httpMethod": "POST",
+          "recordsPath": null,
+          "params": {
+            "dataTypeName": "<one of the 50 event types listed above; one subtask per type>",
+            "startDateTime": "<window start>",
+            "endDateTime": "<window end>",
+            "outputFormat": "application/x-json-stream"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The connector offers exactly one credential mode. EndpointConfig.credentials is a single-member discriminated union of ApiKey (a subclass of the CDK's AccessToken, discriminator 'Private App Credentials'), whose only user-supplied field is `access_token`, titled 'API Key' and marked secret. The connector's ConnectorSpec sets oauth2=None and TokenSource is constructed with oauth_spec=None, so there is no OAuth path at all — no client registration, no refresh token, no hosted control plane involvement. The user pastes one self-serve Iterable API key, which the CDK sends verbatim as the `Api-Key` header. That is T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[users|events].pull.{backfill,incremental} — PullSpec kinds and Paginator",
+      "description": "The `users` and `events` streams do not read an HTTP collection at all; they drive a three-phase async export job and there is no PullSpec kind for that. Phase 1 POSTs /api/export/start with a JSON body ({dataTypeName, startDateTime, endDateTime, outputFormat: application/x-json-stream}) and receives {jobId}. Phase 2 polls GET /api/export/{jobId}/files with exponential backoff (1s doubling to a 300s cap, hard ceiling 24h) reading `jobState` from the envelope until `completed`; a `completed` job carrying exportTruncated=true is a FAILURE signal that makes the connector halve the date window and resubmit, recursively, down to a 1-second floor. Phase 3 pages the RESULT FILE LIST — not the records — from the same GET /api/export/{jobId}/files by sending startAfter=<last filename of the previous page>, terminating when a page returns fewer than MAX_FILES_PER_PAGE=10 files. The actual records are then streamed as JSONL from per-file pre-signed URLs on a DIFFERENT host, fetched with the Iterable API key deliberately suppressed (with_token=False), with a 403 'Request has expired' handler that re-fetches the current file page for fresh URLs. Forcing this into `{kind: http, path: /api/export/start, paginator: none}` (as this document does, for schema conformance) loses every operationally significant fact: the poll loop, the truncation-driven window bisection, the file-list cursor, and the second unauthenticated transport. Note also that startAfter is record_cursor-shaped but over file objects rather than data records, and its `hasMore` is implicit in page size.",
+      "proposedShape": {
+        "kind": "async_export_job",
+        "submit": {
+          "path": "/api/export/start",
+          "httpMethod": "POST",
+          "bodyParams": {
+            "dataTypeName": "<data type>",
+            "startDateTime": "<iso8601 ms>",
+            "endDateTime": "<iso8601 ms, omitted when unbounded>",
+            "outputFormat": "application/x-json-stream"
+          },
+          "jobIdPath": "jobId"
+        },
+        "poll": {
+          "path": "/api/export/{jobId}/files",
+          "httpMethod": "GET",
+          "statePath": "jobState",
+          "terminalStates": ["completed"],
+          "failureStates": ["failed", "cancelling", "cancelled"],
+          "pendingStates": ["enqueued", "running"],
+          "backoff": { "kind": "exponential", "initialSeconds": 1, "maxSeconds": 300, "timeoutSeconds": 86400 },
+          "retryOnFailure": { "maxJobRetries": 3, "action": "resubmit job" }
+        },
+        "windowBisection": {
+          "signalPath": "exportTruncated",
+          "action": "halve (end - start) and resubmit",
+          "floor": "PT1S",
+          "reason": "Iterable truncates exports above 100GB"
+        },
+        "resultListing": {
+          "path": "/api/export/{jobId}/files",
+          "recordsPath": "files",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "startAfter",
+            "recordField": "file",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "hasMorePath": null,
+            "pageSize": 10,
+            "terminateOn": "short_page"
+          }
+        },
+        "resultFetch": {
+          "urlFrom": "files[].url",
+          "urlKind": "pre-signed, expiring, different host",
+          "authenticated": false,
+          "format": "jsonl",
+          "onExpiry": "re-request the current file page (same startAfter) for fresh URLs"
+        },
+        "concurrency": { "maxConcurrentJobs": 4 },
+        "cleanup": {
+          "listPath": "/api/export/jobs",
+          "cancelPath": "/api/export/{jobId}",
+          "cancelMethod": "DELETE",
+          "whenRun": "connector startup (open), not shutdown"
+        }
+      }
+    },
+    {
+      "where": "streams[campaigns].pull.*.paginator",
+      "description": "The campaigns paginator is page-number based on the request side (page=1,2,3... with pageSize=1000) but its STOP signal is the presence of an envelope field: the loop continues while the response body's `nextPageUrl` is non-null and breaks when it is null. The URL is never followed and no token is extracted from it, so this is neither `next_url` nor `cursor`. The schema's `page` variant accepts terminateOn: envelope_flag but provides no field in which to name WHICH envelope field carries the flag, nor the polarity (continue-while-present vs stop-while-present). Two connectors with opposite polarity would serialize identically.",
+      "proposedShape": {
+        "type": "page",
+        "limitParam": "pageSize",
+        "pageParam": "page",
+        "pageSize": 1000,
+        "startPage": 1,
+        "terminateOn": "envelope_flag",
+        "envelopeFlagPath": "nextPageUrl",
+        "envelopeFlagSemantics": "continue while the field is present and non-null"
+      }
+    },
+    {
+      "where": "streams[campaigns].pull.incremental.incrementalParam + cursorField",
+      "description": "campaigns is incremental with NO server-side incremental parameter. The connector sorts descending (sort=-updatedAt), reads pages from the top, and breaks out of the loop client-side the moment a campaign's updatedAt is <= the checkpointed cursor; the new cursor is the max updatedAt seen. The schema's incrementalParam assumes the filter is pushed down to the API, and there is no way to express 'sorted server-side, terminated client-side' — which matters, because the cost model (full first page every poll, early exit) and the failure mode (a source that ignores or reorders `sort` silently truncates the sync) are completely different from a pushed-down filter.",
+      "proposedShape": {
+        "incrementalStrategy": "client_side_sorted_scan",
+        "sortParam": "sort",
+        "sortValue": "-updatedAt",
+        "compareField": "updatedAt",
+        "compareFormat": "unix_millis",
+        "stopWhen": "record.updatedAt <= checkpointed cursor",
+        "checkpointFrom": "max(updatedAt) observed"
+      }
+    },
+    {
+      "where": "streams[campaign_metrics].pull.incremental",
+      "description": "campaign_metrics has no independent path of its own: to build its request it first fully re-paginates /api/campaigns, filters those campaigns by state (pre-launch -> skip; in-progress -> always fetch; final -> fetch only when max(updatedAt, endedAt) falls inside a [cursor - 15 days, now] lookback window), then fans out /api/campaigns/metrics in batches of <=80 campaignId query params with a hardcoded startDateTime of the epoch, sleeping 6s between batches for a 10 req/min limit. The response is CSV, not JSON. The schema has no notion of a parent-stream-derived request set, of a per-request id batch size, or of a CSV response body, and `incrementalParam` is misleading here because the date param sent is constant while the real incrementality lives entirely in which campaign ids get selected.",
+      "proposedShape": {
+        "kind": "http_fanout_from_parent",
+        "parentStream": "campaigns",
+        "parentSelection": "campaignState-based, with a 15-day lookback on max(updatedAt, endedAt) for campaigns in a final state",
+        "path": "/api/campaigns/metrics",
+        "httpMethod": "GET",
+        "batchParam": "campaignId",
+        "batchSize": 80,
+        "batchSizeReason": "URL length cap of 2048 chars",
+        "constantParams": { "startDateTime": "1970-01-01" },
+        "responseFormat": "csv",
+        "interRequestSleepSeconds": 6
+      }
+    },
+    {
+      "where": "streams[list_users].pull.backfill",
+      "description": "list_users is a parent-scoped stream whose backfill page cursor is a LIST ID, not an offset or token: each invocation of the backfill task lists /api/lists, sorts the ids, bisects to find the next id after the checkpointed one, fetches exactly ONE list's users, checkpoints that id, and sleeps to respect a 5 req/min limit. The response is not JSON at all — /lists/getUsers returns newline-delimited bare user ids, which the connector pairs with the list id to synthesize documents; there is no records path and no envelope. `pathPlaceholders` cannot express this because the scoping value arrives as a query param derived from a sibling stream, and `paginator: none` understates it: there IS resumable progress, it is just keyed on parent identity.",
+      "proposedShape": {
+        "kind": "http_parent_scoped_scan",
+        "parentPath": "/api/lists",
+        "parentIdField": "id",
+        "parentOrder": "ascending, one parent per task invocation",
+        "resumeCursor": { "kind": "last_completed_parent_id", "lookup": "bisect into the sorted parent id list" },
+        "path": "/api/lists/getUsers",
+        "scopeParam": "listId",
+        "responseFormat": "newline_delimited_bare_ids",
+        "interRequestSleepSeconds": 12,
+        "partialFailurePolicy": "after 3 transport-level retries, or a persistent HTTP 500 with the generic error body, skip the list and checkpoint whatever was captured"
+      }
+    },
+    {
+      "where": "streams[events]",
+      "description": "`events` is one Flow collection but 150 independently-cursored subtasks: the CDK's open_binding is handed a dict of fetch_changes keyed realtime_<eventType> and lookback_<eventType> (50 event types x 2) plus a fetch_page dict keyed by event type, each with its own cursor in ResourceState. `users` has the same shape at 2 subtasks. The schema's stream model assumes at most one incremental cursor per stream, so `cursorField: createdAt` is true of each subtask but hides that there are 150 of them advancing independently — which is the dominant fact for both quota and lag reasoning.",
+      "proposedShape": {
+        "subtasks": {
+          "dimension": "eventType",
+          "cardinality": 50,
+          "legs": ["realtime", "lookback"],
+          "legSemantics": {
+            "realtime": "cursor starts at open time and advances to `now`",
+            "lookback": "identical query with a 1-hour horizon subtracted from the end bound, to catch Iterable's eventually-consistent late arrivals; deduplicated against the realtime leg via the CDK's emitted_changes_cache"
+          },
+          "cursorFieldPerSubtask": "createdAt"
+        }
+      }
+    },
+    {
+      "where": "streams[users].primaryKey",
+      "description": "The users stream's primary key is chosen at runtime from the endpoint config, not fixed by the connector: project_type Email-based -> key ['/email'] (model UsersWithEmails), UserID-based or Hybrid -> key ['/itblUserId'] (model UsersWithIds). The schema has no way to express a config-dependent key, so the emitted value ['/email'] is only correct for one of the three settings.",
+      "proposedShape": {
+        "primaryKey": {
+          "kind": "config_dependent",
+          "configField": "project_type",
+          "mapping": {
+            "Email-based": ["/email"],
+            "UserID-based": ["/itblUserId"],
+            "Hybrid": ["/itblUserId"]
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[].disable",
+      "description": "The connector marks list_users with disable=True, meaning the binding is discovered but not enabled by default. The schema has no per-stream enabled-by-default field, so a consumer reading this document would turn on a binding the connector authors deliberately ship off (it is the one with a 5 req/min limit and 80-minute responses).",
+      "proposedShape": { "enabledByDefault": false }
+    },
+    {
+      "where": "transports",
+      "description": "The second transport entry is a poor fit for `role: sidecar`. A sidecar in the v2 sense is a distinct SERVICE the user configures (e.g. a schema registry); here it is the same logical data path — result files of the primary's own export jobs — served from per-file pre-signed URLs on an unnamed host, with authentication deliberately OMITTED. There is no config, no base URL, and no credential; modeling it as a sidecar implies a user-visible second endpoint that does not exist.",
+      "proposedShape": {
+        "role": "result_fetch",
+        "purpose": "download pre-signed result objects produced by the primary transport",
+        "credentialMode": null,
+        "note": "unauthenticated by design; URLs expire and are re-minted by re-requesting the producing endpoint"
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_iterable_native/shared.py",
+      "lines": "3",
+      "snippet": "BASE_URL = \"https://api.iterable.com/api\""
+    },
+    "transports[1].spec.baseUrl": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "116-120",
+      "snippet": "url = file_urls[filename]\n                    # file.url is a pre-signed URL, and we shouldn't include\n                    # the Iterable API key when reading results with that URL."
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "51,92",
+      "snippet": "AUTHORIZATION_HEADER = \"Api-Key\"\n    http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER)"
+    },
+    "credentialModes[0].scheme.prefix": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "526-534",
+      "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n            else:\n                header_value = token"
+    },
+    "credentialModes[0].scheme.field": {
+      "file": "source_iterable_native/models.py",
+      "lines": "35-39",
+      "snippet": "class ApiKey(AccessToken):\n    access_token: str = Field(\n        title=\"API Key\","
+    },
+    "credentialModes[0].tier": {
+      "file": "source_iterable_native/__init__.py",
+      "lines": "25-27",
+      "snippet": "return ConnectorSpec(\n            configSchema=EndpointConfig.model_json_schema(),\n            oauth2=None,"
+    },
+    "execution.mode": {
+      "file": "source_iterable_native/models.py",
+      "lines": "162",
+      "snippet": "interval: ClassVar[timedelta] = timedelta(minutes=15)"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "51,64-66",
+      "snippet": "url = f\"{self.base_export_url}/start\"\n        response = StartExportResponse.model_validate_json(\n            await self.http.request(self.log, url, method=\"POST\", json=body)"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source_iterable_native/__init__.py",
+      "lines": "54",
+      "snippet": "resources = await all_resources(log, self, open.capture.config, should_cancel_running_jobs=True)"
+    },
+    "execution.continuity.notes": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "268-271",
+      "snippet": "async def cancel_all_running_and_enqueued_jobs(self) -> None:\n        async for job in self._fetch_recent_export_jobs():\n            if job.jobState == ExportJobState.RUNNING or job.jobState == ExportJobState.ENQUEUED:"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "196-198",
+      "snippet": "if response.exportTruncated:\n                        msg = f\"Job {job_id} completed but was truncated. Try requesting a smaller date window and try again.\"\n                        raise TruncatedExportJobError(msg, data_type, start, end)"
+    },
+    "configFields": {
+      "file": "source_iterable_native/models.py",
+      "lines": "42-54",
+      "snippet": "class EndpointConfig(BaseModel):\n    project_type: ProjectType = Field(\n    start_date: AwareDatetime = Field("
+    },
+    "configFields[8]": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "205-210",
+      "snippet": "class ResourceConfigWithSchedule(ResourceConfig):\n    schedule: str = Field(\n        description=\"Schedule to automatically rebackfill this binding. Accepts a cron expression.\","
+    },
+    "streamMode": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "483-489",
+      "snippet": "*full_refresh_resources(log, http, config),\n        list_users(log, http, config),\n        users(log, http, config, export_job_manager),"
+    },
+    "streams[0].pull.snapshot": {
+      "file": "source_iterable_native/api.py",
+      "lines": "55-62",
+      "snippet": "url = f\"{BASE_URL}/{model.path}\"\n    _, body = await http.request_stream(log, url)\n    processor = IncrementalJsonProcessor(body(), f\"{model.path}.item\", model,)"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "127-134",
+      "snippet": "open_binding(\n            fetch_snapshot=snapshot_fn,\n            tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_iterable_native/models.py",
+      "lines": "177-179",
+      "snippet": "class Channels(ResourceWithId):\n    name: ClassVar[str] = \"channels\"\n    path: ClassVar[str] = \"channels\""
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_iterable_native/models.py",
+      "lines": "182-184",
+      "snippet": "class MessageTypes(ResourceWithId):\n    name: ClassVar[str] = \"message_types\"\n    path: ClassVar[str] = \"messageTypes\""
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_iterable_native/models.py",
+      "lines": "187-189",
+      "snippet": "class Lists(ResourceWithId):\n    name: ClassVar[str] = \"lists\"\n    path: ClassVar[str] = \"lists\""
+    },
+    "streams[3].pull.snapshot.path": {
+      "file": "source_iterable_native/models.py",
+      "lines": "192-194",
+      "snippet": "class MetadataTables(IterableResource):\n    name: ClassVar[str] = \"metadata_tables\"\n    path: ClassVar[str] = \"metadata\""
+    },
+    "streams[4].pull.snapshot.params": {
+      "file": "source_iterable_native/api.py",
+      "lines": "76-83",
+      "snippet": "for template_type in TemplateTypes:\n        for message_medium in MessageMediums:\n            params = {\"templateType\": template_type, \"messageMedium\": message_medium,}"
+    },
+    "streams[5].pull.backfill": {
+      "file": "source_iterable_native/api.py",
+      "lines": "118,141-142",
+      "snippet": "url = f\"{BASE_URL}/{ListUsers.path}\"\n            params = {\"listId\": list_id}\n            _, lines = await http.request_lines(log=log, url=url, params=params,"
+    },
+    "streams[5].schedules": {
+      "file": "source_iterable_native/models.py",
+      "lines": "204-210",
+      "snippet": "path: ClassVar[str] = \"lists/getUsers\"\n    interval: ClassVar[timedelta] = timedelta(hours=24)\n    schedule: ClassVar[str] = \"55 23 * * *\""
+    },
+    "streams[6].pull.incremental.paginator": {
+      "file": "source_iterable_native/api.py",
+      "lines": "271-275,292-296",
+      "snippet": "params = {\"pageSize\": MAX_CAMPAIGNS_PAGE_SIZE, \"page\": page, \"sort\": sort_param,}\n        if not remainder.nextPageUrl:\n            break"
+    },
+    "streams[6].pull.incremental.params": {
+      "file": "source_iterable_native/api.py",
+      "lines": "309-311",
+      "snippet": "async for campaign in _paginate_through_campaigns(http, log, sort_param=\"-updatedAt\"):\n        if campaign.updatedAt <= last_checkpointed_ts:\n            break"
+    },
+    "streams[6].pull.backfill.params": {
+      "file": "source_iterable_native/api.py",
+      "lines": "262-265",
+      "snippet": "async def _paginate_through_campaigns(\n    log: Logger,\n    sort_param: str = \"createdAt\""
+    },
+    "streams[7].pull.incremental": {
+      "file": "source_iterable_native/api.py",
+      "lines": "341-348",
+      "snippet": "url = f\"{BASE_URL}/{CampaignMetrics.path}\"\n    params = {\"startDateTime\": EPOCH.date().isoformat(), \"campaignId\": campaign_ids,}\n    _, body = await http.request_stream(log, url, params=params)"
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_iterable_native/models.py",
+      "lines": "273-276",
+      "snippet": "class CampaignMetrics(BaseCSVRow):\n    name: ClassVar[str] = \"campaign_metrics\"\n    path: ClassVar[str] = \"campaigns/metrics\""
+    },
+    "streams[8].pull.incremental": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "51-59",
+      "snippet": "url = f\"{self.base_export_url}/start\"\n        body = {\"dataTypeName\": data_type_name, \"startDateTime\": dt_to_str(start),\n            \"outputFormat\": \"application/x-json-stream\",}"
+    },
+    "streams[8].cursorField": {
+      "file": "source_iterable_native/models.py",
+      "lines": "444-451",
+      "snippet": "data_type: ClassVar[str] = \"user\"\n    profileUpdatedAt: AwareDatetime\n    def cursor_value(self) -> AwareDatetime: return self.profileUpdatedAt"
+    },
+    "streams[8].primaryKey": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "208,213",
+      "snippet": "stream = _determine_users_stream(config.project_type)\n        key=[f\"/{stream.primary_key}\"],"
+    },
+    "streams[9].primaryKey": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "300",
+      "snippet": "key=[\"/_estuary_id\", \"/eventType\"],"
+    },
+    "streams[9].cursorField": {
+      "file": "source_iterable_native/models.py",
+      "lines": "377,432-434",
+      "snippet": "createdAt: AwareDatetime\n    def cursor_value(self) -> AwareDatetime:\n        return self.createdAt"
+    },
+    "unionMisfits[0]": {
+      "file": "source_iterable_native/export_job_manager/__init__.py",
+      "lines": "82-83,158-161",
+      "snippet": "params = {\"startAfter\": start_after} if start_after else None\n            if len(filenames) < MAX_FILES_PER_PAGE:\n                break"
+    },
+    "unionMisfits[3]": {
+      "file": "source_iterable_native/api.py",
+      "lines": "392-397",
+      "snippet": "async for campaign in _paginate_through_campaigns(http, log):\n        if _should_fetch_metrics(campaign, start_ms, end_ms):\n    for batch in itertools.batched(campaign_ids, MAX_CAMPAIGNS_PER_METRICS_REQUEST):"
+    },
+    "unionMisfits[4]": {
+      "file": "source_iterable_native/api.py",
+      "lines": "228-240",
+      "snippet": "all_list_ids: list[int] = sorted([l.id async for l in snapshot_resources(http, Lists, log)])\n        next_list_index = bisect.bisect(all_list_ids, last_completed_list_id)\n    list_id = all_list_ids[next_list_index]"
+    },
+    "unionMisfits[5]": {
+      "file": "source_iterable_native/resources.py",
+      "lines": "255-266",
+      "snippet": "f\"{REALTIME}_{event_type}\": functools.partial(\n                    for event_type in EventTypes\n                },"
+    },
+    "unionMisfits[7]": {
+      "file": "source_iterable_native/models.py",
+      "lines": "210",
+      "snippet": "disable: ClassVar[bool] = True"
+    }
+  },
+
+  "confidence": {
+    "transports[0]": "high",
+    "transports[1]": "medium",
+    "credentialModes[0]": "high",
+    "credentialModes[0].scheme.prefix": "high",
+    "execution.mode": "high",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot": "high",
+    "streams[1].pull.snapshot": "high",
+    "streams[2].pull.snapshot": "high",
+    "streams[3].pull.snapshot": "high",
+    "streams[4].pull.snapshot": "high",
+    "streams[5].pull.backfill": "high",
+    "streams[5].schedules": "high",
+    "streams[6].pull.backfill.paginator": "high",
+    "streams[6].pull.incremental.paginator": "high",
+    "streams[6].cursorField": "high",
+    "streams[7].pull.incremental": "high",
+    "streams[7].cursorField": "high",
+    "streams[8].pull": "medium",
+    "streams[8].primaryKey": "low",
+    "streams[9].pull": "medium",
+    "streams[9].cursorField": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector code sets any static request header. Every call goes through http.request / request_stream / request_lines with only params, a JSON body, or a timeout; the only header the CDK injects is the auth header. Nothing establishes a required Accept or Content-Type at this layer, so the field is null rather than invented.",
+    "transports[0].spec.apiVersionPinning": "There is no version header, version query param, or version path segment. The base URL's trailing `/api` is a namespace, not a version — Iterable's own docs call these v1 endpoints, but nothing in the connector encodes that, so it is not extracted.",
+    "transports[1].spec.baseUrl.value": "The result-file host is never named in the connector. Only `file.url` from the response is used, so whether it is S3, GCS, or an Iterable-fronted CDN is not determinable from source. Recorded as `resolved` with the resolution described rather than guessing a host.",
+    "execution.continuity.resumeWindow": "Nothing in the connector encodes how long an Iterable export job or its pre-signed result URLs remain valid. MAX_WAIT_SECONDS (24h) is OUR patience for a single job, not the source's retention. The pre-signed URL expiry is handled reactively via a 403 'Request has expired' string match with no stated TTL. There is therefore no evidence for a resume window, and inventing one would be a data-loss-shaped guess.",
+    "streams[5].cursorField": "list_users has no cursor. It is registered with only fetch_page (a backfill task) and no fetch_changes, and its ResourceState carries only a Backfill entry. Its backfill page cursor is a parent list id, not a record field, so there is no cursorField to report.",
+    "streams[5].pull.backfill.recordsPath": "/lists/getUsers does not return JSON. The connector reads the response with request_lines and treats each line as a bare user id string, synthesizing {list_id, user_id} documents. There is no envelope and no records path.",
+    "streams[7].cursorField.serverSide": "campaign_metrics keeps a connector-side datetime cursor (advanced to `now` each sweep, read back with a 15-day lookback) but that cursor is never sent to the API — startDateTime is hardcoded to the epoch date. There is no record field acting as a cursor, so cursorField is null; the incremental behaviour is entirely in which campaign ids are selected.",
+    "streams[7].pull.backfill": "campaign_metrics is registered with fetch_changes only and its initial_state has no Backfill entry, so there is no separate historical sweep. It is not a snapshot either (no tombstone, keyed on /id), so `snapshot` is left null rather than misfiled.",
+    "streams[8].primaryKey": "Emitted as ['/email'] only because that is what the checked-in discover snapshot shows for the test config. The real key is chosen at runtime from `project_type` (Email-based -> /email, UserID-based and Hybrid -> /itblUserId). See the config_dependent misfit; treat the emitted value as one of three possibilities, not a fact.",
+    "streams[8].pull.*.paginator": "The `users` stream does not paginate an HTTP collection, so no paginator classification applies. Emitted as {type: none} for schema conformance; the real resumption mechanism (a startAfter file-list cursor inside the export-job flow) is in unionMisfits[0]. Do not read {type: none} here as 'one request returns everything'.",
+    "streams[9].pull.*.paginator": "Same as users: `events` drives export jobs, not a paginated collection. {type: none} is a schema-conformance placeholder; see unionMisfits[0].",
+    "streams[*].pull.*.recordsPath.forExports": "Export results are JSONL streamed from pre-signed URLs, one JSON document per line with no envelope, so there is no records path for users or events.",
+    "streams[*].incrementalParam": "No stream sends a generic incremental query parameter. campaigns filters client-side after a server-side sort; campaign_metrics sends a constant epoch startDateTime; users and events send startDateTime/endDateTime in a POST JSON body to /export/start, which is a job submission parameter rather than a collection filter. Mapping any of these onto incrementalParam would misrepresent where the filtering happens.",
+    "discovery": "Null by design: streamMode is static. The connector ships a fixed list built by all_resources(); the only config-driven variation is which users model is used and the fan-out over the 50-member EventTypes enum, neither of which queries the customer's schema.",
+    "streams[*].schedules.cronDefaults": "Only list_users ships a non-empty default cron ('55 23 * * *'). Every other binding leaves ResourceConfigWithSchedule.schedule at its CDK default of empty string, so no cron is reported for them. Users may set one per binding; that is a user choice, not a connector fact."
+  }
+}

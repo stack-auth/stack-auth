@@ -1,0 +1,318 @@
+{
+  "id": "zuora",
+  "estuaryDir": "source-zuora",
+  "displayName": "Zuora",
+  "description": "Imports every queryable object in a Zuora billing tenant (accounts, subscriptions, invoices, payments, transaction logs, ...) by running Export ZOQL jobs through Zuora's AQuA batch-query API and streaming the resulting CSV files.",
+  "category": "finance",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "The user picks one of 11 fixed Zuora REST hosts from the `base_url` enum config field, one per data center + environment (US/EU/APAC production, API sandbox, central sandbox, performance test). Default is https://rest.zuora.com (US production). It is not templated — each enum member is a full literal host."
+        },
+        "defaultHeaders": { "Zuora-Version": "2025-08-12" },
+        "apiVersionPinning": "Request header `Zuora-Version: 2025-08-12`, sent on every describe, batch-query, job-status and file-download request via a shared VERSION_HEADERS dict."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Zuora OAuth client (client_credentials)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "{base_url}/oauth/token",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "AQuA batch-query job (POST /v1/batch-query/, named \"estuary-capture-connector\") — one per exported window/page, run in stateless mode (partner/project deliberately omitted)",
+        "Export result file(s) on Zuora's side, addressed by fileId (or segment ids when AQuA file segmentation is on), downloaded via GET /v1/files/{fileId}"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "Stateless AQuA means Zuora holds no server-side cursor for us: incremental position lives entirely in the connector's own log cursor (a UTC datetime) which is re-expressed as a WHERE clause on each new job, so pausing between ticks loses nothing and nothing queues up on the tenant. The only residue is per-job: the connector never issues a job-cancel call, so a job in flight when the task stops keeps executing on Zuora and its result file is left behind un-downloaded; the next run simply submits a fresh job for the same window. A stopped capture also frees the connector's own MAX_CONCURRENT_EXPORTS=10 slice of the tenant's ~50 concurrent stateless AQuA job budget only as those in-flight jobs finish."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client id issued by Zuora for a tenant user." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client secret paired with the client id." },
+    { "name": "base_url", "displayName": "Base URL", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Zuora REST API base URL for your Zuora data center and environment. Enum of 11 hosts; defaults to https://rest.zuora.com." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date and time from which to start replicating data. Defaults to Zuora's founding year, January 1, 2007." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource — for this connector it is the Zuora object name, and it is what discovery/validate feed back into describe." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource. Connector seeds 5 minutes for incremental objects and 4 hours for snapshot objects." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Two-stage Zuora describe: GET /v1/describe returns an XML catalog of every object name in the tenant, then GET /v1/describe/{object} is called per object (bounded by a semaphore of 10) to obtain its field list and related objects. Each described object becomes one binding.",
+    "querySketch": null,
+    "excludes": [
+      "Objects whose GET /v1/describe/{object} call raises — logged and skipped rather than failing discovery.",
+      "Objects left with zero selectable/exportable fields.",
+      "Fields that are not `selectable`, or whose `<contexts>` do not include `export` (default-closed: a field with no contexts element is dropped).",
+      "Related objects equal to the object itself (would duplicate its own Id column).",
+      "Related objects in UNJOINABLE_OBJECTS — literally {\"SubscriptionStatusHistory\"} — which fail the export job outright.",
+      "Related objects the object already exposes as a scalar `<Name>Id` field."
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<object with an UpdatedDate field>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "UpdatedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval seeded at discovery", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Export ZOQL, submitted as an AQuA job: SELECT <own exportable fields>, <Related>.Id, ... FROM <Object> WHERE UpdatedDate >= '<start_date>' AND UpdatedDate < '<cutoff>' AND Id > '<last id of previous page>' ORDER BY Id LIMIT 250000",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "Id (as an `Id > '<token>'` predicate written into the ZOQL query text, which is itself sent in the JSON POST body of /v1/batch-query/)",
+            "recordField": "Id",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Export ZOQL, submitted as an AQuA job: SELECT <own exportable fields>, <Related>.Id, ... FROM <Object> WHERE UpdatedDate >= '<log cursor>' AND UpdatedDate < '<min(cursor + 30 days, now - 5 min)>' ORDER BY UpdatedDate",
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "UpdatedDate (half-open window inside the ZOQL WHERE clause, not an HTTP param)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<object with no UpdatedDate but a TransactionDate field, e.g. PaymentTransactionLog / PaymentMethodTransactionLog>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "TransactionDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval seeded at discovery", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Identical to the UpdatedDate archetype with TransactionDate substituted: ... FROM <Object> WHERE TransactionDate >= '<start_date>' AND TransactionDate < '<cutoff>' AND Id > '<last id>' ORDER BY Id LIMIT 250000",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "Id (as an `Id > '<token>'` predicate written into the ZOQL query text)",
+            "recordField": "Id",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "... FROM <Object> WHERE TransactionDate >= '<log cursor>' AND TransactionDate < '<min(cursor + 30 days, now - 5 min)>' ORDER BY TransactionDate",
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "TransactionDate (half-open window inside the ZOQL WHERE clause)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<object with neither UpdatedDate nor TransactionDate among its exportable fields>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "binding poll interval seeded at discovery", "schedule": { "kind": "interval", "seconds": 14400 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Unbounded, unordered full-table Export ZOQL: SELECT <own exportable fields>, <Related>.Id, ... FROM <Object> (no WHERE, no ORDER BY, no LIMIT)",
+          "paginator": { "type": "none" }
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode: a Zuora OAuth client id + client secret, exchanged by the CDK's TokenSource for a bearer access token at {base_url}/oauth/token using grant_type=client_credentials, with the pair placed in the token-request form body. No refresh token is stored or requested, no redirect URI, no scopes, and the connector spec sets `oauth2=None` so there is no hosted control-plane OAuth app — nothing is registered on the user's behalf and nothing needs to be. The user's whole job is to generate one credential pair in Zuora's admin UI and paste it, which is the T1 shape (a self-serve credential the vendor hands you) rather than the T2 shape (registering an application to obtain a client id/secret for a delegated three-legged flow). Judged T1 on that reading; a reviewer who counts any client_id/client_secret pair as T2 by definition would score it T2, and the distinction is worth confirming against Zuora's actual admin flow before shipping tier-based UI copy.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.* — PullSpec kind",
+      "description": "The unit of work is not one HTTP request but a three-phase asynchronous job: POST /v1/batch-query/ with the ZOQL statement in a JSON body (submit) -> GET /v1/batch-query/jobs/{id} every 10s up to 360 times (poll for a terminal AQuA status) -> GET /v1/files/{fileId} streamed as CSV (download), where a completed batch may carry `segments` (a list of file ids) instead of a single `fileId` and each segment is a self-contained CSV with its own header. `kind: \"query\"` captures the statement but drops the job lifecycle, the poll cadence/timeout, the retry policy (3 attempts, 30s base, x2 backoff on job-level failure), and the multi-file fan-out. Filed as a misfit per the brief rather than forced into an http PullSpec.",
+      "proposedShape": {
+        "kind": "async_job",
+        "language": "other",
+        "querySketch": "<statement>",
+        "submit": { "path": "/v1/batch-query/", "httpMethod": "POST", "bodyFields": { "format": "csv", "version": "1.2", "name": "<job name>", "dateTimeUtc": "true", "useQueryLabels": "true", "queries": "[{name, query, type: zoqlexport}]" }, "jobIdPath": "/id" },
+        "poll": { "path": "/v1/batch-query/jobs/{jobId}", "statusPath": "/status", "successStatuses": ["completed"], "failureStatuses": ["error", "aborted", "cancelled", "failed"], "intervalSeconds": 10, "maxAttempts": 360 },
+        "fetch": { "path": "/v1/files/{fileId}", "resultIdPaths": ["/batches/0/segments", "/batches/0/fileId"], "format": "csv", "streaming": true },
+        "jobRetry": { "maxAttempts": 3, "baseSeconds": 30, "factor": 2, "scope": "job-level failures only; transport errors already retried by the HTTP layer" },
+        "concurrencyLimit": 10
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.paginator",
+      "description": "Incremental has no paginator in the schema's sense; boundedness comes from adaptive time-window slicing. Each tick exports the half-open window [cursor, min(cursor + 30 days, now - 5 min)). If the download 403s with a `max-object-size` marker (Zuora's 2047 MB export-file cap) the window is bisected at its midpoint and re-exported, recursively, until it fits or the window can no longer be split (then it hard-fails). Cursor advance is three-way: to one second past the last second that held data; to the window end if a full-sized window was empty; unchanged if an empty window touched the leading edge. Intermediate checkpoints are emitted every ~10,000 docs but never inside a second, because Zuora filters at second granularity. `{\"type\": \"none\"}` records only that no page token exists.",
+      "proposedShape": {
+        "type": "adaptive_time_window",
+        "cursorField": "<UpdatedDate|TransactionDate>",
+        "maxWindow": "30d",
+        "leadingEdgeLag": "5m",
+        "splitOn": "response 403 containing 'max-object-size'",
+        "splitStrategy": "bisect at midpoint, second-floored",
+        "checkpointEvery": 10000,
+        "checkpointGranularity": "whole second"
+      }
+    },
+    {
+      "where": "streams[].pull.backfill.paginator",
+      "description": "record_cursor is the closest fit but every axis is bent: the token is the last row's Id, it is sent by textual interpolation into a `WHERE ... Id > '<token>'` clause of a ZOQL statement (not as an HTTP param), and that statement travels inside a JSON POST body — hence tokenTo `body_field`. Page size is not a fixed constant either: LIMIT starts at 250,000 and is halved in place on the same size-overflow 403, down to 1, so `pageSize` is adaptive. Termination is short_page (rows returned < current LIMIT), and the connector additionally asserts strict Id ascension, raising if a tenant returns a row whose Id is not greater than the resume id.",
+      "proposedShape": {
+        "type": "record_cursor",
+        "recordField": "Id",
+        "tokenFrom": "last_record",
+        "tokenTo": "query_text_predicate",
+        "predicateSketch": "Id > '<token>' ORDER BY Id LIMIT <n>",
+        "pageSize": { "initial": 250000, "adaptive": "halve on size overflow, floor 1" },
+        "terminateOn": "short_page",
+        "orderingAssertion": "fails loudly if returned Id <= resume Id"
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "Neither constant, template, nor runtime-resolved: it is a closed enum of 11 literal hosts the user selects, with a default. Modelled as `resolved` because the value is only known once the user picks, but no resolution request is made — it is pure config.",
+      "proposedShape": { "kind": "enum", "values": ["https://rest.zuora.com", "https://rest.apisandbox.zuora.com", "https://rest.test.zuora.com", "https://rest.pt1.zuora.com", "https://rest.na.zuora.com", "https://rest.sandbox.na.zuora.com", "https://rest.eu.zuora.com", "https://rest.sandbox.eu.zuora.com", "https://rest.test.eu.zuora.com", "https://rest.ap.zuora.com", "https://rest.test.ap.zuora.com"], "default": "https://rest.zuora.com" }
+    },
+    {
+      "where": "discovery",
+      "description": "Discovery output is not just a stream list: the per-object describe also decides each binding's SHAPE (which of three archetypes it becomes, by testing whether `UpdatedDate` then `TransactionDate` appears among exportable fields) and materialises the exact SELECT field list, including `<Related>.Id` join columns synthesised from `<related-objects>` because Export ZOQL exposes foreign keys only as joins. The schema's `discovery` block has nowhere to record that discovery is also field-selection and mode-selection.",
+      "proposedShape": { "method": "...", "perStreamShapeSelection": "ordered probe of cursor-field candidates against the described field set, falling through to snapshot", "projectsFieldList": true, "fieldListSketch": "<exportable fields> + <JoinableRelatedObject>.Id" }
+    },
+    {
+      "where": "streams[].pull.snapshot",
+      "description": "The snapshot archetype has no size-overflow escape hatch at all. Backfill halves its LIMIT and incremental bisects its window, but a cursorless full-table export has neither, so a snapshot object larger than 2047 MB raises ExportTooLargeError and fails the binding outright. The schema has no field for 'this pull shape can hard-fail on volume'.",
+      "proposedShape": { "volumeCeiling": { "limit": "2047 MB per export file", "onExceed": "fail binding", "mitigation": "none implemented; code comment suggests LIMIT/OFFSET paging as the fix" } }
+    },
+    {
+      "where": "streams[].pull.* — record field naming",
+      "description": "CSV column headers do not match document field names one-for-one. With `useQueryLabels: true` every header is `<Object>.<Field>`; a header whose prefix equals the exported object drops the prefix (Account export's `Account.Id` -> `Id`) while a joined object's header is flattened by concatenation (Invoice export's `Account.Id` -> `AccountId`). Rows are keyed by header name, never by position, because Zuora does not return columns in the selected order. No schema field expresses this response-to-document renaming.",
+      "proposedShape": { "fieldNameMapping": { "kind": "prefix_strip_or_concat", "rule": "split header on first '.'; drop prefix if it equals the object name, else concatenate prefix+field" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_zuora/models.py", "lines": "18-32", "snippet": "class BaseURL(StrEnum):\n    US_PRODUCTION = \"https://rest.zuora.com\"\n    US_API_SANDBOX = \"https://rest.apisandbox.zuora.com\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_zuora/shared.py", "lines": "4-5", "snippet": "ZUORA_API_VERSION = \"2025-08-12\"\nVERSION_HEADERS: dict[str, str] = {\"Zuora-Version\": ZUORA_API_VERSION}" },
+    "credentialModes[0].scheme": { "file": "source_zuora/resources.py", "lines": "40-47", "snippet": "http.token_source = TokenSource(\n        oauth_spec=OAuth2TokenFlowSpec(\n            accessTokenUrlTemplate=f\"{config.base_url}/oauth/token\"," },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "211-212", "snippet": "class ClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"client_credentials\"" },
+    "authTierOverall": { "file": "source_zuora/__init__.py", "lines": "26-31", "snippet": "return ConnectorSpec(\n            documentationUrl=\"https://go.estuary.dev/source-zuora\",\n            oauth2=None," },
+    "configFields": { "file": "source_zuora/models.py", "lines": "35-49", "snippet": "class EndpointConfig(BaseModel):\n    credentials: ClientCredentialsOAuth2Credentials\n    base_url: BaseURL = Field(" },
+    "streamMode": { "file": "source_zuora/resources.py", "lines": "216-218", "snippet": "_attach_token_source(http, config)\n    object_names = await discover_object_names(config.base_url, http, log)\n    return await _build_resources(log, http, config, object_names)" },
+    "discovery.method": { "file": "source_zuora/api.py", "lines": "111-116", "snippet": "\"\"\"Return all object names available in this Zuora tenant via GET /v1/describe.\"\"\"\n    url = f\"{base_url}/v1/describe\"" },
+    "discovery.excludes": { "file": "source_zuora/models.py", "lines": "131-141", "snippet": "return self.selectable and \"export\" in self.contexts\n...\nUNJOINABLE_OBJECTS: frozenset[str] = frozenset({\"SubscriptionStatusHistory\"})" },
+    "streams[0].cursorField": { "file": "source_zuora/models.py", "lines": "65-67", "snippet": "class UpdatedDateDocument(ZuoraDocument):\n    CURSOR_FIELD: ClassVar[str] = \"UpdatedDate\"\n    UpdatedDate: AwareDatetime" },
+    "streams[1].cursorField": { "file": "source_zuora/models.py", "lines": "79-80", "snippet": "CURSOR_FIELD: ClassVar[str] = \"TransactionDate\"\n    TransactionDate: AwareDatetime" },
+    "streams[0].primaryKey": { "file": "source_zuora/resources.py", "lines": "130-139", "snippet": "return common.Resource(\n        name=object_name,\n        key=[\"/Id\"]," },
+    "streams[0].schedules": { "file": "source_zuora/resources.py", "lines": "139", "snippet": "initial_config=ResourceConfig(name=object_name, interval=timedelta(minutes=5))," },
+    "streams[2].schedules": { "file": "source_zuora/resources.py", "lines": "173", "snippet": "initial_config=ResourceConfig(name=object_name, interval=timedelta(hours=4))," },
+    "streams[2].primaryKey": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "481", "snippet": "key: list[str] = field(default_factory=lambda: [\"/_meta/row_id\"])" },
+    "streams[2].writeDisposition": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "983-988", "snippet": "if tombstone is None:\n                tombstone = cast(\n                    _BaseDocument, BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))" },
+    "streams[2].pull.snapshot": { "file": "source_zuora/api.py", "lines": "416-433", "snippet": "\"\"\"Full table export for objects with no usable incremental cursor field.\n...\n    query = build_query(object_name, fields)" },
+    "streams[0].pull.incremental": { "file": "source_zuora/api.py", "lines": "307-315", "snippet": "now = (datetime.now(UTC) - LAG).replace(microsecond=0)\n    ...\n    window_end = min(log_cursor + MAX_EXPORT_WINDOW, now)" },
+    "streams[0].pull.backfill.paginator": { "file": "source_zuora/api.py", "lines": "98-103", "snippet": "if after_id is not None:\n        conditions.append(f\"Id > '{after_id}'\")\n    ... f\"WHERE {' AND '.join(conditions)} ORDER BY Id LIMIT {limit}\"" },
+    "streams[0].pull.backfill.querySketch": { "file": "source_zuora/api.py", "lines": "28-30", "snippet": "# _fetch_page_by_id halves its LIMIT; per-page job overhead is small (~10s\n# measured), so a conservative page size costs little.\nBACKFILL_PAGE_SIZE = 250_000" },
+    "execution.mode": { "file": "source_zuora/export_manager.py", "lines": "101-105", "snippet": "\"\"\"Runs Zuora AQuA (Aggregate Query API) export jobs in stateless mode.\n\n    Each export is an async job: submit an Export ZOQL query, poll until it\n    reaches a terminal status, then stream the resulting CSV file(s)." },
+    "execution.continuity.artifacts": { "file": "source_zuora/export_manager.py", "lines": "172-192", "snippet": "url = f\"{self.base_url}/v1/batch-query/\"\n        # partner/project are deliberately omitted: that runs the job in\n        # stateless mode" },
+    "execution.continuity.customerSideAccrual": { "file": "source_zuora/export_manager.py", "lines": "174-176", "snippet": "# stateless mode, and cursor windows in the query's WHERE clause carry\n        # our incremental state instead." },
+    "unionMisfits[0].proposedShape.poll": { "file": "source_zuora/export_manager.py", "lines": "35-39", "snippet": "POLL_INTERVAL = 10\n# Maximum number of polling attempts before giving up (~1 hour).\nMAX_POLL_ATTEMPTS = 360" },
+    "unionMisfits[1].proposedShape.splitOn": { "file": "source_zuora/export_manager.py", "lines": "32-33", "snippet": "_FILE_TOO_LARGE_STATUS = 403\n_TOO_LARGE_MARKER = \"max-object-size\"" },
+    "unionMisfits[6].proposedShape.fieldNameMapping": { "file": "source_zuora/export_manager.py", "lines": "94-97", "snippet": "prefix, _, field = column.partition(\".\")\n    if not field:\n        return column" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec.kind": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "medium",
+    "authTierOverall": "medium",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.releasedOnShutdown": "medium",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.excludes": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].schedules": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].pull.backfill.paginator": "medium",
+    "streams[1]": "high",
+    "streams[2].writeDisposition": "medium",
+    "streams[2].primaryKey": "high",
+    "streams[2].pull.snapshot": "high"
+  },
+
+  "abstained": {
+    "credentialModes[0].scheme.authUrl": "There is no authorization endpoint: the grant is client_credentials and the CDK builds only an OAuth2TokenFlowSpec (token URL + response map). The connector spec sets oauth2=None, so no browser authorization URL exists anywhere in the code.",
+    "credentialModes[0].scheme.scopes": "No scopes are requested or configured anywhere — the token request form carries only grant_type plus the client credentials. Emitted as an empty list, which is a fact rather than an abstention, but noted because Zuora tokens do carry scopes server-side that the connector never names.",
+    "execution.defaultSchedule": "The connector sets no connector-wide schedule; scheduling is entirely per-binding via ResourceConfig.interval (5 min incremental, 4 h snapshot), seeded at discovery and thereafter user-editable. ResourceConfig's own schema default is PT0S, which is a CDK default and not this connector's intent.",
+    "execution.continuity.ourSideLoss": "Nothing observable is lost by pausing: the log cursor is a plain UTC datetime held in connector state and re-expressed as a ZOQL WHERE clause each run, and Zuora holds no resume token for us. Set null. Not verified: whether Zuora's export index has a retention horizon that would make a very old cursor unqueryable — nothing in the source speaks to that.",
+    "execution.continuity.resumeWindow": "No bound is expressed or implied in the code. The only time-sensitivity is the 5-minute LAG applied to the leading edge, which is an eventual-consistency guard on newly-visible rows, not a resume deadline.",
+    "streams[].name": "Genuinely unknowable from source. Every binding name comes from the tenant's own GET /v1/describe catalog at connect time; the connector ships no object list, no allowlist, and no defaults. The three entries are ARCHETYPES (kind: \"archetype\") describing the distinct shapes _build_resources can emit, not streams that exist.",
+    "streams[].supportedSyncModes for the snapshot archetype": "Marked full_refresh because the binding re-reads the whole object each interval with no cursor; note that the CDK models this as a snapshot subtask with tombstone-based deletion inference rather than a classic full_refresh replace, so the mapping onto this schema's vocabulary is approximate.",
+    "streams[2].writeDisposition": "snapshot_with_tombstone is inferred from the CDK's SnapshotResource defaults (key /_meta/row_id, default tombstone document with _meta.op=\"d\"); the Zuora connector itself passes no tombstone and never mentions deletes, so this rests on CDK behaviour rather than connector code.",
+    "streams[].pull.*.recordsPath / response envelope": "Not applicable and not asserted: results arrive as CSV files streamed through IncrementalCSVProcessor, not as a JSON envelope with a records path.",
+    "deletion semantics for incremental archetypes": "Export ZOQL selects live rows only; nothing in the connector detects or emits hard deletes for UpdatedDate/TransactionDate bindings. Whether Zuora even exposes deletions to AQuA is not addressed by the source, so no claim is made.",
+    "transports[0].spec.defaultHeaders beyond Zuora-Version": "Only VERSION_HEADERS is set explicitly by the connector; any Accept/User-Agent/Content-Type defaults come from the CDK's HTTP layer and were not traced."
+  }
+}

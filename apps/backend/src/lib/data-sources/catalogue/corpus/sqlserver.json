@@ -1,0 +1,323 @@
+{
+  "id": "sqlserver",
+  "estuaryDir": "source-sqlserver",
+  "displayName": "Microsoft SQL Server",
+  "description": "Captures inserts, updates and deletes from tables in a Microsoft SQL Server database using SQL Server's Change Data Capture (CDC) change tables, with an initial backfill of existing rows.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "sqlserver",
+        "defaultPort": 1433,
+        "sslPolicy": "DSN always sets 'encrypt=true' and 'TrustServerCertificate=true' (TLS is required but the server certificate is not verified). The connector separately logs the negotiated 'encrypt_option' from sys.dm_exec_connections as an informational prerequisite check, but never fails on it.",
+        "tunnelSupport": "Optional SSH forwarding (networkTunnel.sshForwarding). A local listener is started on port 1433 and the mssql driver's dial is redirected to it via a custom HostDialer, while the DSN keeps the real hostname so TLS SNI and the TDS LOGIN7 ServerName remain accurate."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "SQL Server user + password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password", "database"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "Database-level CDC enablement on the configured database (sys.sp_cdc_enable_db), which materializes the 'cdc' schema and its system tables cdc.change_tables, cdc.ddl_history, cdc.lsn_time_mapping, cdc.captured_columns, cdc.index_columns",
+        "SQL Server Agent CDC capture job and CDC cleanup job for the database (created as a side effect of sp_cdc_enable_db; the connector never creates, configures, starts or stops them)",
+        "One CDC capture instance per captured table, each backed by a change table [cdc].[<instance>_CT]; instance names are generated as '<schema>_<table truncated to 64 bytes>_<CRC32 hex>_<unix timestamp>'",
+        "The gating role on each created capture instance: advanced.role_name if set, otherwise the capture username",
+        "Optional filegroup placement of created change tables (advanced.filegroup)",
+        "Legacy only (feature flag read_only=false): the watermarks table advanced.watermarksTable (default dbo.flow_watermarks, columns slot/watermark), plus a CDC capture instance on that watermarks table, plus one row continuously UPDATEd with a fresh UUID on every stream-to-fence cycle"
+      ],
+      "customerSideAccrual": "Change-table rows. Each [cdc].[<instance>_CT] accumulates one row per captured DML operation (two for updates when the instance captures old values). If we stop consuming, those rows keep accruing on the customer's database. What bounds that growth depends on configuration: (a) by default (advanced.change_table_cleanup=false) the connector deletes nothing, so the only bound is SQL Server's own CDC cleanup job, whose retention the connector never sets, reads or configures — growth is therefore bounded by the DBA's retention setting and is unaffected by whether we are running; (b) with advanced.change_table_cleanup=true the connector itself calls sys.sp_cdc_cleanup_change_table every 15 minutes with a low-water mark equal to the LSN Flow has acknowledged, so in that mode a stopped connector means cleanup also stops and change tables grow until the database's own cleanup job catches up. Additionally, superseded capture instances (created in response to DDL when advanced.capture_instance_management=true) are only deleted by the running connector, so a stopped connector leaves duplicate change tables in place, and the legacy watermarks table keeps its CDC instance and change table.",
+      "ourSideLoss": "Changes trimmed below our resume LSN. sp_cdc_cleanup_change_table (whether run by SQL Server's cleanup job on its retention schedule or by the connector itself) deletes rows and raises the capture instance's start_lsn low-water mark. On resume, newestValidInstance() rejects every instance whose start_lsn is greater than the checkpointed fromLSN; with no valid instance the connector emits a TableDropEvent for that stream and deactivates it, which surfaces as a re-backfill of the table. The feature flag tolerate_missed_changes (default false) instead falls back to the instance with the earliest start_lsn, silently skipping the missed window rather than re-backfilling. A second, unrelated loss mode: sp_cdc_enable_table is also how the connector recovers from DDL, and a capture instance created while we were stopped has a start_lsn newer than our cursor, so it is likewise unusable until the cursor advances past it.",
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "Who creates what: the CONNECTOR creates database-level CDC (it runs EXEC sys.sp_cdc_enable_db during prerequisite checks if sys.databases.is_cdc_enabled is false, and hard-fails the capture if the user lacks permission) and creates per-table capture instances (EXEC sys.sp_cdc_enable_table during validation and whenever a bound table has none). Both require db_owner in practice; when the capture user lacks it, the DBA must run the same procedures beforehand, and the connector's error text is 'table X has no capture instances and user Y cannot create one'. The SQL Server Agent CAPTURE JOB and CLEANUP JOB are created by sp_cdc_enable_db and are entirely the DBA's to run and tune — the connector only READS msdb.dbo.cdc_jobs (maxtrans/maxscans/pollinginterval) to calibrate its fence heuristic, and only READS sys.dm_cdc_log_scan_sessions to detect that the capture job has caught up. If the capture job is not running, cdc.lsn_time_mapping never advances and the connector errors with 'no maximum CDC LSN, agent process may not be running'. Nothing is released on shutdown: Close() only cancels the polling goroutine and closes the SQL connection. Database CDC enablement, every capture instance and change table, the created gating role assignment, and the legacy watermarks table all persist indefinitely after the capture is deleted; removing them is a manual DBA action (sys.sp_cdc_disable_table / sp_cdc_disable_db). The resume cursor is a base64-encoded 10-byte LSN checkpointed as a JSON string; it stays valid as long as the change-table rows at or after it still exist, so the true resume window is exactly the database's CDC retention setting, which is not visible anywhere in this connector's code."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port at which the database can be reached; ':1433' is appended when no port is given." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as. Defaults to 'flow_capture'." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the specified database user." },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Logical database name to capture from." },
+    { "name": "timezone", "displayName": "Time Zone", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "IANA timezone name used to interpret DATETIME columns when converting to RFC3339. Defaults to UTC." },
+    { "name": "historyMode", "displayName": "History Mode", "required": true, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Capture change events without reducing them to a final state. Listed as required in the config schema with a default of false." },
+    { "name": "discoveryFilters.include_schemas", "displayName": "Include Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "If set, only tables in these schemas are discovered. Pushed down into the listTables query as an IN predicate." },
+    { "name": "discoveryFilters.exclude_schemas", "displayName": "Exclude Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Tables in these schemas are dropped from discovery results client-side." },
+    { "name": "discoveryFilters.table_patterns", "displayName": "Table Patterns", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Glob patterns; a pattern containing '.' matches 'schema.table', one without matches the bare table name in any schema. Applied client-side after listTables." },
+    { "name": "discoveryFilters.discover_only_enabled", "displayName": "Discover Only CDC-Enabled Tables", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Restrict discovery to tables that already have a CDC capture instance. Unioned with advanced.discover_only_enabled." },
+    { "name": "advanced.discover_only_enabled", "displayName": "Discover Only CDC-Enabled Tables", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Legacy duplicate of the discoveryFilters flag of the same name; the two are OR'd." },
+    { "name": "advanced.skip_backfills", "displayName": "Skip Backfills", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated fully-qualified table names not to backfill. The special value '*.*' skips backfilling everything." },
+    { "name": "advanced.backfill_chunk_size", "displayName": "Backfill Chunk Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Rows fetched per backfill query. Default 50000. A short chunk marks the backfill complete." },
+    { "name": "advanced.polling_interval", "displayName": "CDC Polling Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string (pattern ^[0-9]+(ms|s|m|h)$) controlling how often change tables are polled. Default 500ms, minimum 100ms." },
+    { "name": "advanced.change_table_cleanup", "displayName": "Automatic Change Table Cleanup", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When set, the connector calls sys.sp_cdc_cleanup_change_table every 15 minutes with the Flow-acknowledged LSN as the low-water mark. Requires db_owner; verified as a prerequisite." },
+    { "name": "advanced.capture_instance_management", "displayName": "Automatic Capture Instance Management", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When set, the connector reacts to cdc.ddl_history entries by creating a new capture instance and deleting the superseded one (checked every 30s and once at startup). Requires db_owner; verified as a prerequisite." },
+    { "name": "advanced.filegroup", "displayName": "CDC Instance Filegroup", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Passed as @filegroup_name when the connector creates a capture instance. No effect on manually created instances." },
+    { "name": "advanced.role_name", "displayName": "CDC Instance Access Role", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Passed as @role_name when the connector creates a capture instance; defaults to the capture username." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "When set, added as '_meta.source.tag' on every document and to the source metadata schema." },
+    { "name": "advanced.rediscovery_interval", "displayName": "Rediscovery Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string controlling how often discovery re-runs mid-capture to notice schema changes and new tables. Default 15m; timing is jittered across captures." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal comma-separated flags. Defaults: use_schema_inference=true, emit_sourced_schemas=true, read_only=true, tolerate_missed_changes=false, replica_fencing=false, discover_rowversion_as_bytes=false. Also accepts value-carrying flags initial_backfill_cursor=<lsn> and force_reset_cursor=<lsn>." },
+    { "name": "advanced.watermarksTable", "displayName": "Watermarks Table", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Deprecated. Fully-qualified '<schema>.<table>' used only by legacy captures running with read_only disabled. Default dbo.flow_watermarks." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ssh://user@hostname[:port] bastion endpoint. Required if the sshForwarding object is present." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Private key for the SSH bastion. Required if the sshForwarding object is present." },
+    { "name": "namespace", "displayName": "Schema", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Schema (namespace) in which the table resides. Read-only; part of the resource path." },
+    { "name": "stream", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the table to capture. Read-only; part of the resource path." },
+    { "name": "mode", "displayName": "Backfill Mode", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "One of '' (automatic), 'Normal', 'Precise', 'Only Changes', 'Without Primary Key'. Selects the backfill query shape and whether backfilled rows are filtered against concurrent changes." },
+    { "name": "priority", "displayName": "Backfill Priority", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Integer priority; highest-priority bindings are backfilled to completion before others. Default 0, negatives allowed." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "INFORMATION_SCHEMA / sys catalog queries against the configured database",
+    "querySketch": "Table list: SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES with the system-schema exclusions below, optionally AND TABLE_SCHEMA IN (<include_schemas>). When 'discover only CDC-enabled' is set the same projection is instead taken as SELECT DISTINCT over cdc.change_tables JOIN sys.tables JOIN sys.schemas JOIN INFORMATION_SCHEMA.TABLES, carrying the same exclusions. Per-table detail is then fetched in chunks of 100 tables using a disjunction-of-equalities predicate ((schemaCol=@pN AND tableCol=@pN+1) OR ...), with each identifier bound as NVARCHAR(MAX) so the parameter signature and cached plan stay constant; a trailing partial chunk is padded by repeating its last table. Five detail queries per chunk: INFORMATION_SCHEMA.TABLES for TABLE_TYPE ('BASE TABLE' vs view); INFORMATION_SCHEMA.COLUMNS for ordinal/nullability/DATA_TYPE/COLLATION_NAME/CHARACTER_MAXIMUM_LENGTH; INFORMATION_SCHEMA.KEY_COLUMN_USAGE joined to TABLE_CONSTRAINTS on the full 6-tuple where CONSTRAINT_TYPE='PRIMARY KEY'; sys.indexes/sys.index_columns/sys.tables/sys.schemas where key_ordinal!=0 AND is_unique=1 AND schema NOT IN ('cdc') for fallback keys; sys.columns where is_computed=1 for computed columns.",
+    "excludes": [
+      "Schemas INFORMATION_SCHEMA, PERFORMANCE_SCHEMA, SYS and CDC (compared against the catalog's canonical uppercase names)",
+      "Table SYSTRANSCHEMAS",
+      "Any schema listed in discoveryFilters.exclude_schemas",
+      "Any table not matching discoveryFilters.table_patterns, when that list is non-empty",
+      "Any table without a CDC capture instance, when discover_only_enabled is set on either config path",
+      "The watermarks table: still discovered (replication needs it in the map) but flagged OmitBinding so it produces no binding",
+      "Computed columns: flagged OmitColumn and excluded from both backfill and CDC output, because SQL Server always writes NULL for them in change tables",
+      "Secondary indexes in the 'cdc' schema, when searching for a fallback key"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<schema>.<table> with a declared PRIMARY KEY",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<primary key columns, in INFORMATION_SCHEMA.KEY_COLUMN_USAGE ordinal order>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "__$start_lsn",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "CDC change-table polling", "schedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval, a Go duration string; minimum 100ms. Each tick queries the server max LSN and then polls every capture instance that has advanced." } },
+        { "role": "continuous streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "keyColumns": ["<primary key columns>"],
+          "cursorColumns": ["<primary key columns>"],
+          "querySketch": "SELECT * FROM [schema].[table] ORDER BY <key columns> OFFSET 0 ROWS FETCH FIRST <chunk size> ROWS ONLY for the first chunk. Resumed chunks wrap the same SELECT in a BEGIN block, first DECLAREing a typed local for each text key column (so the parameter carries the column's own collation and length rather than the driver's inferred type), then applying a disjunctive resume predicate over the key tuple (k1 > @p1) OR (k1 = @p1 AND k2 > @p2) OR ... . DATETIME2, SMALLDATETIME, DATETIMEOFFSET and DATE resume keys are parsed back into typed datetime parameters before binding; DATETIME and TIME are deliberately left as strings.",
+          "chunking": "advanced.backfill_chunk_size rows per query (default 50000), resumed by the serialized FDB-tuple row key of the last row returned. A chunk returning fewer rows than the chunk size marks the table's backfill complete. A watchdog fails the chunk if 2 hours pass with no row returned."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "publication": "<CDC capture instance name, e.g. dbo_orders_1A2B3C4D_1754438400, backing change table [cdc].[<instance>_CT]>",
+          "emitsDeletes": true,
+          "resumeTokenKind": "base64-encoded SQL Server LSN (10-byte binary), checkpointed as a JSON string. Advanced only at commit boundaries: each polling cycle reads SELECT MAX(start_lsn) FROM cdc.lsn_time_mapping as its toLSN and emits a synthetic commit event at that LSN once every table has been polled."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> with no PRIMARY KEY but a usable UNIQUE index",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<columns of the alphabetically-first unique index whose columns are all NOT NULL>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "__$start_lsn",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "CDC change-table polling", "schedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval." } },
+        { "role": "continuous streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "keyColumns": ["<fallback unique-index columns>"],
+          "cursorColumns": ["<fallback unique-index columns>"],
+          "querySketch": "Identical to the primary-key archetype; the selected unique index is substituted for the primary key and the DiscoveryInfo is flagged FallbackKey. Selection sorts candidate index names and takes the first, so adding a new unique index can change the chosen key.",
+          "chunking": "Same as the primary-key archetype."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "publication": "<CDC capture instance name backing [cdc].[<instance>_CT]>",
+          "emitsDeletes": true,
+          "resumeTokenKind": "base64-encoded SQL Server LSN, as above."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> with no primary key and no usable unique index (keyless)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/lsn", "/_meta/source/seqval"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": "__$start_lsn",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [
+        { "role": "CDC change-table polling", "schedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval." } },
+        { "role": "continuous streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM [schema].[table] ORDER BY %%physloc%% OFFSET @p1 ROWS FETCH FIRST <chunk size> ROWS ONLY, where @p1 is the count of rows already backfilled. Row keys are synthesized as the zero-padded decimal row offset ('B%019d') rather than from column values.",
+          "chunking": "advanced.backfill_chunk_size rows per query, resumed by row offset against physical-location ordering (not stable under concurrent writes)."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "publication": "<CDC capture instance name backing [cdc].[<instance>_CT]>",
+          "emitsDeletes": true,
+          "resumeTokenKind": "base64-encoded SQL Server LSN, as above."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential the user supplies is a SQL Server address/database plus a username and password, assembled into a 'sqlserver://' DSN. There is no OAuth app to register and no refresh token. The real setup burden is database privileges rather than credential plumbing: the connector will try to run sys.sp_cdc_enable_db and sys.sp_cdc_enable_table itself, both of which require db_owner, and the default read-only fence path additionally requires VIEW DATABASE STATE (or VIEW DATABASE PERFORMANCE STATE on SQL Server 2022+) to read sys.dm_cdc_log_scan_sessions. When the capture user lacks those, a DBA must pre-create the CDC artifacts and grant SELECT on the source schema and on the cdc schema. That is a privilege-provisioning cost, not a credential-tier cost, so the tier remains T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.mode",
+      "description": "'log' vs 'poll' is a false dichotomy here. SQL Server does not expose the transaction log to clients; a server-side Agent job tails the log into per-table change tables, and the connector POLLS those tables on a configurable interval (default 500ms) with fn_cdc_get_all_changes. Semantically it is log-based CDC (ordered LSNs, deletes, no cursor column on the source table), but mechanically it is a poll loop over ordinary tables, and its latency floor is the sum of the Agent's poll interval and ours. Neither enum value tells a reader that a THIRD party's job schedule sits between the source and us.",
+      "proposedShape": { "mode": "log", "logAccess": { "kind": "server_side_materialized", "materializer": "SQL Server Agent CDC capture job", "materializerOwnedBy": "customer", "clientPollSchedule": { "kind": "other", "literal": "500ms" } } }
+    },
+    {
+      "where": "execution.continuity.artifacts",
+      "description": "The schema asks for a flat list of artifacts, but the crucial fact per artifact is WHO creates it and what happens if they cannot. Here the connector opportunistically creates database-CDC and per-table capture instances but degrades to a hard error and DBA instructions when it lacks db_owner, and it never creates the Agent jobs that make those artifacts actually produce data. A flat string list forces all of that into prose.",
+      "proposedShape": { "artifacts": [ { "name": "cdc capture instance <schema>_<table>_<hash>_<ts>", "createdBy": "connector_if_permitted", "fallbackCreatedBy": "dba", "requiresPrivilege": "db_owner", "droppedOnShutdown": false, "growsWhilePaused": true } ] }
+    },
+    {
+      "where": "execution.continuity.customerSideAccrual / ourSideLoss",
+      "description": "Both fields are single strings, but for this connector each has two mutually exclusive answers selected by one boolean (advanced.change_table_cleanup) and one feature flag (tolerate_missed_changes). With cleanup off, nothing about our being stopped changes the customer's accrual — the DBA's cleanup job governs it. With cleanup on, we are the trimmer, and stopping us is exactly what makes change tables grow. Collapsing those into one sentence loses the fact that enabling a convenience option converts a customer-owned risk into ours.",
+      "proposedShape": { "customerSideAccrual": [ { "whenConfig": "change_table_cleanup=false", "accrual": null, "boundedBy": "database CDC retention (DBA-owned cleanup job)" }, { "whenConfig": "change_table_cleanup=true", "accrual": "change-table rows past the Flow-acked LSN", "boundedBy": "our 15-minute cleanup tick" } ] }
+    },
+    {
+      "where": "execution.continuity.resumeWindow",
+      "description": "The resume window is real and consequential but lives entirely outside the connector: it is the @retention argument of sys.sp_cdc_change_job, which this code never reads, sets, or logs. The schema offers no way to say 'externally determined, value not observable from this source'; a null is indistinguishable from 'unbounded'.",
+      "proposedShape": { "resumeWindow": { "kind": "external", "governedBy": "SQL Server CDC cleanup job retention (sp_cdc_change_job @retention)", "observableFromConnector": false } }
+    },
+    {
+      "where": "streams[].pull.backfill (PullSpec 'table')",
+      "description": "One binding can take any of four backfill shapes chosen by the resource-level 'mode' field ('', Normal, Precise, Only Changes, Without Primary Key), and two of them differ in query structure, not just parameters: keyed backfills use a disjunctive key-tuple resume predicate over ORDER BY <key>, keyless backfills use OFFSET/FETCH over ORDER BY %%physloc%% with a synthetic row key. 'Only Changes' skips the backfill entirely. A single PullSpec slot cannot hold alternatives selected at binding-configuration time.",
+      "proposedShape": { "backfill": { "selector": { "resourceField": "mode" }, "variants": { "Normal|Precise": { "kind": "table", "chunking": "keyed resume tuple" }, "Without Primary Key": { "kind": "table", "chunking": "offset over %%physloc%%" }, "Only Changes": null } } }
+    },
+    {
+      "where": "streams[].schedules",
+      "description": "The connector runs four independent server-touching timers, only one of which is the data pull: CDC polling (advanced.polling_interval, default 500ms), change-table cleanup (fixed 15m), capture-instance management (fixed 30s plus once at startup), and mid-capture rediscovery (advanced.rediscovery_interval, default 15m, jittered). Three of those are maintenance against the customer's database and none of them belong to a stream, yet 'schedules' is only defined per-stream and 'defaultSchedule' holds a single value.",
+      "proposedShape": { "connectorSchedules": [ { "role": "cdc_poll", "schedule": { "kind": "other", "literal": "500ms" } }, { "role": "change_table_cleanup", "schedule": { "kind": "interval", "seconds": 900 } }, { "role": "capture_instance_management", "schedule": { "kind": "interval", "seconds": 30 } }, { "role": "rediscovery", "schedule": { "kind": "interval", "seconds": 900 }, "jittered": true } ] }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "Write disposition is not a per-stream property here, it is flipped for the whole capture by the endpoint-level 'historyMode' boolean. With historyMode=false documents reduce to final state (merge); with historyMode=true every change event is retained unreduced (append). The archetypes above report the historyMode=false behavior, but that is a connection-level decision the stream shape cannot express.",
+      "proposedShape": { "writeDisposition": { "kind": "conditional", "onEndpointField": "historyMode", "false": "merge", "true": "append" } }
+    },
+    {
+      "where": "top level (sibling connectors)",
+      "description": "source-sqlserver-ct and source-sqlserver-batch are separate connector directories against the same engine, and their differences are structural rather than cosmetic. -ct uses SQL Server Change Tracking (CHANGETABLE(CHANGES ...) joined back to the source table, per its README): it is synchronous with the transaction rather than Agent-driven, it records only that a row changed plus its key, so values for inserts/updates come from a JOIN against the LIVE table (not a historical image) and delete events can carry only the key; it requires every captured table to have a primary key; and it materially changes continuity because -ct's prerequisites ALTER DATABASE ... SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 2 DAYS, AUTO_CLEANUP = ON), i.e. that connector DOES set retention (a hard 2-day resume window) whereas source-sqlserver never touches retention at all. -batch is a query-driven poller with no CDC artifacts and no delete capture. A reader comparing mined outputs would see three 'sqlserver' entries with incompatible continuity semantics and no field marking them as alternatives over the same source.",
+      "proposedShape": { "engineFamily": "sqlserver", "mechanism": "cdc_change_tables", "alternatives": [ { "id": "sqlserver-ct", "mechanism": "change_tracking", "setsRetention": "2 days" }, { "id": "sqlserver-batch", "mechanism": "query_poll" } ] }
+    },
+    {
+      "where": "top level (Docker variants)",
+      "description": "The VARIANTS file lists source-azure-sqlserver, source-google-cloud-sql-sqlserver and source-amazon-rds-sqlserver as separate published connectors built from this identical source tree. They are the same code with different marketing identities, and the schema has no field to record that one mined object backs several catalog entries.",
+      "proposedShape": { "publishedAs": ["source-sqlserver", "source-azure-sqlserver", "source-google-cloud-sql-sqlserver", "source-amazon-rds-sqlserver"] }
+    },
+    {
+      "where": "execution.continuity (backfill/streaming handoff)",
+      "description": "The schema has no place for the fence mechanism, which is the actual correctness contract between backfill and streaming and which here has three implementations selected at runtime: streamToWatermarkFence (legacy, writes a UUID into a customer table and waits to observe it come back through CDC), streamToPositionalFence (default; reads sys.dm_cdc_log_scan_sessions to confirm the Agent caught up, then takes MAX(start_lsn) from cdc.lsn_time_mapping as the fence), and streamToReplicaFence (used on Always On read replicas or when forced; skips the scan-session check and accepts weaker causality). These differ in required privileges and in whether they write to the customer's database at all.",
+      "proposedShape": { "handoff": { "kind": "fence", "implementations": [ { "name": "positional", "requiresPrivilege": "VIEW DATABASE STATE", "writesToSource": false, "default": true }, { "name": "replica", "writesToSource": false, "causality": "weaker" }, { "name": "watermark", "writesToSource": true, "legacy": true } ] } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.defaultPort": { "file": "source-sqlserver/main.go", "lines": "39", "snippet": "const defaultPort = \"1433\"" },
+    "transports[0].spec.sslPolicy": { "file": "source-sqlserver/main.go", "lines": "188-190", "snippet": "params.Add(\"encrypt\", \"true\")\n\tparams.Add(\"TrustServerCertificate\", \"true\")" },
+    "transports[0].spec.tunnelSupport": { "file": "source-sqlserver/main.go", "lines": "325-327", "snippet": "if cfg := db.config.NetworkTunnel; cfg != nil && cfg.SSHForwarding != nil && cfg.SSHForwarding.SSHEndpoint != \"\" {\n\t\tconnector.Dialer = &tunnelDialer{localAddr: \"localhost:\" + defaultPort, address: db.config.Address}" },
+    "credentialModes[0].scheme": { "file": "source-sqlserver/main.go", "lines": "192-197", "snippet": "var connectURL = &url.URL{\n\t\tScheme:   \"sqlserver\",\n\t\tUser:     url.UserPassword(c.User, c.Password)," },
+    "execution.mode": { "file": "source-sqlserver/replication.go", "lines": "1068-1069", "snippet": "var query = fmt.Sprintf(`SELECT * FROM cdc.fn_cdc_get_all_changes_%s(@p1, @p2, N'all');`, info.InstanceName)\n\trows, err := rs.conn.QueryContext(ctx, query, info.FromLSN, info.ToLSN)" },
+    "execution.defaultSchedule": { "file": "source-sqlserver/replication.go", "lines": "724-726", "snippet": "var poll = time.NewTicker(rs.cdcPollingInterval)\n\tvar cleanup = time.NewTicker(cdcCleanupInterval)\n\tvar manage = time.NewTicker(cdcManagementInterval)" },
+    "execution.continuity.artifacts": { "file": "source-sqlserver/replication.go", "lines": "1462-1463", "snippet": "var args = []any{schema, table, instanceName}\n\tvar query = \"EXEC sys.sp_cdc_enable_table @source_schema = @p1, @source_name = @p2, @capture_instance = @p3\"" },
+    "execution.continuity.notes": { "file": "source-sqlserver/prerequisites.go", "lines": "131-143", "snippet": "logEntry.Info(\"CDC not enabled, attempting to enable it\")\n\tif _, err := db.conn.ExecContext(ctx, `EXEC sys.sp_cdc_enable_db;`); err == nil {" },
+    "execution.continuity.customerSideAccrual": { "file": "source-sqlserver/replication.go", "lines": "1003-1007", "snippet": "func (rs *sqlserverReplicationStream) cleanupChangeTables(ctx context.Context) error {\n\t// If the user hasn't requested automatic change table cleanup, do nothing\n\tif !rs.cfg.Advanced.AutomaticChangeTableCleanup {" },
+    "execution.continuity.ourSideLoss": { "file": "source-sqlserver/replication.go", "lines": "878-882", "snippet": "// newestValidInstance selects the newest ... capture instance which has a `start_lsn`\n// lower bound less than (or equal to) the specified LSN." },
+    "execution.continuity.releasedOnShutdown": { "file": "source-sqlserver/replication.go", "lines": "709-713", "snippet": "func (rs *sqlserverReplicationStream) Close(ctx context.Context) error {\n\trs.cancel()\n\treturn <-rs.errCh" },
+    "execution.continuity.resumeWindow": { "file": "source-sqlserver/replication.go", "lines": "1426-1427", "snippet": "const query = \"EXEC sys.sp_cdc_cleanup_change_table @capture_instance = @p1, @low_water_mark = @p2;\"" },
+    "discovery.querySketch": { "file": "source-sqlserver/discovery.go", "lines": "397-402", "snippet": "SELECT TABLE_SCHEMA, TABLE_NAME\n  FROM INFORMATION_SCHEMA.TABLES\n  WHERE TABLE_SCHEMA != 'INFORMATION_SCHEMA' AND TABLE_SCHEMA != 'PERFORMANCE_SCHEMA'" },
+    "discovery.excludes": { "file": "source-sqlserver/discovery.go", "lines": "386-394", "snippet": "SELECT DISTINCT IST.TABLE_SCHEMA, IST.TABLE_NAME\n  FROM cdc.change_tables ct\n  JOIN sys.tables tbl ON ct.source_object_id = tbl.object_id" },
+    "streams[0].pull.incremental.emitsDeletes": { "file": "source-sqlserver/replication.go", "lines": "1201-1207", "snippet": "case 1:\n\t\t\toperation = sqlcapture.DeleteOp\n\t\tcase 2:\n\t\t\toperation = sqlcapture.InsertOp" },
+    "streams[0].pull.incremental.resumeTokenKind": { "file": "source-sqlserver/replication.go", "lines": "1263-1264", "snippet": "var maxLSN LSN\n\tconst query = `SELECT MAX(start_lsn) FROM cdc.lsn_time_mapping;`" },
+    "streams[0].pull.backfill.chunking": { "file": "source-sqlserver/backfill.go", "lines": "204", "snippet": "var backfillComplete = resultRows < db.config.Advanced.BackfillChunkSize" },
+    "streams[2].pull.backfill.querySketch": { "file": "go/capture/sqlserver/backfill/backfill.go", "lines": "105-110", "snippet": "fmt.Fprintf(query, \"SELECT * FROM [%s].[%s]\", schemaName, tableName)\n\tfmt.Fprintf(query, \" ORDER BY %%%%physloc%%%%\")\n\tfmt.Fprintf(query, \" OFFSET @p1 ROWS FETCH FIRST %d ROWS ONLY;\", chunkSize)" },
+    "streams[2].primaryKey": { "file": "source-sqlserver/main.go", "lines": "383-385", "snippet": "func (db *sqlserverDatabase) FallbackCollectionKey() []string {\n\treturn []string{\"/_meta/source/lsn\", \"/_meta/source/seqval\"}" },
+    "streams[1].primaryKey": { "file": "source-sqlserver/discovery.go", "lines": "323-331", "snippet": "sort.Strings(suitableIndexes)\n\t\tif len(suitableIndexes) > 0 {\n\t\t\tvar selectedIndex = suitableIndexes[0]" },
+    "configFields": { "file": "source-sqlserver/.snapshots/TestSpec", "lines": "1-245", "snippet": "\"title\": \"SQL Server Connection\"" },
+    "authTierOverall": { "file": "source-sqlserver/main.go", "lines": "111-116", "snippet": "var requiredProperties = [][]string{\n\t\t{\"address\", c.Address}, {\"user\", c.User},\n\t\t{\"password\", c.Password}, {\"database\", c.Database}," },
+    "unionMisfits[9]": { "file": "source-sqlserver/replication.go", "lines": "256-262", "snippet": "if !rs.db.featureFlags[\"read_only\"] {\n\t\treturn rs.streamToWatermarkFence(ctx, fenceAfter, callback)\n\t}" },
+    "unionMisfits[7]": { "file": "source-sqlserver-ct/prerequisites.go", "lines": "65", "snippet": "var query = fmt.Sprintf(`ALTER DATABASE %s SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 2 DAYS, AUTO_CLEANUP = ON);`, backfill.QuoteIdentifier(db.config.Database))" }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "execution.continuity.resumeWindow": "low",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].cursorField": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[1]": "high",
+    "streams[2]": "high",
+    "configFields": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.continuity.resumeWindow": "The window is exactly SQL Server's CDC retention (the @retention argument to sys.sp_cdc_change_job, default 3 days / 4320 minutes in SQL Server itself). This connector never sets, reads or logs it — it only calls sp_cdc_cleanup_change_table with an explicit low-water mark when advanced.change_table_cleanup is enabled, and only reads maxtrans/maxscans/continuous/pollinginterval (not retention) from msdb.dbo.cdc_jobs. The repo's docker-initdb.sh does set CHANGE_RETENTION = 2 DAYS, but that is the CHANGE TRACKING retention for the test fixture and is not what this CDC connector depends on. Asserting any duration here would be importing a SQL Server default the code does not encode.",
+    "streams[].cursorField": "There is no cursor COLUMN on the source table in the sense the field implies. The incremental leg's ordering key is the change table's own __$start_lsn (with __$seqval breaking ties within a transaction), and the checkpointed cursor is a connector-wide LSN from cdc.lsn_time_mapping rather than anything per-stream. '__$start_lsn' is recorded as the nearest true answer but should not be read as a column of the captured table.",
+    "streams[].pull.incremental.publication": "Reused to carry the CDC capture instance name because the union offers no better slot. There is no publication concept in SQL Server, and the instance name is not knowable ahead of time: for connector-created instances it embeds a CRC32 of schema+table and the Unix timestamp of creation, and a table may carry up to two instances at once during a DDL transition.",
+    "streams[].name": "No literal stream list exists. Every binding comes from the customer's own catalog, so only archetypes are emitted. The only table this connector names literally is the deprecated watermarks table (default dbo.flow_watermarks), which is explicitly flagged OmitBinding and therefore is not a stream.",
+    "execution.continuity.ourSideLoss (detection precision)": "The code's stated mechanism is that a capture instance whose start_lsn exceeds our resume LSN is unusable, which is how cleanup-past-our-position surfaces. That start_lsn is raised by sp_cdc_cleanup_change_table is SQL Server behavior rather than something this connector asserts, so the causal link between retention expiry and the TableDropEvent is inferred from the code's comments and error paths rather than read off directly.",
+    "transports[0].spec.sslPolicy (enforcement)": "prerequisiteConnectionEncryption queries sys.dm_exec_connections.encrypt_option and logs it, but returns nil unconditionally — so whether TLS actually negotiated is observable in logs and never enforced. Whether the driver falls back to plaintext when the server refuses encryption is a go-mssqldb behavior not determinable from this source."
+  }
+}

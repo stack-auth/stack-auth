@@ -1,0 +1,273 @@
+{
+  "id": "oracle-batch",
+  "estuaryDir": "source-oracle-batch",
+  "displayName": "Oracle (Batch Queries)",
+  "description": "Periodically re-executes SELECT queries against user-selected Oracle tables and emits the resulting rows as JSON documents, resuming from a persisted cursor column (by default the row's ORA_ROWSCN).",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "oracle",
+        "defaultPort": 1521,
+        "sslPolicy": "Optional `advanced.sslmode` string appended as an `sslmode=` query parameter on the go-ora DSN; enum disable|allow|prefer|require|verify-ca|verify-full. No default is set by the connector, so when unset the go-ora driver default applies.",
+        "tunnelSupport": "Optional `networkTunnel.sshForwarding` (sshEndpoint `ssh://user@host[:port]` + private key). When in use the tunnel is started before connecting and the DSN host is rewritten to `localhost:1521` while the tunnel forwards to the configured address on port 1521."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Oracle database user/password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password", "database"]
+      }
+    },
+    {
+      "name": "SSH bastion key (tunnel only, not database auth)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "Optional SSH forwarding credential: `networkTunnel.sshForwarding.sshEndpoint` plus a PEM private key in `networkTunnel.sshForwarding.privateKey`. Layered underneath the database user/password; never replaces it."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "other", "literal": "5m", "description": "Connector-wide default `advanced.poll`; a Go duration string (e.g. '5m', '6h') or a literal of the form 'daily at HH:MMZ'. Defaults to '5m' when unset. Overridable per binding via the resource's `poll` field." },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Deleted rows are never observed (each poll only reads rows still present with cursor > checkpoint), and with the default ORA_ROWSCN cursor an update that lowers no SCN is invisible only if SCN does not advance — but nothing expires with time. If a table is recreated or its SCNs reset, the persisted cursor can sit above all current values and the binding silently stops producing rows.",
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Purely client-side polling: no replication slot, publication, change table, scratch table, or server-side session state is created. The connector holds only ordinary read-only SELECT sessions and a per-binding cursor tuple in Flow's own checkpoint state. Pausing between ticks costs nothing on the customer's Oracle instance; the only cost is a longer next sweep. Note ORA_ROWSCN is block-granular by default, so multiple rows share an SCN — the connector only checkpoints at boundaries between distinct cursor values so that a resume `WHERE ORA_ROWSCN > :1` cannot skip a co-SCN sibling."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port at which the database can be reached; ':1521' is appended when no port is given." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as. Default 'flow_capture'." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the specified database user." },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Logical database name to capture from; default 'ORCL'. Emitted as the path segment of the oracle:// DSN, i.e. the go-ora service name. No TNS alias / tnsnames.ora / full connect-descriptor support is present." },
+    { "name": "advanced.poll", "displayName": "Default Polling Schedule", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Connector-wide default schedule. Go duration string or 'daily at HH:MMZ'. Defaults to '5m'." },
+    { "name": "advanced.discover_schemas", "displayName": "Discovery Schema Selection", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "If set, only tables whose OWNER is in this list are discovered. Omit to discover from all non-excluded schemas." },
+    { "name": "advanced.sslmode", "displayName": "SSL Mode", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Overrides SSL behavior by setting the DSN 'sslmode' parameter; one of disable/allow/prefer/require/verify-ca/verify-full." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Literal value copied into /_meta/source/tag of every emitted document." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal comma-separated flag string; known flag 'emit_sourced_schemas' (default on)." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Bastion host in the form ssh://user@hostname[:port]. Required when the networkTunnel object is present." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Multiline PEM private key used to authenticate to the SSH bastion. Required when the networkTunnel object is present." },
+    { "name": "name", "displayName": "Resource Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Unique name of this binding; also the resource path pointer (/name)." },
+    { "name": "owner", "displayName": "Owner", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Oracle schema (OWNER) of the captured table. Required unless a query template override is supplied." },
+    { "name": "table", "displayName": "Table Name", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Table to capture. Required unless a query template override is supplied." },
+    { "name": "cursor", "displayName": "Cursor Columns", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Column names whose values are persisted between query executions as the resume cursor. Discovery sets this to the single synthetic column ['TXID'] (ORA_ROWSCN). Empty means full refresh every poll. Changing this list resets the binding's stored cursor." },
+    { "name": "poll", "displayName": "Polling Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding override of the connector default schedule; same grammar (Go duration or 'daily at HH:MMZ')." },
+    { "name": "template", "displayName": "Query Template Override", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Go text/template rendered into the executed SQL. Template context exposes .IsFirstQuery, .CursorFields (already double-quote-quoted), .Owner, .TableName, plus funcs add/quoteTableName/quoteIdentifier." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Three Oracle data-dictionary queries against ALL_TABLES, ALL_TAB_COLUMNS, and ALL_CONSTRAINTS/ALL_CONS_COLUMNS, joined in Go on owner+table_name into one table-info map.",
+    "querySketch": "tables: SELECT DISTINCT(NVL(IOT_NAME, TABLE_NAME)) AS table_name, owner FROM all_tables WHERE tablespace_name NOT IN (<system tablespaces>) AND owner NOT IN (<system owner list>) AND table_name NOT IN (<internal table list>) [AND owner IN (<discover_schemas>)]  ||  columns: SELECT t.owner, t.table_name, t.column_name, t.column_id, t.nullable, t.data_type, t.data_precision, t.data_scale, t.data_length FROM all_tab_columns t WHERE t.owner NOT IN (<system owner list>) AND t.table_name NOT IN (<internal table list>) ORDER BY t.table_name, t.column_id  ||  primary keys: SELECT t.owner, t.table_name, t.column_name, c.position FROM all_tab_columns t INNER JOIN (SELECT c.owner, c.table_name, c.constraint_type, ac.column_name, ac.position FROM all_constraints c INNER JOIN all_cons_columns ac ON c.constraint_name = ac.constraint_name AND c.table_name = ac.table_name AND c.owner = ac.owner AND c.constraint_type = 'P') c ON (t.owner = c.owner AND t.table_name = c.table_name AND t.column_name = c.column_name) WHERE t.owner NOT IN (<system owner list>) AND t.table_name NOT IN (<internal table list>) ORDER BY t.table_name, c.position",
+    "excludes": [
+      "tablespace_name IN ('SYSTEM','SYSAUX','SAMPLESCHEMA') (ALL_TABLES query only)",
+      "owner IN ('SYS','SYSTEM','AUDSYS','CTXSYS','DVSYS','DBSFWUSER','DBSNMP','QSMADMIN_INTERNAL','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','RDSADMIN','OUTLN','WMSYS','XDB','RMAN$CATALOG','MTSSYS','OML$METADATA','ODI_REPO_USER','RQSYS','PYQSYS','GGS_ADMIN','GSMADMIN_INTERNAL') (all three queries)",
+      "table_name IN ('DBTOOLS$EXECUTION_HISTORY') (all three queries)",
+      "views are not discovered: only ALL_TABLES is queried and every discovered binding is generated with tableType 'TABLE' (despite the doc comment claiming information_schema.tables)",
+      "index-organized tables are collapsed to their IOT_NAME via NVL(IOT_NAME, TABLE_NAME) with DISTINCT"
+    ],
+    "allowlist": "advanced.discover_schemas, when non-empty, adds `AND owner IN ('<...>')` to the ALL_TABLES query only. It is passed to the columns and primary-key helpers but those functions ignore the parameter; the intersection still holds because columns/keys are attached only to tables already in the table map."
+  },
+
+  "streams": [
+    {
+      "name": "<owner>_<table> (ORA_ROWSCN cursor)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<primary key columns from ALL_CONSTRAINTS constraint_type='P'>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "TXID",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "5m (or the resource `poll` override)", "description": "Go duration string, or 'daily at HH:MMZ'. Per-binding `poll` wins over the endpoint `advanced.poll` default." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": ["<discovered primary key columns>"],
+          "cursorColumns": ["TXID"],
+          "querySketch": "SELECT ORA_ROWSCN AS TXID, \"<OWNER>\".\"<TABLE>\".* FROM \"<OWNER>\".\"<TABLE>\" ORDER BY ORA_ROWSCN",
+          "chunking": "Not chunked at the SQL level — no LIMIT/FETCH FIRST/ROWNUM bound is ever emitted. One poll issues a single unbounded ordered SELECT and streams the result set; boundedness/resumability comes entirely from the ORDER BY plus a Flow checkpoint emitted every 1000 documents, and only at a boundary where the cursor value changes (persisting the PREVIOUS row's cursor so co-SCN rows are never skipped by the next `> :1`). Watchdogs abort a poll after 30m with no first row, or 5m of no subsequent rows. At most 5 bindings poll concurrently (weighted semaphore)."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": ["<discovered primary key columns>"],
+          "cursorColumns": ["TXID"],
+          "querySketch": "SELECT ORA_ROWSCN AS TXID, \"<OWNER>\".\"<TABLE>\".* FROM \"<OWNER>\".\"<TABLE>\" WHERE ORA_ROWSCN > :1 ORDER BY ORA_ROWSCN",
+          "chunking": "Same as backfill: unbounded ordered SELECT per poll, narrowed only by `ORA_ROWSCN > :1` bound to the checkpointed SCN. The cursor is carried between polls in the connector's own state document (`bindingStateV1.<stateKey>.CursorValues`, alongside CursorNames and LastPolled) and bound back as :1 on the next poll."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<owner>_<table> (user-chosen cursor column(s))",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<primary key columns from ALL_CONSTRAINTS constraint_type='P'>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "<first user-specified cursor column>",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "5m (or the resource `poll` override)", "description": "Go duration string, or 'daily at HH:MMZ'." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": ["<discovered primary key columns>"],
+          "cursorColumns": ["<cursor[0]>", "<cursor[1]>", "..."],
+          "querySketch": "SELECT * FROM \"<OWNER>\".\"<TABLE>\" ORDER BY \"<C1>\", \"<C2>\"",
+          "chunking": "Unbounded ordered SELECT; see the ORA_ROWSCN archetype — identical checkpoint-every-1000-rows-at-cursor-boundary mechanism."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": ["<discovered primary key columns>"],
+          "cursorColumns": ["<cursor[0]>", "<cursor[1]>", "..."],
+          "querySketch": "SELECT * FROM \"<OWNER>\".\"<TABLE>\" WHERE (\"<C1>\" > :1) OR (\"<C1>\" = :1 AND \"<C2>\" > :2) ORDER BY \"<C1>\", \"<C2>\"  -- lexicographic tuple-greater-than expanded over all cursor columns",
+          "chunking": "Unbounded ordered SELECT narrowed by the lexicographic cursor predicate. Because go-ora requires each placeholder occurrence to be unique, the rendered `:N` placeholders are rewritten to a fresh sequential numbering with argument values duplicated to match before execution."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<owner>_<table> (no cursor configured)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/polled", "/_meta/index"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "append",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "5m (or the resource `poll` override)", "description": "Go duration string, or 'daily at HH:MMZ'." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM \"<OWNER>\".\"<TABLE>\"",
+          "chunking": "No WHERE, no ORDER BY, no row limit — the whole table is re-read on every poll. Checkpoints are emitted every 1000 documents purely for throughput; the persisted cursor stays empty so a restart re-reads from the top."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only database credential is a plain Oracle username/password plus host and service name, assembled locally into an oracle:// DSN. There is no OAuth app to register and no refresh token. The optional SSH-tunnel private key is an additional self-supplied secret, not a third-party app registration, so it does not raise the tier.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.querySketch / PullSpec kind 'table'",
+      "description": "The executed SQL is not fixed by the connector: `template` (a Go text/template with .IsFirstQuery, .CursorFields, .Owner, .TableName and add/quoteTableName/quoteIdentifier funcs) can replace the query entirely, and a binding with a template need not name a table at all. PullSpec 'table' has no slot for a user-supplied query template, and PullSpec 'query' has no slot for the cursor-column state that drives it.",
+      "proposedShape": {
+        "kind": "table",
+        "queryTemplate": { "language": "go_text_template", "source": "<user override or connector default>", "contextVars": ["IsFirstQuery", "CursorFields", "Owner", "TableName"], "funcs": ["add", "quoteTableName", "quoteIdentifier"] }
+      }
+    },
+    {
+      "where": "streams[].cursorField",
+      "description": "TXID is not a real column. It is an alias the connector's own SQL projects over the Oracle pseudocolumn ORA_ROWSCN, and it is selected by a magic-string check (`len(cursor)==1 && cursor[0]==\"TXID\"`) that swaps in a different query template. A schema field typed as a column name cannot express 'synthetic pseudocolumn projected by the connector'.",
+      "proposedShape": { "cursorField": { "name": "TXID", "kind": "synthetic_pseudocolumn", "sourceExpression": "ORA_ROWSCN", "granularity": "block-level unless the table is created with ROWDEPENDENCIES; multiple rows may share a value" } }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules[].schedule",
+      "description": "The schedule grammar is a single string accepting two disjoint forms — a Go duration ('5m', '6h', '500ms') or a fixed daily UTC wall-clock time ('daily at 12:34Z') — enforced by one regex. Neither maps onto 'interval' (Go durations are richer and signed per the pattern) nor 'cron'. Emitted as kind 'other'; a first-class 'daily_at' schedule kind would fit better.",
+      "proposedShape": { "kind": "either", "options": [{ "kind": "goDuration", "literal": "5m" }, { "kind": "dailyAt", "timeUtc": "12:34" }] }
+    },
+    {
+      "where": "streams[].pull.*.chunking",
+      "description": "There is no bounded chunk in the SQL sense. The schema's `chunking` field implies a per-request bound (LIMIT/OFFSET/keyset window); here a poll is one unbounded streaming result set and 'bounded resumable slice' is realized after the fact by checkpoint placement in the row loop.",
+      "proposedShape": { "chunking": { "kind": "none_streaming_resultset", "checkpointEveryNDocuments": 1000, "checkpointBoundary": "only at a change in cursor tuple; persists the previous row's cursor", "watchdogFirstRow": "30m", "watchdogSubsequentRows": "5m" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "main.go", "lines": "78-113", "snippet": "if !strings.Contains(c.Address, \":\") { c.Address += \":1521\" }\n\tvar uri = url.URL{ Scheme: \"oracle\", Host: address, User: url.UserPassword(c.User, c.Password) }\n\tif c.Database != \"\" { uri.Path = \"/\" + c.Database }" },
+    "transports[0].spec.tunnelSupport": { "file": "main.go", "lines": "93-96,122-127", "snippet": "if c.NetworkTunnel.InUse() { address = \"localhost:1521\" }\n\t\tif _, err := cfg.NetworkTunnel.Start(ctx, cfg.Address, \"1521\"); err != nil {" },
+    "transports[0].spec.sslPolicy": { "file": "main.go", "lines": "105-111", "snippet": "if c.Advanced.SSLMode != \"\" { params.Set(\"sslmode\", c.Advanced.SSLMode) }" },
+    "credentialModes[0].scheme": { "file": "main.go", "lines": "31-34", "snippet": "Address  string `json:\"address\" ...`\n\tUser     string `json:\"user\" ...`\n\tPassword string `json:\"password\" jsonschema_extras:\"secret=true,order=2\"`" },
+    "credentialModes[1].scheme": { "file": ".snapshots/TestSpec", "lines": "78-99", "snippet": "\"sshEndpoint\": { \"description\": \"Endpoint of the remote SSH server that supports tunneling (in the form of ssh://user@hostname[:port])\" },\n\"privateKey\": { \"title\": \"SSH Private Key\", \"secret\": true }" },
+    "execution.mode": { "file": "driver.go", "lines": "390-420", "snippet": "for ctx.Err() == nil {\n\t\tif err := schedule.WaitForNext(ctx, pollSchedule, state.LastPolled); err != nil {\n\t\t\tif err := c.poll(ctx, binding); err != nil {" },
+    "execution.defaultSchedule": { "file": "main.go", "lines": "86-88", "snippet": "if c.Advanced.PollSchedule == \"\" {\n\t\tc.Advanced.PollSchedule = \"5m\"\n\t}" },
+    "execution.continuity": { "file": "driver.go", "lines": "526-533", "snippet": "// We only checkpoint at boundaries between distinct cursor values, persisting the previous row's cursor: that guarantees\n\t// every row sharing the persisted cursor has been emitted, so the next poll's `WHERE cursor > @persisted` resume query won't skip rows" },
+    "configFields": { "file": ".snapshots/TestSpec", "lines": "1-115", "snippet": "\"required\": [ \"address\", \"user\", \"password\", \"database\" ], \"title\": \"Batch SQL\"" },
+    "configFields[15]": { "file": "driver.go", "lines": "79-87", "snippet": "Owner     string `json:\"owner,omitempty\" ...`\n\tCursor    []string `json:\"cursor,omitempty\" jsonschema:\"title=Cursor Columns,...\"`\n\tPollSchedule string `json:\"poll,omitempty\" ...`" },
+    "discovery.querySketch": { "file": "discovery.go", "lines": "214-223", "snippet": "fmt.Fprintf(query, \"SELECT DISTINCT(NVL(IOT_NAME, TABLE_NAME)) AS table_name,\")\n\tfmt.Fprintf(query, \"owner FROM all_tables\")\n\tfmt.Fprintf(query, \" WHERE tablespace_name NOT IN ('SYSTEM', 'SYSAUX', 'SAMPLESCHEMA')\")" },
+    "discovery.excludes": { "file": "discovery.go", "lines": "217-218", "snippet": " AND owner NOT IN ('SYS', 'SYSTEM', 'AUDSYS', 'CTXSYS', 'DVSYS', ... 'GSMADMIN_INTERNAL')\n AND table_name NOT IN ('DBTOOLS$EXECUTION_HISTORY')" },
+    "discovery.allowlist": { "file": "discovery.go", "lines": "220-223", "snippet": "if len(discoverSchemas) > 0 {\n\t\tvar schemasComma = strings.Join(discoverSchemas, \"','\")\n\t\tfmt.Fprintf(query, \" AND owner IN ('%s')\", schemasComma)" },
+    "streams[0].cursorField": { "file": "main.go", "lines": "194-201", "snippet": "return &Resource{ Name: resourceName, Owner: owner, TableName: tableName, Cursor: []string{\"TXID\"} }, nil" },
+    "streams[0].pull.incremental.querySketch": { "file": ".snapshots/TestQueryTemplates-SCNSubsequentQuery", "lines": "1-3", "snippet": "SELECT ORA_ROWSCN AS TXID, \"TEST\".\"foobar\".* FROM \"TEST\".\"foobar\"\n    WHERE ORA_ROWSCN > :1\n    ORDER BY ORA_ROWSCN" },
+    "streams[0].pull.backfill.querySketch": { "file": ".snapshots/TestQueryTemplates-SCNFirstQuery", "lines": "1", "snippet": "SELECT ORA_ROWSCN AS TXID, \"TEST\".\"foobar\".* FROM \"TEST\".\"foobar\" ORDER BY ORA_ROWSCN" },
+    "streams[1].pull.incremental.querySketch": { "file": ".snapshots/TestQueryTemplates-MultiCursorSubsequentQuery", "lines": "1", "snippet": "SELECT * FROM \"TEST\".\"foobar\" WHERE (\"AUDIT_ID\" > :1) OR (\"AUDIT_ID\" = :1 AND \"TIMESTAMP\" > :2) ORDER BY \"AUDIT_ID\", \"TIMESTAMP\"" },
+    "streams[2].pull.snapshot.querySketch": { "file": "main.go", "lines": "171-173", "snippet": "{{- else -}}\n  SELECT * FROM {{quoteTableName .Owner .TableName}}\n{{- end}}" },
+    "streams[2].primaryKey": { "file": "discovery.go", "lines": "106-107,186-189", "snippet": "var fallbackKey = []string{\"/_meta/polled\", \"/_meta/index\"}\n\t} else { collectionKey = fallbackKey }" },
+    "streams[0].primaryKey": { "file": "discovery.go", "lines": "399-416", "snippet": "SELECT c.owner, c.table_name, c.constraint_type, ac.column_name, ac.position FROM all_constraints c\n     INNER JOIN all_cons_columns ac ON ( ... AND c.constraint_type = 'P' )" },
+    "streams[0].pull.incremental.chunking": { "file": "driver.go", "lines": "28-33,44-63", "snippet": "documentsPerCheckpoint = 1000\n\tpollingWatchdogFirstRowTimeout = 30 * time.Minute\n\tmaxConcurrentQueries = 5" },
+    "streams[0].schedules[0]": { "file": "driver.go", "lines": "372-379", "snippet": "var pollScheduleStr = c.Config.Advanced.PollSchedule\n\tif res.PollSchedule != \"\" { pollScheduleStr = res.PollSchedule }" },
+    "unionMisfits[1]": { "file": "main.go", "lines": "140-147,175-182", "snippet": "// ORA_ROWSCN indicates the SCN (System Change Number) of the latest modification to a row, however\n// it by default is an indicator of the \"block\" of the row\n\t} else if len(res.Cursor) == 1 && res.Cursor[0] == \"TXID\" { return tableQueryTemplateSCN, nil }" },
+    "unionMisfits[2]": { "file": "main.go", "lines": "41", "snippet": "pattern=^([-+]?([0-9]+([.][0-9]+)?(h|m|s|ms))+|daily at [0-9][0-9]?:[0-9]{2}Z)$" }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "transports[0].spec.sslPolicy": "medium",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "discovery.allowlist": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].pull": "high",
+    "streams[1].pull": "high",
+    "streams[2].pull.snapshot": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[2].writeDisposition": "medium",
+    "streams[0].primaryKey": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.sslPolicy.default": "The connector never sets a default sslmode; the effective behavior when the field is omitted is decided inside github.com/sijms/go-ora/v2, which is not vendored in the mined directory.",
+    "execution.continuity.resumeWindow": "Nothing in the connector expires with elapsed time — there is no retention window, slot, or resume token. Left null rather than inventing a bound.",
+    "streams[0].writeDisposition": "The connector emits documents plus a collection key and never emits deletion tombstones, so downstream behavior is reduce-by-key ('merge') for keyed tables. It is Flow's materialization, not this connector, that ultimately decides; classified from the key choice only.",
+    "streams[].name": "There is no literal stream list — bindings come entirely from the customer's ALL_TABLES contents, named `<lowercased owner>_<lowercased table>` with non-[a-z0-9-_.] characters replaced by underscores. All three entries are archetypes.",
+    "discovery.method.views": "The Discover doc comment claims tables AND views from information_schema.tables, but the code queries only ALL_TABLES and hardcodes tableType \"TABLE\"; whether views were ever discovered could not be determined from this directory.",
+    "streams[1].cursorField": "For a user-configured multi-column cursor there is no single cursor field; the ordered tuple lives in `cursorColumns`. The scalar field carries only the leading column."
+  }
+}

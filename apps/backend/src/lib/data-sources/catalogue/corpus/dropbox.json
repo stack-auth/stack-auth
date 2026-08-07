@@ -1,0 +1,192 @@
+{
+  "id": "dropbox",
+  "estuaryDir": "source-dropbox",
+  "displayName": "Dropbox",
+  "description": "Captures files stored under a configured Dropbox folder path and parses them into records.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "objectStore",
+        "store": "drive"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Dropbox OAuth2 (client id + client secret + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://www.dropbox.com/oauth2/authorize",
+        "tokenUrl": "https://api.dropboxapi.com/oauth2/token",
+        "scopes": ["files.metadata.read", "files.content.read"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "No server-side state is created in the customer's Dropbox account: the connector only calls files/list_folder, files/list_folder/continue and files/download, all read-only. The Dropbox listing cursor DOES exist but is purely intra-call: List() drains every page in one loop (`for f.HasMore { ListFolderContinue(f.Cursor) }`) and the cursor is discarded when List() returns. It is never written into a Flow checkpoint, so a cursor cannot expire between syncs and there is no cursor-invalidation resume window. Cross-sync resume is instead carried entirely by filesource's own checkpoint: an exclusive modification-time window (MinBound advanced to the sweep's MaxMod, MaxBound = now - 30s via TimeHorizonDelta) plus a lexicographic `Path` marker, both of which are durable and time-independent. Consequence: pausing arbitrarily long is safe for resumability, but every sweep re-fetches the entire folder listing from Dropbox because StartAt is applied client-side after the pages are fetched."
+    }
+  },
+
+  "configFields": [
+    { "name": "path", "displayName": "Path", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Absolute Dropbox folder path to read from; validated to start with '/'." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth2 refresh token for the Dropbox account." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth2 client id of the Dropbox app." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth2 client secret of the Dropbox app." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Regex applied to each object's absolute path; only matching objects are read." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Assert that objects are written in ascending lexicographic order so sweeps can resume from the last path instead of re-scanning; default false." },
+    { "name": "parser.format", "displayName": "Format", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "auto | csv | json | avro | protobuf | w3cExtendedLog. Default auto (inferred from file extension / content type)." },
+    { "name": "parser.compression", "displayName": "Compression", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "gzip | zip | zstd | none | auto (default auto)." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Absolute path prefix this binding sweeps; defaults to the endpoint `path`." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Single binding synthesized from the configured endpoint path (no enumeration of the account)",
+    "querySketch": "Discover() returns exactly one binding: RecommendedName = config.path with leading/trailing '/' trimmed, resource = {stream: config.path}, key = [/_meta/file, /_meta/offset], document schema = x-infer-schema minimal _meta schema. Connectivity is proven separately by a files/list_folder call on config.path with Limit=1.",
+    "excludes": ["FolderMetadata entries when the listing is recursive", "DeletedMetadata and all other metadata types", "objects of size 0", "objects not matching matchKeys", "parquet objects larger than 8 GB"],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<configured path, e.g. /my-folder>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<binding stream = absolute Dropbox folder path>",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "auto (gzip | zip | zstd | none | auto)",
+          "listing": "Identical mechanism to the incremental leg; the first sweep is simply the one where the checkpointed MinBound is the zero time, so no object is excluded by the lower modification-time bound. MaxBound is still now-30s, so objects modified in the last 30 seconds are deferred to the next sweep.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "<binding stream = absolute Dropbox folder path>",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "auto (gzip | zip | zstd | none | auto)",
+          "listing": "files/list_folder{Path: prefix, Recursive: true}, then repeatedly files/list_folder/continue{Cursor: previous response Cursor} while HasMore. All pages are drained inside a single List() call and the cursor is then thrown away (never checkpointed). Dropbox returns entries ordered by modification time, so the connector converts FileMetadata to {path_lower, content_hash, size, server_modified}, drops entries where !(StartAt < path), and re-sorts the whole set lexicographically by path before handing it to filesource, which requires monotonic path order. Resume across sweeps is therefore NOT cursor-based: it is (a) the checkpointed lexicographic `Path` used as StartAt, applied client-side after the full listing has already been fetched, and (b) an exclusive server_modified window MinBound < modTime < MaxBound, where MaxBound = now-30s and MinBound advances to the sweep's MaxMod on completion (unless advanced.ascendingKeys is set, in which case MinBound is never advanced and progress is carried by `Path` alone).",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Exactly one credential mode is offered and its three fields — client_id, client_secret and refresh_token — are all required by both the JSON schema and credentials.validate(). There is no API-key/access-token path and no client_credentials path: getOauthClient builds an oauth2.Config from the user's own client id/secret and seeds a token with only a RefreshToken and Expiry=now, forcing an immediate refresh. Standalone, that means the user registers their own Dropbox app AND obtains a long-lived refresh token, i.e. T3. Estuary's hosted control plane hides this: the config schema carries `x-oauth2-provider: dropbox` and oauth2Spec() supplies the authorize/token templates (token_access_type=offline, response_type=code, AccessTokenResponseJsonMap extracting /refresh_token), so in the Web UI Estuary's own registered app performs the authorization_code exchange and injects all three values. The tier that matters for a standalone integration is still T3_BYO_REFRESH.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec.store",
+      "description": "The objectStore `store` enum has no `dropbox` member. Dropbox is a consumer/business file-sync service reached over its own HTTPS RPC API (api.dropboxapi.com / content.dropboxapi.com via the dropbox-sdk-go-unofficial v6 SDK), not S3/GCS/Azure/SFTP/SharePoint/Drive. `drive` is the nearest neighbour but is factually wrong.",
+      "proposedShape": { "kind": "objectStore", "store": "dropbox" }
+    },
+    {
+      "where": "streams[0].pull.*.listing",
+      "description": "The PullSpec `objects` shape has no place to record that the listing pagination is a stateful server cursor that is deliberately NOT persisted, nor that the resume marker (StartAt) is applied client-side after the full listing was already fetched. These are different cost/correctness profiles that the current single `listing` string can only capture as prose.",
+      "proposedShape": {
+        "listingPagination": { "type": "cursor", "cursorFrom": "body.cursor", "sentTo": "body_field", "terminateOn": "envelope_flag", "persistedAcrossSyncs": false },
+        "resumeMarker": { "kind": "lexicographic_path", "appliedAt": "client" },
+        "listingIsFullScanPerSweep": true
+      }
+    },
+    {
+      "where": "streams[0].schedules / execution.defaultSchedule",
+      "description": "There is no schedule anywhere in the connector. filesource.Pull performs exactly ONE sweep per binding and then returns, so the process exits and re-invocation cadence is owned entirely by the Flow runtime. The schema has no way to say 'scheduling is delegated to the host runtime' as distinct from 'unknown'.",
+      "proposedShape": { "kind": "hostScheduled", "description": "one bounded sweep per connector invocation; cadence set by the runtime" }
+    },
+    {
+      "where": "streams[0].pull.backfill vs pull.incremental",
+      "description": "Backfill and incremental are literally the same code path; they differ only by the value of the checkpointed MinBound (zero vs. previous MaxMod). Emitting two near-identical PullSpecs overstates the distinction.",
+      "proposedShape": { "pull": { "unified": { "kind": "objects", "boundedBy": "checkpointed modification-time window" } } }
+    }
+  ],
+
+  "evidence": {
+    "id": { "file": "source-dropbox/main.go", "lines": "301", "snippet": "DocumentationURL: \"https://go.estuary.dev/source-dropbox\"," },
+    "displayName": { "file": "source-dropbox/main.go", "lines": "218", "snippet": "\"title\": \"Dropbox Source\"," },
+    "transports[0].spec": { "file": "source-dropbox/main.go", "lines": "13-14", "snippet": "\"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox\"\n\"github.com/dropbox/dropbox-sdk-go-unofficial/v6/dropbox/files\"" },
+    "credentialModes[0].scheme": { "file": "source-dropbox/oauth2.go", "lines": "23-26", "snippet": "AuthUrlTemplate: fmt.Sprintf(AUTH_URL_TEMPLATE_FORMAT_STR, strings.Join(scopes, \" \")),\nAccessTokenUrlTemplate: \"https://api.dropboxapi.com/oauth2/token\"," },
+    "credentialModes[0].scheme.scopes": { "file": "source-dropbox/oauth2.go", "lines": "16", "snippet": "var scopes = []string{\"files.metadata.read\", \"files.content.read\"}" },
+    "credentialModes[0].tier": { "file": "source-dropbox/oauth2.go", "lines": "64-67", "snippet": "token := &oauth2.Token{\n\tRefreshToken: c.RefreshToken,\n\tExpiry:       time.Now(), // Require a new access token to be obtained." },
+    "execution.mode": { "file": "filesource/filesource.go", "lines": "336-344", "snippet": "func (r *reader) sweep(ctx context.Context) error {\n\tvar listing, err = r.store.List(ctx, Query{\n\t\tPrefix: r.prefix, StartAt: r.state.Path, Recursive: true," },
+    "execution.continuity.notes": { "file": "source-dropbox/main.go", "lines": "125-133", "snippet": "for f.HasMore {\n\targ := files.NewListFolderContinueArg(f.Cursor)\n\tf, err = dbStore.client.ListFolderContinue(arg)" },
+    "execution.continuity.ourSideLoss": { "file": "filesource/state.go", "lines": "28-37", "snippet": "MinBound time.Time `json:\"minBound\"`\nMaxBound *time.Time `json:\"maxBound\"`\nMaxMod *time.Time `json:\"maxMod\"`" },
+    "configFields": { "file": "source-dropbox/main.go", "lines": "219-224", "snippet": "\"required\": [\n\t\"path\",\n\t\"credentials\"\n]," },
+    "configFields[5]": { "file": "source-dropbox/main.go", "lines": "270-274", "snippet": "\"ascendingKeys\": {\n\t\"type\": \"boolean\",\n\t\"title\": \"Ascending Keys\"," },
+    "discovery.querySketch": { "file": "filesource/filesource.go", "lines": "230-235", "snippet": "return &pc.Response_Discovered{Bindings: []*pc.Response_Discovered_Binding{{\n\tRecommendedName: conn.config.RecommendedName(),\n\tKey: []string{\"/_meta/file\", \"/_meta/offset\"}," },
+    "discovery.method": { "file": "source-dropbox/main.go", "lines": "102", "snippet": "_, err := dbStore.client.ListFolder(&files.ListFolderArg{Path: dbStore.config.Path, Limit: 1})" },
+    "discovery.excludes": { "file": "filesource/filesource.go", "lines": "383-403", "snippet": "if obj.Size == 0 { return true, \"object has size of 0\" }\nif r.pathRe != nil && !r.pathRe.MatchString(obj.Path) { return true, \"regex not matched\" }" },
+    "streams[0].primaryKey": { "file": "filesource/filesource.go", "lines": "234", "snippet": "Key: []string{\"/_meta/file\", \"/_meta/offset\"}," },
+    "streams[0].pull.incremental.listing": { "file": "source-dropbox/main.go", "lines": "116-133", "snippet": "arg := &files.ListFolderArg{Path: query.Prefix, Recursive: query.Recursive}\nf, err := dbStore.client.ListFolder(arg)" },
+    "streams[0].pull.incremental.listing.sort": { "file": "source-dropbox/main.go", "lines": "171-174", "snippet": "// Sort the remaining objects by path.\nslices.SortStableFunc(objects, func(a, b filesource.ObjectInfo) int {\n\treturn cmp.Compare(a.Path, b.Path)" },
+    "streams[0].pull.incremental.listing.startAt": { "file": "source-dropbox/main.go", "lines": "164-168", "snippet": "// Only add files and folders that are lexicographically\n// greater than or equal to the query's StartAt property.\nif query.StartAt < obj.Path {" },
+    "streams[0].pull.incremental.objectChunking": { "file": "source-dropbox/main.go", "lines": "184", "snippet": "file, reader, err := dbStore.client.Download(&files.DownloadArg{Path: obj.Path})" },
+    "streams[0].pull.backfill.listing": { "file": "source-dropbox/main.go", "lines": "303-305", "snippet": "// Set the delta to 30 seconds in the past, to guard against new files appearing with a\n// timestamp that's equal to the `MinBound` in the state.\nTimeHorizonDelta: time.Second * -30," },
+    "streams[0].pull.incremental.matchExpr": { "file": "source-dropbox/main.go", "lines": "70-72", "snippet": "func (c config) PathRegex() string {\n\treturn c.MatchKeys\n}" },
+    "streams[0].pull.incremental.compression": { "file": "source-dropbox/.snapshots/TestSpec", "lines": "79-109", "snippet": "\"compression\": {\n\t\"title\": \"Compression\",\n\t\"description\": \"Determines how to decompress the contents. The default, 'Auto' ...\"" },
+    "streams[0].pull.incremental.format": { "file": "source-dropbox/.snapshots/TestSpec", "lines": "111-116", "snippet": "\"format\": {\n\t\"description\": \"Determines how to parse the contents. The default, 'Auto' ...\",\n\t\"default\": { \"type\": \"auto\" }," },
+    "streams[0].writeDisposition": { "file": "filesource/filesource.go", "lines": "158-161", "snippet": "case *files.FolderMetadata: ... default:\n// Ignore all other metadata types (like DeletedMetadata)." },
+    "streamMode": { "file": "filesource/filesource.go", "lines": "224-229", "snippet": "var root = conn.config.DiscoverRoot()\nresourceJSON, err := json.Marshal(resource{Stream: root})" },
+    "authTierOverall": { "file": "source-dropbox/main.go", "lines": "236-258", "snippet": "\"x-oauth2-provider\": \"dropbox\",\n\"required\": [\"refresh_token\", \"client_id\", \"client_secret\"]," }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "execution.defaultSchedule": "medium",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.objectChunking": "high",
+    "streams[0].pull.incremental.format": "high",
+    "streams[0].pull.incremental.compression": "high",
+    "streams[0].pull.backfill": "medium",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Nothing in source-dropbox or filesource sets a poll interval, cron, or sleep. filesource.Pull launches one sweep per binding and returns when the errgroup completes, so the connector process ends after a single pass and the re-invocation cadence lives in the Flow runtime, which is outside this repo's connector code. Recording an interval would be invention.",
+    "streams[0].schedules": "Same reason as execution.defaultSchedule: bindings carry no schedule field at all (the resource spec is only {stream, syncMode, namespace, cursorField}, and syncMode/namespace/cursorField are hidden with jsonschema:\"-\").",
+    "streams[0].cursorField": "The incremental bound is Dropbox's server_modified timestamp on the object metadata plus a lexicographic path marker, both held in connector checkpoint state. Neither is a field of the emitted documents (documents carry only /_meta/file and /_meta/offset plus inferred payload fields), so there is no record-level cursor field to name.",
+    "transports[0].spec.baseUrl": "The objectStore transport variant has no baseUrl member, and the connector never names a host: the endpoints are whatever dropbox-sdk-go-unofficial/v6 uses internally (dropbox.Config is constructed with only an http.Client).",
+    "credentialModes[0].scheme.authUrl": "Reported as the base authorize endpoint parsed out of AUTH_URL_TEMPLATE_FORMAT_STR; the literal in the source is a mustache template carrying token_access_type=offline, client_id, response_type=code, redirect_uri, state and scope query parameters, not a bare URL.",
+    "streams[0].pull.incremental.paginator": "Not applicable — the PullSpec kind here is `objects`, not `http`. The listing's own cursor/HasMore pagination is described in `listing` instead; it would map to type cursor / tokenFrom body / tokenTo body_field / terminateOn envelope_flag if the schema allowed a paginator on an objects PullSpec."
+  }
+}

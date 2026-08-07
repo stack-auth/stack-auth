@@ -1,0 +1,283 @@
+{
+  "id": "google-sheets-native",
+  "estuaryDir": "source-google-sheets-native",
+  "displayName": "Google Sheets",
+  "description": "Imports the rows of every tab (sheet) inside a single user-named Google Spreadsheet, re-reading each tab in full on a periodic interval.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://sheets.googleapis.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v4/` on every request path"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "OAuth Credentials (Google, authorization_code with offline refresh)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://accounts.google.com/o/oauth2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "scopes": [
+          "https://www.googleapis.com/auth/spreadsheets.readonly",
+          "https://www.googleapis.com/auth/drive.readonly"
+        ],
+        "grant": "refresh_token"
+      }
+    },
+    {
+      "name": "Google Service Account",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "google",
+        "fields": ["credentials.service_account"]
+      }
+    },
+    {
+      "name": "Private App Credentials (static access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Nothing is left behind on the customer's side: the connector only issues read-only GETs against the Sheets v4 API and creates no server-side object (no watch/subscription, no Drive change token, no scratch file). Because every pass re-reads the entire tab from scratch and connector state holds only `updated_at`, `last_count` and `last_digest`, an arbitrarily long pause between cron ticks loses nothing and costs nothing — the next tick simply re-reads current sheet contents. The flip side is that no edit history exists either: intermediate edits made while we were stopped are invisible and unrecoverable, by construction rather than by retention expiry."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials", "displayName": "Authentication", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Discriminated on `credentials_title`: one of OAuth Credentials, Google Service Account, or Private App Credentials." },
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth mode only." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth mode only." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth mode only." },
+    { "name": "credentials.service_account", "displayName": "Google Service Account", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Service account JSON key; multiline. Service-account mode only." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Private App Credentials mode only." },
+    { "name": "spreadsheet_url", "displayName": "Spreadsheet Url", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "URL of the Google Spreadsheet; must match `^https://docs.google.com/spreadsheets/`. The spreadsheet id is extracted from the URL by regex." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource; defaulted to the sheet/tab title at discovery and used as the resource path pointer." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between re-reads of this tab. Discovery emits PT30S; the CDK field default is PT0S." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Google Sheets API `spreadsheets.get` — GET /v4/spreadsheets/{spreadsheetId} — one binding emitted per element of the returned `sheets` array",
+    "querySketch": "GET {base}/v4/spreadsheets/{spreadsheetId} with no `fields` mask and no `ranges`; the response is parsed into a model that keeps only `properties` (title/locale/autoRecalc/timeZone) and `sheets[].properties` (sheetId, title, index, sheetType, gridProperties{rowCount,columnCount,frozenRowCount,...}). Each sheet's `properties.title` becomes the recommended binding name.",
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<sheet tab title>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "full re-read of the tab", "schedule": { "kind": "interval", "seconds": 30 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/v4/spreadsheets/{spreadsheetId}",
+          "httpMethod": "GET",
+          "recordsPath": "sheets[].data[].rowData[]",
+          "params": {
+            "ranges": "[<sheet tab title>] — the bare tab title, i.e. an A1 range covering the entire tab; never a bounded sub-range",
+            "fields": "sheets.data(rowData.values(effectiveFormat(numberFormat(type)),effectiveValue)) for the data request; properties,sheets.properties for the immediately preceding metadata request against the same path"
+          },
+          "pathPlaceholders": {
+            "spreadsheetId": "regex-extracted from the `spreadsheet_url` endpoint config field (first path segment of >=20 word/hyphen characters)"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Three alternative credential modes, judged separately. (1) OAuth Credentials is standalone T3_BYO_REFRESH: the config schema requires client_id, client_secret AND refresh_token, all three marked secret and all three in `required`; the connector ships an OAuth2Spec tagged `x-oauth2-provider: google`, so Estuary's hosted control plane can register the OAuth app and mint the refresh token on the user's behalf — but a standalone deployment gets none of that, hence T3. (2) Google Service Account is T1_SIMPLE: a single self-serve secret (the service account JSON key) is the whole credential; the CDK mints and refreshes access tokens itself from the key with the two readonly scopes, no user-registered app involved. The user does have to share the spreadsheet with the service account's email, which is an out-of-band step but not an additional credential. (3) Private App Credentials is nominally T1_SIMPLE — one bearer access_token and nothing else — but see the misfit: it is never refreshed, so a Google access token expires in about an hour and the mode is only really viable for one-shot use. authTierOverall is the easiest offered mode: T1_SIMPLE via service account.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].primaryKey / primaryKeyKind",
+      "description": "Row identity is a synthetic ORDINAL, not anything intrinsic to the row. The CDK assigns `_meta/row_id` by counting yielded documents from zero on every pass, and that counter is the entire collection key. Nothing in the row's own content participates in identity. The consequence is a genuine correctness hazard the schema has no field to record: inserting one row in the MIDDLE of a tab shifts every row below it up by one ordinal, so a single-row insert re-keys the whole tail and is materialized downstream as an update to every subsequent row plus one appended row — the data lands correctly but the change volume is O(rows below the insert), and any downstream consumer keying on row_id sees rows silently change meaning. Deleting a mid-sheet row is the same in reverse. The ordinal is also computed over NON-EMPTY rows only (blank rows and, when frozenRowCount == 1, the header row are skipped before counting), so row_id does not even correspond to the sheet's own visible row number. `primaryKeyKind: \"synthetic\"` is the honest value but understates that this key is positional and unstable rather than merely generated.",
+      "proposedShape": {
+        "primaryKeyKind": "synthetic",
+        "keyStability": {
+          "kind": "positional_ordinal",
+          "stableUnder": ["append", "in_place_cell_edit"],
+          "unstableUnder": ["mid_collection_insert", "mid_collection_delete", "row_reorder", "blank_row_insertion"],
+          "rekeyBlastRadius": "all records ordered after the mutation point",
+          "notes": "ordinal counts only emitted (non-empty, non-header) rows, so it is not the sheet's visible row number"
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.snapshot / execution",
+      "description": "There is no incremental leg and no cursor of any kind, and the schema cannot express HOW change is detected. Google Sheets exposes no per-row modification timestamp or revision marker through this API path, and the connector requests none: every tick re-reads the entire tab. Change detection happens after the fact, at the CDK level, by hashing the full set of documents produced by the pass and comparing that digest to the previous pass's digest; if the digest matches, every document captured in the pass is discarded wholesale. So the wire cost is a full re-read on every interval regardless of whether anything changed — only the downstream write is suppressed. `supportedSyncModes: [\"full_refresh\"]` and a filled `pull.snapshot` are correct but say nothing about whole-response-digest change detection or about the fact that unchanged passes still cost a full API read.",
+      "proposedShape": {
+        "changeDetection": {
+          "kind": "whole_response_digest",
+          "computedOver": "all documents emitted by one pass",
+          "suppressesDownstreamWriteWhenUnchanged": true,
+          "suppressesUpstreamReadWhenUnchanged": false,
+          "reason": "source exposes no per-row mtime or revision id on this API surface"
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.snapshot",
+      "description": "One logical snapshot pull is TWO HTTP requests to the same path, and PullSpec models only one. The connector first GETs /v4/spreadsheets/{id} with ranges=[tab title] and fields=properties,sheets.properties purely to re-read metadata it needs before it can interpret rows — the spreadsheet's IANA timeZone (used to anchor the 1899-12-30 Lotus serial-date epoch for DATE/DATE_TIME cells), the tab's columnCount (used to synthesize A/B/.../AA default column headers), and frozenRowCount (which, only when exactly 1, promotes the first row to column headers). It then re-issues a GET to the same path with the same ranges but fields=sheets.data(rowData...) to stream the cells. The metadata request is not discovery — it repeats on every single snapshot pass, deliberately, so that a renamed header row or a resized grid is picked up. Modelling this as a single `path` loses the fact that the pull has a mandatory per-pass preamble request whose response shapes the parse of the second.",
+      "proposedShape": {
+        "pull": {
+          "snapshot": {
+            "kind": "http_multi_request",
+            "requests": [
+              { "role": "preamble", "path": "/v4/spreadsheets/{spreadsheetId}", "httpMethod": "GET", "params": { "ranges": "[tab title]", "fields": "properties,sheets.properties" }, "yieldsRecords": false, "provides": ["timeZone", "columnCount", "frozenRowCount"] },
+              { "role": "records", "path": "/v4/spreadsheets/{spreadsheetId}", "httpMethod": "GET", "params": { "ranges": "[tab title]", "fields": "sheets.data(rowData...)" }, "yieldsRecords": true, "recordsPath": "sheets[].data[].rowData[]" }
+            ],
+            "repeatsPreamblePerPass": true
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.snapshot.paginator",
+      "description": "`{\"type\":\"none\"}` is literally accurate but materially misleading, and the more interesting fact is that A1 ranges are NOT used as a pagination mechanism. The connector passes `ranges` exactly once, set to the bare tab title, which the Sheets API interprets as the whole tab; it never constructs a bounded A1 window (no A1:Z1000-style walk), never advances a range, and never uses the known rowCount to chunk. The entire tab therefore arrives in one unbounded HTTP response. What keeps that survivable is not pagination but streaming parse: the body is consumed as a stream and rows are yielded one at a time by an incremental JSON processor pointed at sheets.item.data.item.rowData.item, so memory stays bounded even though the response does not. Recording only `paginator: none` loses both the absence of any request-side bound (a very large tab is one very large request, with whatever timeout and quota consequences that carries) and the presence of a response-side streaming bound. Note also that the A1-range-walking pattern the schema would struggle to classify simply does not occur here.",
+      "proposedShape": {
+        "paginator": { "type": "none" },
+        "responseBounding": {
+          "kind": "streaming_parse",
+          "requestSideBound": null,
+          "recordPointer": "sheets[].data[].rowData[]",
+          "notes": "whole tab returned in a single unbounded response; incremental JSON parse bounds memory but not response size, latency, or timeout exposure"
+        }
+      }
+    },
+    {
+      "where": "streams[].name / discovery",
+      "description": "A binding is addressed by the tab's mutable TITLE, not by its stable numeric sheetId, even though the sheetId is fetched and modelled. Discovery names each resource after `properties.title`, and the capture-time request selects the tab by putting that same title in `ranges`. The connector explicitly raises when the named tab is absent from the response. So renaming a tab in the spreadsheet breaks the existing binding (the range no longer resolves) and re-discovery presents the renamed tab as a brand-new stream, orphaning the old collection — while the sheetId that would have survived the rename is parsed and then discarded. A second consequence: two tabs cannot share a title in Sheets, so the name is unique, but it is unique-at-a-point-in-time rather than durable.",
+      "proposedShape": {
+        "streamIdentity": {
+          "addressedBy": "mutable_display_name",
+          "stableIdAvailableButUnused": "sheets[].properties.sheetId",
+          "breaksOn": ["tab_rename"],
+          "failureMode": "capture-time error when the titled range does not resolve; re-discovery presents a new stream"
+        }
+      }
+    },
+    {
+      "where": "credentialModes[2]",
+      "description": "The `tier` axis cannot express credential DURABILITY, and here that gap hides a mode that cannot sustain a long-running capture. Private App Credentials supplies a bare access_token, and the CDK's token source short-circuits for that credential type: it returns the configured string verbatim on every request, with no expiry tracking and no refresh path. Google OAuth access tokens are ordinarily valid for about an hour, so this mode realistically works for a one-shot run or a manual test and then begins failing with 401s until the user pastes a new token — whereas the service-account mode (which shares the same T1_SIMPLE tier) tracks token state and refreshes automatically, and the OAuth mode refreshes at 75% of the reported expires_in. Three modes, two tiers, but three genuinely different operational stories that `tier` alone flattens.",
+      "proposedShape": {
+        "tier": "T1_SIMPLE",
+        "durability": {
+          "kind": "static_non_refreshing",
+          "expectedLifetime": "~1 hour (Google access token default)",
+          "refreshMechanism": null,
+          "onExpiry": "requests begin failing; user must re-enter the token",
+          "contrast": "service_account and oauth modes both self-refresh"
+        }
+      }
+    },
+    {
+      "where": "streams[0] (header/schema derivation)",
+      "description": "Column naming — which determines the field names of every emitted document — is decided by a single all-or-nothing condition that has no home in this schema. Headers are taken from the first row ONLY when the tab's frozenRowCount is exactly 1; that first row is then consumed and not emitted as data. If frozenRowCount is 0, or 2 or more, columns fall back to synthesized spreadsheet letters (A, B, ..., AA) and the would-be header row(s) are emitted as ordinary data rows. So the document shape of a stream depends on a formatting property of the sheet that a user can change from the Sheets UI without touching any connector config, and freezing a second row silently renames every field from its header text to a letter. Schema inference is enabled on the binding, so this reshaping propagates. Nothing in `streams[]` records that field names are source-formatting-derived rather than fixed.",
+      "proposedShape": {
+        "fieldNaming": {
+          "kind": "conditional_header_row",
+          "condition": "gridProperties.frozenRowCount == 1",
+          "whenTrue": "first row's string/number cell values become field names and that row is not emitted",
+          "whenFalse": "synthesized A..Z,AA.. column letters; all rows emitted as data",
+          "userChangeableFromSourceUI": true,
+          "reevaluatedEveryPass": true
+        }
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_google_sheets_native/api.py", "lines": "18", "snippet": "API = \"https://sheets.googleapis.com\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_google_sheets_native/api.py", "lines": "26", "snippet": "url = f\"{API}/v4/spreadsheets/{spreadsheet_id}\"" },
+    "credentialModes[0].scheme": { "file": "source_google_sheets_native/models.py", "lines": "27-39", "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"google\",\n    accessTokenUrlTemplate=\"https://oauth2.googleapis.com/token\"," },
+    "credentialModes[0].scheme.scopes": { "file": "source_google_sheets_native/models.py", "lines": "21-24", "snippet": "scopes = [\n    \"https://www.googleapis.com/auth/spreadsheets.readonly\",\n    \"https://www.googleapis.com/auth/drive.readonly\",\n]" },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "233-239", "snippet": "class BaseOAuth2Credentials(_BaseOAuth2CredentialsData, metaclass=abc.ABCMeta):\n    grant_type: ClassVar[str] = \"refresh_token\"\n    refresh_token: str = Field(" },
+    "credentialModes[1].scheme": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "256-265", "snippet": "class GoogleServiceAccount(BaseModel):\n    service_account: str = Field(\n        description=\"Service account JSON key\"," },
+    "credentialModes[1].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "313-321", "snippet": "elif isinstance(self.credentials, GoogleServiceAccount):\n    self._access_token = (GoogleServiceAccountCredentials.from_service_account_info(\n        json.loads(self.credentials.service_account), scopes=self.google_spec.scopes))" },
+    "credentialModes[2].scheme": { "file": "estuary-cdk/estuary_cdk/flow.py", "lines": "115-122", "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"]\n    access_token: str = Field(title=\"Access Token\"," },
+    "credentialModes[2].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"" },
+    "configFields": { "file": "source_google_sheets_native/models.py", "lines": "58-66", "snippet": "class EndpointConfig(BaseModel):\n    credentials: OAuth2Credentials | GoogleServiceAccount | AccessToken = Field(discriminator=\"credentials_title\")\n    spreadsheet_url: str = Field(pattern=\"^https://docs.google.com/spreadsheets/\")" },
+    "execution.mode": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "1013", "snippet": "\"\"\"Snapshot the content of a resource at a regular interval.\"\"\"" },
+    "execution.continuity": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "1016-1020", "snippet": "state = ResourceState.Snapshot(\n    updated_at=datetime.fromtimestamp(0, tz=UTC),\n    last_count=0, last_digest=\"\")" },
+    "streamMode": { "file": "source_google_sheets_native/resources.py", "lines": "32-33", "snippet": "spreadsheet = await fetch_spreadsheet(log, http, spreadsheet_id)\nreturn [sheet(http, spreadsheet_id, s) for s in spreadsheet.sheets]" },
+    "discovery.method": { "file": "source_google_sheets_native/api.py", "lines": "26-28", "snippet": "url = f\"{API}/v4/spreadsheets/{spreadsheet_id}\"\nreturn Spreadsheet.model_validate_json(await http.request(log, url))" },
+    "discovery.querySketch": { "file": "source_google_sheets_native/models.py", "lines": "124-128", "snippet": "sheetId: int\ntitle: str\nindex: int" },
+    "streams[0].name": { "file": "source_google_sheets_native/resources.py", "lines": "61-68", "snippet": "return common.Resource(\n    name=sheet.properties.title,\n    key=[\"/_meta/row_id\"]," },
+    "streams[0].primaryKey": { "file": "tests/snapshots/snapshots__discover__stdout.json", "lines": "n/a (discover snapshot, both bindings)", "snippet": "\"key\": [\n    \"/_meta/row_id\"\n]" },
+    "streams[0].primaryKeyKind": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "1068-1075", "snippet": "meta[\"row_id\"] = count\ntask.captured(binding_index, doc)\ncount += 1" },
+    "streams[0].writeDisposition": { "file": "source_google_sheets_native/resources.py", "lines": "57-58", "snippet": "fetch_snapshot=functools.partial(fetch_rows, http, spreadsheet_id, sheet),\ntombstone=Row(_meta=Row.Meta(op=\"d\"))," },
+    "streams[0].schedules": { "file": "source_google_sheets_native/resources.py", "lines": "67-69", "snippet": "initial_config=ResourceConfig(\n    name=sheet.properties.title, interval=timedelta(seconds=30)\n)" },
+    "streams[0].supportedSyncModes": { "file": "estuary-cdk/estuary_cdk/capture/common.py", "lines": "1088-1094", "snippet": "if digest != state.last_digest:\n    for del_id in range(count, state.last_count):\n        tombstone.meta_.op = \"d\"" },
+    "streams[0].pull.snapshot.params": { "file": "source_google_sheets_native/api.py", "lines": "38-42", "snippet": "url = f\"{API}/v4/spreadsheets/{spreadsheet_id}\"\nparams = {\"ranges\": [sheet.properties.title],\n          \"fields\": \"properties,sheets.properties\"}" },
+    "streams[0].pull.snapshot.recordsPath": { "file": "source_google_sheets_native/api.py", "lines": "59-66", "snippet": "params[\"fields\"] = \"sheets.data(rowData.values(effectiveFormat(numberFormat(type)),effectiveValue))\"\n_, body = await http.request_stream(log, url, params=params)\nasync for row in IncrementalJsonProcessor(body(), \"sheets.item.data.item.rowData.item\", RowData):" },
+    "streams[0].pull.snapshot.pathPlaceholders": { "file": "source_google_sheets_native/resources.py", "lines": "36-40", "snippet": "def get_spreadsheet_id(url: str):\n    m = re.search(r\"(/)([-\\w]{20,})([/]?)\", url)\n    if m is not None and m.group(2): return m.group(2)" },
+    "streams[0].pull.snapshot.paginator": { "file": "source_google_sheets_native/api.py", "lines": "61", "snippet": "_, body = await http.request_stream(log, url, params=params)" },
+    "unionMisfits[6]": { "file": "source_google_sheets_native/api.py", "lines": "52-53", "snippet": "headers = default_column_headers(sheet.properties.gridProperties.columnCount)\nheaders_from_frozen = sheet.properties.gridProperties.frozenRowCount == 1" },
+    "unionMisfits[5]": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "292-305", "snippet": "if isinstance(self.credentials, (AccessToken, ...)):\n    return (self.authorization_token_type, self.credentials.access_token)" }
+  },
+
+  "confidence": {
+    "transports": "high",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].schedules": "high",
+    "streams[0].pull.snapshot": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[0].pull.snapshot.recordsPath": "medium",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector-level default headers are set anywhere; the only request header is the CDK-injected Authorization. Recorded as null rather than inventing an empty object with meaning.",
+    "execution.defaultSchedule": "There is no connector-wide default. The 30-second interval is set per-resource in each binding's initial_config, so it is recorded on streams[].schedules; the CDK's ResourceConfig field default (PT0S) is a framework artifact, not this connector's intent.",
+    "execution.continuity.releasedOnShutdown": "Not applicable in a way the boolean can express — the connector creates no server-side artifact to release, so neither true nor false is meaningful. artifacts is empty for the same reason.",
+    "streams[0].cursorField": "Deliberately null, not unknown. The Sheets API surface used here exposes no per-row modification time or revision marker, and the connector requests none; change detection is a whole-response digest comparison (see unionMisfits). Asserting any cursor here would silently truncate data.",
+    "streams[].name (literal list)": "The stream list is entirely customer-data-dependent — one binding per tab in whatever spreadsheet URL the user supplies — so no literal names exist in the code. A single archetype is emitted and marked kind: archetype. The names appearing in the checked-in discover snapshot (VariousTypes, OtherThings) are fixture tab names from a test spreadsheet, not connector-shipped streams, and are deliberately not listed as actual streams."
+  }
+}

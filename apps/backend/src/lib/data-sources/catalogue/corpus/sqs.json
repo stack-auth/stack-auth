@@ -1,0 +1,265 @@
+{
+  "id": "sqs",
+  "estuaryDir": "source-sqs",
+  "displayName": "Amazon SQS",
+  "description": "Consumes messages from Amazon SQS standard and FIFO queues, deleting each message from the queue once Flow has durably committed the checkpoint containing it.",
+  "category": "streaming",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "stream",
+        "system": "sqs",
+        "endpointConfig": "No broker list. An AWS `region` at endpoint scope selects the SQS service endpoint via the AWS SDK's default resolver; each binding names one queue by full `queueUrl` (`<endpoint>/<account-id>/<queue-name>`). An optional advanced `endpoint` override sets the SDK BaseEndpoint for VPC interface endpoints, LocalStack, or SQS-compatible APIs. Queue type (standard vs FIFO) is derived from the `.fifo` name suffix and cross-checked against the FifoQueue attribute at Validate."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "AWS access key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_access_key_id", "credentials.aws_secret_access_key"]
+      }
+    },
+    {
+      "name": "AWS IAM role assumption",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_region", "credentials.aws_role_arn"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "None persisted. The connector's Apply is a no-op and it emits an empty checkpoint (`{}`) for every transaction, so no server-side or connector-side state object exists.",
+        "Transient only, and only while the task is running: messages held in flight (hidden by the queue's visibility timeout) between receive and delete, capped at 1,000 unacked per binding.",
+        "DESTRUCTIVE SIDE EFFECT, not an artifact: every committed message is permanently removed from the customer's queue via DeleteMessageBatch. This is the only connector in the corpus whose normal operation destroys source data."
+      ],
+      "customerSideAccrual": "If we stop, undelivered messages accumulate as queue backlog on the customer's SQS queue, and each message ages against the queue's own MessageRetentionPeriod (an AWS queue attribute, default 4 days, max 14). Nothing else grows: no replication slot, no change table, no consumer group. Messages that were in flight when we stopped become visible again after the visibility timeout and simply rejoin the backlog. The customer also keeps paying SQS storage/request costs on the backlog.",
+      "ourSideLoss": "Nothing is lost by pausing, up to the queue's MessageRetentionPeriod. Beyond it, SQS deletes aged-out messages itself and they are unrecoverable. There is no resume token to invalidate: checkpoints are always empty, receipt handles are session-local, and acknowledgements never span sessions. Separately, if a THIRD party consumes the same queue while we are stopped, those messages are gone for us — and conversely, while we ARE running, other consumers of that queue lose the messages we delete.",
+      "resumeWindow": "The queue's own MessageRetentionPeriod (customer-configured, AWS default 4 days, max 14 days). Not read or enforced by the connector.",
+      "releasedOnShutdown": true,
+      "notes": "Symmetric statement of the destructiveness, because it cuts both ways. IF WE STOP: nothing breaks and nothing is orphaned — the queue is the record of unfinished work, in-flight messages redeliver after the visibility timeout, and on graceful shutdown delete workers make a best-effort 5-second drain so already-committed messages are removed rather than duplicated. Cost of stopping is backlog growth plus eventual retention expiry. IF WE RUN: we consume the queue. README states it plainly — other consumers sharing the queue see only the messages this connector has not yet received. There is no read-only or peek mode, no `delete_messages: false` toggle, and no dry run; delete is mandatory to the point that missing sqs:DeleteMessage is treated as FATAL both at Validate (fabricated-handle probe) and at runtime, because a receive-only capture would look healthy while duplicates piled up. DELETE ORDERING: delete happens strictly AFTER the checkpoint is durably committed, never before — the transaction loop emits documents plus a checkpoint and pushes receipt handles onto a pending FIFO; only when the runtime sends Acknowledge{N} are the corresponding N entries popped and their handles dispatched to DeleteMessageBatch. Delivery is therefore at-least-once, and every failure path degrades to a duplicate rather than a loss. VISIBILITY TIMEOUT: the connector never sets VisibilityTimeout on ReceiveMessage, so the queue's own configured value applies; it reads that value once per binding at open via GetQueueAttributes and uses it to skip DeleteMessageBatch calls for handles already past their deadline (counted as deleteExpired). There are no ChangeMessageVisibility heartbeats — explicitly considered and rejected as doubling API volume — so a commit slower than the visibility timeout produces duplicates, bounded by the 1,000-per-binding unacked cap. Validate warns when a queue's visibility timeout is under 30s and recommends >=180s. RE-READING IS IMPOSSIBLE for anything already deleted: SQS has no offsets, no log, and no replay. Backfill does not exist as a concept here; the only 'historical' data is whatever is still sitting in the queue."
+    }
+  },
+
+  "configFields": [
+    { "name": "region", "displayName": "AWS Region", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS region of the SQS queues (e.g. us-east-1). Cross-checked at Validate against the region parsed out of each queue URL when a standard AWS host is used." },
+    { "name": "credentials.auth_type", "displayName": "Authentication", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting one of two credential shapes: AWSAccessKey (default) or AWSIAM." },
+    { "name": "credentials.aws_access_key_id", "displayName": "AWS Access Key ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSAccessKey." },
+    { "name": "credentials.aws_secret_access_key", "displayName": "AWS Secret Access Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSAccessKey." },
+    { "name": "credentials.aws_region", "displayName": "AWS Region", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSIAM. Region of the resource, supplied inside the IAM credential block separately from the top-level region." },
+    { "name": "credentials.aws_role_arn", "displayName": "AWS Role ARN", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when auth_type is AWSIAM. Role which has access to the resource and is assumed by Flow." },
+    { "name": "advanced.endpoint", "displayName": "AWS Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "AWS endpoint URI override, for VPC interface endpoints or SQS-compatible APIs not provided by AWS. Setting it disables the queue-URL region cross-check." },
+    { "name": "queueUrl", "displayName": "Queue URL", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Full URL of the SQS queue, e.g. https://sqs.us-east-1.amazonaws.com/123456789012/my-queue. Sole per-binding setting; also the resource path pointer." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "SQS ListQueues (paginated via the AWS SDK's ListQueuesPaginator)",
+    "querySketch": "ListQueues with MaxResults=1000, following the paginator until no more pages; results sorted lexicographically by queue URL. Each queue URL is parsed to <account-id>/<queue-name>; the name becomes the recommended binding name and decides, by its `.fifo` suffix, which of two document schemas and which collection key the binding gets.",
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<standard queue>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/messageId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "continuous consumption", "schedule": { "kind": "continuous" } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "partitioned_log",
+          "unit": "queue (one binding = one SQS queue; no partitions, shards, or ranges exist anywhere in the connector)",
+          "offsetKind": "none — there is no durable offset. Checkpoints are always the literal `{}`. The transient position marker is a per-message SQS ReceiptHandle, valid only until the queue's visibility timeout expires and only within the current connector session; acknowledgements never span sessions. The queue itself is the record of unfinished work.",
+          "shardable": true,
+          "notes": "Long-polling ReceiveMessage (WaitTimeSeconds=20, MaxNumberOfMessages=10, the API cap) from a fleet of 40 receiver goroutines per binding, requesting all message system attributes and all message attributes. VisibilityTimeout is deliberately omitted so the queue's configured value applies. Concurrent receivers need no coordination because ReceiveMessage on one queue returns disjoint sets to different callers. Received batches are transformed and coalesced into checkpoints (max 1,000 messages or 32 MiB), and the covered receipt handles are DELETED via DeleteMessageBatch only after the runtime acknowledges the checkpoint — i.e. delete strictly follows durable commit. An idle binding (60s without a message) parks all but one 'scout' receiver, which asks for 1 message per call. OverLimit (queue-wide 120k in-flight quota) backs off 5s and retries; other receive errors fail the task, which is safe because unreceived messages simply stay in the queue. Reading is destructive: consumed messages are gone for every other consumer of the queue and cannot be re-read."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<FIFO queue, name ending in .fifo>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/messageGroupId", "/_meta/sequenceNumber"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "continuous consumption", "schedule": { "kind": "continuous" } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "partitioned_log",
+          "unit": "message group within a FIFO queue (groups are created by the producer; the connector never enumerates or assigns them)",
+          "offsetKind": "none for resumption purposes — checkpoints remain `{}`. SQS assigns each FIFO message a SequenceNumber that strictly increases within its message group and is stable across redeliveries; it is used as part of the collection KEY, not as a stored cursor, and the connector never sends it back to SQS.",
+          "shardable": true,
+          "notes": "Same receive/commit/delete pipeline as the standard archetype, plus FIFO specifics: every FIFO receive sets a fresh ReceiveRequestAttemptId so an SDK retry of a call whose response was lost recovers the same messages instead of locking the group for the full visibility timeout. Ordering comes for free from composing SQS group locking with delete-after-commit — group G's batch k+1 cannot be received by anyone until batch k is deleted, and batch k is deleted only after its checkpoint durably committed. Per-group throughput is therefore gated by commit latency (~10 messages per commit round trip); aggregate throughput scales with the number of active groups, a producer decision. Shards help only up to the number of distinct active groups. Redelivered duplicates can arrive out of order but carry the same key and collapse under keyed reduction. deduplicationId is deliberately NOT part of the key because SQS only gives it meaning within a 5-minute window, and messageId is deliberately not a third key component."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Both offered modes are self-serve AWS credential material with no OAuth app registration and no refresh token. AWSAccessKey is a plain access-key-id/secret-access-key pair pasted into the form (static credentials provider). AWSIAM asks the user for a region plus a role ARN that Flow assumes — slightly more setup on the AWS side (the user must create a role with a trust policy for Flow's account and attach sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes on each queue plus sqs:ListQueues for discovery), but it is still one self-serve credential artifact, not a BYO OAuth application. The easiest mode offered is therefore T1_SIMPLE. Note that the required permission set is unusually WRITE-ish for a source connector: sqs:DeleteMessage is mandatory, probed at Validate with a fabricated receipt handle, and missing it is fatal — a read-only IAM policy will not work.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.continuity / the schema as a whole",
+      "description": "The schema has no way to express that a pull CONSUMES its source. Every other field is written from the assumption that reading is non-destructive and repeatable: `supportedSyncModes` implies a full_refresh is available, `pull.backfill` implies history can be re-swept, and `continuity` frames risk purely as 'what accrues if we stop'. For SQS the dominant risk is the opposite direction — what is irreversibly destroyed while we RUN. Reading a message and committing it deletes it from the customer's queue, permanently, for every consumer of that queue. There is no re-read, no replay, no peek mode, and no configuration flag to disable deletion. A user who binds a production queue that another application also consumes will silently starve that application, and nothing in this schema would have warned them. This deserves a first-class field, not prose buried in `notes`.",
+      "proposedShape": {
+        "destructiveness": {
+          "consumesSource": true,
+          "mechanism": "SQS DeleteMessageBatch on the customer's queue",
+          "timing": "after_durable_commit",
+          "optional": false,
+          "disableFlag": null,
+          "reReadable": false,
+          "sharedSourceImpact": "Any other consumer of the same queue permanently loses every message this connector commits.",
+          "requiredWritePermissions": ["sqs:DeleteMessage"],
+          "sourceSideRetention": "queue MessageRetentionPeriod (AWS default 4 days, max 14) — the only window in which un-consumed data still exists"
+        }
+      }
+    },
+    {
+      "where": "streams[].supportedSyncModes",
+      "description": "Neither value in the union is truthful. `full_refresh` is impossible — there is no collection to re-read, since reading destroys. `incremental` is misleading — there is no cursor, no watermark, and no notion of 'changed since'; the connector drains a queue until it is empty and then blocks on a long poll. The honest answer is a third mode.",
+      "proposedShape": { "supportedSyncModes": ["consume_stream"] }
+    },
+    {
+      "where": "streams[].pull",
+      "description": "The backfill/incremental/snapshot trichotomy assumes a historical sweep is distinguishable from an ongoing leg. Here there is exactly one pull shape, and whether it is returning a 10-million-message backlog or one message that arrived a second ago is indistinguishable from inside the connector. I filled `incremental` because it is the ongoing leg, but `backfill: null` should not be read as 'no history is captured' — existing queue backlog IS captured, by the same loop.",
+      "proposedShape": { "pull": { "continuous": "<PullSpec>", "backfillIsSameAsIncremental": true } }
+    },
+    {
+      "where": "execution.continuity.artifacts",
+      "description": "The field asks for 'every server-side object left behind', which presumes the connector's footprint is additive. This connector's footprint is subtractive: it leaves nothing behind and instead removes things. Answering literally ('none') understates the risk by a wide margin, which is why I used the field to carry a negative-space entry.",
+      "proposedShape": { "artifacts": [], "sourceMutations": ["messages deleted from the bound queue after commit"] }
+    },
+    {
+      "where": "execution.continuity.resumeWindow",
+      "description": "The window here is a property of the CUSTOMER's queue configuration (MessageRetentionPeriod), not of the connector — the connector never reads that attribute and cannot report or enforce it. The schema offers no way to mark a resume window as externally-owned and unknown-at-mining-time.",
+      "proposedShape": { "resumeWindow": { "value": "MessageRetentionPeriod", "ownedBy": "customer", "knownToConnector": false, "awsDefault": "4 days", "max": "14 days" } }
+    },
+    {
+      "where": "credentialModes[].scheme",
+      "description": "`cloudIam` flattens two materially different modes into one shape. Static access keys are long-lived secrets pasted into the form; role assumption issues short-lived STS credentials and requires a trust relationship established out-of-band on the customer's side. The tier ladder (T1/T2/T3) is OAuth-shaped and has no rung for 'user must configure a cross-account trust policy', which is real setup work even though it involves no OAuth app.",
+      "proposedShape": { "type": "cloudIam", "provider": "aws", "subtype": "static_keys | assume_role", "requiresOutOfBandTrustPolicy": true }
+    },
+    {
+      "where": "transports[].spec (kind: stream)",
+      "description": "`endpointConfig` as a single string cannot express that SQS has no broker/endpoint list at all: the service endpoint is derived from a region by the AWS SDK, each binding carries its own fully-qualified queue URL, and an optional override exists purely for VPC endpoints and emulators. Three different things are being crammed into one free-text field.",
+      "proposedShape": { "kind": "stream", "system": "sqs", "endpointResolution": "sdk_region_default", "perBindingAddress": "queueUrl", "endpointOverrideField": "advanced.endpoint" }
+    },
+    {
+      "where": "execution.mode",
+      "description": "\"log\" is the closer of the two but is still wrong in kind. A log has retained, re-readable, offset-addressable history (Kafka, Kinesis, a WAL). A queue has none of those — consumption is the only read, and it is one-way. Grouping SQS with Kafka under one mode hides exactly the property that matters most operationally.",
+      "proposedShape": { "mode": "queue_consume" }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "\"merge\" is accurate about the destination behavior (SQS-assigned keys are stable across redeliveries, so duplicates collapse under keyed reduction) but obscures that the delivery guarantee is at-least-once BY DESIGN, with duplicates as the deliberate failure currency of every error path. The schema has no field for the delivery guarantee, which is the fact a downstream consumer actually needs.",
+      "proposedShape": { "writeDisposition": "merge", "deliveryGuarantee": "at_least_once", "duplicateCollapseKey": "source-assigned, stable across redeliveries" }
+    }
+  ],
+
+  "evidence": {
+    "id": { "file": "source-sqs/driver.go", "lines": "36", "snippet": "DocumentationUrl:         \"https://go.estuary.dev/source-sqs\"," },
+    "description": { "file": "source-sqs/README.md", "lines": "3-6", "snippet": "captures messages from Amazon SQS queues. It supports both standard and\nFIFO queues, auto-detected per queue, and deletes each message from SQS\nafter Flow has durably committed the checkpoint containing it." },
+    "transports[0].spec": { "file": "source-sqs/client.go", "lines": "58-62", "snippet": "return sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {\n\t\tif cfg.Advanced.Endpoint != \"\" {\n\t\t\to.BaseEndpoint = aws.String(cfg.Advanced.Endpoint)" },
+    "credentialModes[0].scheme": { "file": "source-sqs/config.go", "lines": "103-105", "snippet": "case AWSAccessKey:\n\t\treturn credentials.NewStaticCredentialsProvider(\n\t\t\tc.Credentials.AWSAccessKeyID, c.Credentials.AWSSecretAccessKey, \"\"), nil" },
+    "credentialModes[1].scheme": { "file": "source-sqs/.snapshots/TestSpec", "lines": "60-64", "snippet": "\"aws_role_arn\": {\n  \"title\": \"AWS Role ARN\",\n  \"description\": \"AWS Role which has access to the resource which will be assumed by Flow\"" },
+    "execution.mode": { "file": "source-sqs/receiver.go", "lines": "43-45", "snippet": "// longPollWaitSeconds enables server-side long polling. Calls still return\n// immediately when a backlog is present.\nvar longPollWaitSeconds int32 = 20" },
+    "execution.defaultSchedule": { "file": "source-sqs/receiver.go", "lines": "103-104", "snippet": "func runReceiver(ctx context.Context, client *sqs.Client, binding *bindingInfo, index int, bodyBytes *semaphore.Weighted, batches chan<- capturedBatch) error {\n\tfor ctx.Err() == nil {" },
+    "execution.continuity.artifacts": { "file": "source-sqs/ARCHITECTURE.md", "lines": "22-24", "snippet": "1. No connector-owned state. Checkpoints are always `{}`. The queue is the\n   record of unfinished work, so there is nothing to resume from." },
+    "execution.continuity.customerSideAccrual": { "file": "source-sqs/ARCHITECTURE.md", "lines": "218-221", "snippet": "There is no feedback cycle. Emission never waits on acknowledgement. If\nFlow stops reading, the transaction loop blocks mid-emission ... Excess backlog just waits in SQS." },
+    "execution.continuity.releasedOnShutdown": { "file": "source-sqs/ARCHITECTURE.md", "lines": "288-291", "snippet": "On stream close or SIGTERM the receivers stop, the ack reader exits on EOF ... Anything received but not\ndeleted redelivers after its visibility timeout." },
+    "execution.continuity.notes": { "file": "source-sqs/README.md", "lines": "90-92", "snippet": "Note that this capture consumes the queue. Messages are deleted once\ncommitted, so other consumers sharing the queue will see only the messages\nthis connector has not yet received." },
+    "execution.continuity.notes.deleteOrdering": { "file": "source-sqs/ack.go", "lines": "91-106", "snippet": "// Pop msg.acknowledged entries off of the FIFO queue and dispatch\n// jobs to delete the committed message from SQS.\nfor i := uint32(0); i < msg.acknowledged; i++ {" },
+    "execution.continuity.notes.checkpointBeforeDelete": { "file": "source-sqs/pull.go", "lines": "258-269", "snippet": "// The pending entry must be pushed before the checkpoint is emitted.\n...\nif err := stream.Checkpoint(emptyCheckpoint, true); err != nil {" },
+    "execution.continuity.notes.visibilityTimeout": { "file": "source-sqs/receiver.go", "lines": "134-136", "snippet": "WaitTimeSeconds:     longPollWaitSeconds,\n\t\t\t// VisibilityTimeout is omitted, so the queue's configured\n\t\t\t// visibility timeout applies." },
+    "execution.continuity.notes.expiredHandleSkip": { "file": "source-sqs/ack.go", "lines": "156-162", "snippet": "if job.binding.visibility > 0 && time.Since(job.receivedAt) > job.binding.visibility {\n\t\tjob.binding.stats.deleteExpired.Add(int64(len(job.handles)))" },
+    "execution.continuity.notes.noHeartbeats": { "file": "source-sqs/ARCHITECTURE.md", "lines": "310-313", "snippet": "- Visibility-extension heartbeats. `ChangeMessageVisibility` heartbeats\n  would double API volume, and the unacked cap plus a sane visibility\n  timeout of 180s or more bounds duplicate amplification without them." },
+    "execution.continuity.notes.deleteMandatory": { "file": "source-sqs/driver.go", "lines": "119-126", "snippet": "// probeDeletePermission checks sqs:DeleteMessage up front with a fabricated\n// receipt handle.\n...\nreturn fmt.Errorf(\"credentials lack sqs:DeleteMessage on queue %q..." },
+    "execution.continuity.notes.atLeastOnce": { "file": "source-sqs/README.md", "lines": "8-11", "snippet": "Delivery is at-least-once. Failure modes degrade to a redelivered\nduplicate rather than data loss, and duplicates collapse downstream under the\ncollection key." },
+    "execution.continuity.notes.gracefulDrain": { "file": "source-sqs/ack.go", "lines": "112-116", "snippet": "// On cancellation it makes a best-effort pass over jobs already\n// buffered in `deletes` so already-committed messages are deleted.\n// It stops once the channel is momentarily empty" },
+    "execution.continuity.notes.validateWarning": { "file": "source-sqs/driver.go", "lines": "103-107", "snippet": "if visibility, err := strconv.Atoi(attrs.Attributes[string(types.QueueAttributeNameVisibilityTimeout)]); err == nil && visibility < 30 {\n\t\tlog...Warn(\"queue visibility timeout is under 30 seconds; 180s or more is recommended" },
+    "execution.continuity.notes.sessionScopedAcks": { "file": "source-sqs/ARCHITECTURE.md", "lines": "51-54", "snippet": "- Acknowledgements never span sessions. The ack counter starts at zero per\n  session in both runtimes, so a restarted connector can never receive an\n  acknowledgement for a prior process's checkpoints." },
+    "configFields": { "file": "source-sqs/.snapshots/TestSpec", "lines": "5-121", "snippet": "\"properties\": {\n      \"region\": {\n        \"type\": \"string\"," },
+    "configFields[7]": { "file": "source-sqs/config.go", "lines": "112-114", "snippet": "type resource struct {\n\tQueueURL string `json:\"queueUrl\" jsonschema:\"title=Queue URL,description=Full URL of the SQS queue" },
+    "streamMode": { "file": "source-sqs/discover.go", "lines": "33-40", "snippet": "paginator := sqs.NewListQueuesPaginator(client, &sqs.ListQueuesInput{MaxResults: aws.Int32(1000)})\n\tfor paginator.HasMorePages() {" },
+    "discovery.method": { "file": "source-sqs/discover.go", "lines": "33", "snippet": "paginator := sqs.NewListQueuesPaginator(client, &sqs.ListQueuesInput{MaxResults: aws.Int32(1000)})" },
+    "streams[0].primaryKey": { "file": "source-sqs/discover.go", "lines": "66-67", "snippet": "binding.DocumentSchemaJson = standardSchema\n\t\t\tbinding.Key = []string{\"/_meta/messageId\"}" },
+    "streams[1].primaryKey": { "file": "source-sqs/discover.go", "lines": "61-64", "snippet": "// For FIFO queues the (group, sequence number) pair is unique\n\t\t\t// and stable across redeliveries\n\t\t\tbinding.Key = []string{\"/_meta/messageGroupId\", \"/_meta/sequenceNumber\"}" },
+    "streams[0].writeDisposition": { "file": "source-sqs/ARCHITECTURE.md", "lines": "261-263", "snippet": "Collection keys are chosen to be stable across redeliveries. SQS assigns\nthem at send time, so duplicates collapse under keyed reduction." },
+    "streams[0].pull.incremental": { "file": "source-sqs/receiver.go", "lines": "130-138", "snippet": "input := &sqs.ReceiveMessageInput{\n\t\t\tQueueUrl:            aws.String(binding.queueURL),\n\t\t\tMaxNumberOfMessages: int32(ask)," },
+    "streams[0].pull.incremental.offsetKind": { "file": "source-sqs/pull.go", "lines": "63", "snippet": "var emptyCheckpoint = json.RawMessage(\"{}\")" },
+    "streams[1].pull.incremental.notes": { "file": "source-sqs/ARCHITECTURE.md", "lines": "232-234", "snippet": "> Group G's batch k+1 cannot be received, by any receiver on any task shard,\n> until batch k's messages are deleted. Batch k is deleted only after its\n> checkpoint durably committed." },
+    "streams[1].pull.incremental.notes.attemptId": { "file": "source-sqs/receiver.go", "lines": "143-144", "snippet": "// A stable ReceiveRequestAttemptId lets a\n\t\t\t\t// retry recover the same messages and handles instead.\n\t\t\tinput.ReceiveRequestAttemptId = aws.String(uuid.NewString())" },
+    "streams[1].primaryKeyKind.dedupExcluded": { "file": "source-sqs/ARCHITECTURE.md", "lines": "266-269", "snippet": "`messageId` is\n  deliberately not a third component, and `deduplicationId` is not a key\n  because SQS only gives it meaning within a 5-minute window." },
+    "authTierOverall": { "file": "source-sqs/config.go", "lines": "38-41", "snippet": "return schemagen.OneOfSchema(\"Authentication\", \"\", \"auth_type\", string(AWSAccessKey),\n\t\tschemagen.OneOfSubSchema(\"Access Key\", AccessKeyCredentials{}, string(AWSAccessKey)),\n\t\tschemagen.OneOfSubSchema(\"AWS IAM\", iam.AWSConfig{}, string(AWSIAM)))" },
+    "authTierRationale.permissions": { "file": "source-sqs/README.md", "lines": "86-88", "snippet": "The credentials need `sqs:ReceiveMessage`, `sqs:DeleteMessage`, and\n`sqs:GetQueueAttributes` on each bound queue, plus `sqs:ListQueues` for\ndiscovery." }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].tier": "medium",
+    "execution.mode": "medium",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "execution.continuity.notes": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[1].primaryKey": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[1].writeDisposition": "high",
+    "streams[0].supportedSyncModes": "low",
+    "streams[1].supportedSyncModes": "low",
+    "streams[0].pull.incremental": "high",
+    "streams[1].pull.incremental": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[].cursorField": "There is no cursor of any kind. The connector emits an empty checkpoint for every transaction and stores nothing; position is implicit in what remains in the queue. FIFO sequenceNumber is a key component, not a cursor — it is never sent back to SQS and never persisted.",
+    "streams[].pull.backfill": "No separate backfill leg exists. Existing queue backlog and newly arriving messages flow through the identical receive loop and are indistinguishable to the connector. Recorded as a misfit rather than duplicating the incremental spec here.",
+    "streams[].pull.snapshot": "Impossible by construction — a snapshot implies re-reading the whole collection, and reading destroys the messages.",
+    "streams[].name": "Both entries are archetypes, not real streams. Actual stream names come from the customer's own queue list at connect time (ListQueues, recommended name = the queue-name segment of the URL). The connector ships no static stream list.",
+    "execution.continuity.resumeWindow (exact value)": "The binding value is the queue's MessageRetentionPeriod, an AWS queue attribute the connector never requests (it asks only for VisibilityTimeout at open, and All at Validate). AWS's documented default of 4 days and 14-day maximum are stated as external context, not as facts read from this code.",
+    "transports[0].spec.endpointConfig (default port / TLS)": "Not expressible and not present — all transport details are delegated wholesale to the AWS SDK's endpoint resolver and the buildable HTTP client; the connector only tunes idle-connection pool size and the retryer.",
+    "discovery.excludes": "The discover path applies no filtering whatsoever: every queue returned by ListQueues becomes a binding. Emitted as an empty list rather than null because the absence of filtering is itself confirmed, not unknown.",
+    "credentialModes[1].tier (rationale)": "Rated T1_SIMPLE because it needs no OAuth app and no refresh token, but the ladder has no rung for the cross-account trust-policy setup role assumption actually requires. The IAM helper package (go/auth/iam) was not present in the mined tree, so how the assumed-role session is minted could not be verified directly — only the two config fields the spec snapshot exposes."
+  }
+}

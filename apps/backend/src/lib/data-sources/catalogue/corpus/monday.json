@@ -1,0 +1,432 @@
+{
+  "id": "monday",
+  "estuaryDir": "source-monday",
+  "displayName": "Monday.com",
+  "description": "Imports monday.com work-management data (boards, items/pulses and their subitems, users, teams, tags) from the monday.com GraphQL API.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.monday.com/v2" },
+        "defaultHeaders": { "API-Version": "2025-07" },
+        "apiVersionPinning": "Request header `API-Version`, pinned to the constant \"2025-07\" (source_monday/graphql/constants.py). Sent explicitly on every request in execute_query and validate_credentials; not a path segment or query param."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App access token (personal/API token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant; only value is \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "monday.com API access token, sent in the Authorization header." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (binding). Also the resource path pointer." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this binding. Connector-supplied defaults: PT2H for teams/users/tags, PT1H for boards/items." },
+    { "name": "schedule", "displayName": "Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Optional cron expression to automatically re-backfill this binding. Empty by default; comes from the CDK's ResourceConfigWithSchedule, not from monday-specific code." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 7200 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Single unparameterised GraphQL document POSTed to /v2: `query { teams { id name picture_url users { id } owners { id } } }`. The executor rewrites the document to also select a top-level `complexity { query after reset_in_x_seconds }` field before sending. Records are streamed out of the response at JSON path `data.teams.item`.",
+          "paginator": { "type": "none" }
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 7200 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GraphQL document `query ($limit: Int = 10, $page: Int = 1) { users(limit: $limit, page: $page) { ...profile fields... } }` POSTed to /v2 with variables {limit: 100, page: N}. Records streamed at JSON path `data.users.item`. The caller loops, incrementing the `page` variable, until a response yields fewer documents than `limit`.",
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit (GraphQL variable)",
+            "pageParam": "page (GraphQL variable)",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          }
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 7200 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Single unparameterised GraphQL document POSTed to /v2: `query { tags { id name color } }`. Records streamed at JSON path `data.tags.item`.",
+          "paginator": { "type": "none" }
+        }
+      }
+    },
+    {
+      "name": "boards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill", "schedule": { "kind": "interval", "seconds": 3600 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GraphQL `query ($order_by: BoardsOrderBy = created_at, $page: Int, $limit: Int, $ids: [ID!], $state: State = all) { boards(order_by:, page:, limit:, ids:, state:) { ...full board fragment: columns, groups, owners, creator, permissions, subscribers, tags, top_group, updates, views, workspace{kind} } }` POSTed to /v2 with {limit: 100, page: N, state: \"all\"}. Records streamed at `data.boards.item`. On a GraphQL error the same page is retried with a fallback document that drops the `workspace` selection, then with binary-search chunking over board IDs. Emitted boards are filtered client-side to `updated_at <= cutoff` and `state != deleted`.",
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit (GraphQL variable)",
+            "pageParam": "page (GraphQL variable)",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Three-phase, per-invocation window [log_cursor, min(log_cursor + 2h, now - 5m)]. (1) Enumerate every board id/state/updated_at with `query ($limit: Int = 10000, $page: Int = 1, $state: State = all) { boards(limit:, page:, state:, order_by: created_at) { id name state updated_at } }`, paged on `page` until an empty page. (2) For those board ids, `query ($start: ISO8601DateTime!, $end: ISO8601DateTime!, $ids: [ID!]!, $limit: Int!, $activity_limit: Int!, $page: Int) { boards(ids:, limit:, page:, order_by: created_at) { id state updated_at activity_logs(from: $start, to: $end, limit: $activity_limit) { account_id created_at data entity event id user_id } } }` in batches of 500 boards x 100 logs, paged on `page` until a page yields no logs. Activity-log events are mapped to board-changed / board-deleted. (3) Re-fetch the changed board ids with the full board document in chunks of 100. Deleted boards are emitted with _meta.op = 'd'. Cursor advances to max(change timestamp)+1s, or to window_end when nothing changed.",
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit (GraphQL variable; 10000 for the id sweep, len(board_ids) for the activity-log query)",
+            "pageParam": "page (GraphQL variable)",
+            "pageSize": 10000,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "activity_logs(from:/to:) GraphQL arguments", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill", "schedule": { "kind": "interval", "seconds": 3600 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Board-partitioned. The page cursor is a JSON object mapping still-unprocessed board id -> false; boards are removed with a JSON merge patch {board_id: null} as they complete, 10 boards per fetch_page call. Board ids are seeded from the minimal-boards sweep (excluding deleted boards). Per board: `query GetBoardItems($boardIds: [ID!]!, $boardsLimit: Int, $boardsPage: Int, $itemsLimit: Int, $state: State = all) { boards(ids:, limit:, page:, state:, order_by: created_at) { id state updated_at items_page(limit: $itemsLimit) { cursor items { ...ItemFields } } } }` with boardsLimit 1 and itemsLimit 5. Items stream at `data.boards.item.items_page.items.item`; the `items_page.cursor` from the response envelope is then fed to `query GetNextItems($cursor: String!, $limit: Int) { next_items_page(limit:, cursor:) { cursor items { ...ItemFields } } }` (limit 100), looping while a cursor is returned. Subitem `state` is backfilled separately via `items(ids:)` in batches of 100 because requesting it inline 500s. Emitted items are filtered to `updated_at <= cutoff` and `state != deleted`.",
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "variables.cursor (GraphQL variable on the next_items_page query)",
+            "cursorPath": "data.boards[].items_page.cursor, then data.next_items_page.cursor",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit (GraphQL variable)",
+            "pageSize": 100
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Same windowing as boards ([log_cursor, min(log_cursor + 2h, now - 5m)]). Enumerate non-deleted board ids, pull `activity_logs(from:, to:, limit: 100)` for them in batches of 500 boards (paged on `page` until a page yields no logs), and classify each event into item-changed / item-deleted / full-board-item-refresh. Changed item ids are re-read with `query GetItemsByIds($ids: [ID!]!, $limit: Int, $page: Int) { items(ids:, limit:, page:) { ...ItemFields } }` in chunks of 100 ids, up to 5 chunk queries concurrently; results outside the window are dropped. Boards flagged for full refresh are re-read through the GetBoardItems / next_items_page cursor walk. Deleted items are emitted with _meta.op = 'd'. Cursor advances to max(activity-log created_at)+1s, else to window_end.",
+          "paginator": {
+            "type": "page",
+            "limitParam": "limit (GraphQL variable, set to the batch's board count)",
+            "pageParam": "page (GraphQL variable)",
+            "pageSize": 500,
+            "startPage": 1,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "activity_logs(from:/to:) GraphQL arguments", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The shipped EndpointConfig exposes exactly one credential option: the CDK's `AccessToken` model, whose only required field is a single secret `access_token` string titled \"Private App Credentials\". A monday.com user generates this themselves from their account's Developer/Admin API area; no app registration and no refresh token are involved. The CDK's TokenSource returns the token verbatim and the HTTP layer sends it as `Authorization: Bearer <token>` (DEFAULT_AUTHORIZATION_HEADER / DEFAULT_AUTHORIZATION_TOKEN_TYPE), and `TokenSource(oauth_spec=None, ...)` confirms no OAuth exchange occurs at runtime. An `OAUTH2_SPEC` for provider \"monday\" (authorization_code grant against auth.monday.com) is defined in models.py but is deliberately NOT wired into EndpointConfig — an in-code TODO says OAuth2Credentials will be added only once monday.com approves Estuary's public OAuth app. So today the standalone tier is T1 and there is no T2/T3 alternative.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec / streams[].pull",
+      "description": "This is a single-endpoint GraphQL connector. There is no per-stream path: every stream, every page, and every retry is a POST to the same https://api.monday.com/v2 URL with a different GraphQL document in the JSON body. The schema's `http` PullSpec (path/recordsPath/params) has no meaningful content here, so all five streams use `kind: \"query\"` with `language: \"other\"`. `recordsPath` is nonetheless a real and load-bearing concept in this connector (the CDK streams records out of a JSON path such as `data.boards.item.items_page.items.item`), but the `query` PullSpec has no field for it, so it is folded into querySketch.",
+      "proposedShape": {
+        "kind": "graphql",
+        "endpoint": "str (the single POST URL)",
+        "operationName": "str|null",
+        "documentSketch": "str",
+        "variables": "{..}|null",
+        "recordsPath": "str (JSON path the records are streamed from)",
+        "paginator": "<Paginator>"
+      }
+    },
+    {
+      "where": "streams[items].pull.backfill.paginator",
+      "description": "The items backfill has TWO nested pagination mechanisms operating at once and the Paginator union can express only one. Outer: a board-partitioned resumable cursor that is a JSON object {board_id: false} mutated by JSON merge patch {board_id: null} on completion — this is neither offset, page, nor a token; it is a work-queue checkpoint held in connector state. Inner: the opaque monday `items_page.cursor` -> `next_items_page(cursor:)` walk, which is what is recorded in the emitted paginator. The recorded paginator therefore describes only the inner leg.",
+      "proposedShape": {
+        "type": "work_queue",
+        "unitKind": "str (e.g. board id)",
+        "seededBy": "str (how the queue is initially enumerated)",
+        "checkpointEncoding": "str (e.g. JSON merge patch, key -> null on completion)",
+        "unitsPerInvocation": "int",
+        "inner": "<Paginator>"
+      }
+    },
+    {
+      "where": "streams[boards|items].pull.incremental",
+      "description": "The incremental leg is not a filtered re-read of the resource; it is a change-feed read from a *different* GraphQL field (`activity_logs` hung off each board) whose events are decoded into board/item ids that are then re-fetched with a second query. It behaves like `kind: \"changes\"` (it emits real deletes via _meta.op='d' and has a retention limit) but rides the polling HTTP path, so neither `changes` nor `query` fits cleanly.",
+      "proposedShape": {
+        "kind": "event_log_then_refetch",
+        "eventSource": "str (the field/endpoint the change events come from)",
+        "windowing": { "maxWindow": "str", "consistencyDelay": "str" },
+        "eventToIdMapping": "str",
+        "refetchSpec": "<PullSpec>",
+        "emitsDeletes": true,
+        "retentionLimit": "str"
+      }
+    },
+    {
+      "where": "execution.continuity",
+      "description": "`continuity` is documented as required only for mode \"log\", and this connector is mode \"poll\", so it is emitted as null. But there IS a real our-side loss here: monday.com retains only ~10k activity logs per board, and the connector's own comments say a stalled cursor risks logs being purged between sync cycles (it deliberately advances the cursor to window_end even when nothing changed, to mitigate this). A poll-mode connector reading a bounded-retention change feed has genuine resume-window risk that the current shape gives it nowhere to record.",
+      "proposedShape": {
+        "continuityForPoll": {
+          "customerSideAccrual": null,
+          "ourSideLoss": "str",
+          "resumeWindow": "str",
+          "notes": "str"
+        }
+      }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_monday/graphql/constants.py",
+      "lines": "1-2",
+      "snippet": "API = \"https://api.monday.com/v2\"\nAPI_VERSION = \"2025-07\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_monday/graphql/query_executor.py",
+      "lines": "306-311",
+      "snippet": "_, body = await http.request_stream(\n    log,\n    API,\n    method=\"POST\",\n    headers={\"API-Version\": API_VERSION},"
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_monday/resources.py",
+      "lines": "55-61",
+      "snippet": "await http.request(\n    log,\n    API,\n    method=\"POST\",\n    headers={\"API-Version\": API_VERSION},\n    json={\"query\": \"query {me {id}}\"},"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_monday/models.py",
+      "lines": "68-72",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: AccessToken = Field(\n        title=\"Authentication\","
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "115-122",
+      "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"] = Field(\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True},)"
+    },
+    "authTierRationale": {
+      "file": "source_monday/models.py",
+      "lines": "66-67",
+      "snippet": "# TODO(justin): Remove AccessToken and add OAuth2Credentials to EndpointConfig\n# when the OAuth app is created and approved by Monday.com for public use."
+    },
+    "execution.mode": {
+      "file": "source_monday/resources.py",
+      "lines": "119-126",
+      "snippet": "common.open_binding(\n    binding, binding_index, state, task,\n    fetch_changes=functools.partial(fetch_changes_fn, http),\n    fetch_page=functools.partial(fetch_page_fn, http),)"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "14-18, 65-85",
+      "snippet": "\"access_token\": { \"secret\": true, \"title\": \"Access Token\", \"type\": \"string\" }"
+    },
+    "streamMode": {
+      "file": "source_monday/resources.py",
+      "lines": "36-48",
+      "snippet": "FULL_REFRESH_RESOURCES = [(\"teams\", TEAMS, snapshot_resource), (\"users\", USERS, snapshot_resource_paginated), (\"tags\", TAGS, snapshot_resource)]\nINCREMENTAL_RESOURCES = [(\"boards\", fetch_boards_changes, fetch_boards_page), (\"items\", fetch_items_changes, fetch_items_page)]"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_monday/resources.py",
+      "lines": "93-99",
+      "snippet": "name=name,\nkey=[\"/_meta/row_id\"],\nmodel=FullRefreshResource,"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_monday/resources.py",
+      "lines": "88-89",
+      "snippet": "fetch_snapshot=functools.partial(snapshot_fn, http, name, query),\ntombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\")),"
+    },
+    "streams[0].schedules": {
+      "file": "source_monday/resources.py",
+      "lines": "99",
+      "snippet": "initial_config=ResourceConfig(name=name, interval=timedelta(hours=2)),"
+    },
+    "streams[0].pull.snapshot.querySketch": {
+      "file": "source_monday/graphql/constants.py",
+      "lines": "46-52",
+      "snippet": "TEAMS = \"\"\"\nquery {\n    teams {"
+    },
+    "streams[1].pull.snapshot.paginator": {
+      "file": "source_monday/api.py",
+      "lines": "497-520",
+      "snippet": "variables = {\"limit\": 100, \"page\": 1}\n...\nif docs_count < variables[\"limit\"]: break\nvariables[\"page\"] += 1"
+    },
+    "streams[2].pull.snapshot.paginator": {
+      "file": "source_monday/api.py",
+      "lines": "529-535",
+      "snippet": "async for resource_data in execute_query(\n    FullRefreshResource, http, log, f\"data.{name}.item\", query,\n):"
+    },
+    "streams[3].primaryKey": {
+      "file": "source_monday/resources.py",
+      "lines": "129-131",
+      "snippet": "name=name,\nkey=[\"/id\"],\nmodel=IncrementalResource,"
+    },
+    "streams[3].schedules": {
+      "file": "source_monday/resources.py",
+      "lines": "138",
+      "snippet": "initial_config=ResourceConfig(name=name, interval=timedelta(hours=1)),"
+    },
+    "streams[3].pull.backfill.paginator": {
+      "file": "source_monday/api.py",
+      "lines": "162-186",
+      "snippet": "limit = DEFAULT_BOARDS_PAGE_SIZE\n...\nasync for board in fetch_boards_paginated(http, log, page, limit):\n...\nif boards_fetched > 0: ... yield page + 1"
+    },
+    "streams[3].pull.backfill.querySketch": {
+      "file": "source_monday/graphql/boards.py",
+      "lines": "329-338",
+      "snippet": "query ($order_by: BoardsOrderBy = created_at, $page: Int = 1, $limit: Int = 10, $ids: [ID!], $state: State = all) {\n    boards(order_by: $order_by, page: $page, limit: $limit, ids: $ids, state: $state) {"
+    },
+    "streams[3].pull.incremental.querySketch": {
+      "file": "source_monday/api.py",
+      "lines": "47-53",
+      "snippet": "window_start = log_cursor\ndelayed_now = datetime.now(UTC) - INCREMENTAL_SYNC_DELAY\nwindow_end = min(window_start + MAX_WINDOW_SIZE, delayed_now)"
+    },
+    "streams[3].pull.incremental.incrementalParam": {
+      "file": "source_monday/graphql/activity_logs.py",
+      "lines": "162-167",
+      "snippet": "query ($start: ISO8601DateTime!, $end: ISO8601DateTime!, $ids: [ID!]!, $limit: Int!, $activity_limit: Int!, $page: Int = 1) {\n    boards(ids: $ids, limit: $limit, page: $page, order_by: created_at) {\n        activity_logs(from: $start, to: $end, limit: $activity_limit) {"
+    },
+    "streams[3].pull.incremental.paginator": {
+      "file": "source_monday/graphql/boards.py",
+      "lines": "61-98",
+      "snippet": "boards(limit: $limit, page: $page, state: $state, order_by: created_at)\n...\nif boards_in_page == 0: break\npage += 1"
+    },
+    "streams[4].pull.backfill.paginator": {
+      "file": "source_monday/graphql/items.py",
+      "lines": "328-346",
+      "snippet": "while cursors:\n    cursor = cursors.pop(0)\n    cursor_variables = {\"cursor\": cursor, \"limit\": ITEMS_LIMIT_BY_ID}"
+    },
+    "streams[4].pull.backfill.querySketch": {
+      "file": "source_monday/graphql/items.py",
+      "lines": "474-500",
+      "snippet": "boards(ids: $boardIds, limit: $boardsLimit, page: $boardsPage, state: $state, order_by: created_at) { items_page(limit: $itemsLimit) { cursor items {\n...\nnext_items_page(limit: $limit, cursor: $cursor) { cursor items {"
+    },
+    "streams[4].pull.backfill.querySketch.workQueue": {
+      "file": "source_monday/models.py",
+      "lines": "565-568",
+      "snippet": "When boards are completed, they're removed via JSON merge patch:\n{\"completed_board_id\": null}"
+    },
+    "streams[4].pull.incremental.querySketch": {
+      "file": "source_monday/graphql/items.py",
+      "lines": "505-514",
+      "snippet": "query GetItemsByIds($ids: [ID!]!, $limit: Int = 10, $page: Int = 1) {\n    items(ids: $ids, limit: $limit, page: $page) {"
+    },
+    "unionMisfits[3].description": {
+      "file": "source_monday/api.py",
+      "lines": "144-147",
+      "snippet": "# Advance cursor even without updates to prevent missing data due to Monday.com's\n# 10k activity log retention limit per board. Staying at the same cursor risks\n# missing logs that get purged between sync cycles."
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes": "high",
+    "credentialModes[0].scheme": "medium",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0]": "high",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2]": "high",
+    "streams[3].pull.backfill.paginator": "high",
+    "streams[3].pull.incremental": "medium",
+    "streams[3].cursorField": "medium",
+    "streams[4].pull.backfill.paginator": "high",
+    "streams[4].pull.incremental.paginator": "low",
+    "streams[4].cursorField": "medium",
+    "streams[3].writeDisposition": "high",
+    "streams[4].writeDisposition": "high"
+  },
+
+  "abstained": {
+    "credentialModes[1]": "An OAUTH2_SPEC for provider \"monday\" (authUrl https://auth.monday.com/oauth2/authorize, tokenUrl https://auth.monday.com/oauth2/token, authorization_code grant, access token read from /access_token) is fully defined in source_monday/models.py:38-63, and an OAuth2Credentials alias is built from it under TYPE_CHECKING. It is NOT referenced by EndpointConfig and TokenSource is constructed with oauth_spec=None, so it is dead code today; an in-code TODO says it will be enabled only once monday.com approves the OAuth app. Listing it as an offered credential mode would misstate what a user can actually configure, so it is recorded here instead. Note also that no `scopes` list appears anywhere in the connector, so even if it were live the scope set could not be recovered.",
+    "credentialModes[0].scheme.prefix": "The connector never sets an explicit header or token-type prefix; it relies on the CDK defaults (DEFAULT_AUTHORIZATION_HEADER = \"Authorization\", DEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"), so the wire format is `Authorization: Bearer <token>`. Recorded as scheme type \"bearer\", but note this is a CDK default rather than a monday-specific decision, and monday.com is known to also accept the bare token — the connector code itself does not state which form is required.",
+    "execution.continuity": "The schema makes `continuity` required only for mode \"log\"; this connector is mode \"poll\" and leaves no server-side artifacts on monday.com (no slot, no consumer group, no scratch object — every read is a stateless POST). It is therefore emitted as null. See unionMisfits[3]: there IS a genuine our-side loss (monday's ~10k-activity-logs-per-board retention) that the poll shape gives no place to record.",
+    "discovery": "streamMode is static: the five bindings are hard-coded lists in resources.py and `discover` simply returns all_resources(). The connector does not inspect the customer's schema, so there is no discovery method, query, exclude list, or allowlist to report.",
+    "streams[3].pull.incremental.paginator.pageSize": "Recorded as 10000 (the minimal-board-enumeration limit), but the incremental leg issues two differently-paged queries in one invocation: the board-id sweep uses limit 10000, while the activity-log query sets limit to the batch's board count (up to 500) with a separate activity_limit of 100 per board. The single Paginator slot cannot express both; treat the recorded pageSize as the enumeration leg only.",
+    "streams[4].pull.incremental.paginator": "Marked low confidence. The items incremental leg's outer pagination is the activity-log board batching (500 boards/batch, page variable, terminating when a page yields no logs), which is what is recorded. But the re-fetch of changed item ids is not paginated at all — it is chunked client-side into groups of 100 ids with page fixed at 1 — and the full-board-refresh path re-enters the items_page/next_items_page cursor walk. Three distinct mechanisms in one leg; the recorded paginator describes only the activity-log sweep.",
+    "streams[*].cursorField": "For boards and items, `updated_at` is what the emitted documents carry and what the backfill cutoff compares against, so it is recorded as the cursor field. But the incremental log cursor is NOT advanced from document `updated_at` in the general case — it is advanced from the max activity-log `created_at` (a 17-digit monday-specific timestamp, parsed by source_monday/utils.py), and falls back to window_end when no changes are seen. The items code comments explicitly that board-level refreshes emit items whose `updated_at` may be years old without moving the cursor. So `updated_at` is the document's change marker, not strictly the state cursor.",
+    "streams[0..2].supportedSyncModes": "teams/users/tags are opened with fetch_snapshot plus a tombstone document, i.e. the whole collection is re-read each interval and rows absent from the new snapshot are tombstoned. Recorded as full_refresh + snapshot_with_tombstone. There is no incremental variant and no cursor field for these three."
+  }
+}

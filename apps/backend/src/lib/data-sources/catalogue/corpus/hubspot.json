@@ -1,0 +1,2760 @@
+{
+  "id": "hubspot",
+  "estuaryDir": "source-hubspot",
+  "displayName": "HubSpot",
+  "description": "Imports HubSpot CRM objects (contacts, companies, deals, tickets, line items, products, engagements), marketing assets (forms, form submissions, campaigns, email events, subscriptions, workflows), pipelines, owners, and any portal-defined custom objects.",
+  "category": "crm",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.hubapi.com"
+        },
+        "defaultHeaders": {
+          "Content-Type": "application/json",
+          "User-Agent": "Estuary"
+        },
+        "apiVersionPinning": "path segment per endpoint; no global version header. The connector mixes CRM v3 (/crm/v3/...), CRM v4 associations (/crm/v4/...), properties v2 (/properties/v2/...), legacy v1 (/contacts/v1, /email/public/v1, /engagements/v1, /form-integrations/v1, /crm-pipelines/v1), marketing v3 and automation v3."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Private App access token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "bearer",
+        "field": "credentials.access_token"
+      }
+    },
+    {
+      "name": "OAuth (bring your own HubSpot developer app + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://app.hubspot.com/oauth/authorize",
+        "tokenUrl": "https://api.hubapi.com/oauth/v1/token",
+        "scopes": [
+          "oauth",
+          "forms",
+          "files",
+          "tickets",
+          "e-commerce",
+          "sales-email-read",
+          "forms-uploaded-files",
+          "crm.lists.read",
+          "crm.objects.contacts.read",
+          "files.ui_hidden.read",
+          "crm.schemas.contacts.read",
+          "crm.objects.companies.read",
+          "crm.objects.deals.read",
+          "crm.schemas.companies.read",
+          "crm.schemas.deals.read",
+          "crm.objects.owners.read",
+          "content (optional)",
+          "automation (optional)",
+          "crm.objects.feedback_submissions.read (optional)"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "HubSpot's search endpoints cap any one query at 10,000 results and the recent-engagements endpoint at the 10,000 most recently modified engagements; the connector detects both caps and restarts the query from the newest cursor it reached, so a long pause plus a very high change rate can skip records between the cap and the restart point. Client-side-incremental streams (campaigns, forms, owners, workflows, pipelines, deals_archived) re-read the entire collection every run and lose nothing.",
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure polling REST connector: it holds no server-side state in the customer's HubSpot portal (no webhook, subscription, or export job is created), so nothing accrues on their side while we are stopped. Resumption is driven entirely by the connector's own checkpointed cursor (updatedAt / hs_lastmodifieddate / timestamp), and HubSpot keeps history indefinitely, so an arbitrarily long pause is safe apart from the 10k caps noted above. Deletes are never observed \u2014 no stream reads an archived/deleted feed except deals_archived."
+    }
+  },
+  "configFields": [
+    {
+      "name": "start_date",
+      "displayName": "Start date",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC RFC3339 timestamp (e.g. 2017-01-25T00:00:00Z); records updated before it are dropped."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator: 'OAuth Credentials' or 'Private App Credentials'."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client ID",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only: HubSpot developer app client id."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only: HubSpot developer app client secret."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only; exchanged for access tokens at /oauth/v1/token."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Private App mode only: long-lived HubSpot private app token."
+    },
+    {
+      "name": "stream",
+      "displayName": "Stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of the HubSpot stream bound to this collection."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "full_refresh or incremental."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Field(s) carrying the incremental cursor."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace (unused by HubSpot)."
+    }
+  ],
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "GET /crm/v3/schemas \u2014 one extra stream per portal-defined custom object",
+    "querySketch": "GET /crm/v3/schemas -> results[]; each result's `name` becomes a stream and its `properties[]` (name + type) become the record's `properties` sub-schema.",
+    "excludes": [
+      "feedback_submissions (implemented but never instantiated: 'this stream uses a beta endpoint thus is unstable and disabled')"
+    ],
+    "allowlist": "The 27 built-in streams are a fixed shipped list; when authenticating with OAuth the list is additionally intersected with the scopes reported by GET https://api.hubapi.com/oauth/v1/access-tokens/{access_token}. Private App authentication performs no scope filtering."
+  },
+  "streams": [
+    {
+      "name": "companies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/company",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/company/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/company/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/contact",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "companies"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/contact/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/contact/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "deals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deal",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "companies",
+              "line_items"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/deal/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deal/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements_calls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/calls",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deal",
+              "company",
+              "tickets"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/calls/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/calls/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements_emails",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/emails",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deal",
+              "company",
+              "tickets"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/emails/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/emails/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements_meetings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/meetings",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deal",
+              "company",
+              "tickets"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/meetings/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/meetings/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements_notes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/notes",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deal",
+              "company",
+              "tickets"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/notes/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/notes/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements_tasks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/tasks",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deal",
+              "company",
+              "tickets"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/tasks/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/tasks/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tickets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/ticket",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [
+              "contacts",
+              "deals",
+              "companies"
+            ],
+            "properties": "comma-joined list of every property name returned by GET /properties/v2/ticket/properties, split into <=15000-char chunks"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/ticket/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "line_items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/line_item",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/line_item",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/product",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/product",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "goals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/goal_targets",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/goal_targets",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "startTimestamp": "<window start, unix ms>",
+            "endTimestamp": "<window end, unix ms>",
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/email/public/v1/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": {
+            "limit": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/email/public/v1/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "campaigns",
+          "params": {
+            "limit": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contact_lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "listId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/contacts/v1/lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": {
+            "count": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/contacts/v1/lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": {
+            "count": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts_list_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "canonical-vid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/v1/lists/all/contacts/all",
+          "httpMethod": "GET",
+          "recordsPath": "contacts",
+          "params": {
+            "limit": 100,
+            "count": 100,
+            "showListMemberships": true
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "vidOffset",
+            "cursorPath": "vid-offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "deal_pipelines",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "pipelineId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm-pipelines/v1/pipelines/deals",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm-pipelines/v1/pipelines/deals",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "deals_archived",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "archivedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deals",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "true",
+            "associations": [
+              "contacts",
+              "companies",
+              "line_items"
+            ],
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deals",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "true",
+            "associations": [
+              "contacts",
+              "companies",
+              "line_items"
+            ],
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/email/public/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "events",
+          "params": {
+            "limit": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/email/public/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "events",
+          "params": {
+            "limit": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_subscriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/email/public/v1/subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "subscriptionDefinitions",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "engagements",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastUpdated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/engagements/v1/engagements/paged",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "count": 250
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/engagements/v1/engagements/recent/modified",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "count": 100,
+            "since": "<cursor state as unix milliseconds>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/marketing/v3/forms",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "properties": "comma-joined property names from /properties/v2/form/properties"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/marketing/v3/forms",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "properties": "comma-joined property names from /properties/v2/form/properties"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "form_submissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "submittedAt",
+        "formId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/form-integrations/v1/submissions/forms/{form_id}",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 50
+          },
+          "pathPlaceholders": {
+            "form_id": "id of each record from the forms stream (/marketing/v3/forms)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 50
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/form-integrations/v1/submissions/forms/{form_id}",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 50
+          },
+          "pathPlaceholders": {
+            "form_id": "id of each record from the forms stream (/marketing/v3/forms)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 50
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "owners",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/owners",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/owners",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "property_history",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "property",
+        "timestamp"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/v1/lists/all/contacts/all",
+          "httpMethod": "GET",
+          "recordsPath": "contacts",
+          "params": {
+            "count": 100,
+            "propertyMode": "value_and_history",
+            "property": "repeated once per property name from /properties/v2/contacts/properties (APIv1Property)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "vidOffset",
+            "cursorPath": "vid-offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "subscription_changes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "timestamp",
+        "recipient"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/email/public/v1/subscriptions/timeline",
+          "httpMethod": "GET",
+          "recordsPath": "timeline",
+          "params": {
+            "limit": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/email/public/v1/subscriptions/timeline",
+          "httpMethod": "GET",
+          "recordsPath": "timeline",
+          "params": {
+            "limit": 1000,
+            "startTimestamp": "<unix ms>",
+            "endTimestamp": "<unix ms>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_pipelines",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/pipelines/tickets",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/pipelines/tickets",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "workflows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/automation/v3/workflows",
+          "httpMethod": "GET",
+          "recordsPath": "workflows",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/automation/v3/workflows",
+          "httpMethod": "GET",
+          "recordsPath": "workflows",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<custom object name from /crm/v3/schemas>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/{custom_object_name}",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": {
+            "limit": 100,
+            "archived": "false",
+            "associations": [],
+            "properties": "comma-joined property names, chunked"
+          },
+          "pathPlaceholders": {
+            "custom_object_name": "each `name` from GET /crm/v3/schemas"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "paging.next.after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/{custom_object_name}/search",
+          "httpMethod": "POST",
+          "recordsPath": "results",
+          "params": {
+            "body.filters": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "operator": "GTE",
+                "value": "<cursor state as unix milliseconds>"
+              }
+            ],
+            "body.sorts": [
+              {
+                "propertyName": "hs_lastmodifieddate",
+                "direction": "ASCENDING"
+              }
+            ],
+            "body.properties": "[all property names]",
+            "body.limit": 100
+          },
+          "pathPlaceholders": {
+            "custom_object_name": "each `name` from GET /crm/v3/schemas"
+          },
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "paging.next.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two modes are offered. The Private App mode needs exactly one self-serve value \u2014 an access token the admin copies out of their HubSpot portal's Private Apps page \u2014 sent as a bearer token, so it is T1_SIMPLE and sets the overall tier. The OAuth mode as written is T3_BYO_REFRESH standalone: the config demands client_id, client_secret AND refresh_token, and the connector refreshes against /oauth/v1/token itself. Estuary's hosted control plane hides that (spec.yaml carries x-oauth2-provider: hubspot and __main__.py supplies an OAuth2Spec whose accessTokenResponseMap writes /refresh_token into the config), so Estuary's own users only click through consent \u2014 but that relief comes from the control plane registering the app, not from the connector.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.{backfill,incremental}.incrementalParam",
+      "description": "IncrementalStream-based streams (contact_lists, email_events, subscription_changes, line_items, products, goals) do not send a single 'since' param. They send a PAIR of unix-MILLISECOND bounds, startTimestamp/endTimestamp, sliced into 30-day windows (or one window covering start_date..now when need_chunk is False). The schema's incrementalParam is a single {param, format} and its format enum has no millisecond option.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "startParam": "startTimestamp",
+          "endParam": "endTimestamp",
+          "format": "unix_milliseconds",
+          "windowDays": 30,
+          "windowDaysWhenUnchunked": null
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.paginator (CRM search streams)",
+      "description": "The search paginator has a hard ceiling: HubSpot rejects paging past 10,000 results for one query, so the connector stops at after >= 10000, checkpoints the highest cursor seen, and issues a NEW search starting from that cursor. The same trick is used for engagements (recent/modified caps at 10,000). This 'restart the query from the cursor' behaviour is a third pagination axis the Paginator union has no slot for.",
+      "proposedShape": {
+        "paginator": {
+          "type": "body_cursor",
+          "restartAt": {
+            "maxToken": 10000,
+            "restartFrom": "max cursor value emitted so far"
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.*.params.properties",
+      "description": "Every stream with an `entity` first calls GET /properties/v2/{entity}/properties to learn the portal's custom property names, then requests them explicitly. If the encoded property list exceeds 15000 characters the connector splits it into chunks and issues one request per chunk for the SAME page, merging the responses by primary key. v3 endpoints take one comma-joined `properties=` param; v1 endpoints take a repeated `property=` param. A PullSpec has no way to express 'fan out this page across N requests and merge'.",
+      "proposedShape": {
+        "propertyFanout": {
+          "discoverPath": "/properties/v2/{entity}/properties",
+          "paramV3": "properties (comma-joined)",
+          "paramV1": "property (repeated)",
+          "maxEncodedLength": 15000,
+          "mergeBy": "primaryKey"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental (CRM search streams)",
+      "description": "The CRM search endpoint cannot return associations, so after each search page the connector issues one extra POST per associated object type: POST /crm/v4/associations/{fromEntity}/{toEntity}/batch/read with body {\"inputs\": [{\"id\": ...}]} over the ids just fetched, and grafts the results onto the records. The backfill leg does not need this \u2014 it passes associations= on the object list call. A PullSpec models one request per page, not a page plus N enrichment calls.",
+      "proposedShape": {
+        "enrichment": [
+          {
+            "path": "/crm/v4/associations/{fromEntity}/{toEntity}/batch/read",
+            "httpMethod": "POST",
+            "bodyKey": "inputs",
+            "inputIds": "ids of the records on the current page",
+            "recordsPath": "results",
+            "graftAs": "<toEntity>"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[campaigns].pull",
+      "description": "The campaigns list call is followed by one GET /email/public/v1/campaigns/{id} per row, and the emitted record is the merge of the list row and the detail response. Same page-plus-enrichment shape as above, but keyed per record rather than per page.",
+      "proposedShape": {
+        "enrichment": [
+          {
+            "path": "/email/public/v1/campaigns/{id}",
+            "httpMethod": "GET",
+            "perRecord": true,
+            "mergeInto": "record"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[].pull.{backfill,incremental} for client-side-incremental streams",
+      "description": "campaigns, deals_archived, deal_pipelines, ticket_pipelines, forms, form_submissions, owners and workflows have NO server-side filter. Each run re-reads the whole collection and drops records whose cursor is below the checkpoint in the connector. That is neither a real backfill/incremental split (the request is identical, which is why both legs carry the same PullSpec here) nor a `snapshot` (state does advance and output is filtered).",
+      "proposedShape": {
+        "pull": {
+          "fullReadClientFiltered": {
+            "path": "...",
+            "cursorField": "...",
+            "filter": "client-side, record.cursor > state"
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.*.paginator for legacy v1 endpoints",
+      "description": "Classified as `cursor` with tokenFrom: body because the connector reads a value out of the response envelope ('offset' or 'vid-offset') and echoes it back in a query param \u2014 it does not compute offsets itself on this branch. The value happens to be a numeric offset (or a contact vid), which makes it look like an `offset` paginator even though the mechanism is envelope-token echoing. Note also the base class has a THIRD, client-computed fallback (offset += limit, terminate on short page) used only when the response body is a bare JSON array; no stream mined here takes that branch.",
+      "proposedShape": {
+        "paginator": {
+          "type": "envelope_offset",
+          "offsetPath": "offset",
+          "offsetParam": "offset",
+          "terminateOn": "envelope_flag",
+          "flagPath": "hasMore|has-more"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "streams[0].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[0].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[0].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1703-1708",
+      "snippet": "entity = \"company\""
+    },
+    "streams[1].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[1].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[1].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[1].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[1].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1711-1716",
+      "snippet": "entity = \"contact\""
+    },
+    "streams[2].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[2].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[2].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[2].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[2].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1354-1361",
+      "snippet": "entity = \"deal\""
+    },
+    "streams[3].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[3].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[3].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[3].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[3].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1719-1724",
+      "snippet": "entity = \"calls\""
+    },
+    "streams[4].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[4].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[4].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[4].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[4].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[4].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1727-1732",
+      "snippet": "entity = \"emails\""
+    },
+    "streams[5].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[5].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[5].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[5].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[5].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[5].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1735-1740",
+      "snippet": "entity = \"meetings\""
+    },
+    "streams[6].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[6].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[6].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[6].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[6].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[6].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1743-1748",
+      "snippet": "entity = \"notes\""
+    },
+    "streams[7].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[7].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[7].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[7].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[7].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1751-1756",
+      "snippet": "entity = \"tasks\""
+    },
+    "streams[8].pull.backfill.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[8].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1038-1040",
+      "snippet": "return f\"/crm/v3/objects/{self.entity}/search\" if self.state else f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[8].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1070-1079",
+      "snippet": "{\"filters\": [{\"value\": ..., \"propertyName\": self.last_modified_field, \"operator\": \"GTE\"}],\n \"sorts\": [{\"propertyName\": self.last_modified_field, \"direction\": \"ASCENDING\"}],"
+    },
+    "streams[8].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1174-1178",
+      "snippet": "if \"paging\" in response and \"next\" in response[\"paging\"] and \"after\" in response[\"paging\"][\"next\"]:\n    params[\"after\"] = int(...); payload[\"after\"] = int(...)\n    return {\"params\": params, \"payload\": payload}"
+    },
+    "streams[8].pull.backfill.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "704-706",
+      "snippet": "if \"paging\" in response:  # APIv3 pagination\n    if \"next\" in response[\"paging\"]:\n        return {\"after\": response[\"paging\"][\"next\"][\"after\"]}"
+    },
+    "streams[8].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1786-1791",
+      "snippet": "entity = \"ticket\""
+    },
+    "streams[9].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1210-1213",
+      "snippet": "@property\ndef url(self):\n    return f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[9].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1774-1777",
+      "snippet": "entity = \"line_item\""
+    },
+    "streams[10].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1210-1213",
+      "snippet": "@property\ndef url(self):\n    return f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[10].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1780-1783",
+      "snippet": "entity = \"product\""
+    },
+    "streams[11].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1210-1213",
+      "snippet": "@property\ndef url(self):\n    return f\"/crm/v3/objects/{self.entity}\""
+    },
+    "streams[11].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1767-1771",
+      "snippet": "entity = \"goal_targets\""
+    },
+    "streams[12].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1265-1290",
+      "snippet": "url = \"/email/public/v1/campaigns\"\nmore_key = \"hasMore\"\ndata_field = \"campaigns\""
+    },
+    "streams[12].pull.incremental.path": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1271-1274",
+      "snippet": "url = \"/email/public/v1/campaigns\"\nmore_key = \"hasMore\"\ndata_field = \"campaigns\""
+    },
+    "streams[12].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "708-712",
+      "snippet": "if self.more_key:\n    if not response.get(self.more_key, False): return\n    if self.page_field in response: return {self.page_filter: response[self.page_field]}"
+    },
+    "streams[13].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1293-1308",
+      "snippet": "url = \"/contacts/v1/lists\"\ndata_field = \"lists\"\nmore_key = \"has-more\""
+    },
+    "streams[13].pull.incremental.paginator": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1300-1306",
+      "snippet": "more_key = \"has-more\"\nlimit_field = \"count\"\nneed_chunk = False"
+    },
+    "streams[14].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1311-1351",
+      "snippet": "url = \"/contacts/v1/lists/all/contacts/all\"\npage_filter = \"vidOffset\"\npage_field = \"vid-offset\""
+    },
+    "streams[15].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1387-1398",
+      "snippet": "url = \"/crm-pipelines/v1/pipelines/deals\""
+    },
+    "streams[16].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1364-1384",
+      "snippet": "url = \"/crm/v3/objects/deals\"\nupdated_at_field = \"archivedAt\"\nparams.update({\"archived\": \"true\", \"associations\": self.associations})"
+    },
+    "streams[17].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1433-1444",
+      "snippet": "url = \"/email/public/v1/events\"\ndata_field = \"events\"\nmore_key = \"hasMore\""
+    },
+    "streams[18].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1815-1824",
+      "snippet": "url = \"/email/public/v1/subscriptions\"\ndata_field = \"subscriptionDefinitions\""
+    },
+    "streams[19].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1447-1480",
+      "snippet": "if self.state:\n    return \"/engagements/v1/engagements/recent/modified\"\nreturn \"/engagements/v1/engagements/paged\""
+    },
+    "streams[19].pull.incremental.params": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1475-1480",
+      "snippet": "params = {\"count\": 250}\nif self.state:\n    params.update({\"since\": int(self._state.timestamp() * 1000), \"count\": 100})"
+    },
+    "streams[20].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1531-1543",
+      "snippet": "entity = \"form\"\nurl = \"/marketing/v3/forms\""
+    },
+    "streams[21].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1546-1594",
+      "snippet": "url = \"/form-integrations/v1/submissions/forms\"\nreturn f\"{self.url}/{stream_slice['form_id']}\""
+    },
+    "streams[22].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1609-1619",
+      "snippet": "url = \"/crm/v3/owners\""
+    },
+    "streams[23].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1622-1653",
+      "snippet": "url = \"/contacts/v1/lists/all/contacts/all\"\nparams = {self.limit_field: self.limit, \"propertyMode\": \"value_and_history\"}"
+    },
+    "streams[24].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1676-1686",
+      "snippet": "url = \"/email/public/v1/subscriptions/timeline\"\ndata_field = \"timeline\"\nmore_key = \"hasMore\""
+    },
+    "streams[25].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1401-1410",
+      "snippet": "url = \"/crm/v3/pipelines/tickets\""
+    },
+    "streams[26].name": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1689-1700",
+      "snippet": "url = \"/automation/v3/workflows\"\ndata_field = \"workflows\""
+    },
+    "streams[27].kind": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1794-1812",
+      "snippet": "class CustomObject(CRMSearchStream, ABC):\n    def __init__(self, entity: str, schema: Mapping[str, Any], **kwargs):\n        self.entity = entity"
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_hubspot/streams.py",
+      "lines": "143-144",
+      "snippet": "BASE_URL = \"https://api.hubapi.com\"\nUSER_AGENT = \"Estuary\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_hubspot/streams.py",
+      "lines": "179-182",
+      "snippet": "self._session.headers = {\n    \"Content-Type\": \"application/json\",\n    \"User-Agent\": self.USER_AGENT,\n}"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_hubspot/streams.py",
+      "lines": "165-166",
+      "snippet": "elif self.is_private_app():\n    return TokenAuthenticator(token=self.credentials[\"access_token\"])"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_hubspot/streams.py",
+      "lines": "157-164",
+      "snippet": "return Oauth2Authenticator(\n    token_refresh_endpoint=self.BASE_URL + \"/oauth/v1/token\",\n    client_id=..., client_secret=..., refresh_token=...)"
+    },
+    "credentialModes[1].scheme.authUrl": {
+      "file": "source_hubspot/__main__.py",
+      "lines": "42-56",
+      "snippet": "authUrlTemplate=(\"https://app.hubspot.com/oauth/authorize?...\")\naccessTokenUrlTemplate=\"https://api.hubapi.com/oauth/v1/token\""
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1144-1148",
+      "snippet": "# Hubspot documentation states that the search endpoints are limited to 10,000 total results\n# for any given query. Attempting to page beyond 10,000 will result in a 400 error."
+    },
+    "configFields": {
+      "file": "source_hubspot/spec.yaml",
+      "lines": "6-90",
+      "snippet": "required:\n  - start_date\n  - credentials"
+    },
+    "discovery.method": {
+      "file": "source_hubspot/streams.py",
+      "lines": "224-234",
+      "snippet": "data, response = self.get(\"/crm/v3/schemas\", {})\nfor raw_schema in data[\"results\"]:"
+    },
+    "discovery.allowlist": {
+      "file": "source_hubspot/source.py",
+      "lines": "65-72",
+      "snippet": "url = f\"https://api.hubapi.com/oauth/v1/access-tokens/{access_token}\"\n... granted_scopes = response_json[\"scopes\"]"
+    },
+    "unionMisfits[0]": {
+      "file": "source_hubspot/streams.py",
+      "lines": "997-1012",
+      "snippet": "chunk_size = pendulum.duration(days=30)\nslices.append({\"startTimestamp\": ts, \"endTimestamp\": end_ts})"
+    },
+    "unionMisfits[2]": {
+      "file": "source_hubspot/streams.py",
+      "lines": "755-762",
+      "snippet": "data, response = self._api.get(f\"/properties/v2/{self.entity}/properties\")"
+    },
+    "unionMisfits[3]": {
+      "file": "source_hubspot/streams.py",
+      "lines": "886-903",
+      "snippet": "return f\"/crm/v4/associations/{self.parent_stream.entity}/{stream_slice}/batch/read\"\n... return {\"inputs\": [{\"id\": str(id_)} for id_ in self.identifiers]}"
+    },
+    "unionMisfits[4]": {
+      "file": "source_hubspot/streams.py",
+      "lines": "1287-1290",
+      "snippet": "record, response = self._api.get(f\"/email/public/v1/campaigns/{row['id']}\")\n... yield {**row, **record}"
+    },
+    "unionMisfits[6]": {
+      "file": "source_hubspot/streams.py",
+      "lines": "713-718",
+      "snippet": "if self.page_field in response and response[self.page_filter] + self.limit < response.get(\"total\"):\n    return {self.page_filter: response[self.page_filter] + self.limit}"
+    }
+  },
+  "confidence": {
+    "streams[0].pull.backfill.path": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[0].pull.incremental.params": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].name": "high",
+    "streams[1].pull.backfill.path": "high",
+    "streams[1].pull.incremental.path": "high",
+    "streams[1].pull.incremental.params": "high",
+    "streams[1].pull.incremental.paginator": "high",
+    "streams[1].pull.backfill.paginator": "high",
+    "streams[1].name": "high",
+    "streams[2].pull.backfill.path": "high",
+    "streams[2].pull.incremental.path": "high",
+    "streams[2].pull.incremental.params": "high",
+    "streams[2].pull.incremental.paginator": "high",
+    "streams[2].pull.backfill.paginator": "high",
+    "streams[2].name": "high",
+    "streams[3].pull.backfill.path": "high",
+    "streams[3].pull.incremental.path": "high",
+    "streams[3].pull.incremental.params": "high",
+    "streams[3].pull.incremental.paginator": "high",
+    "streams[3].pull.backfill.paginator": "high",
+    "streams[3].name": "high",
+    "streams[4].pull.backfill.path": "high",
+    "streams[4].pull.incremental.path": "high",
+    "streams[4].pull.incremental.params": "high",
+    "streams[4].pull.incremental.paginator": "high",
+    "streams[4].pull.backfill.paginator": "high",
+    "streams[4].name": "high",
+    "streams[5].pull.backfill.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[5].pull.incremental.params": "high",
+    "streams[5].pull.incremental.paginator": "high",
+    "streams[5].pull.backfill.paginator": "high",
+    "streams[5].name": "high",
+    "streams[6].pull.backfill.path": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[6].pull.incremental.params": "high",
+    "streams[6].pull.incremental.paginator": "high",
+    "streams[6].pull.backfill.paginator": "high",
+    "streams[6].name": "high",
+    "streams[7].pull.backfill.path": "high",
+    "streams[7].pull.incremental.path": "high",
+    "streams[7].pull.incremental.params": "high",
+    "streams[7].pull.incremental.paginator": "high",
+    "streams[7].pull.backfill.paginator": "high",
+    "streams[7].name": "high",
+    "streams[8].pull.backfill.path": "high",
+    "streams[8].pull.incremental.path": "high",
+    "streams[8].pull.incremental.params": "high",
+    "streams[8].pull.incremental.paginator": "high",
+    "streams[8].pull.backfill.paginator": "high",
+    "streams[8].name": "high",
+    "streams[9].pull.incremental.path": "high",
+    "streams[9].name": "high",
+    "streams[10].pull.incremental.path": "high",
+    "streams[10].name": "high",
+    "streams[11].pull.incremental.path": "high",
+    "streams[11].name": "high",
+    "streams[12].name": "high",
+    "streams[12].pull.incremental.path": "high",
+    "streams[12].pull.incremental.paginator": "high",
+    "streams[13].name": "high",
+    "streams[13].pull.incremental.paginator": "high",
+    "streams[14].name": "high",
+    "streams[15].name": "high",
+    "streams[15].pull.incremental.paginator": "medium",
+    "streams[16].name": "high",
+    "streams[17].name": "high",
+    "streams[18].name": "high",
+    "streams[18].pull.snapshot.paginator": "medium",
+    "streams[19].name": "high",
+    "streams[19].pull.incremental.params": "high",
+    "streams[20].name": "high",
+    "streams[21].name": "high",
+    "streams[21].pull.incremental.paginator": "medium",
+    "streams[22].name": "high",
+    "streams[23].name": "high",
+    "streams[24].name": "high",
+    "streams[25].name": "high",
+    "streams[25].pull.incremental.paginator": "medium",
+    "streams[26].name": "high",
+    "streams[26].pull.incremental.paginator": "medium",
+    "streams[27].kind": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].scheme.authUrl": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.mode": "high",
+    "configFields": "high",
+    "discovery.method": "high",
+    "discovery.allowlist": "high",
+    "unionMisfits[0]": "high",
+    "unionMisfits[2]": "high",
+    "unionMisfits[3]": "high",
+    "unionMisfits[4]": "high",
+    "unionMisfits[6]": "high"
+  },
+  "abstained": {
+    "streams[9].pull.incremental.incrementalParam": "The incremental filter is a PAIR of unix-MILLISECOND params (startTimestamp/endTimestamp) produced by IncrementalStream.stream_slices (streams.py:993-1017), which the schema's single incrementalParam {param, format} cannot express. See unionMisfits[windowed-incremental-params].",
+    "streams[10].pull.incremental.incrementalParam": "The incremental filter is a PAIR of unix-MILLISECOND params (startTimestamp/endTimestamp) produced by IncrementalStream.stream_slices (streams.py:993-1017), which the schema's single incrementalParam {param, format} cannot express. See unionMisfits[windowed-incremental-params].",
+    "streams[11].pull.incremental.incrementalParam": "The incremental filter is a PAIR of unix-MILLISECOND params (startTimestamp/endTimestamp) produced by IncrementalStream.stream_slices (streams.py:993-1017), which the schema's single incrementalParam {param, format} cannot express. See unionMisfits[windowed-incremental-params].",
+    "streams[15].pull.incremental.paginator.evidence": "The class sets no more_key and the base next_page_token only paginates when the envelope carries 'paging' (v3) or the class's more_key (v1); this v1 crm-pipelines envelope has neither, so the connector reads exactly one page. Whether HubSpot itself would paginate this endpoint is not determinable from the repo.",
+    "streams[21].pull.incremental.paginator.tokenFrom": "The class sets no more_key, so the base next_page_token can only paginate this stream via the v3 'paging.next.after' branch (streams.py:704-706). No fixture in the repo exercises the form-integrations envelope, so the presence of that envelope is inferred from the code path, not observed.",
+    "execution.defaultSchedule": "The connector performs one bounded sweep per invocation and exits; scheduling is imposed by the Flow runtime (estuary-cdk shim_airbyte_cdk drives delegate.read() once per open). Neither the connector nor its resource config declares an interval or cron.",
+    "streams[].schedules": "No stream declares an interval or cron; the resource config exposes only stream/syncMode/cursorField/namespace.",
+    "streams[].writeDisposition": "Set to 'merge' throughout because every binding declares a document key and Flow reduces on it, but the connector never emits deletion tombstones and no stream reads a deleted/archived feed except deals_archived, so hard deletes in HubSpot are invisible. If the reader's platform distinguishes keyed-upsert from append, treat property_history / subscription_changes / email_events (keyed by an event timestamp) as effectively append-only.",
+    "streams[goals]": "goals is constructed in SourceHubspot.streams (source.py:110) but does NOT appear in the committed discover snapshot, presumably because the test portal lacks crm.objects.goals.read. Listed here from the code.",
+    "streams[].pull.*.params.limit": "Page sizes are the connector's class defaults, not HubSpot maxima; several (e.g. count=1000 on /contacts/v1/lists) exceed the documented API maximum and are presumably clamped server-side."
+  }
+}

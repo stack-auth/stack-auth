@@ -1,0 +1,563 @@
+{
+  "id": "airtable-native",
+  "estuaryDir": "source-airtable-native",
+  "displayName": "Airtable",
+  "description": "Imports the customer's Airtable bases, table schemas, and the records of every table in every base they can access.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.airtable.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: every request is prefixed with /v0 (metadata endpoints /v0/meta/..., record endpoints /v0/{baseId}/{tableId}). No version header or query param is sent."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Personal access token (Private App Credentials)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "schedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure client-side polling over Airtable's REST API. The connector creates no server-side object in the customer's Airtable workspace: no webhook subscription, no change-feed registration, no scratch base. All resumption state is a timestamp held by Estuary (per-binding LogCursor for the realtime and lookback tasks, and a stringified timestamp PageCursor for the backfill), so an arbitrarily long pause is recoverable — the next sweep simply widens its filterByFormula window. Nothing accrues on the customer's side and nothing expires on ours. Two caveats that are limitations rather than continuity risks: (a) the in-process emitted_changes_cache used to de-duplicate the overlapping realtime/lookback tasks is memory-only and is lost on restart, causing re-emission (harmless, keyed merge); (b) incremental table bindings can never observe row deletions at all, because the lastModifiedTime cursor field disappears with the row — a long pause does not make this worse, but it is permanently true. Full-refresh bindings re-snapshot the whole table each interval and emit a delete tombstone, so they do reflect deletions."
+    }
+  },
+
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Discriminator constant. Only the literal \"Private App Credentials\" is offered; the OAuth2 union member is commented out in EndpointConfig."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "Airtable personal access token, sent verbatim as an Authorization: Bearer header by the CDK TokenSource."
+    },
+    {
+      "name": "resource.interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Per-binding (not endpoint) ISO-8601 duration between polls, from the CDK's ResourceConfig. The connector seeds it to PT5M for incremental table bindings and PT15M for every snapshot binding; the user may change it."
+    },
+    {
+      "name": "resource.schedule",
+      "displayName": "Formula Field Refresh Schedule",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Per-binding cron expression (5-field, validated against the CDK CRON_REGEX) that triggers a connector-initiated backfill re-reading ONLY the table's formula-typed fields plus the cursor field. Seeded to \"55 23 * * *\" on incremental table bindings; empty and unused on snapshot bindings."
+    }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Airtable metadata API walk: list bases, then list tables per accessible base",
+    "querySketch": "GET /v0/meta/bases, paginated by resending the response envelope's opaque `offset` token, to enumerate bases; keep only bases whose permissionLevel is one of create/edit/comment/read; then, with an asyncio semaphore of 5 bases concurrently, GET /v0/meta/bases/{baseId}/tables (single unpaginated request) per surviving base. Each table becomes exactly one binding named \"{base.name}/{table.name}/{table.id}\". The binding is INCREMENTAL if the table has any field whose type is lastModifiedTime AND options.result.type == \"dateTime\" AND options.referencedFieldIds == [] (i.e. it tracks all fields, at dateTime rather than date precision); the first such field's user-facing name becomes the cursor field. Otherwise the binding is a full-refresh snapshot. The two fixed metadata bindings `bases` and `tables` are prepended unconditionally.",
+    "excludes": [
+      "bases whose permissionLevel is \"none\" (and their tables) are omitted from discovery",
+      "record field values that are Airtable formula-error objects — exactly {\"error\": <str>} or {\"specialValue\": <str>} — are stripped from emitted documents so they do not widen the inferred schema"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "bases",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 900 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v0/meta/bases",
+          "httpMethod": "GET",
+          "recordsPath": "bases",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "tables",
+      "origin": "static",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 900 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v0/meta/bases/{baseId}/tables",
+          "httpMethod": "GET",
+          "recordsPath": "tables",
+          "params": null,
+          "pathPlaceholders": {
+            "baseId": "id of each base returned by the paginated /v0/meta/bases walk that this stream performs first; the snapshot is the flattened concatenation over all bases"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "{baseName}/{tableName}/{tableId} — incremental variant (table has a qualifying lastModifiedTime field)",
+      "origin": "discovered",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 300 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v0/{baseId}/{tableId}",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": {
+            "sort[0][direction]": "asc",
+            "sort[0][field]": "<discovered lastModifiedTime field name>",
+            "filterByFormula": "AND(IS_AFTER({<cursor field>}, '<page cursor, initially 1970-01-01T00:00:00Z>'), IS_BEFORE({<cursor field>}, '<binding cutoff + 1s>'))",
+            "fields": "<only on the cron-triggered connector-initiated run: the names of all formula-typed fields plus the cursor field>"
+          },
+          "pathPlaceholders": {
+            "baseId": "discovered base id",
+            "tableId": "discovered table id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v0/{baseId}/{tableId}",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": {
+            "sort[0][direction]": "asc",
+            "sort[0][field]": "<discovered lastModifiedTime field name>",
+            "filterByFormula": "AND(IS_AFTER({<cursor field>}, '<log cursor>'), IS_BEFORE({<cursor field>}, '<now - lag>'))"
+          },
+          "pathPlaceholders": {
+            "baseId": "discovered base id",
+            "tableId": "discovered table id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "{baseName}/{tableName}/{tableId} — full-refresh variant (no qualifying lastModifiedTime field)",
+      "origin": "discovered",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": { "kind": "interval", "seconds": 900 },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v0/{baseId}/{tableId}",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": null,
+          "pathPlaceholders": {
+            "baseId": "discovered base id",
+            "tableId": "discovered table id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "incremental": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The shipped EndpointConfig discriminated union contains exactly one member: estuary_cdk.flow.AccessToken, titled \"Private App Credentials\", whose only required field is the secret access_token. The CDK TokenSource returns that string verbatim with the default token type \"Bearer\" on the default \"Authorization\" header — no client registration, no token exchange, no refresh. A full OAuth2Spec for provider \"airtable\" (authorization_code + PKCE S256, client credentials in an HTTP Basic header, scopes data.records:read / data.recordComments:read / schema.bases:read, refresh_token captured into RotatingOAuth2Credentials) is still constructed and still emitted in the connector spec's oauth2 block, but the corresponding credentials union member is commented out with the note that no Airtable OAuth app exists yet, and the spec snapshot confirms only \"Private App Credentials\" is selectable. It is therefore not offered and is not listed as a credentialMode. If re-enabled, it would be brokered by Estuary's hosted control plane (client id/secret injected by the platform), so the user-facing tier would still be low — but standalone, without a registered app, it would be T2_BYO_APP.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[2].pull.incremental.incrementalParam",
+      "description": "STILL A MISFIT. The incremental window is not a single since-style query parameter, so incrementalParam is null and the real mechanism is smuggled into `params`. The connector builds an Airtable formula string in filterByFormula expressing a CLOSED window — AND(IS_AFTER({<cursor field>}, '<lower>'), IS_BEFORE({<cursor field>}, '<upper>')) — accompanied by sort[0][field] and sort[0][direction]=asc on the same discovered field. Timestamps are second-precision ISO-8601 with the +00:00 suffix rewritten to Z. The upper bound is load-bearing, not decorative: Airtable freezes result ordering at the first request of a pagination run while field values keep mutating, so the connector sets upper = now() - lag before paginating and then drops any record whose cursor value came back >= upper, leaving it for the next sweep. Flattening this to {param, format} would drop the upper bound and silently reintroduce the ordering hazard.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "style": "formula_expression",
+          "param": "filterByFormula",
+          "template": "AND(IS_AFTER({<field>}, '<lower>'), IS_BEFORE({<field>}, '<upper>'))",
+          "boundedness": "closed",
+          "sortParams": { "sort[0][field]": "<field>", "sort[0][direction]": "asc" },
+          "format": "iso8601_seconds_z"
+        }
+      }
+    },
+    {
+      "where": "streams[2].pull.incremental (task multiplicity)",
+      "description": "STILL A MISFIT under v2. Splitting pull into backfill/incremental fixed the backfill-vs-incremental collision but not this one: a single incremental binding runs TWO concurrent, independently-checkpointed change tasks against the same endpoint, differing only in how far behind the present their upper bound sits. REALTIME lags 10 seconds (so the connector does not capture a row mid-keystroke — Airtable's web UI registers each key press as a modification). LOOKBACK lags 1 hour and re-reads what REALTIME already covered, because the Airtable API is eventually consistent and REALTIME can miss rows. They have separate initial cursors (cutoff, and cutoff - 1h) and separate LogCursor state; an in-process emitted_changes_cache keyed on (path, record id, cursor value) suppresses the duplicate emissions. pull.incremental as a single PullSpec can represent only one of the two.",
+      "proposedShape": {
+        "incremental": [
+          { "name": "realtime", "lag": "PT10S", "rationale": "avoid capturing mid-edit values" },
+          { "name": "lookback", "lag": "PT1H", "rationale": "re-read for eventual consistency" }
+        ],
+        "dedupe": "in-memory emitted-changes cache on (binding, record id, cursor value)"
+      }
+    },
+    {
+      "where": "streams[2].schedule + streams[2].pull.backfill",
+      "description": "STILL A MISFIT. An incremental table binding carries TWO schedules of different kinds simultaneously, and `schedule` is a single union value. It has an interval (PT5M, driving the two change tasks) AND a cron expression (default \"55 23 * * *\", per-binding, user-editable) that triggers a third pull shape: a connector-initiated re-run of the SAME backfill function with an extra `fields` parameter restricting the response to formula-typed fields plus the cursor field. Its purpose is that Airtable formula results can change without touching lastModifiedTime, so the cursor never sees them. The run is skipped entirely when the table has no formula fields, and it deliberately emits PARTIAL documents that reduce onto the full document. Neither `schedule` nor the backfill/incremental pair has a slot for it.",
+      "proposedShape": {
+        "schedules": [
+          { "kind": "interval", "seconds": 300, "drives": "incremental" },
+          { "kind": "cron", "expr": "55 23 * * *", "drives": "partial_refresh" }
+        ],
+        "partialRefresh": {
+          "reusesPull": "backfill",
+          "fieldsSubset": "formula-typed fields + cursor field",
+          "emitsPartialDocuments": true,
+          "skippedWhen": "table has no formula fields"
+        }
+      }
+    },
+    {
+      "where": "streams[2].writeDisposition (residual)",
+      "description": "MOSTLY RESOLVED — snapshot_with_tombstone now describes the three full-refresh bindings correctly (they re-read everything each interval and are opened with tombstone=BaseDocument(_meta.op=\"d\")). The residual misfit is on the incremental side: \"merge\" is recorded, but it is doing more work than a row-level upsert. The binding sets reduction_strategy=MERGE and the record model marks the nested `fields` object with a MERGE reduction, which is what makes the cron formula-refresh legal — it emits documents containing only a subset of fields that must merge INTO the existing document rather than replace it. A key-level upsert would destroy the unrefreshed fields.",
+      "proposedShape": { "writeDisposition": "merge", "reductionGranularity": "document_merge_patch" }
+    },
+    {
+      "where": "streams[].primaryKey (discovered snapshot bindings)",
+      "description": "Minor. Three of the four shapes key on \"/_meta/row_id\", which is not a field of the source data at all — it is a per-snapshot synthetic ordinal assigned by the Estuary runtime, meaningful only within one snapshot generation. primaryKeyKind \"synthetic\" captures this, but consumers should not treat it as a stable identity across syncs: the same Airtable row can land under a different row_id next interval, which is precisely why these bindings need the tombstone-and-replace semantics rather than an upsert."
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_airtable_native/api.py",
+      "lines": "26",
+      "snippet": "BASE_URL = \"https://api.airtable.com\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_airtable_native/api.py",
+      "lines": "63, 92, 127",
+      "snippet": "url = f\"{BASE_URL}/v0/meta/bases\"\n    url = f\"{BASE_URL}/v0/meta/bases/{base_id}/tables\"\n    url = f\"{BASE_URL}/v0/{path}\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "239",
+      "snippet": "http.token_source = TokenSource(oauth_spec=OAUTH2_SPEC, credentials=config.credentials)"
+    },
+    "credentialModes[0].scheme.type": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36, 305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_airtable_native/models.py",
+      "lines": "90-98",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: (\n        AccessToken"
+    },
+    "execution.mode": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "180-182",
+      "snippet": "initial_config=AirtableResourceConfigWithSchedule(\n            name=name,\n            interval=timedelta(minutes=5),"
+    },
+    "execution.continuity": {
+      "file": "source_airtable_native/api.py",
+      "lines": "177-185",
+      "snippet": "assert isinstance(log_cursor, datetime)\n    upper_bound = now() - horizon\n    lower_bound = log_cursor"
+    },
+    "configFields[0]": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "114-122",
+      "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"] = Field(\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True},)"
+    },
+    "configFields[2]": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "159-164",
+      "snippet": "name: str = Field(description=\"Name of this resource\")\n    interval: timedelta = Field(default=timedelta(),\n        description=\"Interval between updates for this resource\","
+    },
+    "configFields[3]": {
+      "file": "source_airtable_native/models.py",
+      "lines": "80-87",
+      "snippet": "class AirtableResourceConfigWithSchedule(ResourceConfigWithSchedule):\n    schedule: str = Field(default=\"\", title=\"Formula Field Refresh Schedule\",\n        pattern=CRON_REGEX,"
+    },
+    "streamMode": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "53-56, 241-243",
+      "snippet": "FULL_REFRESH_RESOURCES: list[tuple[str, SnapshotFn]] = [\n    (\"bases\", snapshot_bases),\n    (\"tables\", snapshot_tables),\n]"
+    },
+    "discovery.method": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "254-265",
+      "snippet": "semaphore = asyncio.Semaphore(MAX_DISCOVERY_CONCURRENCY)\n            async for table in fetch_tables_in_base(http, base.id, log):\n                cursor_field = _get_cursor_field(table)"
+    },
+    "discovery.querySketch": {
+      "file": "source_airtable_native/models.py",
+      "lines": "150-156",
+      "snippet": "self.type == \"lastModifiedTime\"\n            and self.options.result.type == \"dateTime\"\n            and self.options.referencedFieldIds == []"
+    },
+    "discovery.excludes[0]": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "248-252",
+      "snippet": "match b.permissionLevel:\n            case PermissionLevel.CREATE | PermissionLevel.EDIT | PermissionLevel.COMMENT | PermissionLevel.READ:\n            case _:"
+    },
+    "discovery.excludes[1]": {
+      "file": "source_airtable_native/models.py",
+      "lines": "215-219",
+      "snippet": "if isinstance(data, dict):\n            return {k: v for k, v in data.items()\n                if not _is_formula_error(v)}"
+    },
+    "streams[0].pull.backfill.path": {
+      "file": "source_airtable_native/api.py",
+      "lines": "63",
+      "snippet": "url = f\"{BASE_URL}/v0/meta/bases\""
+    },
+    "streams[0].pull.backfill.recordsPath": {
+      "file": "source_airtable_native/api.py",
+      "lines": "69-74",
+      "snippet": "processor = IncrementalJsonProcessor(body(), f\"bases.item\", Base, BasesResponse,)"
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_airtable_native/api.py",
+      "lines": "79-84",
+      "snippet": "remainder = processor.get_remainder()\n        if not remainder.offset:\n            break\n        params[\"offset\"] = remainder.offset"
+    },
+    "streams[0].pull.backfill.paginator.tokenFrom": {
+      "file": "source_airtable_native/models.py",
+      "lines": "118-121",
+      "snippet": "class BasesResponse(BaseModel, extra=\"allow\"):\n    bases: list[Base]\n    offset: str | None = None"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "102-104",
+      "snippet": "common.Resource(\n            name=name,\n            key=[\"/_meta/row_id\"],"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "94-98",
+      "snippet": "fetch_snapshot=functools.partial(snapshot_fn, http,),\n            tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))"
+    },
+    "streams[0].schedule": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "108-110",
+      "snippet": "initial_config=ResourceConfig(\n                name=name, interval=timedelta(minutes=15)\n            ),"
+    },
+    "streams[1].pull.backfill.path": {
+      "file": "source_airtable_native/api.py",
+      "lines": "92",
+      "snippet": "url = f\"{BASE_URL}/v0/meta/bases/{base_id}/tables\""
+    },
+    "streams[1].pull.backfill.pathPlaceholders": {
+      "file": "source_airtable_native/api.py",
+      "lines": "112-117",
+      "snippet": "async for b in snapshot_bases(http, log):\n        bases.append(b)\n    for base in bases:\n        async for table in fetch_tables_in_base(http, base.id, log):"
+    },
+    "streams[1].pull.backfill.paginator": {
+      "file": "source_airtable_native/api.py",
+      "lines": "94-103",
+      "snippet": "_, body = await http.request_stream(log, url)\n    async for table in processor:\n        yield table"
+    },
+    "streams[2].pull.backfill.path": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "133",
+      "snippet": "path = f\"{base.id}/{table.id}\""
+    },
+    "streams[2].pull.backfill.params": {
+      "file": "source_airtable_native/api.py",
+      "lines": "47-56",
+      "snippet": "\"sort[0][direction]\": \"asc\",\n        \"sort[0][field]\": cursor_field_name,\n        \"filterByFormula\": (f\"AND(\" f\"IS_AFTER({{{cursor_field_name}}}, '{dt_to_str(lower_bound)}'), \" ..."
+    },
+    "streams[2].pull.backfill.params.fields": {
+      "file": "source_airtable_native/api.py",
+      "lines": "249-258",
+      "snippet": "if is_connector_initiated:\n        fields_to_refresh = [f.name for f in fields if f.type == 'formula']\n        params[\"fields\"] = fields_to_refresh"
+    },
+    "streams[2].pull.backfill.paginator": {
+      "file": "source_airtable_native/api.py",
+      "lines": "146-151",
+      "snippet": "remainder = processor.get_remainder()\n        if not remainder.offset:\n            break\n        params[\"offset\"] = remainder.offset"
+    },
+    "streams[2].pull.backfill.paginator.tokenFrom": {
+      "file": "source_airtable_native/models.py",
+      "lines": "279-281",
+      "snippet": "class RecordsResponse(BaseModel, extra=\"allow\"):\n    records: list[AirtableRecord]\n    offset: str | None = None"
+    },
+    "streams[2].pull.incremental": {
+      "file": "source_airtable_native/api.py",
+      "lines": "179-185",
+      "snippet": "upper_bound = now() - horizon\n    lower_bound = log_cursor\n    params = _build_incremental_params(record_cls.cursor_field_name, lower_bound, upper_bound)"
+    },
+    "streams[2].pull.backfill.params.filterByFormula": {
+      "file": "source_airtable_native/api.py",
+      "lines": "236-247",
+      "snippet": "page = dt_to_str(EPOCH)\n    upper_bound = cutoff + timedelta(seconds=1)\n    lower_bound = str_to_dt(page)"
+    },
+    "streams[2].primaryKey": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "168-171",
+      "snippet": "return common.Resource(\n        name=name,\n        key=[\"/id\"],"
+    },
+    "streams[2].supportedSyncModes": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "140-162",
+      "snippet": "fetch_page=functools.partial(backfill_incremental_records, ...),\n            fetch_changes={REALTIME: ..., LOOKBACK: ...},"
+    },
+    "streams[2].writeDisposition": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "186-188",
+      "snippet": "schema_inference=True,\n        reduction_strategy=ReductionStrategy.MERGE,"
+    },
+    "streams[2].schedule": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "180-185",
+      "snippet": "initial_config=AirtableResourceConfigWithSchedule(\n            name=name, interval=timedelta(minutes=5),\n            schedule=\"55 23 * * *\")"
+    },
+    "streams[3].pull.backfill": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "206-219",
+      "snippet": "path = f\"{base.id}/{table.id}\"\n            fetch_snapshot=functools.partial(snapshot_records, http, path,),\n            tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))"
+    },
+    "streams[3].schedule": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "229-231",
+      "snippet": "initial_config=ResourceConfig(\n            name=name, interval=timedelta(minutes=15)\n        ),"
+    },
+    "authTierOverall": {
+      "file": "source_airtable_native/models.py",
+      "lines": "91-95",
+      "snippet": "credentials: (\n        AccessToken\n        # Disable the OAuth authentication option until we have an OAuth app in Airtable set up."
+    },
+    "authTierRationale": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "configSchema.properties.credentials.discriminator.mapping",
+      "snippet": "\"mapping\": { \"Private App Credentials\": \"#/$defs/AccessToken\" }"
+    },
+    "unionMisfits[1]": {
+      "file": "source_airtable_native/resources.py",
+      "lines": "44-51",
+      "snippet": "LOOKBACK = \"lookback\"\nLOOKBACK_LAG = timedelta(hours=1)\nREALTIME_LAG = timedelta(seconds=10)"
+    },
+    "unionMisfits[1].dedupe": {
+      "file": "source_airtable_native/api.py",
+      "lines": "212-216",
+      "snippet": "if (doc.cursor_value > log_cursor\n            and cache.should_yield(path, doc.id, doc.cursor_value)):\n            yield doc"
+    },
+    "unionMisfits[2]": {
+      "file": "source_airtable_native/api.py",
+      "lines": "249-258",
+      "snippet": "if is_connector_initiated:\n        fields_to_refresh = [f.name for f in fields if f.type == 'formula']\n        fields_to_refresh.append(record_cls.cursor_field_name)"
+    },
+    "unionMisfits[3]": {
+      "file": "source_airtable_native/models.py",
+      "lines": "226-228",
+      "snippet": "fields: AirtableRecordFields = Field(\n        json_schema_extra={\"reduce\": {\"strategy\": ReductionStrategy.MERGE}},\n    )"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes": "high",
+    "credentialModes[0].scheme": "high",
+    "execution.mode": "high",
+    "execution.schedule": "high",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[1].pull.backfill.paginator": "medium",
+    "streams[2].pull.backfill.paginator": "high",
+    "streams[2].pull.incremental.paginator": "high",
+    "streams[3].pull.backfill.paginator": "high",
+    "streams[0].primaryKey": "high",
+    "streams[2].primaryKey": "high",
+    "streams[2].supportedSyncModes": "high",
+    "streams[].schedule": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[1].writeDisposition": "high",
+    "streams[2].writeDisposition": "medium",
+    "streams[3].writeDisposition": "high",
+    "authTierOverall": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "streams[].cursorField": "The incremental cursor is a per-table field discovered at runtime, not a fixed name, so no literal is correct for all bindings. The connector scans each table's schema for the first field with type == 'lastModifiedTime', options.result.type == 'dateTime', and options.referencedFieldIds == [], and uses that field's user-chosen DISPLAY NAME (may contain spaces; users can rename it) both as the JSON key under the record's 'fields' object and, interpolated in braces, inside the filterByFormula expression. Internally it is aliased onto the Pydantic attribute 'last_modified_time_value_'. When the field is absent from a returned record the connector falls back to the record's top-level createdTime.",
+    "streams[].pull.*.incrementalParam": "Recorded as null rather than guessed. The window does not fit {param, format}: it is a two-sided Airtable formula in filterByFormula plus two sort params — see unionMisfits[0]. Encoding it as a one-sided since-param would drop the upper bound, which is the only thing protecting against Airtable's frozen-pagination-order hazard.",
+    "streams[].pull.*.paginator.pageSize": "The connector never sends a pageSize or maxRecords parameter, so the effective page size is whatever Airtable defaults to server-side (the README says 100). The module constant PAGE_SIZE = 100 exists but is used solely to derive CHECKPOINT_INTERVAL = 500 documents; it never reaches a request.",
+    "transports[0].spec.defaultHeaders": "No version, revision, or user-agent header is set anywhere in the connector; the only header it influences is Authorization, via the CDK TokenSource default. Any other headers would be CDK defaults the connector does not customize, so 'no connector-set default headers' is recorded as null rather than enumerating CDK internals.",
+    "streams[1].pull.backfill.paginator": "Recorded as {\"type\":\"none\"} because fetch_tables_in_base issues exactly one request per base and never reads an offset from the response — the Table response model does not even declare an offset field. This documents the CONNECTOR'S behaviour, not a claim that Airtable's list-tables endpoint is guaranteed unpaginated. If a base exceeds any server-side table limit, this connector would truncate silently. Confidence is medium for that reason.",
+    "execution.continuity.releasedOnShutdown": "Null because the question does not apply: the artifact list is empty. There is nothing server-side to release. The only thing dropped on shutdown is the in-process emitted-changes de-duplication cache, which is Estuary-side and merely causes redundant re-emission.",
+    "execution.schedule": "Null at the connector level on purpose — this connector has no endpoint-wide schedule. Every schedule is per-binding (ResourceConfig.interval, seeded to 5 or 15 minutes, plus the optional per-binding cron), so the real values live in streams[].schedule.",
+    "category": "Airtable is a no-code collaborative database/spreadsheet. 'database' is the closest bucket, but the transport is an HTTP metadata+records API rather than a SQL engine, and the captured content is whatever the customer happens to store (CRM, project tracking, inventory), so a case could be made for 'product' or 'other'."
+  }
+}

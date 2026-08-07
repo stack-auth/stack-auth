@@ -1,0 +1,398 @@
+{
+  "id": "sentry",
+  "estuaryDir": "source-sentry",
+  "displayName": "Sentry",
+  "description": "Imports Sentry organization metadata (environments, projects, teams, releases), issues, and user-defined Explore event queries (spans/errors/transactions).",
+  "category": "engineering",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://sentry.io/api/0" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/0/` in the hard-coded base URL"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (auth token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "organization", "displayName": "Organization", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Sentry organization slug whose data is requested; interpolated into every request path." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant, always 'Private App Credentials'." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Sentry auth token sent as a bearer token." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data generated before it is not replicated. Defaults to 30 days before now." },
+    { "name": "advanced.window_size", "displayName": "Window size", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ISO 8601 duration for the Issues backfill date window; default P7D, min 30s, max 365d." },
+    { "name": "explore_queries", "displayName": "Explore Queries", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "User-defined Explore query streams; each entry becomes its own incremental stream." },
+    { "name": "explore_queries[].name", "displayName": "Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Stream name; prefixed with 'custom_explore_' if not already." },
+    { "name": "explore_queries[].dataset", "displayName": "Dataset", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "One of 'spans', 'errors', 'transactions'." },
+    { "name": "explore_queries[].fields", "displayName": "Fields", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated field list; PK fields and 'timestamp' are appended automatically." },
+    { "name": "explore_queries[].query", "displayName": "Query", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Optional Sentry search query; a 'timestamp:' clause is rejected because the connector owns the time window." },
+    { "name": "explore_queries[].projects", "displayName": "Projects", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated numeric project IDs; empty means all projects (-1)." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Static built-in resource list plus one additional binding per user-configured `explore_queries` entry; each explore query is validated against Sentry with a single per_page=1 Explore request at discover/validate time.",
+    "querySketch": "GET /organizations/{organization}/events/ with dataset, field list, per_page=1, statsPeriod and a timestamp-bounded query — success means the dataset/fields/query are accepted",
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "Environments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/organizations/{organization}/environments/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": { "visibility": "all" },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, the link with rel=\"next\" — its URL is followed verbatim and all previously-sent query params are dropped",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/organizations/{organization}/projects/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": null,
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/organizations/{organization}/teams/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": { "detailed": "0" },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Releases",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/organizations/{organization}/releases/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": null,
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastSeen",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll and backfill", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/organizations/{organization}/issues/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": {
+            "project": -1,
+            "query": "",
+            "sort": "date",
+            "limit": 100,
+            "expand": ["inbox", "integrationIssues", "latestEventHasAttachments", "owners", "pluginActions", "pluginIssues", "sentryAppIssues"],
+            "start": "<window lower bound, ISO 8601 seconds>",
+            "end": "<window upper bound, ISO 8601 seconds>"
+          },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": { "param": "start", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/organizations/{organization}/issues/",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array)",
+          "params": {
+            "project": -1,
+            "query": "",
+            "sort": "date",
+            "limit": 100,
+            "expand": ["inbox", "integrationIssues", "latestEventHasAttachments", "owners", "pluginActions", "pluginIssues", "sentryAppIssues"],
+            "start": "<log cursor, ISO 8601 seconds>",
+            "end": "<now, ISO 8601 seconds>"
+          },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": { "param": "start", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_explore_<user-supplied name>",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental poll and backfill", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/organizations/{organization}/events/",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "dataset": "<spans|errors|transactions>",
+            "field": "<user field list plus dataset PK fields and timestamp>",
+            "sort": "timestamp",
+            "per_page": 100,
+            "project": "<numeric project ids, or -1 for all>",
+            "start": "<explicit window lower bound, ISO 8601 seconds>",
+            "end": "<explicit window upper bound, ISO 8601 seconds>",
+            "query": "<optional user query>"
+          },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim; additionally capped at 10,000 rows per query, after which the walk restarts from the highest timestamp seen",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": { "param": "start", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/organizations/{organization}/events/",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "dataset": "<spans|errors|transactions>",
+            "field": "<user field list plus dataset PK fields and timestamp>",
+            "sort": "timestamp",
+            "per_page": 100,
+            "project": "<numeric project ids, or -1 for all>",
+            "statsPeriod": "30d",
+            "query": "timestamp:>=<lower> timestamp:<<upper> <optional user query>"
+          },
+          "pathPlaceholders": { "organization": "endpoint config `organization`" },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "`Link` response header, rel=\"next\" URL followed verbatim; additionally capped at 10,000 rows per query, after which the walk restarts from the highest timestamp seen",
+            "tokenFrom": "header",
+            "tokenTo": "full_url",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": { "param": "query", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is the CDK's `AccessToken` model (a single secret `access_token` field, discriminator 'Private App Credentials'). The connector explicitly constructs `TokenSource(oauth_spec=None, ...)`, so no OAuth app registration or refresh token is involved; the CDK sends the value verbatim as `Authorization: Bearer <token>`. A user creates one Sentry auth token in their org settings — one self-serve secret, hence T1.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "The mechanism is `next_url` (the URL is followed verbatim and all previously-sent params are cleared), but the URL comes from the RFC 5988 `Link` *response header* with rel=\"next\", and termination is decided by that link's `results` attribute being the string \"true\" rather than by the token's absence. The schema's `next_url` member only carries `nextUrlPath` and has no place for `tokenFrom`/`terminateOn`, while the `cursor` member cannot express 'follow verbatim'. Emitted as `next_url` with extra axis keys.",
+      "proposedShape": {
+        "type": "next_url",
+        "tokenFrom": "header",
+        "headerName": "Link",
+        "linkRel": "next",
+        "terminateOn": "link_attribute",
+        "terminationAttribute": { "name": "results", "continueWhen": "true" }
+      }
+    },
+    {
+      "where": "streams[custom_explore_*].pull.*.paginator",
+      "description": "The Explore streams layer a second, outer pagination loop on top of the Link-header paginator: Sentry caps offset pagination at 10,000 rows per query, so on saturation the connector abandons the link chain and re-issues a fresh time-bounded query starting at the highest row timestamp seen. That is a record_cursor-style outer walk composed with a next_url inner walk; the schema allows only one paginator per PullSpec.",
+      "proposedShape": {
+        "paginator": { "type": "next_url", "tokenFrom": "header" },
+        "outerWalk": { "type": "record_cursor", "recordField": "timestamp", "resetAfterRows": 10000, "boundedBy": "start/end or timestamp: clauses in `query`" }
+      }
+    },
+    {
+      "where": "streams[custom_explore_*]",
+      "description": "This stream is neither `static` nor `discovered` in the schema's sense: it exists only because the user typed an entry into the `explore_queries` endpoint-config array, and its name, primary key (spans key on /trace+/id, errors/transactions on /id), row model, and field list all derive from that entry. It is config-defined, and its PK varies by the chosen dataset — a single `primaryKey` cannot represent it.",
+      "proposedShape": { "origin": "config_defined", "primaryKeyByVariant": { "spans": ["/trace", "/id"], "errors": ["/id"], "transactions": ["/id"] } }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam (custom_explore_*)",
+      "description": "The incremental leg does not pass its lower/upper bounds as dedicated params. It embeds them as Sentry search-syntax clauses (`timestamp:>=<iso> timestamp:<<iso>`) inside the single `query` string, alongside a coarse `statsPeriod=30d`. `incrementalParam` assumes one param carrying one formatted timestamp.",
+      "proposedShape": { "kind": "embedded_in_query_dsl", "param": "query", "lowerClause": "timestamp:>=", "upperClause": "timestamp:<", "format": "iso8601", "coarseWindowParam": "statsPeriod" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_sentry/api.py", "lines": "56", "snippet": "url = f\"https://sentry.io/api/0/organizations/{organization}/{model.resource_path}/\"" },
+    "credentialModes[0].scheme": { "file": "source_sentry/resources.py", "lines": "83-89", "snippet": "http.token_source = TokenSource(\n    oauth_spec=None,\n    credentials=AccessToken(...access_token=config.credentials.access_token))" },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36, 305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\nreturn (self.authorization_token_type, self.credentials.access_token)" },
+    "configFields": { "file": "source_sentry/models.py", "lines": "175-233", "snippet": "class EndpointConfig(BaseModel):\n    organization: str = Field(...)\n    credentials: AccessToken = Field(discriminator=\"credentials_title\", ...)" },
+    "streams[0].pull.snapshot.paginator": { "file": "source_sentry/api.py", "lines": "40-43, 67-74", "snippet": "has_more=next_header_link.get(\"results\", \"missing\") == \"true\",\nnext_url=next_header_link.get(\"url\", \"\")\nurl = header_link.next_url" },
+    "streams[0].pull.snapshot.params": { "file": "source_sentry/models.py", "lines": "249-252", "snippet": "resource_path: ClassVar[str] = \"environments\"\nquery_params: ClassVar[dict[str, str]] = {\"visibility\": \"all\"}" },
+    "streams[1].pull.snapshot.path": { "file": "source_sentry/models.py", "lines": "255-257", "snippet": "resource_name: ClassVar[str] = \"Projects\"\nresource_path: ClassVar[str] = \"projects\"" },
+    "streams[2].pull.snapshot.params": { "file": "source_sentry/models.py", "lines": "264-267", "snippet": "resource_path: ClassVar[str] = \"teams\"\nquery_params: ClassVar[dict[str, str]] = {\"detailed\": \"0\"}" },
+    "streams[3].pull.snapshot.path": { "file": "source_sentry/models.py", "lines": "273-278", "snippet": "resource_path: ClassVar[str] = \"releases\"\nFULL_REFRESH_RESOURCES = [Environment, Project, Team, Release]" },
+    "streams[0].writeDisposition": { "file": "source_sentry/resources.py", "lines": "104-107", "snippet": "fetch_snapshot=functools.partial(list_entity, entity, http, config.organization),\ntombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))" },
+    "streams[0].primaryKey": { "file": "source_sentry/resources.py", "lines": "158-167", "snippet": "name=resource.resource_name,\nkey=[\"/_meta/row_id\"]," },
+    "streams[0].schedules": { "file": "source_sentry/resources.py", "lines": "165-167", "snippet": "initial_config=ResourceConfig(name=resource.resource_name, interval=timedelta(minutes=5))" },
+    "streams[4].pull.incremental.params": { "file": "source_sentry/models.py", "lines": "281-299", "snippet": "resource_path: ClassVar[str] = \"issues\"\nquery_params = {\"project\": -1, \"query\": \"\", \"sort\": \"date\", \"limit\": 100, \"expand\": [...]}" },
+    "streams[4].cursorField": { "file": "source_sentry/api.py", "lines": "165-168", "snippet": "if issue.lastSeen == log_cursor:\n    continue\nnew_log_cursor = max(issue.lastSeen, new_log_cursor)" },
+    "streams[4].pull.incremental.incrementalParam": { "file": "source_sentry/api.py", "lines": "89-94", "snippet": "{\"start\": start_date.isoformat(timespec=\"seconds\"),\n \"end\": end_date.isoformat(timespec=\"seconds\")}" },
+    "streams[4].schedules": { "file": "source_sentry/resources.py", "lines": "185", "snippet": "initial_config=ResourceConfig(name=\"Issues\", interval=timedelta(minutes=5))" },
+    "streams[5].pull.backfill.path": { "file": "source_sentry/api.py", "lines": "208-209", "snippet": "def _explore_url(organization: str) -> str:\n    return f\"https://sentry.io/api/0/organizations/{organization}/events/\"" },
+    "streams[5].pull.backfill.params": { "file": "source_sentry/api.py", "lines": "212-219", "snippet": "return {\"dataset\": explore_query.dataset.value, \"field\": explore_query.field_list,\n \"sort\": \"timestamp\", \"per_page\": _MAX_EXPLORE_PER_PAGE,\n \"project\": explore_query.project_ids or [-1]}" },
+    "streams[5].pull.incremental.params": { "file": "source_sentry/api.py", "lines": "232-236", "snippet": "params[\"statsPeriod\"] = _EXPLORE_STATS_PERIOD\nparams[\"query\"] = _timestamp_window_query(lower, upper, explore_query.query)" },
+    "streams[5].pull.backfill.recordsPath": { "file": "source_sentry/api.py", "lines": "268-270", "snippet": "processor = IncrementalJsonProcessor(body(), \"data.item\", model, ExploreResponse)" },
+    "streams[5].primaryKey": { "file": "source_sentry/models.py", "lines": "41-45", "snippet": "Dataset.SPANS: [\"/trace\", \"/id\"],\nDataset.ERRORS: [\"/id\"],\nDataset.TRANSACTIONS: [\"/id\"]" },
+    "streams[5].name": { "file": "source_sentry/models.py", "lines": "66-74", "snippet": "CUSTOM_EXPLORE_NAME_PREFIX = \"custom_explore_\"\nreturn CUSTOM_EXPLORE_NAME_PREFIX + name" },
+    "streams[5].schedules": { "file": "source_sentry/resources.py", "lines": "205-207", "snippet": "initial_config=ResourceConfig(name=explore_query_stream_name(explore_query.name), interval=timedelta(minutes=15))" },
+    "discovery.method": { "file": "source_sentry/resources.py", "lines": "157-211", "snippet": "return [ ... for resource in FULL_REFRESH_RESOURCES ] + [ ... \"Issues\" ... ] + [ ... for explore_query in config.explore_queries ]" },
+    "streamMode": { "file": "acmeCo/flow.yaml", "lines": "1-25", "snippet": "acmeCo/Environments: ... acmeCo/Issues: ... acmeCo/custom_explore_my_spans:" },
+    "execution.mode": { "file": "source_sentry/resources.py", "lines": "120-130", "snippet": "fetch_changes=functools.partial(fetch_issues, http, config.organization),\nfetch_page=functools.partial(backfill_issues, ...)" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[4].pull.incremental": "high",
+    "streams[5].pull.incremental": "high",
+    "streams[5].primaryKey": "medium",
+    "streams[*].pull.*.recordsPath (full-refresh and Issues)": "medium",
+    "streamMode": "medium",
+    "execution.continuity": "high",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No default headers are set anywhere in the connector; the CDK adds only the Authorization header derived from TokenSource. Recorded as null rather than inventing one.",
+    "streams[0..4].pull.*.recordsPath": "The CDK's IncrementalJsonProcessor is invoked with the prefix \"item\", which denotes elements of a top-level JSON array rather than a named envelope field. Described in words instead of forcing a JSON pointer.",
+    "execution.defaultSchedule": "No connector-wide schedule exists; every binding sets its own ResourceConfig interval (5 min for full-refresh + Issues, 15 min for explore queries), so the per-stream schedules carry the real value.",
+    "transports[0].spec.baseUrl (self-hosted Sentry)": "Sentry is self-hostable, but this connector hard-codes https://sentry.io in both list_entity and _explore_url and exposes no host/base-URL config field. No user-supplied host support is present.",
+    "credentialModes[*] OAuth": "No OAuth mode exists: TokenSource is constructed with oauth_spec=None in both validate and open paths, and the spec snapshot's only credentials $def is AccessToken. Recorded as absent rather than assumed.",
+    "streams[5].pull.incremental.incrementalParam.param": "Reported as `query` because the bounds are embedded as timestamp: clauses in the search string; there is no dedicated start/end param on the incremental leg (unlike the backfill leg). See unionMisfits.",
+    "streams[*].scope=resource configFields": "ResourceConfig comes from the shared CDK (name/interval) and is not customized by this connector, so no resource-scope fields are asserted beyond the per-binding intervals recorded on streams[].schedules."
+  }
+}

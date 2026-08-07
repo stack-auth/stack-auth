@@ -1,0 +1,2185 @@
+{
+  "id": "hubspot-native",
+  "estuaryDir": "source-hubspot-native",
+  "displayName": "HubSpot",
+  "description": "Imports HubSpot CRM objects, marketing assets and engagement activity (companies, contacts, deals, tickets, engagements, products, line items, orders, goals, feedback submissions, custom objects, lists, forms, form submissions, marketing emails/events/campaigns, workflows, owners, pipelines and properties) from the HubSpot REST API.",
+  "category": "crm",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.hubapi.com"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment, and it is not uniform: the connector mixes /crm/v3, /crm/v4 (associations batch read), /crm-objects/v1, /crm-pipelines/v1, /contacts/v1, /companies/v2, /deals/v1, /engagements/v1, /email/public/v1, /form-integrations/v1, /marketing/v3 and /automation/v3"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "bearer",
+        "field": "credentials.access_token"
+      }
+    },
+    {
+      "name": "OAuth Credentials (HubSpot OAuth app)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://app.hubspot.com/oauth/authorize",
+        "tokenUrl": "https://api.hubapi.com/oauth/v1/token",
+        "scopes": [
+          "crm.lists.read",
+          "crm.objects.companies.read",
+          "crm.objects.contacts.read",
+          "crm.objects.deals.read",
+          "crm.objects.owners.read",
+          "crm.schemas.companies.read",
+          "crm.schemas.contacts.read",
+          "crm.schemas.deals.read",
+          "e-commerce",
+          "forms",
+          "tickets",
+          "automation (optional)",
+          "content (optional)",
+          "crm.objects.custom.read (optional)",
+          "crm.objects.feedback_submissions.read (optional)",
+          "crm.objects.goals.read (optional)",
+          "crm.objects.marketing_events.read (optional)",
+          "crm.objects.orders.read (optional)",
+          "crm.schemas.custom.read (optional)",
+          "marketing.campaigns.read (optional)"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Bounded but real. The REALTIME leg of contacts/companies/deals/engagements reads legacy 'recently modified' endpoints that are capped (contacts ~30 days of history; the connector self-caps at 9,900 ids per sweep, /crm-objects/v1/change-log/tickets returns at most the 1,000 newest). Anything those miss is recovered by the DELAYED leg, which is a time-windowed search over hs_lastmodifieddate and therefore has no retention horizon at all. The in-process emitted-changes cache is lost on restart, so a pause causes duplicate re-emission of recent documents (harmless under the MERGE reduction), not data loss.",
+      "resumeWindow": "Unbounded for the DELAYED/search leg. Both legs advance in at most 1-hour windows per invocation (MAX_REALTIME_WINDOW / MAX_DELAYED_WINDOW), so a long pause costs a proportionally long catch-up, not missing rows. The DELAYED leg trails realtime by a fixed DELAYED_LAG of 1 hour and refuses to poll until at least 5 minutes (MIN_DELAYED_WINDOW) of new data has accumulated.",
+      "releasedOnShutdown": true,
+      "notes": "Pure poll-mode HTTP connector: no server-side slot, cursor, export job, consumer group or scratch object is created on HubSpot's side, so nothing accrues on the customer's infrastructure between cron ticks. The only durable state is the connector's own checkpoint (per-binding REALTIME and DELAYED datetime cursors plus a backfill page cursor)."
+    }
+  },
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator: 'OAuth Credentials' or 'Private App Credentials'."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth mode only."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Private App mode only. Present in the model but deliberately filtered out of the published JSON schema."
+    },
+    {
+      "name": "capturePropertyHistory",
+      "displayName": "Capture Property History",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Include historical data for changes to properties of HubSpot objects in captured documents. Halves page size (100 -> 50) when set."
+    },
+    {
+      "name": "useLegacyNamingForCustomObjects",
+      "displayName": "Use Legacy Naming for Custom Objects",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Hidden field (x-hidden-field). When false, discovered custom-object bindings are named custom_<name>."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource. Defaults to PT0S (continuous)."
+    },
+    {
+      "name": "schedule",
+      "displayName": "Calculated Property Refresh Schedule",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Cron expression driving connector-initiated calculated-property refresh backfills. Defaults to '55 23 * * *' for CRM object bindings, empty for others."
+    }
+  ],
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "REST schema listing plus a permission probe",
+    "querySketch": "GET /crm/v3/schemas -> results[].name, skipping results[].archived; each name n yields a binding named custom_<n> (or <n> when useLegacyNamingForCustomObjects) whose path component is p_<n>. Separately, when should_check_permissions is set, each of a fixed list of optional standard resources is probed by issuing one request against its endpoint; a 403 whose message matches the missing-scope regex removes that resource from the discovered list.",
+    "excludes": [
+      "archived custom object schemas",
+      "standard resources whose endpoint answers 403 missing-scope (marketing_emails, email_events, forms, marketing_events, marketing_event_participants, form_submissions, feedback_submissions, contact_lists, contact_list_memberships, goals, workflows, orders, campaigns)",
+      "standard resources whose name collides with a discovered custom object under legacy naming"
+    ],
+    "allowlist": "The static list in all_resources() is the whole standard-object catalog; discovery only ever subtracts from it. Custom objects are purely additive."
+  },
+  "streams": [
+    {
+      "name": "companies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/companies",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/companies/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/contacts",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/contacts/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "deals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deals",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/deals/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tickets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/tickets",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/tickets/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "engagements",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "results[].engagement.lastUpdated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/engagements",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/engagements/v1/engagements/modified/after",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 250
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "hasMorePath": "/hasMore",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": {
+            "param": "after",
+            "format": "unix_milliseconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/products",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/products/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "line_items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/line_items",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/line_items/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "goals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/goals",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/goals/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "feedback_submissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/feedback_submissions",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/feedback_submissions/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/orders",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/orders/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_<schema name>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "properties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        },
+        {
+          "role": "connector-initiated calculated-property refresh backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/objects/p_<schema name>",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": "100 (50 when capturePropertyHistory is set)",
+            "properties": "comma-joined property names, chunked to ~5KiB per request",
+            "propertiesWithHistory": "same list, only when capturePropertyHistory is set",
+            "associations": "comma-joined ASSOCIATED_ENTITIES for the object type"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/objects/p_<schema name>/search",
+          "httpMethod": "POST",
+          "recordsPath": "/results",
+          "params": {
+            "body.sorts": "[{propertyName: hs_lastmodifieddate, direction: ASCENDING}]",
+            "body.limit": 200,
+            "note": "returns ids only; full documents are then read via POST /crm/v3/objects/{object}/batch/read (100 ids, 50 with history) and POST /crm/v4/associations/{object}/{associated}/batch/read"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "after",
+            "cursorPath": "/paging/next/after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 200
+          },
+          "incrementalParam": {
+            "param": "body.filters[0].value (propertyName=hs_lastmodifieddate, operator BETWEEN/GTE)",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "properties",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 86400
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/crm/v3/properties/{objectType}",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": null,
+          "pathPlaceholders": {
+            "objectType": "iterated over companies, contacts, deals, engagements, tickets and each discovered p_<custom object>"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "deal_pipelines",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/crm-pipelines/v1/pipelines/deals",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "owners",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/crm/v3/owners",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/marketing/v3/forms",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 500,
+            "formTypes": "all"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "marketing_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/marketing/v3/marketing-events",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "marketing_event_participants",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/marketing/v3/marketing-events/participations/{eventId}/breakdown",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "eventId": "objectId of each event returned by GET /marketing/v3/marketing-events"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "email_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/email/public/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "/events",
+          "params": {
+            "limit": 1000,
+            "endTimestamp": "backfill cutoff in unix ms, minus 1 (inclusive bound)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "hasMorePath": "/hasMore",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/email/public/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "/events",
+          "params": {
+            "limit": 1000,
+            "endTimestamp": "window upper bound in unix ms, when present"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "hasMorePath": "/hasMore",
+            "pageSizeParam": "limit",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "startTimestamp",
+            "format": "unix_milliseconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "marketing_emails",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/marketing/v3/emails",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 300,
+            "sort": "updatedAt",
+            "updatedBefore": "exclusive upper bound, ISO-8601",
+            "archived": "queried twice: false then true",
+            "includeStats": "queried twice: true then false (HubSpot omits records when includeStats=true)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 300
+          },
+          "incrementalParam": {
+            "param": "updatedAfter",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/marketing/v3/emails",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 300,
+            "sort": "updatedAt",
+            "updatedBefore": "exclusive upper bound, ISO-8601",
+            "archived": "queried twice: false then true",
+            "includeStats": "queried twice: true then false (HubSpot omits records when includeStats=true)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 300
+          },
+          "incrementalParam": {
+            "param": "updatedAfter",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "workflows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll (REALTIME and DELAYED subtasks)",
+          "schedule": {
+            "kind": "continuous"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/automation/v3/workflows",
+          "httpMethod": "GET",
+          "recordsPath": "/workflows",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/automation/v3/workflows",
+          "httpMethod": "GET",
+          "recordsPath": "/workflows",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll",
+          "schedule": {
+            "kind": "continuous"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/marketing/v3/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 100,
+            "sort": "-updatedAt",
+            "properties": "comma-joined readable campaign properties (subset of GET /crm/v3/properties/campaign)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/marketing/v3/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 100,
+            "sort": "-updatedAt",
+            "properties": "comma-joined readable campaign properties (subset of GET /crm/v3/properties/campaign)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contact_lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/listId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "additionalProperties.hs_lastmodifieddate",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 10800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/lists/search",
+          "httpMethod": "POST",
+          "recordsPath": "/lists",
+          "params": {
+            "body.count": 500,
+            "body.sort": "HS_LIST_ID",
+            "body.additionalProperties": "all list property names (or just hs_lastmodifieddate when only ids are needed)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "offset",
+            "cursorPath": "/offset",
+            "hasMorePath": "/hasMore",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/lists/search",
+          "httpMethod": "POST",
+          "recordsPath": "/lists",
+          "params": {
+            "body.count": 500,
+            "body.sort": "HS_LIST_ID",
+            "body.additionalProperties": "all list property names (or just hs_lastmodifieddate when only ids are needed)"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "offset",
+            "cursorPath": "/offset",
+            "hasMorePath": "/hasMore",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "count",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contact_list_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/listId",
+        "/recordId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "membershipTimestamp",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 10800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/v3/lists/{listId}/memberships/join-order",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 250
+          },
+          "pathPlaceholders": {
+            "listId": "listId of each list returned by POST /crm/v3/lists/search; the backfill walks one list per page cursor, the incremental leg fans out with a 20-way semaphore"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/crm/v3/lists/{listId}/memberships/join-order",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 250
+          },
+          "pathPlaceholders": {
+            "listId": "listId of each list returned by POST /crm/v3/lists/search; the backfill walks one list per page cursor, the incremental leg fans out with a 20-way semaphore"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "form_submissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/formId",
+        "/submittedAt"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "submittedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/form-integrations/v1/submissions/forms/{formId}",
+          "httpMethod": "GET",
+          "recordsPath": "/results",
+          "params": {
+            "limit": 50
+          },
+          "pathPlaceholders": {
+            "formId": "id of each form from GET /marketing/v3/forms, excluding formType blog_comment"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "/paging/next/after",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 50
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two modes are implemented. The Private App access token is a single self-serve secret pasted into credentials.access_token and sent as 'Authorization: Bearer <token>' by the CDK TokenSource, which is T1_SIMPLE, and it is the mode a standalone integrator would use. Caveat that changes nothing mechanically but matters for the UI: EndpointConfig.model_json_schema() strips the AccessToken variant out of the credentials oneOf so the published spec offers only OAuth, because HubSpot's marketplace forbids listing an app that requires API keys to install. The access-token path is still fully supported at runtime for existing captures. The OAuth mode as configured standalone is T3_BYO_REFRESH: the endpoint config requires client_id, client_secret AND refresh_token, and the CDK exchanges them with grant_type=refresh_token; it drops to a click-through only because Estuary's hosted control plane runs the authorization_code flow (the spec ships an oauth2 block with authUrlTemplate/accessTokenUrlTemplate) and writes the refresh token into the config on the user's behalf.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull",
+      "description": "Every CRM object binding runs TWO concurrent incremental subtasks against DIFFERENT endpoints, not one: REALTIME (fast, explicitly allowed to be incomplete, capped) and DELAYED (complete, trails by a fixed 1-hour DELAYED_LAG, dedupes against REALTIME through an in-process emitted-changes cache). The v2.1 pull union has one 'incremental' slot, so only the authoritative DELAYED leg is recorded there. The REALTIME endpoints are: contacts GET /contacts/v1/lists/recently_updated/contacts/recent (cursor 'timeOffset' read from body /time-offset, terminate on /has-more, count=100); companies GET /companies/v2/companies/recent/modified and deals GET /deals/v1/deal/recent/modified (cursor named 'offset' but carrying the server-supplied /offset token, terminate on /hasMore, count=100); engagements GET /engagements/v1/engagements/recent/modified (same shape); tickets GET /crm-objects/v1/change-log/tickets?timestamp=<since-1 in unix ms>, unpaginated and capped at the 1,000 newest. products, line_items, goals, feedback_submissions, orders and custom objects use the same search endpoint on both legs, differing only in that REALTIME passes should_crash_on_unordered_results=False.",
+      "proposedShape": {
+        "pull": {
+          "backfill": "<PullSpec>|null",
+          "incremental": [
+            {
+              "role": "realtime|delayed|...",
+              "spec": "<PullSpec>",
+              "completeness": "best_effort|authoritative",
+              "lag": "<duration>|null"
+            }
+          ],
+          "snapshot": "<PullSpec>|null"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental (CRM objects)",
+      "description": "The recorded PullSpec is only phase one of a two-phase pull. The search/recent endpoint returns IDs and last-modified timestamps only; full documents come from a second, unpaginated fan-out: POST /crm/v3/objects/{object}/batch/read with 100 ids per call (50 when capturePropertyHistory is set), plus one POST /crm/v4/associations/{object}/{associated}/batch/read per associated entity type, up to 3 batches in flight. A single PullSpec cannot express 'list keys here, then hydrate them there'.",
+      "proposedShape": {
+        "pull": {
+          "incremental": {
+            "kind": "http_two_phase",
+            "keyListing": "<PullSpec>",
+            "hydration": {
+              "path": "str",
+              "httpMethod": "POST",
+              "idsBodyKey": "str",
+              "batchSize": "int",
+              "fanout": [
+                "<PullSpec>"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "where": "PullSpec.incrementalParam.format",
+      "description": "The format enum (iso8601|unix_seconds|date) has no member for unix MILLISECONDS, which is what HubSpot's legacy endpoints take: /email/public/v1/events startTimestamp/endTimestamp, /engagements/v1/engagements/modified/after 'after', /crm-objects/v1/change-log/tickets 'timestamp'. The literal 'unix_milliseconds' is emitted above rather than rounding to unix_seconds, which would silently shift every window by a factor of 1000.",
+      "proposedShape": {
+        "format": "iso8601|unix_seconds|unix_milliseconds|date"
+      }
+    },
+    {
+      "where": "PullSpec.incrementalParam (CRM search objects)",
+      "description": "The incremental bound is not a query parameter at all: it is an element of a JSON POST body ({filters:[{propertyName, operator: BETWEEN|GTE, value, highValue}]}). The dotted pseudo-path 'body.filters[0].value' is used above; a real shape would need a location discriminator matching the paginator's tokenTo axis.",
+      "proposedShape": {
+        "incrementalParam": {
+          "in": "query|body|header",
+          "param": "str",
+          "format": "str",
+          "upperBoundParam": "str|null"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.paginator (contact_lists)",
+      "description": "POST /crm/v3/lists/search sends a NUMERIC offset (not an opaque token) inside the JSON body and reads the next offset back out of the response envelope. It satisfies body_cursor by transport but is semantically an offset paginator; the two axes disagree and the union forces a choice. body_cursor was chosen because rule 2 keys on where the token is sent.",
+      "proposedShape": {
+        "type": "offset",
+        "tokenTo": "body_field",
+        "offsetBodyKey": "offset",
+        "offsetPath": "/offset",
+        "hasMorePath": "/hasMore"
+      }
+    },
+    {
+      "where": "streams[].pull (marketing_emails)",
+      "description": "One logical page sweep is FOUR full paginated passes over /marketing/v3/emails (archived x includeStats), deduplicated client-side by id, because HubSpot silently omits records when includeStats=true. Documents therefore come back unordered by updatedAt and the backfill cannot checkpoint mid-window; it does the whole epoch-to-cutoff range in one uninterruptible sweep. No PullSpec field expresses a cartesian product of query-parameter passes.",
+      "proposedShape": {
+        "paramMatrix": [
+          {
+            "param": "archived",
+            "values": [
+              "false",
+              "true"
+            ]
+          },
+          {
+            "param": "includeStats",
+            "values": [
+              "true",
+              "false"
+            ]
+          }
+        ],
+        "dedupeBy": "/id"
+      }
+    },
+    {
+      "where": "streams[].pull.backfill (contact_list_memberships)",
+      "description": "The backfill PageCursor is a parent listId, not a pagination token for the recorded path: each resumable unit is 'the next contact list whose listId is greater than the checkpointed one, drained in full'. The child paginator recorded in the PullSpec runs to exhaustion inside a single page of the outer cursor.",
+      "proposedShape": {
+        "backfill": {
+          "kind": "http_parent_chunked",
+          "parentListing": "<PullSpec>",
+          "chunkCursorField": "/listId",
+          "child": "<PullSpec>"
+        }
+      }
+    },
+    {
+      "where": "streams[].schedules (CRM objects)",
+      "description": "The cron '55 23 * * *' does NOT drive a normal sweep. It triggers a connector-initiated backfill that re-reads ONLY properties whose metadata marks them calculated, emitting partial documents that are folded into the previously captured record by a MERGE reduction. It is a partial-column refresh, which 'role' can name but the Schedule union gives no way to type.",
+      "proposedShape": {
+        "schedules": [
+          {
+            "role": "str",
+            "schedule": "<Schedule>",
+            "effect": "full_sweep|partial_refresh",
+            "fieldSubset": "str|null"
+          }
+        ]
+      }
+    },
+    {
+      "where": "connector mechanism (comparison to the legacy source-hubspot)",
+      "description": "Flagged for the caller rather than as a schema gap: this is a hand-written Python CDK connector, not a declarative/low-code manifest, so there is no single YAML stream list to lift and the deterministic miner recovers nothing. Every binding is a bespoke Python function and the endpoints are drawn from at least twelve differently-versioned HubSpot API families. The distinguishing mechanism versus a conventional connector is the paired REALTIME/DELAYED subtask design with a shared emitted-changes dedup cache, plus the calculated-property cron refresh. I did not read the legacy source-hubspot connector, so I am not asserting a specific delta against it.",
+      "proposedShape": {}
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_hubspot_native/api/shared.py",
+      "lines": "18",
+      "snippet": "HUB = \"https://api.hubapi.com\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "6-27",
+      "snippet": "\"AccessToken\": { \"properties\": { \"credentials_title\": { \"const\": \"Private App Credentials\" }, \"access_token\": { \"secret\": true } } }"
+    },
+    "credentialModes[0].tier": {
+      "file": "../estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36, 305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_hubspot_native/models.py",
+      "lines": "62-73",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"hubspot\",\n    authUrlTemplate=(\"https://app.hubspot.com/oauth/authorize?\" ..."
+    },
+    "credentialModes[1].tier": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "48-56",
+      "snippet": "\"required\": [ \"client_id\", \"client_secret\", \"refresh_token\" ]"
+    },
+    "authTierOverall": {
+      "file": "source_hubspot_native/models.py",
+      "lines": "119-146",
+      "snippet": "# Do not include AccessToken as an authentication option.\n                if \"AccessToken\" in def_name:\n                    continue"
+    },
+    "execution.mode": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "425-449",
+      "snippet": "open_binding(\n            binding, binding_index, state, task,\n            fetch_changes={ REALTIME: ..., DELAYED: ... },"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source_hubspot_native/api/shared.py",
+      "lines": "22-32",
+      "snippet": "DELAYED_LAG = timedelta(hours=1)\nMAX_REALTIME_WINDOW = timedelta(hours=1)\nMIN_DELAYED_WINDOW = timedelta(minutes=5)"
+    },
+    "streamMode": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "393-396",
+      "snippet": "return [\n        *custom_object_resources,\n        *standard_object_resources,\n    ]"
+    },
+    "discovery.querySketch": {
+      "file": "source_hubspot_native/api/custom_objects.py",
+      "lines": "71-79",
+      "snippet": "url = f\"{HUB}/crm/v3/schemas\"\n    return [r.name for r in result.results if not r.archived]"
+    },
+    "discovery.excludes": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "116-120, 205-209",
+      "snippet": "MISSING_SCOPE_REGEX = ( r\"This app hasn't been granted all required scopes to make this call.|\"\n        if not await _can_access_endpoint(gen):\n            resources = [r for r in resources if r.name != resource.name]"
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_hubspot_native/api/object_with_associations.py",
+      "lines": "80, 114-124, 160-161",
+      "snippet": "url = f\"{HUB}/crm/v3/objects/{object_name}\"\n        if page:\n            input[\"after\"] = page"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_hubspot_native/api/search_objects.py",
+      "lines": "61, 91-96, 147",
+      "snippet": "url = f\"{HUB}/crm/v3/objects/{object_name}/search\"\n        if cursor:\n            input[\"after\"] = cursor"
+    },
+    "streams[0].pull.incremental.incrementalParam": {
+      "file": "source_hubspot_native/api/search_objects.py",
+      "lines": "69-90",
+      "snippet": "{ \"propertyName\": last_modified_property_name, \"operator\": \"BETWEEN\",\n  \"value\": dt_to_str(since), \"highValue\": dt_to_str(until) }"
+    },
+    "streams[0].schedules": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "465-466",
+      "snippet": "# Default to performing a calculated properties refresh at 23:55 UTC every day for enabled CRM object bindings.\n        initial_config=HubspotResourceConfigWithSchedule(name=object_name, schedule=\"55 23 * * *\"),"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "467-468",
+      "snippet": "schema_inference=True,\n        reduction_strategy=ReductionStrategy.MERGE,"
+    },
+    "streams[1].cursorField": {
+      "file": "source_hubspot_native/api/contacts.py",
+      "lines": "80-82",
+      "snippet": "return await fetch_search_objects(\n            Names.contacts, log, http, since, until, page, \"lastmodifieddate\"\n        )"
+    },
+    "streams[4].pull.incremental": {
+      "file": "source_hubspot_native/api/engagements.py",
+      "lines": "40-56",
+      "snippet": "url = f\"{HUB}/engagements/v1/engagements/modified/after\"\n        params: dict[str, str | int] = {\"after\": after, \"limit\": 250}\n        if not result.hasMore or not result.after: break"
+    },
+    "streams[11].pull.snapshot": {
+      "file": "source_hubspot_native/api/properties.py",
+      "lines": "20-22",
+      "snippet": "url = f\"{HUB}/crm/v3/properties/{object_name}\""
+    },
+    "streams[11].schedules": {
+      "file": "source_hubspot_native/resources.py",
+      "lines": "502-504",
+      "snippet": "initial_config=ResourceConfig(\n            name=Names.properties, interval=timedelta(days=1)\n        ),"
+    },
+    "streams[12].pull.snapshot": {
+      "file": "source_hubspot_native/api/deal_pipelines.py",
+      "lines": "14",
+      "snippet": "url = f\"{HUB}/crm-pipelines/v1/pipelines/deals\""
+    },
+    "streams[13].pull.snapshot.paginator": {
+      "file": "source_hubspot_native/api/owners.py",
+      "lines": "22-43",
+      "snippet": "url = f\"{HUB}/crm/v3/owners\"\n        after = result.paging.next.after"
+    },
+    "streams[14].pull.snapshot": {
+      "file": "source_hubspot_native/api/forms.py",
+      "lines": "21-28",
+      "snippet": "url = f\"{HUB}/marketing/v3/forms\"\n        \"limit\": 500,\n        \"formTypes\": \"all\","
+    },
+    "streams[15].pull.snapshot": {
+      "file": "source_hubspot_native/api/marketing_events.py",
+      "lines": "22-25",
+      "snippet": "url = f\"{HUB}/marketing/v3/marketing-events\"\n    input: dict[str, JsonValue] = {\"limit\": PAGE_SIZE}"
+    },
+    "streams[16].pull.snapshot.path": {
+      "file": "source_hubspot_native/api/marketing_events.py",
+      "lines": "56-59",
+      "snippet": "url = ( f\"{HUB}/marketing/v3/marketing-events/participations/\" f\"{event_id}/breakdown\" )"
+    },
+    "streams[17].pull.incremental.paginator": {
+      "file": "source_hubspot_native/api/email_events.py",
+      "lines": "56-76",
+      "snippet": "url = f\"{HUB}/email/public/v1/events\"\n        if not result.hasMore: break\n        input[\"offset\"] = result.offset"
+    },
+    "streams[18].pull.incremental": {
+      "file": "source_hubspot_native/api/marketing_emails.py",
+      "lines": "33, 63-70, 82-84",
+      "snippet": "url = f\"{HUB}/marketing/v3/emails\"\n        \"updatedAfter\": dt_to_str(start),\n    for archived_query_param in [\"false\", \"true\"]:"
+    },
+    "streams[19].pull.incremental": {
+      "file": "source_hubspot_native/api/workflows.py",
+      "lines": "34-42, 52-55",
+      "snippet": "url = f\"{HUB}/automation/v3/workflows\"\n    # All workflows are returned in a single response, and filtering is\n    # performed client side"
+    },
+    "streams[20].pull.incremental": {
+      "file": "source_hubspot_native/api/campaigns.py",
+      "lines": "76-100",
+      "snippet": "url = f\"{HUB}/marketing/v3/campaigns\"\n        \"sort\": \"-updatedAt\",  # Descending order\n        params[\"after\"] = response.paging.next.after"
+    },
+    "streams[21].pull.incremental.paginator": {
+      "file": "source_hubspot_native/api/contact_lists.py",
+      "lines": "34-49, 81-83",
+      "snippet": "url = f\"{HUB}/crm/v3/lists/search\"\n    request_body = { \"count\": 500, \"offset\": offset, \"sort\": \"HS_LIST_ID\", ... }\n        pagination_offset = response.offset"
+    },
+    "streams[22].pull.incremental": {
+      "file": "source_hubspot_native/api/contact_list_memberships.py",
+      "lines": "38-58",
+      "snippet": "url = f\"{HUB}/crm/v3/lists/{contact_list.listId}/memberships/join-order\"\n        params[\"after\"] = next_cursor"
+    },
+    "streams[23].pull.incremental": {
+      "file": "source_hubspot_native/api/form_submissions.py",
+      "lines": "35-63",
+      "snippet": "url = f\"{HUB}/form-integrations/v1/submissions/forms/{form_id}\"\n        after = result.paging.next.after"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "59-118",
+      "snippet": "\"properties\": { \"credentials\": {...}, \"capturePropertyHistory\": {...}, \"useLegacyNamingForCustomObjects\": {...} }"
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "medium",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[].name": "high",
+    "streams[].pull.backfill.path": "high",
+    "streams[].pull.incremental.path": "high",
+    "streams[].pull.incremental.paginator": "high",
+    "streams[].pull.backfill.paginator": "high",
+    "streams[].primaryKey": "high",
+    "streams[].schedules": "high",
+    "streams[].cursorField": "medium",
+    "streams[].writeDisposition": "medium",
+    "streams[].pull.*.incrementalParam": "medium"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No static header dictionary is constructed anywhere in the connector; requests carry only the Authorization header injected by the CDK's HTTPSession, so there is nothing to report.",
+    "transports[0].spec.apiVersionPinning": "Recorded descriptively rather than as a single value: there is no one version knob. Version lives in the path and differs per endpoint family (v1/v2/v3/v4 across a dozen prefixes), and no header or query parameter pins it.",
+    "execution.defaultSchedule": "The CDK's ResourceConfig.interval defaults to timedelta() (PT0S), which is not a real connector-wide cadence but 'poll as fast as the runtime allows'. The meaningful values are per-binding and are recorded on streams[].schedules; asserting a connector-level default would be inventing one.",
+    "streams[*].supportedSyncModes": "Reported as declared by the code (a backfill/fetch_page plus fetch_changes implies full_refresh+incremental; fetch_snapshot only implies full_refresh). The Flow runtime, not the connector, decides what an operator may actually select, and that is outside this source tree.",
+    "streams[custom_<schema name>]": "Emitted as an ARCHETYPE, not an actual stream. The literal binding names depend entirely on the customer's own custom object schemas returned by GET /crm/v3/schemas, and on useLegacyNamingForCustomObjects. No custom object appears in the checked-in discover snapshot.",
+    "streams[form_submissions].pull.backfill": "There is none. The binding is opened with fetch_changes only and no fetch_page, and its initial state has an incremental cursor of 0 (unix ms) with no backfill state, so history is swept by the incremental leg reading from cursor 0 rather than by a distinct backfill shape.",
+    "streams[goals|feedback_submissions|workflows|campaigns|contact_lists|contact_list_memberships].presence_in_discover_snapshot": "These bindings exist in all_resources() but are absent from tests/snapshots/snapshots__discover__stdout.json. That snapshot was captured against an account lacking the corresponding optional scopes, so absence there is not evidence the stream does not exist. The code is authoritative and was used.",
+    "streams[contact_lists].pull.backfill.pathPlaceholders": "fetch_contact_lists_page asserts its page cursor is always None and re-reads the whole list catalog each time, so there is no resumable backfill chunking to describe; the recorded backfill spec is the same unbounded sweep as the incremental one.",
+    "streams[*].pull.*.params": "Values that are computed at request time (property name lists, time bounds, chunk boundaries) are described in prose inside the params object rather than given as literals, because they are not constants and a literal would be misleading."
+  }
+}

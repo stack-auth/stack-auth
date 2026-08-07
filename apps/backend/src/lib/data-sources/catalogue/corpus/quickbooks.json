@@ -1,0 +1,1352 @@
+{
+  "id": "quickbooks",
+  "estuaryDir": "source-quickbooks",
+  "displayName": "QuickBooks Online",
+  "description": "Imports accounting entities (customers, invoices, bills, payments, journal entries, items, taxes, vendors, employees, etc.) from a QuickBooks Online company.",
+  "category": "finance",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "Chosen at runtime from the boolean endpoint config field `is_sandbox`: https://quickbooks.api.intuit.com (production) or https://sandbox-quickbooks.api.intuit.com (sandbox). The company/realm id is then a path segment: /v3/company/{realm_id}/..."
+        },
+        "defaultHeaders": {
+          "Accept": "application/json"
+        },
+        "apiVersionPinning": "Two layers: major version as a path segment (`/v3/`) and a minor version as a query parameter (`minorversion=75`) sent on every query request."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Intuit OAuth2 app (user-registered) with rotating refresh token",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://appcenter.intuit.com/connect/oauth2",
+        "tokenUrl": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+        "scopes": [
+          "com.intuit.quickbooks.accounting"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "realm_id",
+      "displayName": "Company ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "QuickBooks realm/company id; kept as a string because the numeric value is large enough to lose precision. Used as a path segment."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant, always \"OAuth Credentials\"."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Client id of the user's own Intuit app."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Client secret of the user's own Intuit app."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Refresh token issued by the user's app; rotated by the connector and written back to the endpoint config."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": false,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Hidden field (x-hidden-field) defaulted to the literal \"PLACEHOLDER\"; populated by the connector at startup, not by the user."
+    },
+    {
+      "name": "credentials.access_token_expires_at",
+      "displayName": "Access token expiration time.",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Hidden field defaulted to the epoch; maintained by the connector."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Backfill floor; defaults to 30 days before the present, constrained to be >= 1970-01-01."
+    },
+    {
+      "name": "is_sandbox",
+      "displayName": "Use Sandbox Environment",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Selects the sandbox host instead of production. Default false."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource (generic CDK ResourceConfig)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; the connector seeds every binding with PT5M."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "Accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Account; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Account; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Bill_Payments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=BillPayment; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=BillPayment; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Budgets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Budget; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Budget; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Bills",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Bill; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Bill; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Classes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Class; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Class; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Credit_Memos",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=CreditMemo; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=CreditMemo; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Customer; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Customer; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Departments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Department; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Department; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Deposits",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Deposit; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Deposit; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Employees",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Employee; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Employee; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Estimates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Estimate; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Estimate; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Invoices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Invoice; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Invoice; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Item; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Item; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Journal_Entries",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=JournalEntry; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=JournalEntry; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Payments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Payment; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Payment; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Payment_Methods",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=PaymentMethod; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=PaymentMethod; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Purchases",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Purchase; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Purchase; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Purchase_Orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=PurchaseOrder; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=PurchaseOrder; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Refund_Receipts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=RefundReceipt; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=RefundReceipt; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Sales_Receipts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=SalesReceipt; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=SalesReceipt; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Tax_Agencies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxAgency; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxAgency; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Tax_Codes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxCode; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxCode; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Tax_Rates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxRate; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TaxRate; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Terms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Term; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Term; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Time_Activities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TimeActivity; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=TimeActivity; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Transfers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Transfer; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Transfer; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Vendor_Credits",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=VendorCredit; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=VendorCredit; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Vendors",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/Id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "MetaData.LastUpdatedTime",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental poll and backfill page interval (ResourceConfig.interval default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Vendor; lower bound = resumed page cursor (an ISO-8601 LastUpdatedTime, initially start_date), upper bound = the backfill cutoff timestamp captured when the binding opened. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "SELECT * FROM <TableName> WHERE Metadata.LastUpdatedTime > '<lowerBound ISO8601>' AND Metadata.LastUpdatedTime < '<upperBound ISO8601>' ORDER BY Metadata.LastUpdatedTime ASC STARTPOSITION <offset> MAXRESULTS 1000 -- TableName=Vendor; lower bound = the incremental log cursor (max LastUpdatedTime seen so far), upper bound = now() truncated to seconds minus a 30s settling delay. The statement is URL-encoded into the `query` query-parameter of GET {baseUrl}/v3/company/{realm_id}/query (also sends minorversion=75, Accept: application/json); records are streamed out of QueryResponse.<TableName>[]. Paging advances STARTPOSITION by 1000 inside the query TEXT and stops when a page yields fewer than 1000 rows (see unionMisfits)."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Exactly one credential mode is offered and it is the hardest kind. The credentials class deliberately omits the `x-oauth2-provider` annotation (the source comment says this makes the UI collect the app's credentials directly instead of offering an OAuth login against a shared Estuary app), and the spec snapshot confirms client_id, client_secret and refresh_token are all user-required secrets. The connector's own error message tells the user to register an app at developer.intuit.com and supply an unexpired refresh token issued by it. There is no hosted-control-plane fallback and no API-key mode, so the standalone tier is T3_BYO_REFRESH. Refresh tokens rotate: the connector exchanges at startup and writes any new refresh_token back into the endpoint config (a comment notes QuickBooks refresh tokens, unlike most sources', stay reusable for a prolonged period, so the rotation is forgiving rather than single-use).",
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.backfill.paginator / streams[*].pull.incremental.paginator",
+      "description": "QuickBooks Online paginates INSIDE the query language, not in HTTP params. The connector interpolates `STARTPOSITION <offset> MAXRESULTS 1000` into the SQL-like statement text and advances offset by the page size, terminating when a page yields fewer than 1000 records. There is no offsetParam/limitParam to name, so the v2.1 offset paginator does not fit; the PullSpec kind `query` also has no paginator slot in the schema. Both facts are recorded in querySketch instead. Forcing {\"type\":\"offset\",\"offsetParam\":\"STARTPOSITION\"} would be actively misleading: a consumer would send it as an HTTP query parameter and silently re-read page one forever.",
+      "proposedShape": {
+        "type": "query_text_offset",
+        "queryLanguageOffsetKeyword": "STARTPOSITION",
+        "queryLanguageLimitKeyword": "MAXRESULTS",
+        "pageSize": 1000,
+        "startOffset": 0,
+        "terminateOn": "short_page"
+      }
+    },
+    {
+      "where": "streams[*].pull.backfill",
+      "description": "The backfill leg is not a plain historical sweep: it is a time-sliced resumable scan whose page cursor is a TIMESTAMP (the last-seen MetaData.LastUpdatedTime, ISO-8601 to second precision), not an offset or opaque token. It also self-interrupts on a wall-clock budget of ~5 minutes per fetch_page invocation, checkpointing at a second boundary so a partially-consumed second is never split. PullSpec has nowhere to express either the timestamp-valued page cursor or the time-budgeted yield.",
+      "proposedShape": {
+        "resumeCursor": {
+          "kind": "timestamp",
+          "field": "MetaData.LastUpdatedTime",
+          "precision": "seconds",
+          "format": "iso8601"
+        },
+        "invocationBudget": {
+          "kind": "wallClock",
+          "duration": "PT5M",
+          "checkpointAlignment": "whole_second"
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental",
+      "description": "The incremental window's upper bound is deliberately held back from now() by a 30-second settling delay so the cursor only ever advances over a fully-visible state of the source, and the cursor value is taken from record metadata rather than the local clock. The schema's `incrementalParam` cannot express a watermark lag or a bounded (lower AND upper) window.",
+      "proposedShape": {
+        "windowing": {
+          "lowerBound": "exclusive prior cursor",
+          "upperBound": "now() - PT30S, second precision",
+          "cursorSource": "max(record.MetaData.LastUpdatedTime)"
+        }
+      }
+    },
+    {
+      "where": "transports[0].spec.apiVersionPinning",
+      "description": "Version pinning is split across two mechanisms at once (path segment /v3 plus a minorversion=75 query parameter); the field is a single string so both are described in prose."
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_quickbooks/api.py",
+      "lines": "25-26",
+      "snippet": "PROD_API_BASE_URL = \"https://quickbooks.api.intuit.com\"\nSANDBOX_API_BASE_URL = \"https://sandbox-quickbooks.api.intuit.com\""
+    },
+    "transports[0].spec.baseUrl.resolution": {
+      "file": "source_quickbooks/resources.py",
+      "lines": "103",
+      "snippet": "base_url = SANDBOX_API_BASE_URL if config.is_sandbox else PROD_API_BASE_URL"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_quickbooks/api.py",
+      "lines": "40, 57",
+      "snippet": "url = f\"{base_url}/v3/company/{realm_id}/query\"\nparams={\"query\": query_statement, \"minorversion\": 75},"
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_quickbooks/api.py",
+      "lines": "56",
+      "snippet": "headers={\"Accept\": \"application/json\"},"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_quickbooks/models.py",
+      "lines": "35-43",
+      "snippet": "authUrlTemplate=(\"https://appcenter.intuit.com/connect/oauth2?\" ... \"&scope=com.intuit.quickbooks.accounting\"\naccessTokenUrlTemplate=\"https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer\","
+    },
+    "credentialModes[0].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "233-234",
+      "snippet": "class BaseOAuth2Credentials(_BaseOAuth2CredentialsData, metaclass=abc.ABCMeta):\n    grant_type: ClassVar[str] = \"refresh_token\""
+    },
+    "credentialModes[0].tier": {
+      "file": "source_quickbooks/models.py",
+      "lines": "56-63",
+      "snippet": "# Unlike credentials built with `for_provider`, this class carries no `x-oauth2-provider` annotation, so the\n# UI collects the app's credentials directly instead of offering an OAuth login against a shared Estuary app."
+    },
+    "authTierRationale": {
+      "file": "source_quickbooks/resources.py",
+      "lines": "34-38",
+      "snippet": "\"Authentication with QuickBooks failed. This connector requires your own QuickBooks app: please create one...\"\n\"confirm this capture is configured with the app's client ID and client secret, and with an unexpired refresh token issued by it.\""
+    },
+    "execution.mode": {
+      "file": "source_quickbooks/resources.py",
+      "lines": "122-132",
+      "snippet": "fetch_changes=functools.partial(fetch_entity, entity, http, base_url, config.realm_id),\nfetch_page=functools.partial(backfill_entity, entity, http, base_url, config.realm_id, start_date,),"
+    },
+    "streams[*].schedules": {
+      "file": "source_quickbooks/resources.py",
+      "lines": "145-147",
+      "snippet": "initial_config=ResourceConfig(name=resource.resource_name, interval=timedelta(minutes=5))"
+    },
+    "streams[*].primaryKey": {
+      "file": "source_quickbooks/resources.py",
+      "lines": "136-139",
+      "snippet": "Resource(name=resource.resource_name, key=[\"/Id\"], model=resource,"
+    },
+    "streams[*].cursorField": {
+      "file": "source_quickbooks/models.py",
+      "lines": "119-128",
+      "snippet": "class QuickBooksEntityMetadata(BaseModel, extra=\"allow\"):\n    LastUpdatedTime: AwareDatetime"
+    },
+    "streams[*].pull.backfill.querySketch": {
+      "file": "source_quickbooks/api.py",
+      "lines": "44-51",
+      "snippet": "f\"SELECT * FROM {model.table_name}\" f\" WHERE Metadata.LastUpdatedTime > '{dt_to_ts(start_date)}'\"\nf\" ORDER BY Metadata.LastUpdatedTime ASC\" f\" STARTPOSITION {query_offset}\" f\" MAXRESULTS {PAGE_SIZE}\""
+    },
+    "unionMisfits[0]": {
+      "file": "source_quickbooks/api.py",
+      "lines": "15, 71-74",
+      "snippet": "PAGE_SIZE = 1000\nif yielded_items < PAGE_SIZE:\n    break"
+    },
+    "unionMisfits[1]": {
+      "file": "source_quickbooks/api.py",
+      "lines": "95, 116-119",
+      "snippet": "timeout = datetime.now(tz=UTC) + TARGET_FETCH_PAGE_INVOCATION_RUN_TIME\nif datetime.now(tz=UTC) > timeout and timeout_checkpoint is None:\n    timeout_checkpoint = item.MetaData.LastUpdatedTime"
+    },
+    "unionMisfits[2]": {
+      "file": "source_quickbooks/api.py",
+      "lines": "23, 154",
+      "snippet": "INCREMENTAL_FETCH_DELAY = timedelta(seconds=30)\nupper_bound = datetime.now(tz=UTC).replace(microsecond=0) - INCREMENTAL_FETCH_DELAY"
+    },
+    "streamMode": {
+      "file": "source_quickbooks/models.py",
+      "lines": "271-300",
+      "snippet": "ALL_RESOURCES = [\n    Account,\n    BillPayment,"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "44-83",
+      "snippet": "\"required\": [\"client_id\", \"client_secret\", \"refresh_token\"]\n\"required\": [\"realm_id\", \"credentials\"]"
+    }
+  },
+  "confidence": {
+    "transports": "high",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "streams": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].writeDisposition": "medium",
+    "streams[*].schedules": "high",
+    "streams[*].pull.backfill": "high",
+    "streams[*].pull.incremental": "high",
+    "configFields": "high",
+    "category": "high"
+  },
+  "abstained": {
+    "streams[*].pull.*.paginator": "Pagination is expressed as STARTPOSITION/MAXRESULTS keywords inside the query TEXT, not as HTTP parameters. No member of the Paginator union describes that, and emitting an `offset` paginator would produce a silently-truncating consumer. Recorded in unionMisfits[0] and in querySketch instead.",
+    "execution.defaultSchedule": "There is no connector-wide schedule in the source; the 5-minute cadence is set per binding via ResourceConfig.interval, so it is recorded on each stream rather than here.",
+    "streams[*].pull.*.incrementalParam": "The time bounds are not a request parameter; they are literal predicates embedded in the query text, so `incrementalParam` (param + format) has no correct value.",
+    "streams[*].writeDisposition": "Not stated in the connector. Inferred as `merge` from the collection key /Id combined with an incremental leg that re-emits updated entities; the connector never emits deletes (QuickBooks deletes/voids would arrive only as updated entities, and the CDC endpoint that could report them is explicitly declined), so it is not snapshot_with_tombstone.",
+    "credentialModes[0].scheme.scopes": "Only `com.intuit.quickbooks.accounting` appears, in the authorization URL template. Whether an Intuit app must also carry openid/profile scopes for the flow to complete is not determinable from this repository.",
+    "transports[0].spec.baseUrl.template": "Modelled as `resolved` rather than `template` because the two hosts are distinct constants selected by a boolean, not one string with a substituted placeholder."
+  }
+}

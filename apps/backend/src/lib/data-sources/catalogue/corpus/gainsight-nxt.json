@@ -1,0 +1,482 @@
+{
+  "id": "gainsight-nxt",
+  "estuaryDir": "source-gainsight-nxt",
+  "displayName": "Gainsight NXT",
+  "description": "Imports customer-success records (companies, users, success plans, CS tasks, activity timeline entries, calls-to-action and picklists) from a Gainsight NXT tenant.",
+  "category": "crm",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "{domain}",
+          "placeholders": {
+            "domain": "user-supplied `domain` endpoint-config field — the per-tenant Gainsight NXT instance URL (e.g. https://my-company.gainsightcloud.com or a custom domain); trailing slash is stripped before path concatenation"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1` on every request path (/v1/data/... and /v1/meta/...)"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (access key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "AccessKey",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "interval", "seconds": 60 },
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; the only value is \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Gainsight NXT access key, sent verbatim in the AccessKey header." },
+    { "name": "domain", "displayName": "Domain", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The domain of your Gainsight NXT account, e.g. https://my-company.gainsight.com or a custom domain." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date-time; data before it is not replicated. Defaults to 30 days before the current time." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource/binding." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; connector seeds every binding with PT1M." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "da_picklist",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/da_picklist",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<field names from the /v1/meta/services/objects/da_picklist/describe response>", "limit": 5000, "offset": "<page offset>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 5000,
+            "tokenFrom": "n/a",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "companies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "ModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/Company",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "single BTW condition on ModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 5000,
+            "tokenFrom": "n/a",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/Company",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 5000,
+            "tokenFrom": "n/a",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "ModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/gsuser",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/gsuser",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "success_plans",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "ModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/cta_group",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/cta_group",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "cs_tasks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "ModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/cs_task",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/cs_task",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "activity_timelines",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "LastModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/activity_timeline",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "LastModifiedDate": "desc" }, "where": "BTW condition on LastModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=LastModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/activity_timeline",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "LastModifiedDate": "desc" }, "where": "BTW condition on LastModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=LastModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "call_to_actions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Gsid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "ModifiedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll sweep", "schedule": { "kind": "interval", "seconds": 60 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/call_to_action",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between start_date and the backfill cutoff" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/data/objects/query/call_to_action",
+          "httpMethod": "POST",
+          "recordsPath": "data.records",
+          "params": { "select": "<described field names>", "limit": 5000, "offset": "<page offset>", "orderBy": { "ModifiedDate": "desc" }, "where": "BTW condition on ModifiedDate between the log cursor and min(cursor + 30 days, now)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenFrom": "n/a", "tokenTo": "body_field", "terminateOn": "short_page" },
+          "incrementalParam": { "param": "where.conditions[].name=ModifiedDate (operator BTW)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Gainsight NXT access key pasted into `credentials.access_token`. TokenSource is constructed with oauth_spec=None, so no OAuth app registration and no refresh token are involved; the CDK sends the raw token as the value of a non-default `AccessKey` header with no token-type prefix.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.paginator",
+      "description": "The paginator is offset/limit, but every value travels in the JSON request body of a POST, not in a query string. The v2.1 offset member has no place to say that; `tokenTo: \"body_field\"` was borrowed from the cursor axes to express it. Additionally the offset is advanced by the number of records actually decoded (offset += count), not by the fixed page size.",
+      "proposedShape": { "type": "offset", "limitParam": "limit", "offsetParam": "offset", "pageSize": 5000, "tokenTo": "body_field", "offsetAdvance": "records_returned", "terminateOn": "empty_page" }
+    },
+    {
+      "where": "streams[].pull.*.paginator.terminateOn",
+      "description": "Termination is on an EMPTY page (zero records decoded), not on a page shorter than the 5000 limit. The code never compares count to the limit, so a partial page causes one extra request. `short_page` is the closest available enum value but is not literally what the code does.",
+      "proposedShape": { "terminateOn": "empty_page" }
+    },
+    {
+      "where": "streams[].pull.*.incrementalParam",
+      "description": "The incremental bound is not a request parameter but a structured filter object inside the POST body: {where: {conditions: [{name: <modified date field>, alias: 'A', value: [<iso start>, <iso end>], operator: 'BTW'|'GTE'}], expression: 'A'}}, paired with orderBy on the same field. There is no flat `param` name to report.",
+      "proposedShape": { "kind": "body_filter", "field": "ModifiedDate|LastModifiedDate", "operator": "BTW", "boundsFormat": "iso8601", "location": "body.where.conditions[0].value" }
+    },
+    {
+      "where": "streams[].pull",
+      "description": "Before any binding can pull, the connector issues a per-object metadata request GET /v1/meta/services/objects/{OBJECT_NAME}/describe?ic=false&cl=0&idd=false&ihc=false&piec=false, whose fieldName list becomes the `select` array of every subsequent query. This is a required per-stream prelude request that the PullSpec union cannot express; it is field discovery, not stream discovery, so `discovery` stays null.",
+      "proposedShape": { "prelude": { "kind": "http", "path": "/v1/meta/services/objects/{OBJECT_NAME}/describe", "httpMethod": "GET", "recordsPath": "data[0].fields", "feeds": "select" } }
+    },
+    {
+      "where": "streams[].pull.incremental",
+      "description": "The incremental leg walks time in fixed 30-day windows capped at now (end_date = min(cursor + 30 days, now)) and then advances the log cursor to max(observed modified date) + 1 second. Both the window-chunking and the +1s cursor bump are semantics the PullSpec has no field for, and the +1s bump can skip records modified within the same second.",
+      "proposedShape": { "windowing": { "kind": "fixed_span", "span": "30d", "cappedAtNow": true }, "cursorAdvance": "max(record cursor) + 1s" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "98",
+      "snippet": "url = f\"{domain.rstrip('/')}/v1/data/objects/query/{object_type.OBJECT_NAME}\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "66",
+      "snippet": "url = f\"{domain.rstrip('/')}/v1/meta/services/objects/{object_type.OBJECT_NAME}/describe\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "29, 187-191",
+      "snippet": "AUTHORIZATION_HEADER = \"AccessKey\"\nhttp.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER,)"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "526-534",
+      "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    header_value = f\"{token_type} {token}\" if token_type else token\nelse:\n    header_value = token"
+    },
+    "configFields": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "18-31",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: AccessToken = Field(discriminator=\"credentials_title\", title=\"Authentication\",)\n    domain: HttpUrl = Field(...)"
+    },
+    "execution.defaultSchedule": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "110-112, 174-176",
+      "snippet": "initial_config=common.ResourceConfig(\n    name=name, interval=timedelta(minutes=1)\n),"
+    },
+    "streamMode": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "31-42",
+      "snippet": "FULL_REFRESH_RESOURCES: list[tuple[str, type[GainsightResource]]] = [(\"da_picklist\", DaPicklist),]\nINCREMENTAL_RESOURCES = [(\"companies\", Company), (\"users\", User), ...]"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "89-97",
+      "snippet": "fetch_snapshot=functools.partial(snapshot_resource, ...),\ntombstone=GainsightResource(_meta=GainsightResource.Meta(op=\"d\")),"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "106",
+      "snippet": "key=[\"/_meta/row_id\"],"
+    },
+    "streams[1].primaryKey": {
+      "file": "source_gainsight_nxt/resources.py",
+      "lines": "164",
+      "snippet": "key=[\"/Gsid\"],"
+    },
+    "streams[1].pull.backfill.path": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "109-110",
+      "snippet": "class Company(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"Company\""
+    },
+    "streams[2].pull.backfill.path": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "113-114",
+      "snippet": "class User(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"gsuser\""
+    },
+    "streams[3].pull.backfill.path": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "121-122",
+      "snippet": "class SuccessPlan(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"cta_group\""
+    },
+    "streams[4].pull.backfill.path": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "117-118",
+      "snippet": "class CsTask(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"cs_task\""
+    },
+    "streams[5].cursorField": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "125-127",
+      "snippet": "class ActivityTimeline(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"activity_timeline\"\n    MODIFIED_DATE_FIELD: ClassVar[str] = \"LastModifiedDate\""
+    },
+    "streams[6].pull.backfill.path": {
+      "file": "source_gainsight_nxt/models.py",
+      "lines": "130-131",
+      "snippet": "class CallToAction(GainsightResourceWithModifiedDate):\n    OBJECT_NAME: ClassVar[str] = \"call_to_action\""
+    },
+    "streams[1].pull.backfill.paginator": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "18, 31-35",
+      "snippet": "MAX_PAGE_LIMIT = 5000\nquery = {\"select\": fields, \"limit\": MAX_PAGE_LIMIT, \"offset\": offset,}"
+    },
+    "streams[1].pull.backfill.recordsPath": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "102-106",
+      "snippet": "async for item in IncrementalJsonProcessor(body(), \"data.records.item\", object_type,):"
+    },
+    "streams[1].pull.incremental.params": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "37-55",
+      "snippet": "query[\"orderBy\"] = {modified_date_field: ordering}\nquery[\"where\"] = {\"conditions\": [{\"name\": modified_date_field, \"alias\": \"A\", \"value\": values, \"operator\": \"BTW\" if end_date else \"GTE\"},], \"expression\": \"A\"}"
+    },
+    "unionMisfits[1]": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "204-207",
+      "snippet": "if count == 0:\n    break\noffset += count"
+    },
+    "unionMisfits[4]": {
+      "file": "source_gainsight_nxt/api.py",
+      "lines": "186, 210",
+      "snippet": "end_date = min(log_cursor + timedelta(days=30), datetime.now(tz=log_cursor.tzinfo))\nyield max_updated_at + timedelta(seconds=1)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "streams[].name": "high",
+    "streams[].pull.*.path": "high",
+    "streams[].pull.*.recordsPath": "high",
+    "streams[].pull.*.paginator": "high",
+    "streams[].pull.*.paginator.terminateOn": "medium",
+    "streams[].cursorField": "high",
+    "streams[].primaryKey": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[].pull.*.params.select": "medium",
+    "configFields": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No static default headers are set anywhere in the connector; aiohttp/CDK defaults plus the AccessKey auth header are all that is sent.",
+    "streams[].pull.*.params.select": "The `select` array is not a literal in the source — it is whatever fieldName list the per-object /describe endpoint returns for that tenant, so the exact value cannot be recovered statically.",
+    "discovery": "The stream list is a fixed pair of literal tables in resources.py (FULL_REFRESH_RESOURCES / INCREMENTAL_RESOURCES); nothing about the customer's schema changes which streams exist. Only the per-stream FIELD list is fetched at connect time, which is not stream discovery.",
+    "execution.continuity": "mode is poll: purely stateless HTTP queries against the Gainsight API. No server-side artifact (slot, cursor handle, export job, consumer group) is created, so nothing accrues on the customer side and nothing is lost by pausing. Recorded as null deliberately, not from lack of evidence. Caveat: pausing longer than the tenant's own data-retention would be the only loss vector, and the source gives no evidence of one."
+  }
+}

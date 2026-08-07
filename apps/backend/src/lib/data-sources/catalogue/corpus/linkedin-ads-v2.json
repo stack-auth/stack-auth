@@ -1,0 +1,951 @@
+{
+  "id": "linkedin-ads-v2",
+  "estuaryDir": "source-linkedin-ads-v2",
+  "displayName": "LinkedIn Ads",
+  "description": "Imports LinkedIn Marketing (Ads) ad accounts, account users, campaign groups, campaigns, creatives, conversions, and pivoted ad-analytics reports from the LinkedIn Rest.li Marketing API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.linkedin.com/rest/" },
+        "defaultHeaders": {
+          "Linkedin-Version": "202602"
+        },
+        "apiVersionPinning": "`Linkedin-Version` request header, pinned to the constant LINKEDIN_VERSION_API = \"202602\" and sent on every request. Additionally most streams send the Rest.li protocol header `X-Restli-Protocol-Version: 2.0.0` (Accounts sends it only when account_ids are configured; Creatives instead sends `X-RestLi-Method: FINDER`)."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Access Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    },
+    {
+      "name": "OAuth2.0 (client id + secret + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://www.linkedin.com/oauth/v2/authorization",
+        "tokenUrl": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scopes": ["r_emailaddress", "r_liteprofile", "r_ads", "r_ads_reporting", "r_organization_social"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.auth_method", "displayName": "Authentication method", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting the credential mode: \"oAuth2.0\" or \"access_token\"." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "The client ID of your developer application. Required only for the oAuth2.0 mode." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "The client secret of your developer application. Required only for the oAuth2.0 mode." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "The key used to refresh the expired access token. Required only for the oAuth2.0 mode." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "A directly-supplied access token. Required only for the access_token mode." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date, YYYY-MM-DD. Data before this date is not replicated. Also seeds the first analytics date window." },
+    { "name": "account_ids", "displayName": "Account IDs", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Integer ad-account IDs to restrict the sync to. Empty means all associated accounts." },
+    { "name": "ad_analytics_reports", "displayName": "Custom Ad Analytics Reports", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "List of extra analytics streams to synthesize; each entry becomes a stream named Custom<name>." },
+    { "name": "ad_analytics_reports[].name", "displayName": "Report Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Name for the custom report; must be unique across reports or the connector raises a config error." },
+    { "name": "ad_analytics_reports[].pivot_by", "displayName": "Pivot Category", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "One of COMPANY, ACCOUNT, SHARE, CAMPAIGN, CREATIVE, CAMPAIGN_GROUP, CONVERSION, CONVERSATION_NODE, CONVERSATION_NODE_OPTION_INDEX, SERVING_LOCATION, CARD_INDEX, MEMBER_COMPANY_SIZE, MEMBER_INDUSTRY, MEMBER_SENIORITY, MEMBER_JOB_TITLE, MEMBER_JOB_FUNCTION, MEMBER_COUNTRY_V2, MEMBER_REGION_V2, MEMBER_COMPANY, PLACEMENT_NAME, IMPRESSION_DEVICE_TYPE." },
+    { "name": "ad_analytics_reports[].time_granularity", "displayName": "Time Granularity", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "One of ALL, DAILY, MONTHLY, YEARLY." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the stream this binding captures." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh or incremental." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Cursor field path for incremental bindings." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace of this resource." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Static stream list constructed in SourceLinkedinAds.streams(), unioned with user-declared custom analytics reports from config.ad_analytics_reports (each producing an AdCampaignAnalytics variant named Custom<name> with a user-chosen pivot_by and time_granularity).",
+    "querySketch": null,
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "adAccounts",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "search",
+            "pageSize": 500,
+            "search": "(id:(values:List(<url-encoded urn:li:sponsoredAccount:{id} list>)))  — only when account_ids is non-empty"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "pageToken",
+            "cursorPath": "metadata.nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pageSize",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "account_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/account"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModified",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAccountUsers",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "accounts",
+            "accounts": "urn:li:sponsoredAccount:{account_id}",
+            "count": 500
+          },
+          "pathPlaceholders": {
+            "account_id": "`id` of each record from the parent `accounts` stream (sent as a query param, not a path segment)"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "count",
+            "offsetParam": "start",
+            "pageSize": 500,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaign_groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModified",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAccounts/{account_id}/adCampaignGroups",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "search",
+            "pageSize": 500,
+            "search": "(status:(values:List(ACTIVE,ARCHIVED,CANCELED,DRAFT,PAUSED,PENDING_DELETION,REMOVED)))"
+          },
+          "pathPlaceholders": {
+            "account_id": "`id` of each record from the parent `accounts` stream"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "pageToken",
+            "cursorPath": "metadata.nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pageSize",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModified",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAccounts/{account_id}/adCampaigns",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "search",
+            "pageSize": 500,
+            "search": "(status:(values:List(ACTIVE,PAUSED,ARCHIVED,COMPLETED,CANCELED,DRAFT,PENDING_DELETION,REMOVED)))"
+          },
+          "pathPlaceholders": {
+            "account_id": "`id` of each record from the parent `accounts` stream"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "pageToken",
+            "cursorPath": "metadata.nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pageSize",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "creatives",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModifiedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAccounts/{account_id}/creatives",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "criteria",
+            "pageSize": 100
+          },
+          "pathPlaceholders": {
+            "account_id": "`id` of each record from the parent `accounts` stream"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "pageToken",
+            "cursorPath": "metadata.nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pageSize",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "conversions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModified",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "conversions",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "account",
+            "account": "urn%3Ali%3AsponsoredAccount%3A{account_id}",
+            "count": 500
+          },
+          "pathPlaceholders": {
+            "account_id": "`id` of each record from the parent `accounts` stream (sent as a query param, not a path segment)"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "count",
+            "offsetParam": "start",
+            "pageSize": 500,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+
+    {
+      "name": "ad_campaign_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:CAMPAIGN)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": {
+            "campaign_id": "`id` of each record from the parent `campaigns` stream"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_creative_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:CREATIVE)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "creatives": "List(urn%3Ali%3AsponsoredCreative%3A{creative_id})"
+          },
+          "pathPlaceholders": {
+            "creative_id": "trailing segment of the `id` URN of each record from the parent `creatives` stream"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_impression_device_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:IMPRESSION_DEVICE_TYPE)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_company_size_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_COMPANY_SIZE)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_industry_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_INDUSTRY)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_seniority_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_SENIORITY)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_job_title_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_JOB_TITLE)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_job_function_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_JOB_FUNCTION)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_country_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_COUNTRY_V2)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_region_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_REGION_V2)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_member_company_analytics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:MEMBER_COMPANY)",
+            "timeGranularity": "(value:DAILY)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_<report_name>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/string_of_pivot_values", "/end_date"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "adAnalytics",
+          "httpMethod": "GET",
+          "recordsPath": "elements",
+          "params": {
+            "q": "analytics",
+            "pivot": "(value:<config ad_analytics_reports[].pivot_by>)",
+            "timeGranularity": "(value:<config ad_analytics_reports[].time_granularity>)",
+            "dateRange": "(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))",
+            "fields": "<chunk of up to 18 metric fields + dateRange + pivotValues>",
+            "campaigns": "List(urn%3Ali%3AsponsoredCampaign%3A{campaign_id})"
+          },
+          "pathPlaceholders": { "campaign_id": "`id` of each record from the parent `campaigns` stream" },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two credential modes are offered. The 'Access Token' mode requires only a single self-serve LinkedIn access token (documented in-code as TTL ~2 months) sent as a bearer token — that is T1_SIMPLE, and it is the easiest mode offered, so authTierOverall is T1. The 'OAuth2.0' mode is standalone T3_BYO_REFRESH: the connector's own spec requires client_id, client_secret AND refresh_token from the user, meaning the user must register their own LinkedIn developer application and complete a consent flow to obtain a refresh token. Estuary's hosted control plane can mask that: __main__.py declares a flow.OAuth2Spec with provider 'linkedin' and authUrl/accessToken templates, so in Estuary's UI the platform drives the authorization_code exchange and harvests /refresh_token on the user's behalf. That is a hosted-control-plane convenience; the standalone tier for that mode is still T3.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull",
+      "description": "For every non-analytics incremental stream (account_users, campaign_groups, campaigns, creatives, conversions) there is no distinct backfill vs incremental request. The exact same request is issued every run — a full re-listing over all parent accounts — and incrementality is achieved purely client-side by discarding records whose cursor value is below the stored state. The schema's backfill/incremental split has no correlate here; I filled only `incremental` and left `backfill` null, but the honest description is 'one pull shape, client-side filtered'.",
+      "proposedShape": { "pull": { "unified": { "spec": "<PullSpec>", "filtering": "client_side_cursor_filter", "cursorField": "lastModified" } } }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "Analytics streams DO have a genuine server-side incremental parameter, but it is not expressible as {param, format}. The window is a Rest.li structured literal `dateRange=(start:(year:Y,month:M,day:D),end:(year:Y,month:M,day:D))` built from a 30-day sliding window starting at the state cursor `end_date` (WINDOW_IN_DAYS = 30). It is neither iso8601 nor unix_seconds nor date, and it carries both bounds in one param. I set incrementalParam null rather than mis-encode it.",
+      "proposedShape": { "incrementalParam": { "kind": "structured_window", "param": "dateRange", "template": "(start:(year:{y},month:{m},day:{d}),end:(year:{y},month:{m},day:{d}))", "windowDays": 30, "boundsFrom": "state cursor end_date -> min(window end, now-2h)" } }
+    },
+    {
+      "where": "streams[*].pull.incremental.params.fields",
+      "description": "Analytics streams fan a single logical row out across MULTIPLE HTTP requests: LinkedIn caps the analytics finder at 20 fields, so the connector chunks ~96 metric fields into groups of 18 (+dateRange+pivotValues) and issues one request per (account/campaign, date window, field chunk), then merges the responses in memory keyed by `{end_date}-{pivotValues}`. The PullSpec union assumes one request shape per record; there is no place to express request fan-out-and-merge.",
+      "proposedShape": { "fanout": { "axis": "fields", "chunkSize": 18, "alwaysIncluded": ["dateRange", "pivotValues"], "mergeKey": ["end_date", "pivotValues"] } }
+    },
+    {
+      "where": "streams[4].pull.incremental (creatives)",
+      "description": "The creatives stream makes an unmodelled SECOND HTTP call per record: when a creative record has no inline name, it issues GET rest/posts/{url-encoded share URN} with a hand-built Authorization: Bearer header and copies adContext.dscName into a synthetic `creative_name` field. This is a per-record enrichment lookup, not a paginated stream, and has no home in the PullSpec union.",
+      "proposedShape": { "enrichments": [{ "path": "posts/{share_urn}", "trigger": "record.content.reference present and content.textAd.headline absent", "extract": "adContext.dscName", "writeTo": "creative_name", "onError": "warn and emit record unenriched" }] }
+    },
+    {
+      "where": "streams[1].pull.incremental.paginator.terminateOn (offset paginator)",
+      "description": "The offset paginator terminates on a CONJUNCTION of two conditions, not one: (a) the returned `elements` array is shorter than the requested count AND (b) paging.total - paging.start <= count (treated as satisfied when either key is absent). terminateOn is a single enum value; I recorded 'short_page' because it is the necessary condition, but 'explicit_total' is equally load-bearing.",
+      "proposedShape": { "terminateOn": ["short_page", "explicit_total"], "combinator": "all" }
+    },
+    {
+      "where": "streams[*] analytics paginator",
+      "description": "Analytics streams do not paginate — but the over-limit case is not a silent stop either: if more than 15000 elements would be returned the connector RAISES, instructing the operator to reduce time granularity. {\"type\":\"none\"} loses the fact that overflow is a hard failure rather than truncation.",
+      "proposedShape": { "type": "none", "onOverflow": { "behavior": "raise", "limit": 15000 } }
+    },
+    {
+      "where": "transports[0].spec.defaultHeaders",
+      "description": "Headers are not uniform across streams. `Linkedin-Version: 202602` is truly global, but the Rest.li protocol header is conditional and inconsistently spelled in the source: Accounts sends `X-RestLi-Protocol-Version` only when account_ids is configured; campaign_groups/campaigns/analytics send `X-Restli-Protocol-Version` (different capitalisation) unconditionally; conversions sends it too; creatives sends `X-RestLi-Method: FINDER` instead. defaultHeaders can only hold the global one.",
+      "proposedShape": { "defaultHeaders": { "Linkedin-Version": "202602" }, "perStreamHeaders": { "accounts": "X-RestLi-Protocol-Version: 2.0.0 (conditional)", "creatives": "X-RestLi-Method: FINDER" } }
+    },
+    {
+      "where": "streams[*].pull.*.pathPlaceholders",
+      "description": "For account_users and conversions the parent-derived value is not a path segment at all — it is injected as a query parameter (`accounts=` / `account=`) carrying a URN. I used pathPlaceholders because it is the only slot for parent scoping, and said so in each description, but the name is wrong for these two.",
+      "proposedShape": { "parentScope": { "from": "accounts.id", "injectAs": "query_param", "param": "accounts", "valueTemplate": "urn:li:sponsoredAccount:{id}" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "30",
+      "snippet": "url_base = \"https://api.linkedin.com/rest/\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "22, 80",
+      "snippet": "LINKEDIN_VERSION_API = \"202602\"\n        return {\"Linkedin-Version\": LINKEDIN_VERSION_API}"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_linkedin_ads_v2/source.py",
+      "lines": "48-52",
+      "snippet": "access_token = config[\"credentials\"][\"access_token\"] if auth_method else config[\"access_token\"]\n            return TokenAuthenticator(token=access_token)"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_linkedin_ads_v2/source.py",
+      "lines": "54-59",
+      "snippet": "return Oauth2Authenticator(\n                token_refresh_endpoint=\"https://www.linkedin.com/oauth/v2/accessToken\",\n                client_id=config[\"credentials\"][\"client_id\"], ..."
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source_linkedin_ads_v2/__main__.py",
+      "lines": "16-18",
+      "snippet": "\"https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=...&scope=r_emailaddress%20r_liteprofile%20r_ads%20r_ads_reporting%20r_organization_social&state=...\""
+    },
+    "credentialModes[1].tier": {
+      "file": "source_linkedin_ads_v2/spec.json",
+      "lines": "21",
+      "snippet": "\"required\": [\"auth_method\", \"client_id\", \"client_secret\", \"refresh_token\"],"
+    },
+    "authTierRationale": {
+      "file": "source_linkedin_ads_v2/__main__.py",
+      "lines": "12-30",
+      "snippet": "oauth2=flow.OAuth2Spec(\n            provider=\"linkedin\",\n            accessTokenResponseMap={\"refresh_token\": \"/refresh_token\"},"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "71-75",
+      "snippet": "parsed_response = response.json()\n        if parsed_response.get(\"metadata\", {}).get(\"nextPageToken\"):\n            return {\"pageToken\": parsed_response[\"metadata\"][\"nextPageToken\"]}"
+    },
+    "streams[0].pull.snapshot.params": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "88, 32",
+      "snippet": "params = {\"pageSize\": self.records_limit, \"q\": \"search\"}\n    records_limit = 500"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "178",
+      "snippet": "endpoint = \"adAccounts\""
+    },
+    "streams[0].pull.snapshot.params.search": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "211",
+      "snippet": "params[\"search\"] = f\"(id:(values:List({encoded_accounts})))\""
+    },
+    "streams[1].pull.incremental.paginator": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "143, 156-169",
+      "snippet": "params = {\"count\": self.records_limit, \"q\": \"search\"}\n        ...\n        return {\"start\": paging_params.get(\"start\") + self.records_limit}"
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "282-290",
+      "snippet": "endpoint = \"adAccountUsers\"\n    search_param = \"accounts\"\n        params[\"accounts\"] = f\"urn:li:sponsoredAccount:{stream_slice.get('account_id')}\""
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "301, 310",
+      "snippet": "endpoint = \"adCampaignGroups\"\n        return f\"{self.parent_stream.endpoint}/{stream_slice.get('account_id')}/{self.endpoint}\""
+    },
+    "streams[2].pull.incremental.params.search": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "325",
+      "snippet": "params[\"search\"] = \"(status:(values:List(ACTIVE,ARCHIVED,CANCELED,DRAFT,PAUSED,PENDING_DELETION,REMOVED)))\""
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "336, 346, 361",
+      "snippet": "endpoint = \"adCampaigns\"\n        return f\"{self.parent_stream.endpoint}/{stream_slice.get('account_id')}/{self.endpoint}\"\n        params[\"search\"] = \"(status:(values:List(ACTIVE,PAUSED,ARCHIVED,COMPLETED,CANCELED,DRAFT,PENDING_DELETION,REMOVED)))\""
+    },
+    "streams[4].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "373-378, 388, 404",
+      "snippet": "endpoint = \"creatives\"\n    records_limit = 100\n        params.update({\"q\": \"criteria\"})"
+    },
+    "streams[4].cursorField": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "376",
+      "snippet": "cursor_field = \"lastModifiedAt\""
+    },
+    "streams[5].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "479-497",
+      "snippet": "endpoint = \"conversions\"\n    search_param = \"account\"\n        params[\"account\"] = f\"urn%3Ali%3AsponsoredAccount%3A{stream_slice.get('account_id')}\""
+    },
+    "streams[6].pull.incremental.path": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "129, 402-408",
+      "snippet": "endpoint = \"adAnalytics\"\n    search_param = \"campaigns\"\n    pivot_by = \"CAMPAIGN\""
+    },
+    "streams[6].pull.incremental.params": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "207, 223",
+      "snippet": "return {\"q\": \"analytics\", \"pivot\": f\"(value:{self.pivot_by})\", \"timeGranularity\": f\"(value:{self.time_granularity})\"}\n        params[self.search_param] = f\"List(urn%3Ali%3A{self.search_param_value}%3A{self.get_primary_key_from_slice(stream_slice)})\""
+    },
+    "streams[6].pull.incremental.paginator": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "239-242, 258-262",
+      "snippet": "Pagination is not supported\n        ...\n        raise Exception(f\"Limit {self.records_limit} elements exceeded. \""
+    },
+    "streams[7].pull.incremental.params.creatives": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "417-426",
+      "snippet": "search_param = \"creatives\"\n    search_param_value = \"sponsoredCreative\"\n        creative_id = stream_slice.get(self.primary_slice_key).split(\":\")[-1]"
+    },
+    "streams[6].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "discovered binding ad_campaign_analytics",
+      "snippet": "\"key\": [\"/string_of_pivot_values\", \"/end_date\"]"
+    },
+    "streams[6].cursorField": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "137-140",
+      "snippet": "def cursor_field(self) -> str:\n        return \"end_date\""
+    },
+    "streamMode": {
+      "file": "source_linkedin_ads_v2/source.py",
+      "lines": "105-115",
+      "snippet": "for ad_report in config.get(\"ad_analytics_reports\", []):\n            stream = AdCampaignAnalytics(name=f\"Custom{ad_report.get('name')}\", pivot_by=ad_report.get(\"pivot_by\"), ..."
+    },
+    "unionMisfits[1].description": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "22, 233-234",
+      "snippet": "WINDOW_IN_DAYS = 30\n            \"dateRange\": f\"(start:(year:{date_range['start.year']},month:{date_range['start.month']},day:{date_range['start.day']}),\""
+    },
+    "unionMisfits[2].description": {
+      "file": "source_linkedin_ads_v2/analytics_streams.py",
+      "lines": "134, 371-378, 386",
+      "snippet": "FIELDS_CHUNK_SIZE = 18\n        chunks = list((fields[f : f + fields_chunk_size] for f in range(0, len(fields), fields_chunk_size)))\n                merged_records[f\"{rec[self.cursor_field]}-{rec['pivotValues']}\"].update(rec)"
+    },
+    "unionMisfits[3].description": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "432-441",
+      "snippet": "url = f\"{self.url_base}posts/{quote(share_urn)}\"\n                ...\n                    dsc_name = response.json().get('adContext', {}).get('dscName', None)"
+    },
+    "unionMisfits[0].description": {
+      "file": "source_linkedin_ads_v2/streams.py",
+      "lines": "255-264",
+      "snippet": "\"\"\"For the streams that provide the cursor_field `lastModified`, we filter out the old records.\"\"\"\n        if stream_state:\n            for record in records_slice:"
+    },
+    "execution.mode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "412-420",
+      "snippet": "for message in self.delegate.read(\n            task.log, config, airbyte_catalog, airbyte_states\n        ):"
+    },
+    "configFields": {
+      "file": "source_linkedin_ads_v2/spec.json",
+      "lines": "7, 66-90",
+      "snippet": "\"required\": [\"start_date\", \"credentials\"],"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.incremental.path": "high",
+    "streams[1].pull.incremental.paginator": "high",
+    "streams[1].pull.incremental.paginator.terminateOn": "medium",
+    "streams[2].pull.incremental.path": "high",
+    "streams[3].pull.incremental.path": "high",
+    "streams[4].pull.incremental.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[6].pull.incremental.params": "high",
+    "streams[6].pull.incremental.paginator": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].writeDisposition": "low",
+    "streams[*].pull.backfill": "medium",
+    "streams[*].schedules": "high",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Nothing in the connector or in the estuary-cdk airbyte shim sets a poll interval, cron, or sleep. shim_airbyte_cdk._run drives self.delegate.read(...) once to exhaustion per task invocation; the ResourceConfig schema (confirmed in tests/snapshots/snapshots__spec__capture.stdout.json) exposes only stream / syncMode / cursorField / namespace — no interval field. Scheduling is therefore imposed by the Flow runtime outside this connector and is not recoverable from these sources.",
+    "streams[*].schedules": "Same reason as execution.defaultSchedule — there is no per-binding schedule field in ResourceConfig. Emitted as empty lists rather than invented intervals.",
+    "streams[*].writeDisposition": "Not directly stated. The shim hardcodes destination_sync_mode=\"append\" and stamps every document with meta.op=\"u\", while the discovered collections are keyed (/id, /account, or /string_of_pivot_values+/end_date), which in Flow reduces to last-write-wins upsert. I recorded \"merge\" on that reasoning but flag it low confidence: no tombstones are ever emitted and no delete detection exists, so a strict reading could also call the full_refresh `accounts` binding a snapshot without tombstone.",
+    "streams[*].pull.incremental.incrementalParam": "Deliberately null everywhere. For the six non-analytics streams there genuinely is no server-side incremental parameter — the full parent-scoped listing is re-fetched each run and old records are dropped in Python. For the analytics streams the real mechanism is the structured Rest.li `dateRange` window, which does not fit {param, format}; see unionMisfits[1] rather than a guessed value.",
+    "streams[*].pull.backfill": "Left null for every stream. The connector issues an identical request on first and subsequent runs; only the client-side state filter (non-analytics) or the starting date window (analytics) differs. Splitting one request shape across backfill and incremental would have implied two request shapes that do not exist.",
+    "configFields.end_date": "analytics_streams.py reads config.get(\"end_date\") to bound the date-slice generator, but `end_date` is NOT declared anywhere in spec.json. The spec sets additionalProperties: true so it is settable, yet it is undiscoverable from the UI. I did not list it as a configField because I cannot tell whether it is intentional dead capability or an omission from the spec.",
+    "transports[0].spec.defaultHeaders": "Only `Linkedin-Version` is unconditionally global. The Rest.li protocol-version header is stream-conditional and appears under two different spellings in the source; I kept it out of defaultHeaders and described the real distribution in apiVersionPinning and unionMisfits[6].",
+    "streams[*].pull.incremental.recordsPath": "Recorded as \"elements\" from response.json().get(\"elements\"), which is certain. Note that the connector then applies a transform_data() flattening pass over each element before emitting, so the emitted document shape is not the raw element; that transform is not modelled by this schema.",
+    "streams[*].supportedSyncModes for analytics": "Listed as [full_refresh, incremental] to match the discovered bindings, but note the analytics streams use IncrementalMixin state that advances only after a whole date slice completes across all parents — a full_refresh run would still be date-window driven from start_date. The union has no way to say that."
+  }
+}

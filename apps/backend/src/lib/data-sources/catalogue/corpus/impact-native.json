@@ -1,0 +1,871 @@
+{
+  "id": "impact-native",
+  "estuaryDir": "source-impact-native",
+  "displayName": "Impact.com",
+  "description": "Imports partnership/affiliate marketing data (campaigns, actions, invoices, contracts, promo codes, ads, reports) from an Impact.com brand account.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://api.impact.com/{api_catalog_segment}/{account_sid}",
+          "placeholders": {
+            "api_catalog_segment": "Hardcoded to the literal 'Advertisers' by the module constant API_CATALOG. The user-facing `api_catalog` enum (Brand/Agency/Partners) does NOT change this segment; it only gates whether the stream list is built at all, and only 'Brand' is implemented.",
+            "account_sid": "The Impact Account SID, taken from `credentials.username` — the same value used as the HTTP Basic username. Passed into every fetch function as `account_sid`."
+          }
+        },
+        "defaultHeaders": { "Accept": "application/json" },
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Account SID & Auth Token (HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.username",
+        "passwordField": "credentials.password"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Actions/ActionInquiries incremental only re-reads the plain Actions endpoint, which the connector's own comment says returns roughly the last 7 days; if polling pauses longer than that window, Actions changes in the gap are never re-observed by the incremental leg. Other streams re-query by timestamp and are not time-limited, except that Actions backfill windows are capped at 3 years (1095 days) in the past.",
+      "resumeWindow": "~7 days for Actions/ActionInquiries incremental; unbounded for the timestamp-filtered streams",
+      "releasedOnShutdown": null,
+      "notes": "Pure stateless HTTP polling — nothing is created or held on Impact.com's side, so nothing accrues on the customer. The only continuity risk is our own: the Actions incremental endpoint's short lookback. A 1-hour INCREMENTAL_LAG horizon is also subtracted from 'now' before advancing any incremental cursor, to tolerate Impact's eventual consistency."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.username", "displayName": "Username", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Impact Account SID; also interpolated into every request path." },
+    { "name": "credentials.password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Impact auth token." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant, always 'Username & Password'." },
+    { "name": "api_catalog", "displayName": "API Catalog (Brand, Agency, Partner)", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Enum Brand|Agency|Partners. Only 'Brand' is implemented; the other two branches produce no streams." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC ISO8601. Defaults to 30 days before now. Bounds the backfill leg." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig: name of the bound resource." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig: ISO8601 duration between updates. Connector recommends PT5M for every stream." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "Actions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreationDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Actions",
+          "httpMethod": "GET",
+          "recordsPath": "Actions",
+          "params": { "PageSize": 20000, "CampaignId": "<each Campaigns.Id>", "ActionDateStart": "<window start>", "ActionDateEnd": "<window end>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "ActionDateStart", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Actions",
+          "httpMethod": "GET",
+          "recordsPath": "Actions",
+          "params": { "PageSize": 20000, "CampaignId": "<each Campaigns.Id>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ActionInquiries",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreationDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/ActionInquiries",
+          "httpMethod": "GET",
+          "recordsPath": "ActionInquiries",
+          "params": { "PageSize": 20000, "CampaignId": "<each Campaigns.Id>", "ActionDateStart": "<window start>", "ActionDateEnd": "<window end>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "ActionDateStart", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/ActionInquiries",
+          "httpMethod": "GET",
+          "recordsPath": "ActionInquiries",
+          "params": { "PageSize": 20000, "CampaignId": "<each Campaigns.Id>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Invoices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreatedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Invoices",
+          "httpMethod": "GET",
+          "recordsPath": "Invoices",
+          "params": { "PageSize": 20000, "StartDate": "<config start_date>", "EndDate": "<backfill cutoff>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "StartDate", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Invoices",
+          "httpMethod": "GET",
+          "recordsPath": "Invoices",
+          "params": { "PageSize": 20000, "StartDate": "<log cursor>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "StartDate", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Jobs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreatedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Jobs",
+          "httpMethod": "GET",
+          "recordsPath": "Jobs",
+          "params": { "PageSize": 20000, "CreatedAfter": "<config start_date, YYYY-MM-DD>", "CreatedBefore": "<backfill cutoff, YYYY-MM-DD>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "CreatedAfter", "format": "date" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Jobs",
+          "httpMethod": "GET",
+          "recordsPath": "Jobs",
+          "params": { "PageSize": 20000, "CreatedAfter": "<log cursor, YYYY-MM-DD>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "CreatedAfter", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PromoCodes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreatedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/PromoCodes",
+          "httpMethod": "GET",
+          "recordsPath": "PromoCodes",
+          "params": { "PageSize": 20000, "StartDate": "<config start_date>", "EndDate": "<backfill cutoff>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "StartDate", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/PromoCodes",
+          "httpMethod": "GET",
+          "recordsPath": "PromoCodes",
+          "params": { "PageSize": 20000, "StartDate": "<log cursor>" },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "StartDate", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Deals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "StartDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Deals",
+          "httpMethod": "GET",
+          "recordsPath": "Deals",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Deals",
+          "httpMethod": "GET",
+          "recordsPath": "Deals",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ExceptionLists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreatedDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/ExceptionLists",
+          "httpMethod": "GET",
+          "recordsPath": "ExceptionLists",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/ExceptionLists",
+          "httpMethod": "GET",
+          "recordsPath": "ExceptionLists",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "UniqueUrls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "DateCreated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/UniqueUrls",
+          "httpMethod": "GET",
+          "recordsPath": "UniqueUrls",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/UniqueUrls",
+          "httpMethod": "GET",
+          "recordsPath": "UniqueUrls",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TrackingValueRequests",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "DatePlaced",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/TrackingValueRequests",
+          "httpMethod": "GET",
+          "recordsPath": "TrackingValueRequests",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/TrackingValueRequests",
+          "httpMethod": "GET",
+          "recordsPath": "TrackingValueRequests",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "Campaigns",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Ads",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Ads",
+          "httpMethod": "GET",
+          "recordsPath": "Ads",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Catalogs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Catalogs",
+          "httpMethod": "GET",
+          "recordsPath": "Catalogs",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Reports",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Reports",
+          "httpMethod": "GET",
+          "recordsPath": "Reports",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "PhoneNumbers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/PhoneNumbers",
+          "httpMethod": "GET",
+          "recordsPath": "PhoneNumbers",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Contracts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "DateLastUpdated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/Contracts",
+          "httpMethod": "GET",
+          "recordsPath": "Contracts",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream, re-snapshotted at the start of every sweep" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/Contracts",
+          "httpMethod": "GET",
+          "recordsPath": "Contracts",
+          "params": { "PageSize": 20000, "DateLastUpdatedAfter": "<log cursor>" },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "DateLastUpdatedAfter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Tasks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "DateCreated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Programs/{campaign_id}/Tasks",
+          "httpMethod": "GET",
+          "recordsPath": "Tasks",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream; note Tasks substitutes the 'Programs' path segment for 'Campaigns'" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Programs/{campaign_id}/Tasks",
+          "httpMethod": "GET",
+          "recordsPath": "Tasks",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Notes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "CreationDate",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/Notes",
+          "httpMethod": "GET",
+          "recordsPath": "Notes",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/Notes",
+          "httpMethod": "GET",
+          "recordsPath": "Notes",
+          "params": { "PageSize": 20000, "StartDate": "<log cursor>" },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "StartDate", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "BlockRedirectRules",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "DateCreated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/BlockRedirectRules",
+          "httpMethod": "GET",
+          "recordsPath": "BlockRedirectRules",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/BlockRedirectRules",
+          "httpMethod": "GET",
+          "recordsPath": "BlockRedirectRules",
+          "params": { "PageSize": 20000, "DateLastUpdatedAfter": "<log cursor>" },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": { "param": "DateLastUpdatedAfter", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "MediaPartnerGroups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/Advertisers/{account_sid}/Campaigns/{campaign_id}/MediaPartnerGroups",
+          "httpMethod": "GET",
+          "recordsPath": "Groups",
+          "params": { "PageSize": 20000 },
+          "pathPlaceholders": { "account_sid": "credentials.username", "campaign_id": "Id of each record from the Campaigns stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "@nextpageuri", "tokenFrom": "body", "tokenTo": "full_url", "terminateOn": "absent_token" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is HTTP Basic with the Impact Account SID as username and the account auth token as password, both self-serve from the Impact account settings. The connector explicitly sets oauth2=None in its spec, and TokenSource is constructed with oauth_spec=None, so no OAuth app registration or refresh token is ever involved. One extra wrinkle for onboarding UX: the username field is not merely a credential — it is also interpolated into every request path as the account SID, so a wrong-but-valid-looking username produces 404s rather than 401s.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "`@nextpageuri` is a ROOT-RELATIVE PATH (e.g. '/Advertisers/IRxxxx/Actions?Page=2'), not an absolute URL: the connector prepends the API host before requesting it. `next_url` as specified implies the URL is followed verbatim. It is followed verbatim only after host concatenation, and the connector then clears all query params so the embedded ones are not duplicated.",
+      "proposedShape": { "type": "next_url", "nextUrlPath": "@nextpageuri", "urlForm": "absolute|host_relative", "baseForRelative": "transport baseUrl origin", "clearsExistingParams": true }
+    },
+    {
+      "where": "streams[MediaPartnerGroups].pull.snapshot.recordsPath",
+      "description": "The records envelope key does not match the stream/URL name: the request goes to .../MediaPartnerGroups but the code reads result['Groups']. Every other stream reads result[<stream name>]. A schema that assumes recordsPath == stream name silently yields zero records here.",
+      "proposedShape": { "recordsPath": "Groups", "recordsPathDiffersFromStreamName": true }
+    },
+    {
+      "where": "streams[Actions|ActionInquiries].pull.backfill / streams[*child*].pull.backfill",
+      "description": "The backfill leg for Actions, ActionInquiries and all Campaign-child streams is NOT resumable: those fetch functions loop over every campaign (and, for Actions, every 40-day date window) inside a single invocation and never yield a page cursor. Only the plain base streams emit a resumable page token. `PullSpec` has no way to express 'this backfill is one atomic non-resumable pass'.",
+      "proposedShape": { "resumability": "page_token|atomic_pass", "fanOut": { "over": "parent stream Campaigns.Id", "windowing": "40-day ActionDate windows, capped at 1095 days of history" } }
+    },
+    {
+      "where": "transports[0].spec.baseUrl.placeholders.api_catalog_segment",
+      "description": "There is a required user-facing enum `api_catalog` (Brand/Agency/Partners) that looks like it selects the path segment but does not — the segment is the hardcoded constant 'Advertisers'. Selecting Agency or Partners hits an empty branch that never assigns the stream tuple, so the connector would raise on discover/validate rather than returning zero streams.",
+      "proposedShape": { "configFieldWithNoTransportEffect": "api_catalog", "supportedValues": ["Brand"], "declaredValues": ["Brand", "Agency", "Partners"] }
+    },
+    {
+      "where": "streams[*].pull.incremental",
+      "description": "Records are filtered client-side against a moving horizon (now - 1h) as well as the log cursor, and the incremental generator yields the new cursor as a bare datetime interleaved with documents. Neither the eventual-consistency lag nor the client-side filtering has a home in PullSpec.",
+      "proposedShape": { "clientSideCursorFilter": { "lowerBound": "log_cursor (inclusive)", "upperBound": "now - INCREMENTAL_LAG (1h)", "cursorAdvance": "max observed timestamp + 1ms" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_impact_native/api.py",
+      "lines": "16-17",
+      "snippet": "API = \"https://api.impact.com\"\nAPI_CATALOG = \"Advertisers\""
+    },
+    "transports[0].spec.baseUrl.placeholders.account_sid": {
+      "file": "source_impact_native/resources.py",
+      "lines": "52-55",
+      "snippet": "# We pass along the credentials.username value since its required by every endpoint\nall_streams = (\n    action_object(Campaigns, Actions, http, config.start_date, config.credentials.username),"
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_impact_native/api.py",
+      "lines": "48",
+      "snippet": "headers = {'Accept': 'application/json'} # required by the source, else results are XML"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_impact_native/models.py",
+      "lines": "31-32",
+      "snippet": "class EndpointConfig(BaseModel, extra=\"allow\"):\n    credentials: BasicAuth = Field(\n        title=\"API Key\"        )"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n    return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode())"
+    },
+    "credentialModes[0].appliesToTransport": {
+      "file": "source_impact_native/resources.py",
+      "lines": "48",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)"
+    },
+    "authTierOverall": {
+      "file": "source_impact_native/__init__.py",
+      "lines": "29-33",
+      "snippet": "return ConnectorSpec(\n    documentationUrl=\"https://go.estuary.dev/source-impact-native\",\n    oauth2=None,"
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_impact_native/api.py",
+      "lines": "69-73",
+      "snippet": "if result.get(\"@nextpageuri\"):\n    url = API + result[\"@nextpageuri\"]\n    parameters = None"
+    },
+    "streams[*].pull.backfill.paginator": {
+      "file": "source_impact_native/api.py",
+      "lines": "98-99, 122-123",
+      "snippet": "if page:\n    url = API + page\n...\n    yield result[\"@nextpageuri\"]"
+    },
+    "streams[*].pull.*.params.PageSize": {
+      "file": "source_impact_native/api.py",
+      "lines": "28",
+      "snippet": "PAGE_SIZE = 20000"
+    },
+    "streams[*].pull.*.recordsPath": {
+      "file": "source_impact_native/api.py",
+      "lines": "59",
+      "snippet": "for results in result[f\"{_cls.NAME}\"]:"
+    },
+    "streams[MediaPartnerGroups].pull.snapshot.recordsPath": {
+      "file": "source_impact_native/api.py",
+      "lines": "453",
+      "snippet": "for results in result[\"Groups\"]:"
+    },
+    "streams[*].pull.incremental.path": {
+      "file": "source_impact_native/api.py",
+      "lines": "46",
+      "snippet": "url = f\"{API}/{API_CATALOG}/{account_sid}/{_cls.NAME}\""
+    },
+    "streams[Contracts|Notes|BlockRedirectRules].pull.incremental.path": {
+      "file": "source_impact_native/api.py",
+      "lines": "333-335",
+      "snippet": "url = f\"{API}/{API_CATALOG}/{account_sid}/Campaigns/{campaign}/{cls.NAME}\"\nif cls.NAME == \"Tasks\":\n    url = f\"{API}/{API_CATALOG}/{account_sid}/Programs/{campaign}/{cls.NAME}\""
+    },
+    "streams[Actions].pull.backfill.params": {
+      "file": "source_impact_native/api.py",
+      "lines": "237-238",
+      "snippet": "parameters[\"ActionDateStart\"] = _cursor_dt(cls.NAME, start)\nparameters[\"ActionDateEnd\"] = _cursor_dt(cls.NAME, end)"
+    },
+    "streams[Actions].pull.incremental.params": {
+      "file": "source_impact_native/api.py",
+      "lines": "161",
+      "snippet": "parameters: dict[str, JsonValue] | None = {\"CampaignId\": campaign, \"PageSize\": PAGE_SIZE}"
+    },
+    "streams[*].pull.incremental.incrementalParam": {
+      "file": "source_impact_native/api.py",
+      "lines": "50-51",
+      "snippet": "if _cls.START_DATE_INCREMENTAL:\n    first_page_params[f\"{_cls.START_DATE_INCREMENTAL}\"] = _cursor_dt(_cls.NAME, log_cursor)"
+    },
+    "streams[*].pull.backfill.incrementalParam": {
+      "file": "source_impact_native/api.py",
+      "lines": "105-107",
+      "snippet": "if _cls.START_DATE:\n    parameters[f\"{_cls.START_DATE}\"] = _cursor_dt(cls.NAME, config_start_date)\n    parameters[f\"{_cls.END_DATE}\"] = _cursor_dt(cls.NAME, cutoff)"
+    },
+    "streams[Jobs|PhoneNumbers].pull.*.incrementalParam.format": {
+      "file": "source_impact_native/api.py",
+      "lines": "471-473",
+      "snippet": "new_logcursor = logcursor.strftime(\"%Y-%m-%dT%H:%M:%S%z\")\nif name == \"PhoneNumbers\" or name == \"Jobs\":\n    new_logcursor = logcursor.strftime(\"%Y-%m-%d\")"
+    },
+    "streams[*].schedules": {
+      "file": "source_impact_native/resources.py",
+      "lines": "117",
+      "snippet": "initial_config=ResourceConfig(name=cls.NAME, interval=timedelta(minutes=5)),"
+    },
+    "streams[Campaigns|Ads|Catalogs|Reports|PhoneNumbers].writeDisposition": {
+      "file": "source_impact_native/resources.py",
+      "lines": "180-181",
+      "snippet": "fetch_snapshot=functools.partial(fetch_snapshot, cls, account_sid, http),\ntombstone=cls(_meta=cls.Meta(op=\"d\")),"
+    },
+    "streams[Contracts].cursorField": {
+      "file": "source_impact_native/models.py",
+      "lines": "234-237",
+      "snippet": "START_DATE_INCREMENTAL: ClassVar[str] = \"DateLastUpdatedAfter\"\nREP_KEY: ClassVar[str] = \"DateLastUpdated\""
+    },
+    "streams[Actions].cursorField": {
+      "file": "source_impact_native/api.py",
+      "lines": "169",
+      "snippet": "ts = _s_to_dt(results[\"CreationDate\"])"
+    },
+    "streamMode": {
+      "file": "source_impact_native/resources.py",
+      "lines": "50-53",
+      "snippet": "if config.api_catalog == \"Brand\":\n    all_streams = (\n        action_object(Campaigns, Actions, http, config.start_date, config.credentials.username),"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "63-73",
+      "snippet": "\"start_date\": { \"description\": \"UTC date and time in the format YYYY-MM-DDTHH:MM:SSZ...\" },\n\"required\": [ \"credentials\", \"api_catalog\" ]"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_impact_native/api.py",
+      "lines": "140-141",
+      "snippet": "This method does not use the action updates endpoint. Instead, we only call for the basic Actions endpoint, which returns recent data since the last 7 days."
+    },
+    "execution.continuity.notes": {
+      "file": "source_impact_native/api.py",
+      "lines": "26, 54",
+      "snippet": "INCREMENTAL_LAG = timedelta(hours=1)\nhorizon = datetime.now(tz=UTC) - INCREMENTAL_LAG"
+    },
+    "streams[Actions].pull.backfill.pathPlaceholders": {
+      "file": "source_impact_native/api.py",
+      "lines": "211-215",
+      "snippet": "if cutoff - timedelta(days=1095) <= config_start_date <= cutoff:\n    start_date = config_start_date"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "medium",
+    "streamMode": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].pull.*.params": "high",
+    "streams[*].pull.incremental.incrementalParam": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[*].writeDisposition": "high",
+    "streams[Deals].cursorField": "medium",
+    "streams[Tasks].pull.incremental.incrementalParam": "high",
+    "streams[Actions].cursorField": "high",
+    "streams[Actions].pull.backfill.params": "high",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.apiVersionPinning": "No version appears in any URL, header, or query parameter — the host is used bare. Absence of pinning is what the code shows, but there is no positive evidence Impact.com is unversioned, so nothing is asserted.",
+    "discovery": "streamMode is static: the stream tuple is a literal list in all_resources(). There is no discovery mechanism to describe.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable — the connector creates no server-side artifacts, so there is nothing to release; the code says nothing about shutdown behaviour.",
+    "streams[Deals].pull.*.incrementalParam": "Deals declares REP_KEY='StartDate' but both START_DATE and START_DATE_INCREMENTAL are empty, so no date parameter is ever sent. Whether the Impact.com Deals endpoint supports one is outside the source.",
+    "streams[Tasks|Contracts|Notes|BlockRedirectRules].pull.backfill.incrementalParam": "The child backfill's date-parameter block is present but commented out in the source, so the backfill sends only PageSize and relies entirely on client-side timestamp comparison. The commented parameter names were deliberately not treated as active.",
+    "streams[*].pull.*.params values": "PageSize=20000 is literal; all other listed parameter values are placeholders describing what the code interpolates at runtime, not literals present in the source.",
+    "streams[PhoneNumbers].cursorField": "The model declares REP_KEY='DateCreated', but PhoneNumbers is bound via snapshot_object, whose fetch path never reads REP_KEY. Reporting a cursor would imply an incremental leg that does not exist.",
+    "streams[ActionInquiries].pull.backfill.incrementalParam (StartDate/EndDate)": "The model declares START_DATE='StartDate'/END_DATE='EndDate', but ActionInquiries is bound via action_object, which routes to fetch_backfill_actions and sends ActionDateStart/ActionDateEnd instead. The model's declared names are dead config for this stream.",
+    "transports[0].spec.baseUrl.placeholders (Agency/Partners)": "The Agency and Partners catalog branches are empty (`pass`), so no base URL, stream list, or path shape exists for them. Nothing can be said about what those catalogs would look like."
+  }
+}

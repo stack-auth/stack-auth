@@ -1,0 +1,4138 @@
+{
+  "id": "stripe-native",
+  "estuaryDir": "source-stripe-native",
+  "displayName": "Stripe",
+  "description": "Imports Stripe payments data \u2014 customers, charges, invoices, subscriptions, payouts and related objects \u2014 from the Stripe REST API, including optionally from connected accounts.",
+  "category": "payments",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.stripe.com/v1"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "`Stripe-Version` REQUEST HEADER, injected on every request by StripeHTTPMixin._request_stream. Its value is not a literal in the source: it is `advanced.api_version` when the user sets it, otherwise the account's own default, read at startup from the `stripe-version` RESPONSE header of GET /v1/account. A conditional `Stripe-Account: <acct_id>` header is also sent per request to scope it to the platform account or a connected account."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Stripe API key (secret `sk_...` or restricted `rk_...`)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "bearer",
+        "field": "credentials.access_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": {
+      "kind": "interval",
+      "seconds": 300
+    },
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Stripe API key. A key beginning with `rk_` is treated as restricted and triggers per-stream accessibility probing at discovery."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Const discriminator, always \"Private App Credentials\"."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime (YYYY-MM-DDTHH:MM:SSZ). Data created before this is not replicated. Defaults to 30 days before the present."
+    },
+    {
+      "name": "capture_connected_accounts",
+      "displayName": "Capture Connected Accounts",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "When true, every non-exempt binding fans out into one subtask per connected account id, each sending its own `Stripe-Account` header."
+    },
+    {
+      "name": "advanced.api_version",
+      "displayName": "API Version",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Stripe dated API version (e.g. \"2024-06-20\", optionally with a codename suffix). Blank means use the account default. Streams whose MINIMUM_API_VERSION exceeds the effective version are dropped."
+    },
+    {
+      "name": "advanced.incremental_window_size",
+      "displayName": "Max Incremental Window Size",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "ISO 8601 duration, default P1D, bounded to [PT1M, P30D]. Caps how far forward one incremental sweep of /v1/events may advance."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO 8601 duration between updates for this binding. The connector seeds every binding with PT5M."
+    },
+    {
+      "name": "schedule",
+      "displayName": "Schedule",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Cron expression for an automatic re-backfill of this binding. Seeded with \"0 0 * * *\" for Accounts, ExternalAccountCards, ExternalBankAccount, Persons and ValueLists; empty for every other stream."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "ApplicationFees",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/application_fees",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "application_fee.created",
+              "application_fee.refunded"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Charges",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/charges",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "charge.pending",
+              "charge.succeeded",
+              "charge.captured",
+              "charge.updated",
+              "charge.failed",
+              "charge.refunded",
+              "charge.expired"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CheckoutSessions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/checkout/sessions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "checkout.session.completed",
+              "checkout.session.expired",
+              "checkout.session.async_payment_succeeded",
+              "checkout.session.async_payment_failed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Coupons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/coupons",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "coupon.created",
+              "coupon.updated",
+              "coupon.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CreditNotes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/credit_notes",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "credit_note.created",
+              "credit_note.updated",
+              "credit_note.voided"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/customers",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.created",
+              "customer.updated",
+              "customer.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Disputes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/disputes",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "charge.dispute.created",
+              "charge.dispute.updated",
+              "charge.dispute.closed",
+              "charge.dispute.funds_reinstated",
+              "charge.dispute.funds_withdrawn"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "EarlyFraudWarning",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/radar/early_fraud_warnings",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "radar.early_fraud_warning.created",
+              "radar.early_fraud_warning.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "InvoiceItems",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/invoiceitems",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "invoiceitem.created",
+              "invoiceitem.deleted",
+              "invoiceitem.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Invoices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/invoices",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "invoice.created",
+              "invoice.updated",
+              "invoice.finalized",
+              "invoice.marked_uncollectible",
+              "invoice.voided",
+              "invoice.sent",
+              "invoice.finalization_failed",
+              "invoice.overdue",
+              "invoice.paid",
+              "invoice.deleted",
+              "invoice.payment_succeeded",
+              "invoice.payment_failed",
+              "invoice.payment_action_required",
+              "invoice.will_be_due"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PaymentIntents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/payment_intents",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "payment_intent.created",
+              "payment_intent.updated",
+              "payment_intent.canceled",
+              "payment_intent.amount_capturable_updated",
+              "payment_intent.partially_funded",
+              "payment_intent.payment_failed",
+              "payment_intent.processing",
+              "payment_intent.requires_action",
+              "payment_intent.succeeded"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Payouts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/payouts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "payout.created",
+              "payout.canceled",
+              "payout.failed",
+              "payout.paid",
+              "payout.reconciliation_completed",
+              "payout.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Prices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/prices",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "price.created",
+              "price.updated",
+              "price.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Plans",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/plans",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "plan.created",
+              "plan.updated",
+              "plan.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/products",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "product.created",
+              "product.updated",
+              "product.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PromotionCode",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/promotion_codes",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "promotion_code.created",
+              "promotion_code.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Refunds",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/refunds",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "refund.created",
+              "charge.refund.updated",
+              "refund.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Reviews",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/reviews",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "review.opened",
+              "review.closed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "SetupIntents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/setup_intents",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "setup_intent.created",
+              "setup_intent.canceled",
+              "setup_intent.succeeded",
+              "setup_intent.setup_failed",
+              "setup_intent.requires_action"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Subscriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "status": "all"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.subscription.created",
+              "customer.subscription.updated",
+              "customer.subscription.paused",
+              "customer.subscription.resumed",
+              "customer.subscription.pending_update_expired",
+              "customer.subscription.trial_will_end",
+              "customer.subscription.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "SubscriptionItems",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "status": "all"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.subscription.created",
+              "customer.subscription.updated",
+              "customer.subscription.paused",
+              "customer.subscription.resumed",
+              "customer.subscription.pending_update_expired",
+              "customer.subscription.trial_will_end",
+              "customer.subscription.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "SubscriptionSchedule",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/subscription_schedules",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "subscription_schedule.created",
+              "subscription_schedule.updated",
+              "subscription_schedule.released",
+              "subscription_schedule.aborted",
+              "subscription_schedule.canceled",
+              "subscription_schedule.completed",
+              "subscription_schedule.expiring"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TopUps",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/topups",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "topup.created",
+              "topup.canceled",
+              "topup.failed",
+              "topup.reversed",
+              "topup.succeeded"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Transfers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/transfers",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "transfer.created",
+              "transfer.updated",
+              "transfer.reversed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Authorizations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/issuing/authorizations",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "issuing_authorization.created",
+              "issuing_authorization.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CardHolders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/issuing/cardholders",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "issuing_cardholder.created",
+              "issuing_cardholder.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Transactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/issuing/transactions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "issuing_transaction.created",
+              "issuing_transaction.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "scheduled re-backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 0 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/accounts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/accounts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Files",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/files",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/files",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "FilesLink",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/file_links",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/file_links",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "BalanceTransactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/balance_transactions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/balance_transactions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ValueLists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "scheduled re-backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 0 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/radar/value_lists",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/radar/value_lists",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ApplicationFeesRefunds",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/application_fees/{parent_id}/refunds",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of an ApplicationFees record (from /v1/application_fees, or from an event payload during incremental)"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "application_fee.refunded"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "BankAccounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/customers/{parent_id}/bank_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a Customers record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.created",
+              "customer.updated",
+              "customer.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CustomerBalanceTransaction",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/customers/{parent_id}/balance_transactions",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a Customers record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.created",
+              "customer.updated",
+              "customer.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CheckoutSessionsLine",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/checkout/sessions/{parent_id}/line_items",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a CheckoutSessions record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "checkout.session.completed",
+              "checkout.session.expired",
+              "checkout.session.async_payment_succeeded",
+              "checkout.session.async_payment_failed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CreditNotesLines",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/credit_notes/{parent_id}/lines",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a CreditNotes record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "credit_note.created",
+              "credit_note.updated",
+              "credit_note.voided"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "InvoiceLineItems",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/invoices/{parent_id}/lines",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of an Invoices record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "invoice.created",
+              "invoice.updated"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "SetupAttempts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/setup_attempts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "setup_intent": "<parent SetupIntents id>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "setup_intent.succeeded",
+              "setup_intent.setup_failed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TransferReversals",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/transfers/{parent_id}/reversals",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a Transfers record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "transfer.reversed"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Cards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/customers/{parent_id}/cards",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a Customers record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.source.created",
+              "customer.source.updated",
+              "customer.source.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PaymentMethods",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/customers/{parent_id}/payment_methods",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of a Customers record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "payment_method.attached",
+              "payment_method.automatically_updated",
+              "payment_method.updated",
+              "payment_method.detached"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Persons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "scheduled re-backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 0 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/accounts/{parent_id}/persons",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of an Accounts record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "person.created",
+              "person.updated",
+              "person.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ExternalAccountCards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "scheduled re-backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 0 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/accounts/{parent_id}/external_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "object": "card"
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of an Accounts record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "account.external_account.created",
+              "account.external_account.updated",
+              "account.external_account.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ExternalBankAccount",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "scheduled re-backfill",
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 0 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/accounts/{parent_id}/external_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "object": "bank_account"
+          },
+          "pathPlaceholders": {
+            "parent_id": "id of an Accounts record"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "account.external_account.created",
+              "account.external_account.updated",
+              "account.external_account.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "UsageRecords",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/subscription_item"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/subscription_items/{subscription_item_id}/usage_record_summaries",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100
+          },
+          "pathPlaceholders": {
+            "subscription_item_id": "id from items.data[] of a Subscriptions record listed at /v1/subscriptions?status=all"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "created[lte]": "<unix seconds; min(now-60s, cursor+advanced.incremental_window_size)>",
+            "types[<n>]": [
+              "customer.subscription.created",
+              "customer.subscription.updated",
+              "customer.subscription.paused",
+              "customer.subscription.resumed",
+              "customer.subscription.pending_update_expired",
+              "customer.subscription.trial_will_end",
+              "customer.subscription.deleted"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ValueListItems",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v1/radar/value_list_items",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "value_list": "<parent ValueLists id, listed at /v1/radar/value_lists>",
+            "created[gte]": "<unix seconds; endpoint start_date>",
+            "created[lte]": "<unix seconds; binding backfill cutoff>"
+          },
+          "pathPlaceholders": {
+            "value_list": "id of a ValueLists record; sent as a query param, not a path segment"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created[gte]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v1/radar/value_list_items",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "limit": 100,
+            "value_list": "<parent ValueLists id, listed at /v1/radar/value_lists>",
+            "created[gte]": "<unix seconds; the binding's log cursor>"
+          },
+          "pathPlaceholders": {
+            "value_list": "id of a ValueLists record; sent as a query param, not a path segment"
+          },
+          "paginator": {
+            "type": "record_cursor",
+            "param": "starting_after",
+            "recordField": "id",
+            "hasMorePath": "has_more",
+            "tokenFrom": "last_record",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created[gte]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential the connector accepts is a single Stripe API key, supplied as estuary_cdk's `AccessToken` model and handed to `TokenSource(oauth_spec=None, ...)`. Because `oauth_spec` is None the CDK never performs a token exchange; it emits `Authorization: Bearer <access_token>` on every request. The user creates the key self-serve in the Stripe dashboard \u2014 no OAuth app registration and no refresh token. Restricted keys (`rk_`) are supported and merely narrow which streams get discovered.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.incremental (all event-driven child and split-child streams)",
+      "description": "A single PullSpec cannot express the two-legged incremental read used by every child stream. Leg 1 lists /v1/events filtered to the child's event types; leg 2 then re-fetches the child collection of each parent named in an event, using exactly the backfill path/params/paginator. Only leg 1 is recorded in `pull.incremental`; leg 2 is identical to `pull.backfill` and is invoked once per distinct parent id seen in the event page.",
+      "proposedShape": {
+        "pull": {
+          "incremental": {
+            "legs": [
+              {
+                "role": "changed_parent_ids",
+                "spec": "<PullSpec>"
+              },
+              {
+                "role": "child_fetch",
+                "spec": "<PullSpec>",
+                "fanOutKey": "parent id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.incrementalParam",
+      "description": "`incrementalParam` assumes a server-side LOWER bound. Stripe's /v1/events reads send only an UPPER bound, `created[lte] = min(now-60s, cursor + advanced.incremental_window_size)`, and Stripe serves results newest-first; the resume lower bound (the log cursor) is applied CLIENT-SIDE by breaking out of the page loop when an event older than the cursor is seen. Recording created[lte] as `incrementalParam` would be actively wrong, so it is null and the value is described here instead.",
+      "proposedShape": {
+        "incrementalParam": null,
+        "windowUpperBoundParam": {
+          "param": "created[lte]",
+          "format": "unix_seconds"
+        },
+        "lowerBound": "client_side_scan_until_older_than_cursor"
+      }
+    },
+    {
+      "where": "streamMode / discovery",
+      "description": "The stream list is static (a literal STREAMS table plus a REGIONAL_STREAMS table), but discovery still makes network calls: with a restricted `rk_` key each stream's list endpoint is probed and 401/403/400-\"not set up to use\" responses drop the binding; the three regional Issuing streams are probed unconditionally; UsageRecords is probed via a deliberate invalid-id path; and streams whose MINIMUM_API_VERSION exceeds the effective Stripe-Version are dropped. This is a static list intersected with a live accessibility check rather than either `static` or `discovered`.",
+      "proposedShape": {
+        "streamMode": "static",
+        "streamGating": {
+          "method": "per-stream list-endpoint probe",
+          "dropsOn": [
+            "401",
+            "403",
+            "400 account-not-enabled",
+            "minimum API version"
+          ]
+        }
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl / connected accounts",
+      "description": "With `capture_connected_accounts` enabled the connector first enumerates every connected account id by sweeping GET /v1/accounts partitioned into `created[gte]`/`created[lte]` time chunks across 10 concurrent workers, then multiplies every non-exempt binding into one subtask per account id. This request multiplier is a connector-wide fan-out with no place in the schema.",
+      "proposedShape": {
+        "tenantFanOut": {
+          "enumeration": {
+            "path": "/v1/accounts",
+            "chunkParams": [
+              "created[gte]",
+              "created[lte]"
+            ],
+            "workers": 10
+          },
+          "appliesTo": "all streams except Accounts",
+          "scopeHeader": "Stripe-Account"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_stripe_native/api.py",
+      "lines": "30-31",
+      "snippet": "API = \"https://api.stripe.com/v1\"\nMAX_PAGE_LIMIT = 100"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_stripe_native/http.py",
+      "lines": "19-24",
+      "snippet": "def _with_api_version(self, headers):\n        if self.pinned_api_version is None: return headers\n        return {**(headers or {}), \"Stripe-Version\": self.pinned_api_version}"
+    },
+    "transports[0].spec.apiVersionPinning.resolution": {
+      "file": "source_stripe_native/api.py",
+      "lines": "54-70",
+      "snippet": "headers, body = await http.request_stream(log, f\"{API}/account\")\n    api_version = headers.get(\"stripe-version\")"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_stripe_native/resources.py",
+      "lines": "189-195",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)\n    is_restricted_api_key = config.credentials.access_token.startswith(\"rk_\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36, 292-305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n        if isinstance(self.credentials, (AccessToken, ...)): return (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "configFields": {
+      "file": "source_stripe_native/models.py",
+      "lines": "38-87",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: AccessToken = Field(title=\"API Key\")\n    start_date: AwareDatetime = Field(..., default_factory=default_start_date)"
+    },
+    "execution.defaultSchedule": {
+      "file": "source_stripe_native/resources.py",
+      "lines": "560-564",
+      "snippet": "initial_config=ResourceConfigWithSchedule(\n            name=name, interval=timedelta(minutes=5),\n            schedule=DEFAULT_SCHEDULE if needs_schedule else \"\")"
+    },
+    "streams[].schedules[1]": {
+      "file": "source_stripe_native/models.py",
+      "lines": "959-965",
+      "snippet": "SCHEDULED_BACKFILL_STREAMS = [\n    \"Accounts\", \"ExternalAccountCards\", \"ExternalBankAccount\", \"Persons\", \"ValueLists\",\n]"
+    },
+    "streams[].pull.backfill.paginator": {
+      "file": "source_stripe_native/api.py",
+      "lines": "299-303",
+      "snippet": "remainder = processor.get_remainder()\n    if remainder.has_more and last_doc:\n        yield last_doc.id"
+    },
+    "streams[].pull.incremental.paginator": {
+      "file": "source_stripe_native/api.py",
+      "lines": "200-205",
+      "snippet": "remainder = processor.get_remainder()\n        if remainder.has_more is True and last_event:\n            parameters[\"starting_after\"] = last_event.id"
+    },
+    "streams[].pull.backfill.paginator.pageSize": {
+      "file": "source_stripe_native/api.py",
+      "lines": "239-241",
+      "snippet": "url = f\"{API}/{cls.SEARCH_NAME}\"\n    parameters: dict[str, str | int] = {\"limit\": MAX_PAGE_LIMIT}"
+    },
+    "streams[].pull.backfill.path": {
+      "file": "source_stripe_native/models.py",
+      "lines": "193-820",
+      "snippet": "NAME: ClassVar[str] = \"Charges\"\n    SEARCH_NAME: ClassVar[str] = \"charges\""
+    },
+    "streams[].pull.incremental.path": {
+      "file": "source_stripe_native/api.py",
+      "lines": "118-120",
+      "snippet": "url = f\"{API}/events\"\n    parameters: dict[str, str | int] = {\"limit\": MAX_PAGE_LIMIT}\n    parameters = add_event_types(parameters, cls.EVENT_TYPES)"
+    },
+    "streams[].pull.incremental.params.created[lte]": {
+      "file": "source_stripe_native/api.py",
+      "lines": "122-134",
+      "snippet": "end = min(datetime.now(tz=UTC) - LAG, log_cursor + incremental_window_size)\n    parameters[\"created[lte]\"] = int(end.timestamp())"
+    },
+    "streams[].pull.incremental.params.types": {
+      "file": "source_stripe_native/api.py",
+      "lines": "80-85",
+      "snippet": "for index, type in enumerate(event_types.keys()):\n        params.update({f\"types[{index}]\": type,})"
+    },
+    "streams[Subscriptions|SubscriptionItems].pull.backfill.params.status": {
+      "file": "source_stripe_native/api.py",
+      "lines": "253-254",
+      "snippet": "if cls.NAME == \"Subscriptions\" or cls.NAME == \"SubscriptionItems\":\n        parameters[\"status\"] = \"all\""
+    },
+    "streams[child].pull.backfill.path": {
+      "file": "source_stripe_native/api.py",
+      "lines": "711-712",
+      "snippet": "child_url = f\"{API}/{search_name}/{id}/{cls_child.SEARCH_NAME}\"\n    parameters: dict[str, JsonValue] = {\"limit\": MAX_PAGE_LIMIT}"
+    },
+    "streams[SetupAttempts|UsageRecords|ExternalAccountCards|ExternalBankAccount|ValueListItems].pull.backfill": {
+      "file": "source_stripe_native/api.py",
+      "lines": "724-738",
+      "snippet": "case \"SetupAttempts\": parameters.update({\"setup_intent\": id}); child_url = f\"{API}/{cls_child.SEARCH_NAME}\"\n        case \"UsageRecords\": child_url = f\"{API}/subscription_items/{id}/{cls_child.SEARCH_NAME}\"\n        case \"ValueListItems\": parameters.update({\"value_list\": id}); child_url = f\"{API}/{cls_child.SEARCH_NAME}\""
+    },
+    "streams[ValueListItems].pull.incremental.incrementalParam": {
+      "file": "source_stripe_native/api.py",
+      "lines": "668-670",
+      "snippet": "item_created_filter: dict[str, JsonValue] = {\n        \"created[gte]\": int(log_cursor.timestamp()),\n    }"
+    },
+    "streams[ValueListItems].pull.backfill.incrementalParam": {
+      "file": "source_stripe_native/api.py",
+      "lines": "589-592",
+      "snippet": "item_created_filter: dict[str, JsonValue] = {\n        \"created[gte]\": int(start_date.timestamp()),\n        \"created[lte]\": int(cutoff.timestamp()),\n    }"
+    },
+    "streams[noEvents].pull.incremental": {
+      "file": "source_stripe_native/api.py",
+      "lines": "840-841, 886-893",
+      "snippet": "url = f\"{API}/{cls.SEARCH_NAME}\"\n            if resource_ts >= log_cursor: ... yield doc\n            elif resource_ts < log_cursor: iterating = False"
+    },
+    "streams[UsageRecords].primaryKey": {
+      "file": "source_stripe_native/resources.py",
+      "lines": "763",
+      "snippet": "key=[\"/subscription_item\"],  # Note: This is different from other resources"
+    },
+    "streams[].primaryKey": {
+      "file": "source_stripe_native/resources.py",
+      "lines": "587-590",
+      "snippet": "name=cls.NAME,\n        model=cls,\n        key=[\"/id\"],"
+    },
+    "streamMode": {
+      "file": "source_stripe_native/models.py",
+      "lines": "828-925",
+      "snippet": "STREAMS = [\n    {\"stream\": Accounts, \"children\": [...]},\nREGIONAL_STREAMS = [Authorizations, CardHolders, Transactions,]"
+    },
+    "unionMisfits[0]": {
+      "file": "source_stripe_native/api.py",
+      "lines": "378-390",
+      "snippet": "parent_data = cls.model_validate(event.data.object)\n                child_data = _capture_substreams(cls_child, search_name, id, parent_data, account_id, http, log)"
+    },
+    "unionMisfits[3]": {
+      "file": "source_stripe_native/account_fetcher.py",
+      "lines": "213-218",
+      "snippet": "url = f\"{API}/accounts\"\n                params = {\"limit\": config.page_limit, \"created[gte]\": chunk.start, \"created[lte]\": chunk.end,}"
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[].pull.backfill.paginator": "high",
+    "streams[].pull.incremental.paginator": "high",
+    "streams[].pull.backfill.path": "high",
+    "streams[].pull.incremental.path": "high",
+    "streams[].primaryKey": "high",
+    "streams[].schedules": "high",
+    "streams[ValueListItems].pull.incremental.incrementalParam": "high",
+    "streams[ValueListItems].pull.backfill.incrementalParam": "high",
+    "streams[].pull.incremental.incrementalParam": "high",
+    "streams[].cursorField": "medium",
+    "streams[].writeDisposition": "medium",
+    "streams[child].pull.incremental": "medium",
+    "streams[Authorizations|CardHolders|Transactions]": "medium",
+    "execution.continuity": "high"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No static header value is encoded anywhere. The two headers the connector adds are both runtime-resolved: `Stripe-Version` (config override, else the account default read back from the /v1/account response header) and `Stripe-Account` (the platform account id, or a connected account id when capture_connected_accounts is on). Both are described in apiVersionPinning instead of being asserted as constants.",
+    "streams[].pull.incremental.incrementalParam (all streams except ValueListItems)": "No stream other than ValueListItems sends a server-side LOWER bound. Event-driven streams send only `created[lte]` (a ceiling) and rely on Stripe's newest-first ordering plus a client-side break once an event older than the log cursor is seen (api.py:191-193). The no-event list streams (Accounts, Files, FilesLink, BalanceTransactions, ValueLists) send NO date parameter at all \u2014 just limit + starting_after \u2014 and filter entirely client-side (api.py:840-893), so every incremental sweep re-reads pages from the newest record backwards until it crosses the cursor. Asserting an incrementalParam here would be silently wrong.",
+    "streams[].pull.snapshot": "No binding is snapshot-only. Every binding registers both a fetch_page (backfill) and a fetch_changes (incremental) function, so the backfill/incremental split always applies.",
+    "streams[].cursorField": "Recorded as `created` because that is the field every fetch function compares against the cursor, but the checkpointed cursor is not the record's own field in the event-driven case \u2014 it is the `created` of the /v1/events envelope record (+1ms), not of the emitted document. For ValueListItems and the no-event streams it genuinely is the document's `created`.",
+    "streams[].writeDisposition": "Recorded as `merge` because documents carry a meta op of c/u/d and Flow reduces on the key, but the connector never emits an explicit tombstone/delete document \u2014 deleted resources arrive as ordinary documents tagged op=\"d\" (and Customers deletes are deliberately downgraded to \"u\"). Whether the destination materialises that as a delete is outside this source.",
+    "discovery": "Left null because the stream list is a literal table in models.py, not read from the customer's schema. The live accessibility probing that gates that list is recorded in unionMisfits[2] rather than being dressed up as discovery.",
+    "streams[Authorizations|CardHolders|Transactions]": "These three REGIONAL_STREAMS are in the shipped table and get bindings when the region/account allows, but they do not appear in the committed discover snapshot (the test account cannot reach them). Their paths and event types come from models.py; the pull shape is asserted from the shared base_object builder, not observed in a snapshot.",
+    "execution.continuity": "Set to null deliberately, not skipped: this is a stateless polling HTTP connector. It creates no server-side object on Stripe \u2014 no webhook endpoint, no subscription, no cursor registered with Stripe. Pausing between ticks accrues nothing on the customer's side. The one thing WE can lose is the Events backfill page token: /v1/events has a ~30-day retention window and the code explicitly treats a 400 \"aged out of our retention policy\" on a checkpointed event id as end-of-stream (api.py:285-292), so a paused Events backfill past that window silently completes short rather than erroring. That risk is specific to the Events stream's backfill and did not fit `continuity`, which the schema scopes to log-mode connectors."
+  }
+}

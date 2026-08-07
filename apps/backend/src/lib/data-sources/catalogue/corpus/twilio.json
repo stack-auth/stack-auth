@@ -1,0 +1,2031 @@
+{
+  "id": "twilio",
+  "estuaryDir": "source-twilio",
+  "displayName": "Twilio",
+  "description": "Imports Twilio communications data — accounts, phone numbers, calls, conferences, SMS messages and media, recordings, transcriptions, Studio flows/executions, Programmable Chat and Conversations resources, Verify services, SIP trunks, usage records and monitor alerts.",
+  "category": "engineering",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Core (\"2010-04-01\") Twilio REST API: accounts, addresses, applications, available/incoming phone numbers, keys, calls, conferences + participants, outgoing caller ids, queues, recordings, transcriptions, messages + media, usage records/triggers.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.twilio.com"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/2010-04-01/` (constant TWILIO_API_URL_BASE_VERSIONED). Note the stream base is the bare host `https://api.twilio.com`; the version segment arrives either from the constant or inside the parent-supplied `subresource_uris` value."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Monitor API — the `alerts` stream only.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://monitor.twilio.com/v1/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1/`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Studio API — `flows`, `executions`, `step`.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://studio.twilio.com/v1/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1/`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Programmable Chat API — `services`, `roles`.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://chat.twilio.com/v2/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v2/`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Conversations API — `conversations`, `conversation_participants`, `conversation_messages`, `users`, `user_conversations`.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://conversations.twilio.com/v1/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1/`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "SIP Trunking API — `trunks`.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://trunking.twilio.com/v1/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1/`"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Verify v2 API — `verify_services` (also capped at PageSize=100, unlike every other stream's 1000).",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://verify.twilio.com/v2/"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v2/`"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Account SID + Auth Token (HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "account_sid",
+        "passwordField": "auth_token"
+      }
+    },
+    {
+      "name": "API Key SID + Secret (HTTP Basic, same two fields)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "account_sid",
+        "passwordField": "auth_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "account_sid",
+      "displayName": "Account ID",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Twilio account SID. When authenticating with an API Key this holds an `SK...` key SID rather than an `AC...` account SID, so the code explicitly does not treat it as an account identifier."
+    },
+    {
+      "name": "auth_token",
+      "displayName": "Auth Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Twilio Auth Token (or API Key secret)."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Replication Start Date",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime `YYYY-MM-DDTHH:mm:ssZ`. Floor for every incremental stream's date-window generator. For `messages`/`message_media` it is clamped forward to now-399 days because Twilio enforces a 400-day retention window."
+    },
+    {
+      "name": "lookback_window",
+      "displayName": "Lookback window",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "number",
+      "description": "Minutes to push the start of each incremental window back. Only consumed by IncrementalTwilioStreamWithLookbackWindow, i.e. only the `messages` stream. Default 0, max 576000."
+    },
+    {
+      "name": "sync_subaccounts",
+      "displayName": "Capture Subaccount Data",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Default true. When false the Accounts stream emits only the account that owns itself plus any account whose sid equals `account_sid`, preventing fan-out into subaccount resources that Twilio denies to API Keys (error 20003)."
+    },
+    {
+      "name": "slice_step_map",
+      "displayName": "(undocumented) Per-stream slice step, in days",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "object",
+      "description": "Read by source.py as `config.get(\"slice_step_map\", {})` and keyed by stream name; overrides each incremental stream's window size. NOT declared in spec.json, so it is not surfaced in the UI — reachable only because the spec sets `additionalProperties: true`."
+    },
+    {
+      "name": "stream",
+      "displayName": "Name of this stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Airbyte stream name; part of the binding path pointer."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "`full_refresh` or `incremental`, defaulted by the shim to `incremental` whenever the stream advertises it."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace. Always unset for Twilio — no stream sets one."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Defaulted from the stream's `default_cursor_field`."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts.json",
+          "httpMethod": "GET",
+          "recordsPath": "accounts",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "addresses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Addresses.json",
+          "httpMethod": "GET",
+          "recordsPath": "addresses",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "NOT interpolated by the connector — the whole path is the server-supplied string `subresource_uris.addresses` copied verbatim off each parent `accounts` record and appended to the bare host https://api.twilio.com. The template shown is what Twilio returns."
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "applications",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Applications.json",
+          "httpMethod": "GET",
+          "recordsPath": "applications",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.applications` from the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "available_phone_number_countries",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/country"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/AvailablePhoneNumbers.json",
+          "httpMethod": "GET",
+          "recordsPath": "countries",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.available_phone_numbers` from the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "available_phone_numbers_local",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/phone_number"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/AvailablePhoneNumbers/{CountryCode}/Local.json",
+          "httpMethod": "GET",
+          "recordsPath": "available_phone_numbers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied",
+            "CountryCode": "server-supplied — the connector reads `subresource_uris.local` off each parent `available_phone_number_countries` record; it never builds this path itself"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "available_phone_numbers_mobile",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/phone_number"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/AvailablePhoneNumbers/{CountryCode}/Mobile.json",
+          "httpMethod": "GET",
+          "recordsPath": "available_phone_numbers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied",
+            "CountryCode": "server-supplied via `subresource_uris.mobile` on the parent country record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "available_phone_numbers_toll_free",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/phone_number"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/AvailablePhoneNumbers/{CountryCode}/TollFree.json",
+          "httpMethod": "GET",
+          "recordsPath": "available_phone_numbers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied",
+            "CountryCode": "server-supplied via `subresource_uris.toll_free` on the parent country record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "incoming_phone_numbers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/IncomingPhoneNumbers.json",
+          "httpMethod": "GET",
+          "recordsPath": "incoming_phone_numbers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.incoming_phone_numbers` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "dependent_phone_numbers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Addresses/{sid}/DependentPhoneNumbers.json",
+          "httpMethod": "GET",
+          "recordsPath": "dependent_phone_numbers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "account_sid": "`account_sid` field of the parent `addresses` record",
+            "sid": "`sid` field of the parent `addresses` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "keys",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Keys.json",
+          "httpMethod": "GET",
+          "recordsPath": "keys",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.keys` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "outgoing_caller_ids",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/OutgoingCallerIds.json",
+          "httpMethod": "GET",
+          "recordsPath": "outgoing_caller_ids",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.outgoing_caller_ids` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "queues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Queues.json",
+          "httpMethod": "GET",
+          "recordsPath": "queues",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.queues` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "transcriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Transcriptions.json",
+          "httpMethod": "GET",
+          "recordsPath": "transcriptions",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.transcriptions` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "conference_participants",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/account_sid",
+        "/conference_sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Conferences/{ConferenceSid}/Participants.json",
+          "httpMethod": "GET",
+          "recordsPath": "participants",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied",
+            "ConferenceSid": "server-supplied — path is `subresource_uris.participants` off each parent `conferences` record. The parent is re-read in FULL REFRESH regardless of its own incremental support."
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "usage_triggers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Usage/Triggers.json",
+          "httpMethod": "GET",
+          "recordsPath": "usage_triggers",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "account_sid": "`sid` of the parent `accounts` record (UsageNestedStream builds this path itself, it does not use subresource_uris)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "calls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "end_time",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Calls.json",
+          "httpMethod": "GET",
+          "recordsPath": "calls",
+          "params": {
+            "PageSize": 1000,
+            "EndTime>": "<window lower bound>",
+            "EndTime<": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.calls` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "EndTime>",
+            "format": "date"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "conferences",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Conferences.json",
+          "httpMethod": "GET",
+          "recordsPath": "conferences",
+          "params": {
+            "PageSize": 1000,
+            "DateCreated>": "<window lower bound>",
+            "DateCreated<": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.conferences` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "DateCreated>",
+            "format": "date"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "recordings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Recordings.json",
+          "httpMethod": "GET",
+          "recordsPath": "recordings",
+          "params": {
+            "PageSize": 1000,
+            "DateCreated>": "<window lower bound>",
+            "DateCreated<": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.recordings` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "DateCreated>",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "messages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_sent",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json",
+          "httpMethod": "GET",
+          "recordsPath": "messages",
+          "params": {
+            "PageSize": 1000,
+            "DateSent>": "<window lower bound>",
+            "DateSent<": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied: `subresource_uris.messages` on the parent `accounts` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "DateSent>",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "message_media",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_created",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages/{MessageSid}/Media.json",
+          "httpMethod": "GET",
+          "recordsPath": "media_list",
+          "params": {
+            "PageSize": 1000,
+            "DateCreated>": "<window lower bound>",
+            "DateCreated<": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "AccountSid": "server-supplied",
+            "MessageSid": "server-supplied — path is `subresource_uris.media` off each parent `messages` record, and only for parents whose `num_media` != \"0\""
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "DateCreated>",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "usage_records",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/account_sid",
+        "/category"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "start_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Usage/Records.json",
+          "httpMethod": "GET",
+          "recordsPath": "usage_records",
+          "params": {
+            "PageSize": 1000,
+            "StartDate": "<window lower bound>",
+            "EndDate": "<window upper bound>"
+          },
+          "pathPlaceholders": {
+            "account_sid": "`sid` of the parent `accounts` record (built by UsageNestedStream, not taken from subresource_uris)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "StartDate",
+            "format": "date"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "alerts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_generated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "https://monitor.twilio.com/v1/Alerts",
+          "httpMethod": "GET",
+          "recordsPath": "alerts",
+          "params": {
+            "PageSize": 1000,
+            "StartDate=": "<window lower bound>",
+            "EndDate=": "<window upper bound>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "StartDate=",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "flows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://studio.twilio.com/v1/Flows",
+          "httpMethod": "GET",
+          "recordsPath": "flows",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "executions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://studio.twilio.com/v1/Flows/{flow_sid}/Executions",
+          "httpMethod": "GET",
+          "recordsPath": "executions",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "flow_sid": "`sid` of the parent `flows` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "step",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://studio.twilio.com/v1/Flows/{flow_sid}/Executions/{execution_sid}/Steps",
+          "httpMethod": "GET",
+          "recordsPath": "steps",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "flow_sid": "`flow_sid` carried on the parent `executions` record",
+            "execution_sid": "`sid` of the parent `executions` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "services",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://chat.twilio.com/v2/Services",
+          "httpMethod": "GET",
+          "recordsPath": "services",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://chat.twilio.com/v2/Services/{service_sid}/Roles",
+          "httpMethod": "GET",
+          "recordsPath": "roles",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "service_sid": "`sid` of the parent `services` (Programmable Chat) record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "verify_services",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://verify.twilio.com/v2/Services",
+          "httpMethod": "GET",
+          "recordsPath": "services",
+          "params": {
+            "PageSize": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "trunks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://trunking.twilio.com/v1/Trunks",
+          "httpMethod": "GET",
+          "recordsPath": "trunks",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://conversations.twilio.com/v1/Conversations",
+          "httpMethod": "GET",
+          "recordsPath": "conversations",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "conversation_participants",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://conversations.twilio.com/v1/Conversations/{conversation_sid}/Participants",
+          "httpMethod": "GET",
+          "recordsPath": "participants",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "conversation_sid": "`sid` of the parent `conversations` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "conversation_messages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://conversations.twilio.com/v1/Conversations/{conversation_sid}/Messages",
+          "httpMethod": "GET",
+          "recordsPath": "messages",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "conversation_sid": "`sid` of the parent `conversations` record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://conversations.twilio.com/v1/Users",
+          "httpMethod": "GET",
+          "recordsPath": "users",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "user_conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/account_sid"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "https://conversations.twilio.com/v1/Users/{user_sid}/Conversations",
+          "httpMethod": "GET",
+          "recordsPath": "conversations",
+          "params": {
+            "PageSize": 1000
+          },
+          "pathPlaceholders": {
+            "user_sid": "`sid` of the parent `users` (Conversations) record"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "PageToken",
+            "cursorPath": "next_page_uri",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "PageSize",
+            "pageSize": 1000
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two self-serve strings pasted from the Twilio Console — Account SID and Auth Token — are the entire credential. auth.py base64-encodes `\"{account_sid}:{auth_token}\"` and hands it to the Airbyte TokenAuthenticator with auth_method=\"Basic\", producing a plain `Authorization: Basic <b64>` header. No OAuth app registration, no refresh token, no hosted control plane involved (the Estuary shim is constructed with `oauth2=None`). The same two fields also accept an API Key SID (`SK...`) + secret, which is still one self-serve pair; the spec's `sync_subaccounts` toggle exists precisely so API-Key users can avoid the subaccount calls Twilio rejects with error 20003. Hence T1_SIMPLE.",
+  "unionMisfits": [
+    {
+      "where": "transports[]",
+      "description": "Twilio is not one host plus a sidecar; it is seven co-equal product-line subdomains (api., monitor., studio., chat., conversations., trunking., verify.) that share ONE credential and one paginator, each pinning its own API version segment. The role enum forced six of them into `sidecar`, which wrongly implies an auxiliary service like a schema registry. A `role: \"peer\"` (or a per-transport `id` that PullSpec can reference) is the right shape.",
+      "proposedShape": {
+        "role": "primary|peer|sidecar",
+        "id": "str  // stable handle, e.g. \"studio\"",
+        "spec": "…"
+      }
+    },
+    {
+      "where": "streams[].pull.<shape>.path",
+      "description": "Because the connector spans seven base URLs, a bare path string is ambiguous — the reader cannot tell which transport it hangs off. Every path here is therefore emitted as an ABSOLUTE URL. A `transport` reference on PullSpec would remove the ambiguity.",
+      "proposedShape": {
+        "kind": "http",
+        "transport": "studio",
+        "path": "Flows/{flow_sid}/Executions"
+      }
+    },
+    {
+      "where": "streams[].pull.<shape>.path (parent-scoped streams)",
+      "description": "PullSpec.path assumes the connector composes the path from a template plus placeholders. For 17 of these streams it does not: TwilioNestedStream.path() returns `stream_slice[\"subresource_uri\"]`, a fully-formed URI string that the SERVER put in the parent record's `subresource_uris` map, appended to the bare host. The templates recorded above are what Twilio in fact returns, not what the code builds — the code would follow any URI Twilio chose to emit. The distinction matters for validation and for SSRF review. A `pathFrom: {kind: \"parent_field\", field: \"subresource_uris.<key>\"}` variant is the honest shape.",
+      "proposedShape": {
+        "pathFrom": {
+          "kind": "parent_field",
+          "parentStream": "accounts",
+          "field": "subresource_uris.addresses",
+          "observedTemplate": "/2010-04-01/Accounts/{AccountSid}/Addresses.json"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.<shape>.paginator.cursorParam",
+      "description": "The connector does not send one named cursor param. `next_page_token` urlparse+parse_qsl's the ENTIRE query string of `next_page_uri` and `request_params` splats the whole dict onto the next request — in practice {PageSize, Page, PageToken}, confirmed verbatim by tests/test_streams.py. `cursorParam: \"PageToken\"` is therefore a de-facto naming of the token that actually advances the cursor, not a literal in the code. A `tokenParams: \"*\" (all query params of the next-page URL are echoed)` option would be exact.",
+      "proposedShape": {
+        "type": "cursor",
+        "tokenFrom": "url_query",
+        "tokenTo": "query_param",
+        "echoAllQueryParams": true,
+        "cursorPath": "next_page_uri",
+        "knownParams": [
+          "PageSize",
+          "Page",
+          "PageToken"
+        ]
+      }
+    },
+    {
+      "where": "streams[].pull.incremental.incrementalParam",
+      "description": "Every incremental stream sends a BOUNDED window — a lower AND an upper boundary param (e.g. `EndTime>` and `EndTime<`, `StartDate` and `EndDate`) — because the connector chops [start_date, now] into fixed-width slices (1 year default; 1 day for messages; 100 years for message_media; overridable per stream via the undocumented slice_step_map). A single `param` cannot express that; recording only the lower bound loses the upper bound entirely.",
+      "proposedShape": {
+        "lowerParam": "EndTime>",
+        "upperParam": "EndTime<",
+        "format": "date",
+        "windowing": {
+          "sliceStep": "P1Y",
+          "granularity": "PT0.000001S"
+        }
+      }
+    },
+    {
+      "where": "PullSpec.incrementalParam.format",
+      "description": "The format enum has no member for Twilio's default filter rendering `YYYY-MM-DD HH:mm:ssZ` (space-separated, not `T`). `iso8601` was recorded for alerts/recordings/messages/message_media as the nearest member and is WRONG in the separator; calls/conferences/usage_records genuinely use `YYYY-MM-DD` and are correctly `date`. A free-form `formatLiteral` alongside the enum would fix this.",
+      "proposedShape": {
+        "param": "DateSent>",
+        "format": "other",
+        "formatLiteral": "YYYY-MM-DD HH:mm:ss[Z]"
+      }
+    },
+    {
+      "where": "streams[].pull.backfill",
+      "description": "The connector draws no line between backfill and incremental: one date-window generator runs from `state[cursor] or start_date` to now on every invocation, so the first run's historical sweep and every later run's tail use the identical request shape. Filling both `backfill` and `incremental` would duplicate 7 identical specs and falsely suggest two mechanisms; `backfill` is left null and this note carries the fact.",
+      "proposedShape": {
+        "incremental": {
+          "…": "…",
+          "seedsHistoryFrom": "start_date",
+          "separateBackfillLeg": false
+        }
+      }
+    },
+    {
+      "where": "streams[] (parent re-read cost)",
+      "description": "There is no field for the fan-out cost of parent-scoped streams. TwilioNestedStream.stream_slices() instantiates and FULLY re-reads its parent stream for every child, explicitly in full_refresh mode even when the parent supports incremental. `step` is three levels deep (flows -> executions -> steps), so enabling it re-reads all flows and all executions. `message_media` re-reads all messages in its window. Chains this deep multiply request volume against Twilio's rate limiter (the connector honours Retry-After).",
+      "proposedShape": {
+        "parentStream": "executions",
+        "parentReadMode": "full_refresh_always",
+        "depth": 3
+      }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "This is an airbyte-shim connector. shim_airbyte_cdk.ResourceConfig is `extra=\"forbid\"` and deliberately omits the `interval` field that estuary_cdk's native ResourceConfig carries, and CaptureShim._run does one straight pass over `delegate.read(...)` with no sleep/interval loop. Scheduling is therefore entirely external to the connector, not merely defaulted — `null` understates that it cannot be configured at all.",
+      "proposedShape": {
+        "defaultSchedule": {
+          "kind": "external",
+          "description": "driven by the runtime's task invocation; the connector exposes no interval knob"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "26-27",
+      "snippet": "TWILIO_API_URL_BASE = \"https://api.twilio.com\"\nTWILIO_API_URL_BASE_VERSIONED = f\"{TWILIO_API_URL_BASE}/2010-04-01/\""
+    },
+    "transports[1].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "28",
+      "snippet": "TWILIO_MONITOR_URL_BASE = \"https://monitor.twilio.com/v1/\""
+    },
+    "transports[2].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "29",
+      "snippet": "TWILIO_STUDIO_API_BASE = \"https://studio.twilio.com/v1/\""
+    },
+    "transports[3].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "24",
+      "snippet": "TWILIO_CHAT_BASE = \"https://chat.twilio.com/v2/\""
+    },
+    "transports[4].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "30",
+      "snippet": "TWILIO_CONVERSATIONS_URL_BASE = \"https://conversations.twilio.com/v1/\""
+    },
+    "transports[5].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "31",
+      "snippet": "TWILIO_TRUNKING_URL_BASE = \"https://trunking.twilio.com/v1/\""
+    },
+    "transports[6].spec.baseUrl": {
+      "file": "source_twilio/streams.py",
+      "lines": "32",
+      "snippet": "TWILIO_VERIFY_BASE_V2 = \"https://verify.twilio.com/v2/\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_twilio/auth.py",
+      "lines": "12-15",
+      "snippet": "def __init__(self, auth: Tuple[str, str], auth_method: str = \"Basic\", **kwargs):\n    auth_string = f\"{auth[0]}:{auth[1]}\".encode(\"utf8\")\n    b64_encoded = base64.b64encode(auth_string).decode(\"utf8\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_twilio/source.py",
+      "lines": "83-88",
+      "snippet": "auth = HttpBasicAuthenticator(\n    (\n        config[\"account_sid\"],\n        config[\"auth_token\"],"
+    },
+    "credentialModes[1].name": {
+      "file": "source_twilio/spec.json",
+      "lines": "45",
+      "snippet": "\"description\": \"Whether to capture data belonging to subaccounts ... Disable this if you authenticate with an API Key (SID and Secret) instead of an Auth Token, since Twilio denies API Key access to subaccount resources.\""
+    },
+    "authTierOverall": {
+      "file": "source_twilio/__main__.py",
+      "lines": "10-13",
+      "snippet": "shim_airbyte_cdk.CaptureShim(\n    delegate=SourceTwilio(),\n    oauth2=None,"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_twilio/streams.py",
+      "lines": "79-83",
+      "snippet": "next_page_uri = stream_data.get(\"next_page_uri\")\nif next_page_uri:\n    next_url = urlparse(next_page_uri)"
+    },
+    "streams[0].pull.snapshot.paginator.tokenTo": {
+      "file": "source_twilio/streams.py",
+      "lines": "116-118",
+      "snippet": "params[\"PageSize\"] = self.page_size\nif next_page_token:\n    params.update(**next_page_token)"
+    },
+    "streams[0].pull.snapshot.paginator.cursorParam": {
+      "file": "tests/test_streams.py",
+      "lines": "90-92",
+      "snippet": "\"next_page_uri\": \"/2010-04-01/Accounts/ACdad/Addresses.json?PageSize=1000&Page=2&PageToken=PAAD...\"\n},\n{\"Page\": \"2\", \"PageSize\": \"1000\", \"PageToken\": \"PAAD...\"},"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "74-75, 353",
+      "snippet": "def path(self, **kwargs):\n    return f\"{self.name.title()}.json\"   # Accounts: url_base = TWILIO_API_URL_BASE_VERSIONED"
+    },
+    "streams[0].pull.snapshot.recordsPath": {
+      "file": "source_twilio/streams.py",
+      "lines": "60-61, 89",
+      "snippet": "def data_field(self):\n    return self.name\nrecords = response.json().get(self.data_field, [])"
+    },
+    "streams[0].pull.snapshot.params": {
+      "file": "source_twilio/streams.py",
+      "lines": "38, 116",
+      "snippet": "page_size = 1000\nparams[\"PageSize\"] = self.page_size"
+    },
+    "streams[1].pull.snapshot.pathPlaceholders": {
+      "file": "source_twilio/streams.py",
+      "lines": "306-307, 328-329",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return stream_slice[\"subresource_uri\"]\nreturn {\"subresource_uri\": record[\"subresource_uris\"][self.subresource_uri_key]}"
+    },
+    "streams[4].pull.snapshot.recordsPath": {
+      "file": "source_twilio/streams.py",
+      "lines": "409-412",
+      "snippet": "parent_stream = AvailablePhoneNumberCountries\ndata_field = \"available_phone_numbers\"\nsubresource_uri_key = \"local\""
+    },
+    "streams[8].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "379-380",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return f\"Accounts/{stream_slice['account_sid']}/Addresses/{stream_slice['sid']}/DependentPhoneNumbers.json\""
+    },
+    "streams[13].primaryKey": {
+      "file": "source_twilio/streams.py",
+      "lines": "475-477",
+      "snippet": "primary_key = [\"account_sid\", \"conference_sid\"]\nparent_stream = Conferences\ndata_field = \"participants\""
+    },
+    "streams[14].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "677-678, 703",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return f\"Accounts/{stream_slice['account_sid']}/Usage/{self.path_name}.json\"\npath_name = \"Triggers\""
+    },
+    "streams[15].pull.incremental.incrementalParam": {
+      "file": "source_twilio/streams.py",
+      "lines": "449-452",
+      "snippet": "lower_boundary_filter_field = \"EndTime>\"\nupper_boundary_filter_field = \"EndTime<\"\ncursor_field = \"end_time\""
+    },
+    "streams[18].pull.incremental.params": {
+      "file": "source_twilio/streams.py",
+      "lines": "607-610",
+      "snippet": "slice_step_default = pendulum.duration(days=1)\nlower_boundary_filter_field = \"DateSent>\"\nupper_boundary_filter_field = \"DateSent<\""
+    },
+    "streams[19].pull.incremental.pathPlaceholders": {
+      "file": "source_twilio/streams.py",
+      "lines": "643-645",
+      "snippet": "data_field = \"media_list\"\nsubresource_uri_key = \"media\"\nmedia_exist_validation = {\"num_media\": \"0\"}"
+    },
+    "streams[20].primaryKey": {
+      "file": "source_twilio/streams.py",
+      "lines": "688-694",
+      "snippet": "lower_boundary_filter_field = \"StartDate\"\nupper_boundary_filter_field = \"EndDate\"\nprimary_key = [[\"account_sid\"], [\"category\"]]"
+    },
+    "streams[21].pull.incremental.params": {
+      "file": "source_twilio/streams.py",
+      "lines": "709-712",
+      "snippet": "url_base = TWILIO_MONITOR_URL_BASE\nlower_boundary_filter_field = \"StartDate=\"\nupper_boundary_filter_field = \"EndDate=\""
+    },
+    "streams[23].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "500-501",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any] = None, **kwargs):\n    return f\"Flows/{ stream_slice['flow_sid'] }/Executions\""
+    },
+    "streams[24].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "517-518",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return f\"Flows/{stream_slice['flow_sid']}/Executions/{stream_slice['execution_sid']}/Steps\""
+    },
+    "streams[27].pull.snapshot.params": {
+      "file": "source_twilio/streams.py",
+      "lines": "555-558",
+      "snippet": "# Unlike other endpoints, this one won't accept requests where pageSize >100\npage_size = 100\ndata_field = \"services\""
+    },
+    "streams[31].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "750-751",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return f\"Conversations/{stream_slice['conversation_sid']}/Messages\""
+    },
+    "streams[33].pull.snapshot.path": {
+      "file": "source_twilio/streams.py",
+      "lines": "775-776",
+      "snippet": "def path(self, stream_slice: Mapping[str, Any], **kwargs):\n    return f\"Users/{stream_slice['user_sid']}/Conversations\""
+    },
+    "streamMode": {
+      "file": "source_twilio/source.py",
+      "lines": "111-146",
+      "snippet": "streams = [\n    Accounts(**full_refresh_stream_kwargs),\n    Addresses(**full_refresh_stream_kwargs),"
+    },
+    "execution.mode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "415-417",
+      "snippet": "for message in self.delegate.read(\n    task.log, config, airbyte_catalog, airbyte_states\n):"
+    },
+    "execution.defaultSchedule": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "63-65",
+      "snippet": "class ResourceConfig(common.BaseResourceConfig, extra=\"forbid\"):\n    \"\"\"ResourceConfig encodes a configured resource stream\"\"\"\n    PATH_POINTERS: ClassVar[list[str]] = [\"/namespace\", \"/stream\"]"
+    },
+    "configFields[2].description": {
+      "file": "source_twilio/source.py",
+      "lines": "51, 106-108",
+      "snippet": "RETENTION_WINDOW_LIMIT = 400\nif pendulum.now().diff(pendulum.parse(config[\"start_date\"])).days >= RETENTION_WINDOW_LIMIT:"
+    },
+    "configFields[5]": {
+      "file": "source_twilio/source.py",
+      "lines": "98",
+      "snippet": "\"slice_step_map\": config.get(\"slice_step_map\", {}),"
+    },
+    "streams[].primaryKeyKind": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "245-249",
+      "snippet": "key = [\n    \"/\" + key\n    for key in transform_airbyte_key(stream.source_defined_primary_key)"
+    },
+    "unionMisfits[7]": {
+      "file": "source_twilio/streams.py",
+      "lines": "331-336",
+      "snippet": "stream_instance = self.parent_stream_instance\nstream_slices = stream_instance.stream_slices(sync_mode=SyncMode.full_refresh, ...)"
+    }
+  },
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "medium",
+    "transports": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "medium",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "configFields[5]": "medium",
+    "streamMode": "high",
+    "streams[].name": "high",
+    "streams[].recordsPath": "high",
+    "streams[].supportedSyncModes": "high",
+    "streams[].primaryKey": "high",
+    "streams[].cursorField": "high",
+    "streams[].writeDisposition": "medium",
+    "streams[].pull.*.paginator.type": "high",
+    "streams[].pull.*.paginator.tokenFrom": "high",
+    "streams[].pull.*.paginator.tokenTo": "high",
+    "streams[].pull.*.paginator.cursorPath": "high",
+    "streams[].pull.*.paginator.terminateOn": "high",
+    "streams[].pull.*.paginator.cursorParam": "medium",
+    "streams[].pull.*.paginator.pageSize": "high",
+    "streams[].pull.*.path (explicit f-string overrides: dependent_phone_numbers, executions, step, roles, usage_records, usage_triggers, conversation_participants, conversation_messages, user_conversations, accounts, alerts, flows, services, verify_services, trunks, conversations, users)": "high",
+    "streams[].pull.*.path (subresource_uri-derived: addresses, applications, available_phone_number_countries, available_phone_numbers_*, incoming_phone_numbers, keys, calls, conferences, conference_participants, outgoing_caller_ids, recordings, transcriptions, queues, messages, message_media)": "medium",
+    "streams[].pull.incremental.incrementalParam.param": "high",
+    "streams[].pull.incremental.incrementalParam.format": "medium"
+  },
+  "abstained": {
+    "execution.defaultSchedule": "The airbyte shim's ResourceConfig forbids extra fields and omits `interval`, and CaptureShim._run performs a single pass over the delegate's read() generator with no sleep loop. Nothing in the connector or the shim names an interval, cron, or duration, so no schedule could be read out.",
+    "streams[].schedules": "Same reason: scheduling is imposed by the runtime that invokes the connector, not encoded anywhere in source-twilio or in the shim's binding config.",
+    "execution.continuity": "mode is `poll` and the connector is stateless server-side — it only issues GETs and keeps its position in Flow-held connector state. No slots, publications, consumer groups, scratch tables, or server-side cursors are created, so there is nothing to leave behind or release. One asymmetric risk is worth naming even though it is not a `continuity` artifact: Twilio enforces a 400-day retention window on Messages, and source.py clamps the messages/message_media start date to now-399d — pausing longer than that silently loses message history on OUR side with no error, because the clamp just moves the window forward.",
+    "streams[].pull.backfill": "Not abstention through ignorance: the connector genuinely has no separate backfill leg. `generate_date_ranges()` walks from `state[cursor_field] or start_date` to `now` in fixed slices on every invocation, so the historical sweep and the ongoing tail are the same requests with a different lower bound. Recorded under `incremental` only; see unionMisfits.",
+    "streams[].pull.*.paginator.cursorParam (literal)": "The code never names a pagination parameter. `next_page_token()` returns dict(parse_qsl(urlparse(next_page_uri).query)) and `request_params()` splats it wholesale, so whatever query params Twilio puts on next_page_uri get echoed. `PageToken` is recorded because the repository's own test fixture shows Twilio returning PageSize/Page/PageToken and PageToken is the member that advances the cursor — but it is inferred from a fixture, not from a literal in the connector.",
+    "streams[].pull.*.paginator (next_url vs cursor)": "Explicitly NOT `next_url`. The URL in `next_page_uri` is never followed verbatim: only its query string is parsed out and merged into the params of a request built against the stream's own url_base + path(). Classified `cursor` with tokenFrom `url_query` per rule 2.",
+    "streams[].writeDisposition": "Recorded as `merge` because every stream declares a source-defined primary key, so the shim emits a keyed collection that Flow reduces on. But the shim hardcodes Airbyte's `destination_sync_mode=\"append\"` and spec.json advertises only `[\"append\"]`, and full-refresh streams re-emit every record each pass; whether the materialization behaves as merge or append is a Flow-side decision this repo does not settle.",
+    "streams[].pull.*.path (17 parent-scoped streams under api.twilio.com)": "The connector does not build these paths. TwilioNestedStream.path() returns the server-supplied `subresource_uris.<key>` string from the parent record verbatim. The templates recorded are Twilio's documented shapes (corroborated by each class's docstring URL and by the tests/test_streams.py next_page_uri fixture `/2010-04-01/Accounts/ACdad/Addresses.json`), NOT literals present in this repository — hence confidence `medium`, not `high`.",
+    "category": "Twilio spans CPaaS messaging/voice (product), account+usage billing records (finance), and monitor alerts (engineering). `engineering` was chosen because the dominant record volume is call/message/alert telemetry, but no single category fits; `usage_records` in particular is billing data.",
+    "streams[].pull.*.params (incremental bound values)": "Rendered at request time from the sliced window, so the recorded params carry placeholder strings rather than literals. The formats are: `YYYY-MM-DD` for calls, conferences and usage_records; `YYYY-MM-DD HH:mm:ss[Z]` (pendulum format token, space-separated) for alerts, recordings, messages and message_media.",
+    "streams[21].pull.incremental.incrementalParam.param": "Recorded verbatim as `StartDate=` / `EndDate=` — the trailing `=` is present in the source and looks like a defect, since these are used as dict keys in the query params and urlencode will emit `StartDate%3D=...`. It was NOT normalized away, because silently dropping it would misreport what the connector sends. Whether Twilio's Monitor API tolerates it was not determinable from this repo."
+  }
+}

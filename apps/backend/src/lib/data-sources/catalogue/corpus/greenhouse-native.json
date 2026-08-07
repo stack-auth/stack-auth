@@ -1,0 +1,3651 @@
+{
+  "id": "greenhouse-native",
+  "estuaryDir": "source-greenhouse-native",
+  "displayName": "Greenhouse",
+  "description": "Imports applicant-tracking and recruiting data (candidates, applications, jobs, interviews, scorecards, offers, users) from the Greenhouse Harvest v3 API.",
+  "category": "hr",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://harvest.greenhouse.io/v3"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v3` baked into the constant base URL"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Client Credentials",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://auth.greenhouse.io/token",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator, constant \"Client Credentials\"."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": null
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": null
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime YYYY-MM-DDTHH:MM:SSZ; data before this is not replicated. Defaults to 30 days before the present. Must be >= 1970-01-01."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource; discovered defaults are PT5M (incremental) and PT15M (snapshot)."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "applications",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/applications",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/applications",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "application_stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/application_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/application_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "applied_candidate_tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/applied_candidate_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/applied_candidate_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "approval_flows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/approval_flows",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/approval_flows",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "approver_groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/approver_groups",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/approver_groups",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "approvers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/approvers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/approvers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "attachments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/attachments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/attachments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/candidates",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/candidates",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidate_attribute_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/candidate_attribute_types",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/candidate_attribute_types",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidate_educations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/candidate_educations",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/candidate_educations",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidate_employments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/candidate_employments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/candidate_employments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "candidate_tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/candidate_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/candidate_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "close_reasons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/close_reasons",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/close_reasons",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/custom_fields",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/custom_fields",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_field_options",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/custom_field_options",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/custom_field_options",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "demographic_answers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/demographic_answers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/demographic_answers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "demographic_question_sets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/demographic_question_sets",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/demographic_question_sets",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "departments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/departments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/departments",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "eeoc",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/eeoc",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/eeoc",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/email_templates",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/email_templates",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interviews",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/interviews",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/interviews",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interviewers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/interviewers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/interviewers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "interviewer_tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/interviewer_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/interviewer_tags",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "job_hiring_managers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/job_hiring_managers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/job_hiring_managers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "job_interview_stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/job_interview_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/job_interview_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "job_notes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/job_notes",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/job_notes",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "job_posts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/job_posts",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/job_posts",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "jobs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/jobs",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/jobs",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "offers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/offers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/offers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "offices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/offices",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/offices",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "openings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/openings",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/openings",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "prospect_pools",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/prospect_pools",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/prospect_pools",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "prospect_pool_stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/prospect_pool_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/prospect_pool_stages",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "referrers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/referrers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/referrers",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "rejection_details",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/rejection_details",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/rejection_details",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "rejection_reasons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/rejection_reasons",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/rejection_reasons",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "scorecard_questions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/scorecard_questions",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/scorecard_questions",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "scorecards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/scorecards",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/scorecards",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "sources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/sources",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/sources",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "user_emails",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/user_emails",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/user_emails",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "user_job_permissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/user_job_permissions",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/user_job_permissions",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "user_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/user_roles",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/user_roles",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (backfill + incremental)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v3/users",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gte|<start_date>|lte|<cutoff>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v3/users",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "updated_at": "gt|<log cursor>|lte|<now - 5m>",
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": {
+            "param": "updated_at",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "demographic_questions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding poll interval (full snapshot re-read)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/v3/demographic_questions",
+          "httpMethod": "GET",
+          "recordsPath": "$ (top-level JSON array; streamed item-by-item)",
+          "params": {
+            "per_page": 500
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "Link response header, rel=\"next\" URL -> \"cursor\" query parameter",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "per_page",
+            "pageSize": 500
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T2_BYO_APP",
+  "authTierRationale": "The only credential mode is an OAuth2 client_credentials grant against https://auth.greenhouse.io/token, and the endpoint config asks the user for client_id + client_secret directly (both marked secret, both required). The connector's spec output carries no `oauth2` block, so there is no hosted control-plane app performing the registration on the user's behalf: the user must create their own Greenhouse OAuth/API application and paste its client id and secret. That is T2_BYO_APP. It is not T3 because no refresh token is ever requested or stored -- client_credentials mints a fresh access token each time (Greenhouse returns `expires_at`, which the connector converts to `expires_in`). Notably this is NOT the classic Harvest HTTP-Basic 'API key as username, empty password' scheme: the CDK's BasicAuth path exists but is not used here.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.paginator",
+      "description": "The next-page token is read from the RFC-5988 `Link` response header, but not by following that URL verbatim and not by reading the header value itself as the token: the connector regex-matches the rel=\"next\" URL out of the header, URL-parses it, and pulls out only the `cursor` query parameter, which it then resends as a `cursor` query param on a request built from the connector's own base URL. That is a two-hop extraction (header -> URL -> query param) that neither `tokenFrom: header` nor `tokenFrom: url_query` describes on its own. Recorded as tokenFrom `header` because the response header is the source location; `cursorPath` spells out the second hop.",
+      "proposedShape": {
+        "tokenFrom": "header",
+        "tokenFromDetail": {
+          "headerName": "Link",
+          "headerKind": "rfc5988_link",
+          "rel": "next",
+          "extractFromUrl": {
+            "kind": "query_param",
+            "name": "cursor"
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.*.incrementalParam",
+      "description": "`updated_at` is not a plain timestamp. It is a single pipe-delimited string encoding a two-sided bounded window with explicit comparison operators, e.g. \"gt|2026-03-01T00:00:00Z|lte|2026-03-20T00:00:00Z\" (backfill uses gte for the lower bound, incremental uses gt). The schema's {param, format} pair cannot express an operator-tagged composite range in one parameter.",
+      "proposedShape": {
+        "param": "updated_at",
+        "encoding": "pipe_delimited_operator_pairs",
+        "lowerBound": {
+          "op": "gt|gte",
+          "format": "iso8601"
+        },
+        "upperBound": {
+          "op": "lte",
+          "format": "iso8601"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.backfill.paginator / params",
+      "description": "Pagination parameters are mutually exclusive with the filter parameters: page 1 sends `updated_at` + `per_page`, and every subsequent page sends ONLY `cursor` (the connector comments that Greenhouse forbids other parameters alongside `cursor`, and it literally replaces the whole params dict). The Paginator union assumes the cursor param is added to the existing query, not that it replaces it -- a naive reimplementation that merges params would be rejected or silently mis-filtered by the API.",
+      "proposedShape": {
+        "paramMode": "replace_all_on_subsequent_pages"
+      }
+    },
+    {
+      "where": "execution / streams[].schedules",
+      "description": "The 5-minute (incremental) and 15-minute (snapshot) intervals are resource-config DEFAULTS emitted at discovery time and are user-editable per binding, not connector-enforced schedules. Separately, the incremental leg carries a fixed 5-minute eventual-consistency lag: the upper bound of every sweep is now()-5m, so the effective data freshness floor is ~5 minutes regardless of the interval.",
+      "proposedShape": {
+        "scheduleSource": "discovery_default_user_overridable",
+        "freshnessFloor": {
+          "kind": "lag",
+          "seconds": 300,
+          "reason": "source API eventual consistency"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "20",
+      "snippet": "GREENHOUSE_BASE_URL = \"https://harvest.greenhouse.io/v3\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "28-33",
+      "snippet": "OAUTH2_SPEC = OAuth2TokenFlowSpec(\n    accessTokenUrlTemplate=\"https://auth.greenhouse.io/token\","
+    },
+    "credentialModes[0].tier": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "56-63",
+      "snippet": "class GreenhouseClientCredentials(\n    ClientCredentialsOAuth2Credentials.with_client_credentials_placement(\n        OAuth2ClientCredentialsPlacement.HEADERS"
+    },
+    "credentialModes[0].scheme.grant": {
+      "file": "../estuary-cdk/estuary_cdk/flow.py",
+      "lines": "211-212",
+      "snippet": "class ClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"client_credentials\""
+    },
+    "configFields": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "70-79",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: GreenhouseClientCredentials = Field(\n        title=\"Authentication\","
+    },
+    "configFields[1].secret": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "spec.configSchema.$defs.GreenhouseClientCredentials",
+      "snippet": "\"client_id\": {\"secret\": true, ...}, \"client_secret\": {\"secret\": true, ...}, \"required\": [\"client_id\", \"client_secret\"]"
+    },
+    "streams[].pull.*.paginator": {
+      "file": "source_greenhouse_native/shared.py",
+      "lines": "14-24",
+      "snippet": "link_header = headers.get(\"Link\", \"\")\n    match = re.search(r'<([^>]+)>;\\s*rel=\"next\"', link_header)\n    cursor = parse_qs(urlparse(url).query).get(\"cursor\")"
+    },
+    "streams[].pull.*.paginator.tokenTo": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "62-67",
+      "snippet": "if not next_cursor:\n            return\n        params = {\"cursor\": next_cursor}"
+    },
+    "streams[].pull.*.paginator.pageSize": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "24, 86",
+      "snippet": "MAX_LIMIT = 500\n        \"per_page\": MAX_LIMIT,"
+    },
+    "streams[].pull.*.path": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "54",
+      "snippet": "url = f\"{GREENHOUSE_BASE_URL}/{model.path}\""
+    },
+    "streams[].name": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "98-100",
+      "snippet": "class Applications(GreenhouseResource):\n    name: ClassVar[str] = \"applications\"\n    path: ClassVar[str] = \"applications\""
+    },
+    "streams[].pull.incremental.incrementalParam": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "84-87",
+      "snippet": "params = {\n        \"updated_at\": updated_at_param(gt=start, lte=end),\n        \"per_page\": MAX_LIMIT,"
+    },
+    "streams[].pull.backfill.params": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "129-136",
+      "snippet": "params[\"cursor\"] = page\n    else:\n        params[\"updated_at\"] = updated_at_param(gte=start_date, lte=cutoff)"
+    },
+    "streams[].primaryKey": {
+      "file": "source_greenhouse_native/resources.py",
+      "lines": "84-85",
+      "snippet": "name=stream.name,\n            key=[\"/id\"],"
+    },
+    "streams[].cursorField": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "92-94",
+      "snippet": "class GreenhouseResource(GreenhouseSnapshotResource):\n    created_at: AwareDatetime\n    updated_at: AwareDatetime"
+    },
+    "streams[].schedules": {
+      "file": "source_greenhouse_native/resources.py",
+      "lines": "92-94, 130-132",
+      "snippet": "initial_config=ResourceConfig(\n                name=stream.name, interval=timedelta(minutes=5)"
+    },
+    "streams[43].writeDisposition": {
+      "file": "../estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "470-481",
+      "snippet": "class SnapshotResource(Resource[...]):\n    Sets key to /_meta/row_id (required for CDK deletion inference),"
+    },
+    "streams[43].pull.snapshot": {
+      "file": "source_greenhouse_native/api.py",
+      "lines": "105-113",
+      "snippet": "async def snapshot_greenhouse_resources(...)\n    params: dict[str, str | int] = {\"per_page\": MAX_LIMIT}"
+    },
+    "streamMode": {
+      "file": "source_greenhouse_native/models.py",
+      "lines": "318-323",
+      "snippet": "SNAPSHOT_RESOURCES: list[type[GreenhouseSnapshotResource]] = [\n    DemographicQuestions,\n]\nINCREMENTAL_RESOURCES: list[type[GreenhouseResource]] = ["
+    },
+    "execution.mode": {
+      "file": "source_greenhouse_native/resources.py",
+      "lines": "66-77",
+      "snippet": "fetch_changes=functools.partial(\n                fetch_greenhouse_resources,\n            fetch_page=functools.partial("
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].scheme.scopes": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streams[].pull.*.paginator.type": "high",
+    "streams[].pull.*.paginator.tokenFrom": "high",
+    "streams[].pull.*.paginator.tokenTo": "high",
+    "streams[].pull.*.paginator.terminateOn": "high",
+    "streams[].pull.*.path": "high",
+    "streams[].name": "high",
+    "streams[].primaryKey": "high",
+    "streams[].cursorField": "high",
+    "streams[].schedules": "high",
+    "streams[].pull.*.recordsPath": "medium",
+    "streams[].writeDisposition": "medium",
+    "streamMode": "high",
+    "configFields": "high",
+    "execution.mode": "high",
+    "category": "high"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector-set default headers appear anywhere; the only header added is the CDK's Authorization: Bearer <token>. Nothing else (no Accept, no User-Agent, no On-Behalf-Of) is set in this connector's source, and the CDK's session defaults were not exhaustively enumerated.",
+    "credentialModes[0].scheme.authUrl": "The connector uses OAuth2TokenFlowSpec, which carries only accessTokenUrlTemplate -- there is no authUrlTemplate field and no browser authorize step, because client_credentials has no user-redirect leg. Left null deliberately rather than inventing a Greenhouse authorize endpoint.",
+    "credentialModes[0].scheme.scopes": "No scopes are requested anywhere: the token-exchange form is built solely from grant_type plus (empty) additionalTokenExchangeBody, and the credentials model has no scope field. Emitted as [] meaning 'none requested', not 'unknown'. Whatever Harvest permissions the token carries are configured on the Greenhouse side when the user creates the app.",
+    "execution.continuity": "Poll mode over a stateless HTTP API. No server-side artifact is created on Greenhouse's side and nothing accrues there if we stop. Pausing is bounded only by the customer's own Greenhouse data retention and by the fact that the cursor is a plain updated_at timestamp, which stays valid indefinitely -- but no code in this connector expresses a resume window, so no value is asserted.",
+    "execution.defaultSchedule": "There is no connector-wide schedule. Scheduling lives entirely on each binding's ResourceConfig.interval; per rule, the real values are on streams[].schedules.",
+    "discovery": "streamMode is static -- the 44 bindings come from the two hard-coded lists in models.py. There is no discover-time API call against the customer's Greenhouse instance.",
+    "streams[].pull.*.recordsPath": "Records are streamed with IncrementalJsonProcessor(body(), \"item\", model). The ijson prefix \"item\" means the array elements of a TOP-LEVEL JSON array, so the response body is a bare array with no envelope wrapper -- but this is inferred from the ijson prefix convention rather than from a literal path string in the connector, hence medium confidence and a descriptive rather than dotted value.",
+    "streams[0..42].writeDisposition": "The CDK Resource with key /id and both fetch_changes + fetch_page is an upsert-by-key binding, which maps to merge. No delete/tombstone emission exists on the incremental path, so deletes in Greenhouse are never propagated for these 43 streams -- inferred from CDK semantics, not stated in the connector.",
+    "streams[].pull.*.paginator.pageSize (subsequent pages)": "per_page=500 is sent only on the FIRST request; subsequent cursor requests send no per_page at all, so the page size of pages 2..n is whatever Greenhouse defaults to or carries forward in the opaque cursor. Recorded pageSize 500 describes the first page only.",
+    "transports[0].spec.apiVersionPinning (negotiability)": "The /v3 segment is hard-coded into the base URL constant; whether Greenhouse also honours a version header was not determined from the source."
+  }
+}

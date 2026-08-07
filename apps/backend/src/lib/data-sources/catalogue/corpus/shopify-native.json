@@ -1,0 +1,1885 @@
+{
+  "id": "shopify-native",
+  "estuaryDir": "source-shopify-native",
+  "displayName": "Shopify",
+  "description": "Imports Shopify store data \u2014 orders, customers, products and variants, collections, inventory, fulfillments, refunds, returns, disputes, subscription contracts and their metafields \u2014 from the Shopify GraphQL Admin API.",
+  "category": "payments",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{store}.myshopify.com/admin/api/{version}/graphql.json",
+          "placeholders": {
+            "store": "the `store` field of each entry in the `stores` endpoint-config list (the myshopify subdomain, e.g. 'mystore'); a single capture may configure several stores and therefore several base URLs at once",
+            "version": "hardcoded connector constant VERSION = \"2026-01\""
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment \u2014 /admin/api/2026-01/graphql.json, from the connector constant VERSION in graphql/common.py"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (custom app admin access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "X-Shopify-Access-Token",
+        "field": "stores[].credentials.access_token",
+        "prefix": null
+      }
+    },
+    {
+      "name": "Client Credentials (Shopify Dev Dashboard custom app, client_credentials grant)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://{store}.myshopify.com/admin/oauth/access_token",
+        "scopes": [
+          "read_locales",
+          "read_products",
+          "read_orders",
+          "read_locations",
+          "read_inventory",
+          "read_customers",
+          "read_own_subscription_contracts",
+          "read_users",
+          "read_returns",
+          "read_shopify_payments_disputes",
+          "read_shopify_payments_dispute_evidences",
+          "read_assigned_fulfillment_orders",
+          "read_merchant_managed_fulfillment_orders",
+          "read_third_party_fulfillment_orders",
+          "read_marketplace_fulfillment_orders"
+        ],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "Shopify BulkOperation jobs (gid://shopify/BulkOperation/<n>) created per bulk-query stream slice, and the JSONL result files Shopify stores for them"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "A completed bulk job's result URL is a short-lived signed link and the job itself can reach EXPIRED status, so a slice whose result is not downloaded promptly must be re-run. Nothing is permanently lost \u2014 the window is simply re-queried from the stored cursor.",
+      "resumeWindow": "Indefinite for correctness: state is a datetime cursor per stream per store, and the next run resumes from it by re-querying updated_at windows. Long pauses only mean more windows to walk (window_size defaults to 30 days).",
+      "releasedOnShutdown": false,
+      "notes": "No server-side subscription, slot, or consumer group exists on the customer side \u2014 nothing accrues on their infra while we are stopped. The only server-side artifacts are Shopify's own bulk-operation jobs, which are NOT cancelled on shutdown; instead, on the next Open the connector queries bulkOperations(query: \"status:RUNNING type:QUERY\") and cancels whatever it finds, because Shopify caps a shop+app at 5 concurrent bulk query jobs. A crashed run therefore leaves running jobs occupying that cap until the next start; jobs left by a *different* app cannot be cancelled and hard-block submission."
+    }
+  },
+  "configFields": [
+    {
+      "name": "stores",
+      "displayName": "Shopify Stores",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "array",
+      "description": "One or more Shopify stores to capture. Each store requires its own credentials. Minimum length 1."
+    },
+    {
+      "name": "stores[].store",
+      "displayName": "Store Name",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Shopify store name \u2014 the prefix of the admin URL, e.g. 'mystore' for mystore.myshopify.com. Must be unique across the list."
+    },
+    {
+      "name": "stores[].credentials.credentials_title",
+      "displayName": "Authentication",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator selecting the credential variant: \"Private App Credentials\" or \"Client Credentials\"."
+    },
+    {
+      "name": "stores[].credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Admin API access token for the store (Private App Credentials variant)."
+    },
+    {
+      "name": "stores[].credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Custom-app client id, exchanged for a ~24h access token via the client_credentials grant (Client Credentials variant)."
+    },
+    {
+      "name": "stores[].credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Custom-app client secret (Client Credentials variant)."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime YYYY-MM-DDTHH:MM:SSZ. Data generated before this is not replicated. Defaults to 30 days before the present."
+    },
+    {
+      "name": "advanced.window_size",
+      "displayName": "Window Size",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "ISO 8601 duration bounding each incremental slice of the bulk-query streams (e.g. P30D, PT6H). Default P30D, minimum 1 minute."
+    },
+    {
+      "name": "advanced.should_use_composite_key",
+      "displayName": "Use Composite Key",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Whether collection keys include the store identifier (/_meta/store). Default true; forced false when migrating a legacy single-store config."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this binding/stream."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO 8601 interval between updates for this binding. Connector default PT5M for incremental streams, PT15M for the staff_members snapshot."
+    },
+    {
+      "name": "schedule",
+      "displayName": "Schedule",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Cron expression that automatically re-backfills this binding. Connector default is empty except disputes, which ships \"55 23 * * *\"."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": {
+    "method": "Fixed shipped list, then filtered per store at connect time by a GraphQL `{ currentAppInstallation { accessScopes { handle } } }` query and, for custom-app tokens, a `{ shop { plan { displayName partnerDevelopment shopifyPlus } } }` query.",
+    "querySketch": "currentAppInstallation.accessScopes.handle -> set of granted scope handles; shop.plan -> PII gating (Basic/Starter plans cannot read customers, orders, fulfillment_orders) and Plus/Advanced gating. A stream is offered only if at least one of its QUALIFYING_SCOPES is granted on at least one configured store.",
+    "excludes": [
+      "streams whose QUALIFYING_SCOPES are disjoint from the granted scopes",
+      "customers, orders, fulfillment_orders when a custom-app token is used on a Basic or Starter plan",
+      "staff_members unless the shop is Shopify Plus, Advanced, or a partner development store"
+    ],
+    "allowlist": "The 27 INCREMENTAL_RESOURCES plus the single FULL_REFRESH_RESOURCES entry (staff_members) shipped in resources.py \u2014 discovery only ever narrows this list."
+  },
+  "streams": [
+    {
+      "name": "abandoned_checkouts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ abandonedCheckouts(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "customer_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ customers(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ products(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "product_media",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ products(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "product_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ products(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "product_variants",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ products(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "product_variant_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ products(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "fulfillment_orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_agreements",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_returns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "inventory_levels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ inventoryItems(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_collections",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ collections(query: \"updated_at:>='<start>' AND updated_at:<='<end>' AND collection_type:custom\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "smart_collections",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ collections(query: \"updated_at:>='<start>' AND updated_at:<='<end>' AND collection_type:smart\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_collection_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ collections(query: \"updated_at:>='<start>' AND updated_at:<='<end>' AND collection_type:custom\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "smart_collection_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ collections(query: \"updated_at:>='<start>' AND updated_at:<='<end>' AND collection_type:smart\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "location_metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ locations(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "subscription_contracts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a bulk-job submit mutation: `mutation { bulkOperationRunQuery(query: \"\"\"{ subscriptionContracts(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } } }\"\"\", groupObjects: true) { bulkOperation { id status url errorCode } userErrors { field message code } } }`. The returned BulkOperation gid is then polled with `{ node(id: \"<gid>\") { ... on BulkOperation { status url errorCode } } }` until status == COMPLETED, and the JSONL file at the returned `url` is downloaded and streamed line by line. Each invocation covers one [log_cursor, log_cursor+window_size] slice (window_size default P30D); the cursor advances to the window end.",
+          "paginator": {
+            "type": "none"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ customers(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on a datetime page token (the last-seen cursor value re-serialised as the new `start`), not on the Relay cursor; the Relay `after` cursor only paginates within one invocation.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ customers(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_refunds",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 100, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on a datetime page token (the last-seen cursor value re-serialised as the new `start`), not on the Relay cursor; the Relay `after` cursor only paginates within one invocation.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 100
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 100, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 100
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "fulfillments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 100, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on a datetime page token (the last-seen cursor value re-serialised as the new `start`), not on the Relay cursor; the Relay `after` cursor only paginates within one invocation.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 100
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 100, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 100
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_transactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on a datetime page token (the last-seen cursor value re-serialised as the new `start`), not on the Relay cursor; the Relay `after` cursor only paginates within one invocation.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "order_risks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on a datetime page token (the last-seen cursor value re-serialised as the new `start`), not on the Relay cursor; the Relay `after` cursor only paginates within one invocation.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ orders(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" sortKey: UPDATED_AT, first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "locations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ locations(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on the Relay `endCursor` itself (one page per invocation).",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ locations(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "inventory_items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ inventoryItems(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on the Relay `endCursor` itself (one page per invocation).",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ inventoryItems(query: \"updated_at:>='<start>' AND updated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "disputes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "initiatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep of changed rows",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "nightly re-backfill of the whole binding (disputes filter on initiatedAt, so updates to already-captured disputes are only picked up by re-reading from scratch)",
+          "schedule": {
+            "kind": "cron",
+            "expr": "55 23 * * *"
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ disputes(query: \"initiated_at:>='<start>' AND initiated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Historical leg: start = start_date (or the resumed page token), end = the binding cutoff. Backfill resumes across invocations on the Relay `endCursor` itself (one page per invocation).",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with a plain (non-bulk) Relay connection query: `{ disputes(query: \"initiated_at:>='<start>' AND initiated_at:<='<end>'\" first: 250, after: \"<cursor>\") { edges { node { id legacyResourceId createdAt updatedAt <resource fields> } } pageInfo { hasNextPage endCursor } } }` Ongoing leg: start = the stored log cursor, end = now.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "staff_members",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/store",
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full re-snapshot",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST /admin/api/2026-01/graphql.json with an unfiltered Relay connection query: `{ staffMembers(first: 250, after: \"<cursor>\") { edges { node { id active accountType email firstName lastName isShopOwner ... } } pageInfo { hasNextPage endCursor } } }`. StaffMember has no updatedAt and staffMembers cannot filter or sort by date, so the full set is re-read each snapshot.",
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "cursorPath": "data.<queryRoot>.pageInfo.endCursor",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "first",
+            "pageSize": 250
+          }
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The easiest mode is Private App Credentials: the merchant creates a custom app in their own Shopify admin, grants the listed read_* scopes, and pastes the single Admin API access token (shpat_*) into stores[].credentials.access_token \u2014 one self-serve secret, no app registration on our side and no refresh token. The second mode (Client Credentials) is T2_BYO_APP: the user must register their own app in the Shopify Dev Dashboard and supply client_id + client_secret, which the CDK exchanges for a ~24h token at https://{store}.myshopify.com/admin/oauth/access_token and refreshes at 75% of lifetime. There is NO hosted-control-plane OAuth: ConnectorSpec is emitted with oauth2=None and a code comment states the authorization-code OAUTH2_SPEC was deliberately removed pending app approval and UI support for credentials inside array items. So no T3_BYO_REFRESH mode exists either.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.* (all 19 bulk-query streams)",
+      "description": "The dominant pull mechanism is a Shopify bulk operation: a GraphQL mutation SUBMITS a job, a second GraphQL query POLLS `node(id:)` until COMPLETED (backing off 1s\u21922s, warning past 6h), and the payload is then fetched by an unauthenticated-style GET of a signed JSONL result URL returned in the job details \u2014 three different requests against two different hosts, with a job lifecycle (CREATED/RUNNING/COMPLETED/FAILED/EXPIRED/CANCELED), a per-shop concurrency cap of 5, and cancel-on-start reconciliation. No PullSpec member expresses submit\u2192poll\u2192download. It has been forced into kind: \"query\" with the whole lifecycle described in querySketch and paginator \"none\", which loses the fact that a failed poll or an expired URL \u2014 not a paginator bug \u2014 is how this stream silently stops producing data.",
+      "proposedShape": {
+        "kind": "bulk_job",
+        "submit": {
+          "transport": "http",
+          "path": "/admin/api/{version}/graphql.json",
+          "httpMethod": "POST",
+          "requestSketch": "mutation bulkOperationRunQuery(query: <inner query>, groupObjects: true)",
+          "jobIdPath": "data.bulkOperationRunQuery.bulkOperation.id"
+        },
+        "poll": {
+          "path": "/admin/api/{version}/graphql.json",
+          "httpMethod": "POST",
+          "requestSketch": "query { node(id: <jobId>) { ... on BulkOperation { status url errorCode } } }",
+          "statusPath": "data.node.status",
+          "terminalStatuses": {
+            "success": [
+              "COMPLETED"
+            ],
+            "failure": [
+              "FAILED",
+              "CANCELED",
+              "CANCELING",
+              "EXPIRED"
+            ]
+          },
+          "backoff": "1s doubling to a 2s ceiling, no overall timeout; warns after 6h"
+        },
+        "fetch": {
+          "kind": "objects",
+          "urlFrom": "data.node.url",
+          "format": "jsonl",
+          "recordAssembly": "parent/child flattening on the `__parentId` field \u2014 child lines (metafields, scheduled changes, \u2026) are appended to the preceding parent line"
+        },
+        "cleanup": {
+          "cancelPath": "mutation bulkOperationCancel(id:)",
+          "concurrencyLimit": 5,
+          "reconcileOnStart": "bulkOperations(first: 10, query: \"status:RUNNING type:QUERY\")"
+        }
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl + credentialModes",
+      "description": "One capture is multi-tenant: `stores` is a LIST, each entry carrying its own store subdomain AND its own credentials object, and every binding fans out into one subtask per store with its own HTTP session, rate limiter, TokenSource and bulk-job manager. The schema models a single baseUrl and a flat, connector-level set of credential alternatives, so it cannot say 'N base URLs, each paired with one of these credential modes'. Credential mode may even differ per store (one access token, one client-credentials pair).",
+      "proposedShape": {
+        "tenancy": {
+          "kind": "multi_tenant",
+          "tenantListField": "stores",
+          "tenantKeyField": "store",
+          "perTenant": {
+            "baseUrl": {
+              "kind": "template",
+              "template": "https://{store}.myshopify.com/admin/api/{version}/graphql.json"
+            },
+            "credentialsField": "credentials",
+            "credentialModes": [
+              "Private App Credentials",
+              "Client Credentials"
+            ]
+          },
+          "documentKeyDiscriminator": "/_meta/store, prepended to every collection key when advanced.should_use_composite_key is true"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.backfill vs streams[].pull.incremental (bulk streams)",
+      "description": "Bulk-query streams have NO backfill leg at all \u2014 resources.py sets use_backfill = not SHOULD_USE_BULK_QUERIES, so their ResourceState carries only `inc`. The historical sweep and the ongoing leg are literally the same call, which walks fixed advanced.window_size windows forward from start_date. Reporting backfill: null is correct but reads as 'no historical data', which is wrong.",
+      "proposedShape": {
+        "pull": {
+          "unified": "<PullSpec>",
+          "unifiedSemantics": "windowed forward walk from start_date; the same spec serves history and steady state",
+          "windowField": "advanced.window_size"
+        }
+      }
+    },
+    {
+      "where": "streams[].schedules[].role (disputes)",
+      "description": "The cron on a binding does not drive a fetch \u2014 it re-initialises the binding (ResourceConfigWithSchedule.schedule: 'Schedule to automatically rebackfill this binding'). disputes ships \"55 23 * * *\" because the disputes connection can only be filtered on initiatedAt, so updates to already-captured disputes are invisible to the incremental leg and are only recovered by re-reading everything nightly. The schema's Schedule union has no way to mark a schedule as 'reset state and re-read' rather than 'poll now', which is a materially different cost and correctness story.",
+      "proposedShape": {
+        "schedules": [
+          {
+            "role": "re-backfill",
+            "effect": "reset_binding_state",
+            "schedule": {
+              "kind": "cron",
+              "expr": "55 23 * * *"
+            },
+            "reason": "cursor field cannot observe updates"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[].pull.backfill.paginator (non-bulk sorted streams)",
+      "description": "Two pagination levels are collapsed into one. Inside a single fetch_page invocation the connector follows the Relay pageInfo.endCursor; but the token it hands back to the runtime is a DATETIME string (the last-seen cursor value), and the next invocation restarts Relay paging from scratch with that datetime as the new lower bound after ~5 minutes of wall clock. Reporting only the cursor paginator hides that resumption is time-based and therefore re-reads the tail of the previous page. The unsorted variant (disputes, locations, inventory_items) is different again \u2014 it returns the Relay endCursor itself as the page token, one page per invocation.",
+      "proposedShape": {
+        "paginator": {
+          "inner": {
+            "type": "cursor",
+            "cursorParam": "after",
+            "tokenFrom": "body",
+            "terminateOn": "envelope_flag"
+          },
+          "outer": {
+            "type": "resume_token",
+            "tokenKind": "iso8601_datetime",
+            "emittedEvery": "1000 documents, or after 5 minutes of runtime"
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[] (static vs discovered) and streams[].pull.<spec>.querySketch",
+      "description": "The stream list is static, but the SET a given capture sees is narrowed at connect time by granted scopes and shop plan \u2014 and, one level deeper, the FIELDS inside each query are spliced in or out per store by CONDITIONAL_FIELDS predicates (e.g. disputes' whole disputeEvidence block requires read_shopify_payments_dispute_evidences, a scope distinct from the one gating the stream). The schema can express a narrowed stream list only via `discovery`, and has nowhere at all to record per-store field-level variation, so two captures of the same 'stream' can carry different columns.",
+      "proposedShape": {
+        "streams": [
+          {
+            "conditionalFields": [
+              {
+                "fields": "<graphql fragment>",
+                "requiresAnyScope": [
+                  "read_shopify_payments_dispute_evidences"
+                ]
+              }
+            ],
+            "gating": {
+              "requiresAnyScope": [
+                "read_shopify_payments_disputes"
+              ],
+              "requiresPlan": [
+                "Plus",
+                "Advanced",
+                "partner_development"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[].primaryKey",
+      "description": "The key is config-dependent, not fixed: advanced.should_use_composite_key toggles every collection key between [/_meta/store, /id] and [/id] (legacy single-store captures are auto-migrated to the latter), and changing it requires re-discovery plus a dataflow reset. A single primaryKey list cannot express that. The composite form is reported here because it is the default for new captures.",
+      "proposedShape": {
+        "primaryKey": {
+          "kind": "conditional",
+          "on": "advanced.should_use_composite_key",
+          "whenTrue": [
+            "/_meta/store",
+            "/id"
+          ],
+          "whenFalse": [
+            "/id"
+          ]
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "id": {
+      "file": "source-shopify-native/pyproject.toml",
+      "lines": "n/a",
+      "snippet": "connector directory name source-shopify-native; python package source_shopify_native"
+    },
+    "displayName": {
+      "file": "source_shopify_native/models.py",
+      "lines": "101-105",
+      "snippet": "store: str = Field(title=\"Store Name\", description=\"Shopify store name (the prefix of your admin URL, e.g., 'mystore' for mystore.myshopify.com)\""
+    },
+    "category": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "137-165",
+      "snippet": "INCREMENTAL_RESOURCES: [... gql.Orders, gql.OrderTransactions, gql.OrderRefunds, gql.Disputes, gql.SubscriptionContracts]"
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_shopify_native/graphql/client.py",
+      "lines": "49",
+      "snippet": "self.url = f\"https://{store}.myshopify.com/admin/api/{VERSION}/graphql.json\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_shopify_native/graphql/common.py",
+      "lines": "1",
+      "snippet": "VERSION = \"2026-01\""
+    },
+    "transports[0].spec.baseUrl.placeholders.store": {
+      "file": "source_shopify_native/models.py",
+      "lines": "112-117",
+      "snippet": "class EndpointConfig(BaseModel):\n    stores: list[StoreConfig] = Field(title=\"Shopify Stores\","
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "106, 129-134",
+      "snippet": "AUTHORIZATION_HEADER = \"X-Shopify-Access-Token\"\n    return TokenSource(oauth_spec=None, credentials=store_config.credentials, authorization_header=AUTHORIZATION_HEADER)"
+    },
+    "credentialModes[0].scheme.prefix": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "526-534",
+      "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    header_value = f\"{token_type} {token}\" if token_type else token\nelse:\n    header_value = token"
+    },
+    "credentialModes[0].scheme.field": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "115-121",
+      "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"]\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True})"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "119-128",
+      "snippet": "spec = OAuth2TokenFlowSpec(accessTokenUrlTemplate=f\"https://{store_config.store}.myshopify.com/admin/oauth/access_token\", accessTokenResponseMap={\"access_token\": \"/access_token\"})"
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "211-212",
+      "snippet": "class ClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"client_credentials\""
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source_shopify_native/models.py",
+      "lines": "42-60",
+      "snippet": "scopes = [\"read_locales\", \"read_products\", \"read_orders\", \"read_locations\", \"read_inventory\", ...]"
+    },
+    "execution.mode": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "669-673",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=model.NAME, interval=timedelta(minutes=5), schedule=model.BACKFILL_SCHEDULE)"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source_shopify_native/graphql/bulk_job_manager.py",
+      "lines": "416-455",
+      "snippet": "mutation { bulkOperationRunQuery(query: \"\"\"{query}\"\"\", groupObjects: true) { bulkOperation { type id status ..."
+    },
+    "execution.continuity.notes": {
+      "file": "source_shopify_native/graphql/bulk_job_manager.py",
+      "lines": "178-206",
+      "snippet": "bulkOperations(first: 10, query: \"status:RUNNING type:QUERY\") { edges { node { type id status ... } } }"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source_shopify_native/__init__.py",
+      "lines": "170-172",
+      "snippet": "resources = await all_resources(log, self, config, should_cancel_ongoing_job=True)"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_shopify_native/models.py",
+      "lines": "252-260",
+      "snippet": "class BulkOperationStatuses(StrEnum): CANCELED CANCELING COMPLETED CREATED EXPIRED FAILED RUNNING"
+    },
+    "configFields": {
+      "file": "source_shopify_native/models.py",
+      "lines": "98-153",
+      "snippet": "class StoreConfig(BaseModel): store / credentials ... class EndpointConfig: stores / start_date / advanced(window_size, should_use_composite_key)"
+    },
+    "configFields[10]": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "154-164",
+      "snippet": "class ResourceConfig(BaseResourceConfig): name: str ... interval: timedelta"
+    },
+    "configFields[11]": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "205-212",
+      "snippet": "class ResourceConfigWithSchedule(ResourceConfig):\n    schedule: str = Field(default=\"\", title=\"Schedule\", description=\"Schedule to automatically rebackfill this binding. Accepts a cron expression.\""
+    },
+    "streamMode": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "137-175",
+      "snippet": "INCREMENTAL_RESOURCES: list[type[ShopifyGraphQLResource]] = [ ... ]\nFULL_REFRESH_RESOURCES: list[...] = [gql.StaffMembers]"
+    },
+    "discovery.method": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "416-425",
+      "snippet": "async def _get_granted_scopes(...): response = AccessScopes.model_validate_json(await http.request(log, url, method=\"POST\", json={\"query\": AccessScopes.query()}))"
+    },
+    "discovery.excludes": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "236-247",
+      "snippet": "if resource.QUALIFYING_SCOPES.isdisjoint(granted_scopes): continue\nif uses_custom_app_token and resource in PII_RESOURCES and not can_access_pii: continue\nif resource.REQUIRES_PLUS_OR_ADVANCED_PLAN and not is_plus_or_advanced: continue"
+    },
+    "discovery.querySketch": {
+      "file": "source_shopify_native/models.py",
+      "lines": "389-399",
+      "snippet": "{ currentAppInstallation { accessScopes { handle } } }"
+    },
+    "streams[*].primaryKey": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "529-533",
+      "snippet": "key = ([\"/_meta/store\", \"/id\"] if config.advanced.should_use_composite_key else [\"/id\"])"
+    },
+    "streams[*].schedules": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "669-673",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=model.NAME, interval=timedelta(minutes=5), schedule=model.BACKFILL_SCHEDULE)"
+    },
+    "streams[*].pull.incremental (bulk streams)": {
+      "file": "source_shopify_native/api.py",
+      "lines": "31-61",
+      "snippet": "query = model.build_query(log_cursor, end, capabilities=capabilities)\nurl = await bulk_job_manager.execute(model, query)\n_, lines = await http.request_lines(log, url)"
+    },
+    "streams[*].pull.incremental.querySketch (bulk submit)": {
+      "file": "source_shopify_native/graphql/bulk_job_manager.py",
+      "lines": "419-441",
+      "snippet": "mutation { bulkOperationRunQuery(query: \"\"\"{query}\"\"\", groupObjects: true) { bulkOperation { ... } userErrors { field message code } } }"
+    },
+    "streams[*].pull.incremental.querySketch (bulk poll)": {
+      "file": "source_shopify_native/graphql/bulk_job_manager.py",
+      "lines": "209-223",
+      "snippet": "query { node(id: \"{job_id}\") { ... on BulkOperation{ type id status createdAt completedAt url errorCode } } }"
+    },
+    "streams[*].pull.incremental.paginator (bulk streams)": {
+      "file": "source_shopify_native/api.py",
+      "lines": "41-44",
+      "snippet": "max_end = log_cursor + window_size\nend = min(max_end, datetime.now(tz=UTC))"
+    },
+    "streams[*].pull.*.querySketch (non-bulk)": {
+      "file": "source_shopify_native/models.py",
+      "lines": "715-744",
+      "snippet": "{cls.QUERY_ROOT}(query: \"updated_at:>='{lower_bound}' AND updated_at:<='{upper_bound}' ...\" {sort_key_clause} first: {first} after: \"{after}\") { edges { node { ... } } pageInfo { hasNextPage endCursor } }"
+    },
+    "streams[*].pull.*.paginator (non-bulk)": {
+      "file": "source_shopify_native/api.py",
+      "lines": "107-128",
+      "snippet": "data = await client.request(query, data_model, log, context=ctx)\npage_info = data.page_info\nif not page_info.hasNextPage: return\nafter = page_info.endCursor"
+    },
+    "streams[*].pull.*.paginator.pageSize": {
+      "file": "source_shopify_native/api.py",
+      "lines": "27, 105",
+      "snippet": "PAGE_SIZE = 250\npage_size = model.OUTER_PAGE_SIZE or PAGE_SIZE"
+    },
+    "streams[*].pull.*.paginator.terminateOn": {
+      "file": "source_shopify_native/models.py",
+      "lines": "760-773",
+      "snippet": "class PageInfo(BaseModel): endCursor / hasNextPage ... reject hasNextPage without endCursor"
+    },
+    "streams[*].pull.backfill (non-bulk sorted)": {
+      "file": "source_shopify_native/api.py",
+      "lines": "263-314",
+      "snippet": "async def backfill_incremental(...): if page is None: start = start_date else: start = str_to_dt(page) ... yield dt_to_str(last_seen_dt)"
+    },
+    "streams[*].pull.backfill (non-bulk unsorted)": {
+      "file": "source_shopify_native/api.py",
+      "lines": "316-348",
+      "snippet": "async def backfill_incremental_unsorted(...): query = model.build_query(start_date, cutoff, first=PAGE_SIZE, after=page ...) ... if page_info.hasNextPage: yield page_info.endCursor"
+    },
+    "streams[*].pull.backfill (bulk streams = null)": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "545-548, 279-281",
+      "snippet": "use_backfill = not model.SHOULD_USE_BULK_QUERIES\n... return ResourceState(inc={sid: ResourceState.Incremental(cursor=start_date) for sid in store_ids})"
+    },
+    "streams[*].cursorField": {
+      "file": "source_shopify_native/models.py",
+      "lines": "604-617",
+      "snippet": "def get_cursor_value(self): if self.SORT_KEY is None or self.SORT_KEY == SortKey.UPDATED_AT: field_name = \"updatedAt\" else: field_name = \"createdAt\""
+    },
+    "streams[0]": {
+      "file": "source_shopify_native/graphql/abandoned_checkouts.py",
+      "lines": "10-18",
+      "snippet": "class AbandonedCheckouts(ShopifyGraphQLResource):\n    NAME = \"abandoned_checkouts\"\n    QUERY_ROOT = \"abandonedCheckouts\""
+    },
+    "streams[13].pull.incremental.querySketch": {
+      "file": "source_shopify_native/graphql/collections/collections.py",
+      "lines": "61-67",
+      "snippet": "return _Collections.build_query_with_fragment(... query=f\"collection_type:{collection_type}\", first=first,"
+    },
+    "streams[19]": {
+      "file": "source_shopify_native/graphql/customers/customers.py",
+      "lines": "8-13",
+      "snippet": "class Customers(ShopifyGraphQLResource):\n    NAME = \"customers\"\n    SHOULD_USE_BULK_QUERIES = False"
+    },
+    "streams[20].pull.incremental.paginator.pageSize": {
+      "file": "source_shopify_native/graphql/orders/refunds.py",
+      "lines": "97",
+      "snippet": "OUTER_PAGE_SIZE = 100"
+    },
+    "streams[21].pull.incremental.paginator.pageSize": {
+      "file": "source_shopify_native/graphql/orders/fulfillments.py",
+      "lines": "103",
+      "snippet": "OUTER_PAGE_SIZE = 100"
+    },
+    "streams[26]": {
+      "file": "source_shopify_native/graphql/disputes.py",
+      "lines": "14-25",
+      "snippet": "class Disputes(ShopifyGraphQLResource):\n    SORT_KEY = None\n    BACKFILL_SCHEDULE = \"55 23 * * *\""
+    },
+    "streams[26].cursorField": {
+      "file": "source_shopify_native/graphql/disputes.py",
+      "lines": "173-181",
+      "snippet": "def get_cursor_value(self) -> AwareDatetime:\n    raw_value = getattr(self, \"initiatedAt\")"
+    },
+    "streams[26].pull.incremental.querySketch": {
+      "file": "source_shopify_native/graphql/disputes.py",
+      "lines": "197-203",
+      "snippet": "disputes(query: \"initiated_at:>='{lower_bound}' AND initiated_at:<='{upper_bound}'\" first: ... after: ...)"
+    },
+    "streams[27]": {
+      "file": "source_shopify_native/graphql/staff_members.py",
+      "lines": "18-22",
+      "snippet": "class StaffMembers(ShopifyGraphQLResource):\n    NAME = \"staff_members\"\n    REQUIRES_PLUS_OR_ADVANCED_PLAN = True"
+    },
+    "streams[27].primaryKey": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "680",
+      "snippet": "snapshot_key = [\"/_meta/store\", \"/_meta/row_id\"]"
+    },
+    "streams[27].writeDisposition": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "729-741",
+      "snippet": "tombstones[store_id] = ShopifyGraphQLResource(id=\"\", _meta=...Meta(op=\"d\", store=store_id))\nopen_binding(..., fetch_snapshot=fetch_snapshot_fns, tombstone=tombstones)"
+    },
+    "streams[27].schedules": {
+      "file": "source_shopify_native/resources.py",
+      "lines": "750-753",
+      "snippet": "initial_config=ResourceConfigWithSchedule(name=model.NAME, interval=timedelta(minutes=15))"
+    },
+    "streams[27].pull.snapshot.querySketch": {
+      "file": "source_shopify_native/graphql/staff_members.py",
+      "lines": "53-70",
+      "snippet": "staffMembers({f\"first: {first}\" if first else \"\"} {f'after: \"{after}\"' if after else \"\"}) { edges { node { ... } } pageInfo { hasNextPage endCursor } }"
+    },
+    "authTierOverall": {
+      "file": "source_shopify_native/__init__.py",
+      "lines": "127-134",
+      "snippet": "return ConnectorSpec(configSchema=EndpointConfig.model_json_schema(), oauth2=None, documentationUrl=\"https://go.estuary.dev/source-shopify-native\""
+    },
+    "authTierRationale": {
+      "file": "source_shopify_native/models.py",
+      "lines": "62-64",
+      "snippet": "# TODO(justin): OAuth support is temporarily removed for multi-store. Will revisit once the\n# OAuth app is approved and UI/runtime is ready to support OAuth inside array items with credentials."
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "credentialModes[1].scheme.scopes": "medium",
+    "execution.mode": "high",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[*].name": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[*].pull.incremental (bulk streams)": "high",
+    "streams[*].pull.*.paginator (non-bulk)": "high",
+    "streams[*].pull.backfill (non-bulk sorted)": "medium",
+    "streams[*].cursorField": "medium",
+    "streams[0].cursorField": "low",
+    "streams[*].supportedSyncModes": "medium",
+    "streams[*].writeDisposition": "medium",
+    "authTierOverall": "high"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector-level default headers are set. Requests carry only the auth header injected by the CDK plus whatever aiohttp adds; the GraphQL body is sent via the CDK's json= argument, so no explicit Content-Type is written in connector code.",
+    "execution.defaultSchedule": "There is no connector-wide schedule. Every schedule is per-binding initial_config (PT5M incremental, PT15M snapshot), so the connector-level default is genuinely null.",
+    "streams[*].pull.<spec>.recordsPath / params / path": "Not applicable: every request is a POST to the single /graphql.json endpoint with the selection expressed in the GraphQL document body. There are no addressable per-stream REST paths, no query params, and no envelope record path other than data.<QUERY_ROOT>.edges[].node (non-bulk) or one JSON object per line of the bulk result file.",
+    "streams[0].cursorField": "abandoned_checkouts declares SORT_KEY = CREATED_AT, so get_cursor_value() would read createdAt \u2014 but it is a bulk-query stream, and on the bulk path the log cursor is advanced to the window end without consulting get_cursor_value, while the query itself filters on updated_at. Reported as updatedAt (the field that actually bounds each slice); the createdAt declaration is currently dead on this path and could change behaviour if the stream ever moved off bulk queries.",
+    "streams[*].pull.<spec>.incrementalParam": "No such param exists. The incremental bound is interpolated into the GraphQL search-syntax string (updated_at:>='<iso8601>' AND updated_at:<='<iso8601>', or initiated_at for disputes) inside the query document, not sent as an HTTP parameter.",
+    "credentialModes[1].scheme.authUrl": "None exists. The authorization-code flow was deliberately removed (see the TODO in models.py) and ConnectorSpec is emitted with oauth2=None, so there is no user-facing authorize URL \u2014 only the per-store token endpoint used by the client_credentials grant.",
+    "credentialModes[1].scheme.scopes": "The listed scopes are the connector's documented requirement (models.py `scopes`), which was written for the removed authorization-code flow. The client_credentials token request built by the CDK sends only grant_type/client_id/client_secret \u2014 no scope parameter \u2014 so these are scopes the user must grant on the app, not scopes transmitted at token exchange.",
+    "streams[*].supportedSyncModes / writeDisposition": "Neither concept is named in the code; both are inferred. 'incremental' is inferred from the presence of ResourceState.Incremental cursors, 'merge' from the keyed collections plus the default _meta op of 'u', and 'snapshot_with_tombstone' for staff_members from the explicit tombstone document with op='d' passed to open_binding.",
+    "streams[*].pull.*.paginator.cursorPath": "Written with a <queryRoot> placeholder rather than a literal path: the envelope field under `data` is the stream's QUERY_ROOT and differs per stream (orders, products, collections, inventoryItems, customers, locations, disputes, abandonedCheckouts, subscriptionContracts, staffMembers), and the response model is built dynamically by create_response_data_model.",
+    "streams[*].pull.incremental.paginator (bulk streams)": "Recorded as type 'none' because the bulk result file is streamed in full with no page token. The real bound is temporal (advanced.window_size, default P30D). Calling this 'none' should not be read as 'unbounded'."
+  }
+}

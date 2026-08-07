@@ -1,0 +1,387 @@
+{
+  "id": "datadog",
+  "estuaryDir": "source-datadog",
+  "displayName": "Datadog",
+  "description": "Imports Datadog observability events — log events and Real User Monitoring events — via the Datadog v2 search APIs.",
+  "category": "engineering",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://api.{site}/api/v2",
+          "placeholders": {
+            "site": "the `site` endpoint config field; a closed enum of Datadog regions: datadoghq.com (default), us3.datadoghq.com, us5.datadoghq.com, datadoghq.eu, ddog-gov.com, ap1.datadoghq.com"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2` appended to the host in EndpointConfig.base_url"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (API key + Application key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "Two static headers sent together on every request: `DD-API-KEY: <credentials.access_token>` and `DD-APPLICATION-KEY: <credentials.application_key>`. This is ONE credential mode requiring TWO secret fields, not two modes. The credentials model is a single-variant discriminated union (discriminator `credentials_title`, only value \"Private App Credentials\"), so no OAuth or alternative mode is offered."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; only permitted value is \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "API Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Datadog API key, sent as the DD-API-KEY header." },
+    { "name": "credentials.application_key", "displayName": "Application Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Datadog application key, sent as the DD-APPLICATION-KEY header." },
+    { "name": "site", "displayName": "Site", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "The main Datadog site, designating a region or organization. Enum; defaults to datadoghq.com." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime YYYY-MM-DDTHH:MM:SSZ. Data older than this is not replicated. Defaults to 30 days before now; must not be in the future." },
+    { "name": "advanced.logs_query", "displayName": "Log Query Filter", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Datadog log search syntax filter applied only to the logs stream; max 10000 chars. Blank/whitespace normalises to null (all logs)." },
+    { "name": "advanced.window_size", "displayName": "Window Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Window size in days for incremental streams; default 30, must be > 0." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK-standard ResourceConfig binding name." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK-standard ISO-8601 duration between updates for this resource; connector sets PT1M for both bindings." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "logs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval (initial_config)", "schedule": { "kind": "interval", "seconds": 60 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/logs/events/search",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": {
+            "filter.from": "endpoint config start_date, ISO-8601",
+            "filter.to": "backfill cutoff (connector start time), ISO-8601",
+            "filter.query": "advanced.logs_query, only when set (logs stream only)",
+            "page.limit": 1000,
+            "page.cursor": "resumable page cursor, null on first request",
+            "sort": "timestamp"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "page.cursor",
+            "cursorPath": "meta.page.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/logs/events/search",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": {
+            "filter.from": "log cursor (last seen timestamp), ISO-8601",
+            "filter.to": "min(now, log_cursor + advanced.window_size days), ISO-8601",
+            "filter.query": "advanced.logs_query, only when set (logs stream only)",
+            "page.limit": 1000,
+            "page.cursor": "null on first request, then meta.page.after",
+            "sort": "timestamp"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "page.cursor",
+            "cursorPath": "meta.page.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.from (JSON request body, not a query param)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "real_user_monitoring",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binding poll interval (initial_config)", "schedule": { "kind": "interval", "seconds": 60 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/rum/events/search",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": {
+            "filter.from": "endpoint config start_date, ISO-8601",
+            "filter.to": "backfill cutoff (connector start time), ISO-8601",
+            "page.limit": 1000,
+            "page.cursor": "resumable page cursor, null on first request",
+            "sort": "timestamp"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "page.cursor",
+            "cursorPath": "meta.page.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/rum/events/search",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": {
+            "filter.from": "log cursor (last seen timestamp), ISO-8601",
+            "filter.to": "min(now, log_cursor + advanced.window_size days), ISO-8601",
+            "page.limit": 1000,
+            "page.cursor": "null on first request, then meta.page.after",
+            "sort": "timestamp"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "page.cursor",
+            "cursorPath": "meta.page.after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.from (JSON request body, not a query param)", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a pair of static, self-serve Datadog keys (API key + application key) that the user creates in the Datadog org settings UI. No OAuth application registration and no refresh token are involved. The pair counts as one T1 credential mode even though it has two secret fields, because both are minted in the same self-serve flow.",
+
+  "unionMisfits": [
+    {
+      "where": "credentialModes[0].scheme",
+      "description": "The `scheme` union cannot express a credential that sends TWO headers simultaneously. `header` carries exactly one {header, field, prefix}. Datadog requires DD-API-KEY and DD-APPLICATION-KEY together on every request; forcing it into a single `header` member would silently drop the application key, and splitting it into two credentialModes entries would falsely claim two alternative auth methods. Forced to `other` with a prose description.",
+      "proposedShape": {
+        "type": "headers",
+        "headers": [
+          { "header": "DD-API-KEY", "field": "credentials.access_token", "prefix": null },
+          { "header": "DD-APPLICATION-KEY", "field": "credentials.application_key", "prefix": null }
+        ]
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "`incrementalParam` is shaped for a query parameter, but this connector sends the incremental lower/upper bounds as nested keys of a JSON POST body (`filter.from` / `filter.to`), alongside a body-carried filter query and sort. There is also no way to express the UPPER bound, which is essential here: the incremental leg is windowed to at most `advanced.window_size` days per invocation and does not checkpoint at all unless it either saw records or covered a full window.",
+      "proposedShape": {
+        "location": "body",
+        "lowerBound": { "path": "filter.from", "format": "iso8601", "inclusive": true },
+        "upperBound": { "path": "filter.to", "format": "iso8601", "windowLimit": "advanced.window_size days", "minWindow": "1 minute" }
+      }
+    },
+    {
+      "where": "streams[*] (record-level validity)",
+      "description": "No field expresses that the connector treats a soft-failure envelope as fatal: `meta.status` may be \"timeout\" and `meta.warnings[]` may be populated on an HTTP 200, meaning the page is partial. The connector raises an ExceptionGroup on any warning rather than emitting possibly-truncated data. This is a partial-response guard that a consumer re-implementing the connector must reproduce or it will silently truncate.",
+      "proposedShape": {
+        "partialResponseGuard": { "warningsPath": "meta.warnings", "statusPath": "meta.status", "failOn": ["any warning present"], "action": "fail_sync" }
+      }
+    },
+    {
+      "where": "execution.defaultSchedule vs streams[].schedules",
+      "description": "The 1-minute interval is not a true schedule chosen by the connector at runtime; it is only the `initial_config` value proposed at discovery time, which the user may override per binding in the resource config. The schema has no way to mark a schedule as a discovery-time default rather than an enforced cadence.",
+      "proposedShape": { "role": "binding poll interval", "source": "discovery_default", "userOverridable": true }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_datadog/models.py",
+      "lines": "116-118",
+      "snippet": "    @property\n    def base_url(self) -> str:\n        return f\"https://api.{self.site}/api/v2\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_datadog/models.py",
+      "lines": "118",
+      "snippet": "        return f\"https://api.{self.site}/api/v2\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_datadog/models.py",
+      "lines": "22-23, 110-114",
+      "snippet": "API_KEY_HEADER = \"DD-API-KEY\"\nAPP_KEY_HEADER = \"DD-APPLICATION-KEY\""
+    },
+    "credentialModes[0].tier": {
+      "file": "source_datadog/models.py",
+      "lines": "26-37",
+      "snippet": "class ApiKey(AccessToken):\n    credentials_title: Literal[\"Private App Credentials\"] = Field(\n        default=\"Private App Credentials\", json_schema_extra={\"type\": \"string\"}"
+    },
+    "configFields": {
+      "file": "source_datadog/models.py",
+      "lines": "57-107",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: ApiKey = Field(\n        discriminator=\"credentials_title\","
+    },
+    "configFields[3]": {
+      "file": "source_datadog/models.py",
+      "lines": "62-73",
+      "snippet": "    site: Literal[\n        \"datadoghq.com\",\n        \"us3.datadoghq.com\","
+    },
+    "streamMode": {
+      "file": "source_datadog/resources.py",
+      "lines": "19-22",
+      "snippet": "INCREMENTAL_RESOURCES: list[type[IncrementalResource]] = [\n    RealUserMonitoringResource,\n    LogResource,\n]"
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_datadog/models.py",
+      "lines": "171-174",
+      "snippet": "class LogResource(IncrementalResource):\n    RESOURCE_NAME = \"logs\"\n    PATH = \"/logs/events/search\""
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_datadog/models.py",
+      "lines": "165-168",
+      "snippet": "class RealUserMonitoringResource(IncrementalResource):\n    RESOURCE_NAME = \"real_user_monitoring\"\n    PATH = \"/rum/events/search\""
+    },
+    "streams[0].primaryKey": {
+      "file": "source_datadog/models.py",
+      "lines": "167",
+      "snippet": "    PRIMARY_KEYS = [\"/id\"]"
+    },
+    "streams[0].cursorField": {
+      "file": "source_datadog/models.py",
+      "lines": "158-162",
+      "snippet": "class IncrementalResource(DatadogResource):\n    class Attributes(BaseModel, extra=\"allow\"):\n        timestamp: AwareDatetime"
+    },
+    "streams[0].schedules": {
+      "file": "source_datadog/resources.py",
+      "lines": "112-114",
+      "snippet": "            initial_config=common.ResourceConfig(\n                name=resource.RESOURCE_NAME, interval=timedelta(minutes=1)\n            ),"
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_datadog/api.py",
+      "lines": "117-120",
+      "snippet": "    if api_response.cursor:\n        yield api_response.cursor\n    else:"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_datadog/api.py",
+      "lines": "176-179",
+      "snippet": "        if not api_response.cursor:\n            break\n        request_body[\"page\"][\"cursor\"] = api_response.cursor"
+    },
+    "streams[0].pull.backfill.paginator.cursorPath": {
+      "file": "source_datadog/models.py",
+      "lines": "142-147",
+      "snippet": "    @property\n    def cursor(self) -> str | None:\n        if self.meta.page:"
+    },
+    "streams[0].pull.backfill.params": {
+      "file": "source_datadog/api.py",
+      "lines": "73-80",
+      "snippet": "    return {\n        \"filter\": filter_params,\n        \"page\": {"
+    },
+    "streams[0].pull.backfill.httpMethod": {
+      "file": "source_datadog/api.py",
+      "lines": "100-107",
+      "snippet": "        await http.request(\n            log,\n            url,\n            method=\"POST\","
+    },
+    "streams[0].pull.incremental.incrementalParam": {
+      "file": "source_datadog/api.py",
+      "lines": "136-146",
+      "snippet": "    end = min(datetime.now(tz=UTC), log_cursor + max_window_size)\n    request_body = _build_search_request_body(\n        log_cursor, end, None, extra_filter_params\n    )"
+    },
+    "streams[0].pull.backfill.params.page.limit": {
+      "file": "source_datadog/api.py",
+      "lines": "15",
+      "snippet": "MAX_PAGE_SIZE = 1_000"
+    },
+    "streams[0].pull.backfill.params.filter.query": {
+      "file": "source_datadog/resources.py",
+      "lines": "68-70",
+      "snippet": "        if resource is LogResource and config.advanced.logs_query:\n            extra_filter_params = {\"query\": config.advanced.logs_query}"
+    },
+    "streams[0].writeDisposition": {
+      "file": "tests/snapshots/snapshots__discover__stdout.json",
+      "lines": "discovered `logs` documentSchema `then` block",
+      "snippet": "\"then\": {\"reduce\": {\"strategy\": \"merge\", \"delete\": true}}"
+    },
+    "streams[0].name": {
+      "file": "tests/snapshots/snapshots__discover__stdout.json",
+      "lines": "recommendedName entries",
+      "snippet": "\"recommendedName\": \"logs\" ... \"recommendedName\": \"real_user_monitoring\""
+    },
+    "execution.mode": {
+      "file": "source_datadog/resources.py",
+      "lines": "77-94",
+      "snippet": "            fetch_changes=functools.partial(\n                fetch_events_changes,\n            fetch_page=functools.partial("
+    },
+    "unionMisfits[2]": {
+      "file": "source_datadog/api.py",
+      "lines": "43, 54-56",
+      "snippet": "    if api_response.meta.warnings:\n        raise ExceptionGroup(\n            \"Multiple API warnings treated as errors\", warnings_as_exceptions)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].name": "high",
+    "streams[1].name": "high",
+    "streams[0].pull.backfill.path": "high",
+    "streams[1].pull.backfill.path": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].schedules": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].pull.backfill.recordsPath": "high",
+    "streams[0].pull.incremental.incrementalParam": "high",
+    "streams[0].supportedSyncModes": "high",
+    "configFields": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "category": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No non-credential headers are set anywhere; `common_headers` contains only the two credential headers, and the CDK HTTPSession's own default headers (e.g. content-type) were not inspected as connector-specific facts.",
+    "execution.defaultSchedule": "There is no connector-wide schedule. The only cadence is the per-binding `initial_config` interval of PT1M, which is recorded on each stream's `schedules`; the schema asks for the connector-wide default here and there is none.",
+    "streams[*].pull.snapshot": "No snapshot/full-reread pull shape exists. Every binding is opened with both fetch_page (backfill) and fetch_changes (incremental) via common.open_binding, so the historical/ongoing split is real and neither leg is a whole-collection re-read.",
+    "streams[*].pull.backfill.paginator.pageSize": "Recorded inside `params` as page.limit = 1000 rather than in the paginator, because the body_cursor paginator member has no pageSize field and the limit is a body key, not a query param.",
+    "discovery": "Not applicable: the stream list is a hard-coded two-element list in resources.py; discover() simply returns all_resources() with no remote catalog call.",
+    "streams[*].pull.backfill.params.sort": "The body sets sort=\"timestamp\" but the code never inspects sort direction, and Datadog's default direction for this parameter is not established from the connector source alone; the ordering assumption underpinning the timestamp checkpoint was not verifiable here."
+  }
+}

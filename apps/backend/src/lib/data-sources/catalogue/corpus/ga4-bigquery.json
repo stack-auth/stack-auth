@@ -1,0 +1,300 @@
+{
+  "id": "ga4-bigquery",
+  "estuaryDir": "source-ga4-bigquery",
+  "displayName": "GA4 BigQuery",
+  "description": "Captures Google Analytics 4's BigQuery export (daily events_/users_/pseudonymous_users_YYYYMMDD sharded tables) into Flow collections.",
+  "category": "analytics",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "bigquery",
+        "defaultPort": null,
+        "sslPolicy": null,
+        "tunnelSupport": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Service account JSON (CredentialsJSON)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["credentials.auth_type", "credentials.credentials_json"]
+      }
+    },
+    {
+      "name": "GCP IAM workload identity federation (GCPIAM)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": [
+          "credentials.auth_type",
+          "credentials.gcp_service_account_to_impersonate",
+          "credentials.gcp_workload_identity_pool_audience"
+        ]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": {
+      "kind": "other",
+      "literal": "daily at 12:00Z",
+      "description": "cfg.advanced.poll; accepts either a Go duration string ('24h') or 'daily at HH:MMZ'. Default 'daily at 12:00Z'. One connector-wide schedule value, evaluated per binding against that binding's last_poll_started."
+    },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Nothing is lost by pausing per se: the dataset-level scheduling cursors (primary_through / final_through) only advance at poll time, so on resume every not-yet-captured shard newer than final_through is enqueued exactly once. The residual loss is that shards which rotated fully out of the live window while paused get ONE capture instead of the normal primary+final pair, so any GA4 late-event rewrite of those shards is never picked up. If the customer sets a BigQuery dataset/table expiration shorter than the pause, the shard is gone (a 404 on readout is logged and skipped, not retried).",
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Read-only connector. It creates no server-side objects on the customer's BigQuery: no slots, no scratch tables, no temp datasets. All state (pending shard queue, primary_through/final_through, within-table resume cursor) lives in the Flow checkpoint. The only customer-side cost that accrues is BigQuery scan billing, charged to advanced.billing_project_id (default project_id) — each readout is a full 'SELECT * FROM <shard>', so a resumed/re-queued shard is re-scanned in full."
+    }
+  },
+
+  "configFields": [
+    { "name": "project_id", "displayName": "Project ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Google Cloud project that owns the BigQuery dataset(s) holding the GA4 exports." },
+    { "name": "dataset", "displayName": "Dataset", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Optional. Restricts discovery to one dataset; if unset, all datasets in the project are listed and scanned for matching tables (requires dataset-list permission)." },
+    { "name": "credentials.auth_type", "displayName": "Authentication type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator: 'CredentialsJSON' (default) or 'GCPIAM'." },
+    { "name": "credentials.credentials_json", "displayName": "Service Account JSON", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Required for the CredentialsJSON variant: full service-account key JSON." },
+    { "name": "credentials.gcp_service_account_to_impersonate", "displayName": "Service Account", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Required for the GCPIAM variant: service-account email to impersonate." },
+    { "name": "credentials.gcp_workload_identity_pool_audience", "displayName": "Workload Identity Pool Audience", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Required for the GCPIAM variant: //iam.googleapis.com/projects/.../workloadIdentityPools/.../providers/... audience." },
+    { "name": "advanced.poll", "displayName": "Polling Schedule", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string or 'daily at HH:MMZ'. Default 'daily at 12:00Z'." },
+    { "name": "advanced.window_days", "displayName": "Window Days", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Size of the trailing live window, counted in TABLES not calendar days. Default 4, chosen to match GA4's 72-hour late-event window." },
+    { "name": "advanced.capture_intermediate", "displayName": "Capture Intermediate Days", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When true, every shard inside the live window is re-queried each poll instead of only the newest and the one rotating out. Default false." },
+    { "name": "advanced.min_date", "displayName": "Minimum Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "YYYY-MM-DD floor; shards for strictly earlier dates are never enqueued. Bounds initial-backfill scan cost." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Literal string copied into /_meta/source/tag of every document." },
+    { "name": "advanced.billing_project_id", "displayName": "Billing Project ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Project the BigQuery jobs bill to; defaults to project_id. Table references in generated SQL are fully qualified with project_id so a split billing project still resolves." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal. The connector's feature-flag default map is currently empty." },
+    { "name": "dataset", "displayName": "Dataset", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding: the BigQuery dataset holding this binding's GA4 export shards." },
+    { "name": "stream_type", "displayName": "Stream Type", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding: one of events | users | pseudonymous_users." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "BigQuery INFORMATION_SCHEMA.TABLES query per dataset, optionally preceded by a Datasets list call on the project",
+    "querySketch": "SELECT table_name FROM `<project>`.`<dataset>`.INFORMATION_SCHEMA.TABLES WHERE table_name LIKE 'events_%' OR table_name LIKE 'pseudonymous_users_%' OR table_name LIKE 'users_%' — returned names are then prefix-stripped and kept only when the remainder is exactly 8 digits (^[0-9]{8}$). One binding is emitted per (dataset, stream_type) pair that has at least one such table.",
+    "excludes": [
+      "events_intraday_YYYYMMDD (streaming intraday shards) — the post-prefix remainder 'intraday_YYYYMMDD' fails the 8-digit test, so intraday shards are silently dropped at both discovery and enumeration time; README states this as an explicit limitation",
+      "events_fresh_* (GA360 Fresh Daily tables) — same mechanism, stated as a limitation in README",
+      "any table in the dataset whose name does not start with one of the three shipped prefixes",
+      "when cfg.dataset is unset, a dataset that errors during inspection is logged and skipped rather than failing discovery (unless every dataset failed and no bindings were produced)"
+    ],
+    "allowlist": "The three stream types are a hardcoded table shipped by the connector (events / users / pseudonymous_users, each with its own table prefix, cursor column, and key columns). Discovery only decides which of the three exist in which customer dataset; it never invents a fourth."
+  },
+
+  "streams": [
+    {
+      "name": "<dataset>/events",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["/event_timestamp", "/event_name", "/user_pseudo_id", "/event_bundle_sequence_id", "/batch_event_index"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "event_timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling cycle (shard enumeration + enqueue)", "schedule": { "kind": "other", "literal": "daily at 12:00Z", "description": "connector-wide advanced.poll value, evaluated per binding" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "events_<YYYYMMDD>",
+          "keyColumns": ["event_timestamp", "event_name", "user_pseudo_id", "event_bundle_sequence_id", "batch_event_index"],
+          "cursorColumns": ["event_timestamp"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`events_<YYYYMMDD>` ORDER BY `event_timestamp` — issued once per shard. On the first poll every shard in the dataset at or after min_date is enqueued; shards older than the live window are captured exactly once and never re-queried.",
+          "chunking": "One bounded unit = one whole day-shard table. Shards are enqueued into a per-binding Pending list sorted descending (newest first) and read one at a time to completion; the connector-wide scheduler picks the binding with the newest queued suffix. Within a shard, a checkpoint is emitted every 1000 rows but only at a row where the cursor value differs from the previous emitted row, so the persisted resume point is always a safe strict '>' boundary."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "events_<YYYYMMDD>",
+          "keyColumns": ["event_timestamp", "event_name", "user_pseudo_id", "event_bundle_sequence_id", "batch_event_index"],
+          "cursorColumns": ["event_timestamp"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`events_<YYYYMMDD>` WHERE `event_timestamp` > @cursor ORDER BY `event_timestamp` — the WHERE clause is ONLY a crash-resume filter for a partially-read shard, not a changed-rows filter. A shard re-queued by a later poll starts with a nil cursor and is re-read in full.",
+          "chunking": "Same per-shard unit. Which shards a poll enqueues is decided by two dataset-level scheduling cursors over the YYYYMMDD suffix space: primary_through (largest suffix queued for its first/primary capture) and final_through (largest suffix queued for its final capture). Both advance only forward, at enqueue time. Per poll: windowLatest = newest suffix, windowOldest = the window_days-th newest (only when at least window_days shards exist). A shard T is enqueued if T > final_through AND (T <= windowOldest, i.e. it is rotating out and gets its final capture) OR (T > primary_through, i.e. it is new and gets its primary capture) OR (T <= primary_through AND capture_intermediate is set). So in the steady state each shard is read exactly twice — once when newest, once when it rotates off the far edge of the live window — and rows land by key merge, which is what absorbs GA4's late-event rewrites."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<dataset>/users",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/table_date", "/user_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "user_id",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling cycle (shard enumeration + enqueue)", "schedule": { "kind": "other", "literal": "daily at 12:00Z", "description": "connector-wide advanced.poll value, evaluated per binding" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "users_<YYYYMMDD>",
+          "keyColumns": ["user_id"],
+          "cursorColumns": ["user_id"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`users_<YYYYMMDD>` ORDER BY `user_id`",
+          "chunking": "Identical shard-at-a-time mechanism as events; cursor is the STRING column user_id rather than an INT64 timestamp. Note the collection key includes /_meta/source/table_date, so each day's shard materializes as its own generation of rows rather than overwriting the previous day."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "users_<YYYYMMDD>",
+          "keyColumns": ["user_id"],
+          "cursorColumns": ["user_id"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`users_<YYYYMMDD>` WHERE `user_id` > @cursor ORDER BY `user_id` — resume-only filter, same semantics as events.",
+          "chunking": "Same live-window scheduling as events; the window policy is per-binding state but driven by the same connector-wide poll schedule and window_days."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<dataset>/pseudonymous_users",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/table_date", "/pseudo_user_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "pseudo_user_id",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling cycle (shard enumeration + enqueue)", "schedule": { "kind": "other", "literal": "daily at 12:00Z", "description": "connector-wide advanced.poll value, evaluated per binding" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "pseudonymous_users_<YYYYMMDD>",
+          "keyColumns": ["pseudo_user_id"],
+          "cursorColumns": ["pseudo_user_id"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`pseudonymous_users_<YYYYMMDD>` ORDER BY `pseudo_user_id`",
+          "chunking": "Identical shard-at-a-time mechanism; STRING cursor."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<resource.dataset>",
+          "table": "pseudonymous_users_<YYYYMMDD>",
+          "keyColumns": ["pseudo_user_id"],
+          "cursorColumns": ["pseudo_user_id"],
+          "querySketch": "SELECT * FROM `<project>`.`<dataset>`.`pseudonymous_users_<YYYYMMDD>` WHERE `pseudo_user_id` > @cursor ORDER BY `pseudo_user_id` — resume-only filter.",
+          "chunking": "Same live-window scheduling as events."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The default and simplest mode is CredentialsJSON: the user pastes one GCP service-account key JSON into a single secret field and supplies the project id. That is a single self-serve credential with no OAuth app registration and no refresh token, i.e. T1_SIMPLE. The alternative GCPIAM mode is materially harder (T2_BYO_APP-equivalent): the user must stand up a GCP Workload Identity Pool and provider, get the pool audience URI, and configure a service account for Estuary to impersonate — no client secret, but real one-time infrastructure setup on the user's side. authTierOverall is the easier of the two. Note that neither mode is brokered by a hosted control plane; both are standalone. The permission surface widens if `dataset` is left blank, since the credential must then also be able to list datasets in the project.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull / PullSpec",
+      "description": "The unit of incremental progress here is a TABLE SHARD, not a row range, and PullSpec has nowhere to express shard enumeration or the shard re-read policy. The schema forces the whole live-window scheduler into a prose `chunking` string. The distinction matters: the same shard is legitimately read more than once, and the second read is a full re-read, which no combination of backfill/incremental/snapshot expresses.",
+      "proposedShape": {
+        "kind": "sharded_table",
+        "shardPattern": "events_<YYYYMMDD>",
+        "shardEnumeration": { "method": "INFORMATION_SCHEMA.TABLES LIKE prefix", "shardKeyRegex": "^[0-9]{8}$", "order": "ascending lexicographic == chronological" },
+        "shardFloor": "advanced.min_date (YYYYMMDD)",
+        "recaptureWindow": { "unit": "shards", "size": "advanced.window_days", "policy": "primary on entry, final on exit, all-in-window when capture_intermediate", "reason": "source rewrites recent shards with late-arriving events for ~72h" },
+        "shardCursors": ["primary_through", "final_through"],
+        "withinShardResume": { "column": "event_timestamp", "predicate": "> @cursor", "checkpointEvery": 1000, "checkpointAtValueBoundaryOnly": true }
+      }
+    },
+    {
+      "where": "streams[].cursorField",
+      "description": "Two independent cursors exist and `cursorField` can only name one. The shard-selection cursors (primary_through / final_through, over the YYYYMMDD suffix space, per binding, monotonic, advanced at enqueue time) decide WHICH shards get read. The within-shard cursor (event_timestamp / user_id / pseudo_user_id) is purely a crash-resume position and is reset to nil whenever a shard is re-enqueued. Recording only the latter, as the schema shape requires, misrepresents the connector as a conventional row-cursor incremental capture; recording only the former loses the resume mechanism.",
+      "proposedShape": { "cursors": [{ "role": "partition_selection", "fields": ["primary_through", "final_through"], "space": "table suffix" }, { "role": "resume_within_partition", "field": "event_timestamp", "resetOnRequeue": true }] }
+    },
+    {
+      "where": "streams[] / streamMode",
+      "description": "The stream list is a CROSS PRODUCT: three hardcoded logical stream types (static, shipped in the connector) times N customer datasets (discovered). Neither 'static' nor 'discovered' nor per-stream `origin` captures this — the three entries above are marked origin 'static' because their names, keys, cursor columns, and table prefixes are all compile-time constants, but no binding exists until a dataset is discovered, so their real names ('<dataset>/events') are half-discovered.",
+      "proposedShape": { "streamMode": "templated", "template": { "staticDimension": "stream_type (3 values)", "discoveredDimension": "dataset", "nameTemplate": "{dataset}/{stream_type}" } }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "'merge' is correct for additions but understates a real correctness gap. A shard is re-read in full on its final capture and rows land by key merge, so late-arriving events GA4 wrote into the shard do get picked up. But there is no delete/tombstone path: if GA4 rewrites a shard and REMOVES or re-keys a row, the previously captured row is orphaned in the collection forever. The same applies unconditionally to any shard GA4 modifies after it rotates out of the live window (README lists this as a limitation).",
+      "proposedShape": { "writeDisposition": "merge", "reconciliation": { "recapturesSource": true, "detectsDeletes": false, "orphanRisk": "rows removed by a source-side shard rewrite persist downstream" } }
+    },
+    {
+      "where": "execution.defaultSchedule / Schedule union",
+      "description": "The schedule string is a custom grammar ('24h' Go duration OR 'daily at HH:MMZ') validated by a regex; it is neither an interval nor a cron, so it lands in 'other'. Also, the schedule is configured ONCE at endpoint scope but evaluated per binding against per-binding last_poll_started — so it is simultaneously a connector-wide setting and per-binding state, which the endpoint/resource scope split does not represent.",
+      "proposedShape": { "kind": "other", "literal": "daily at 12:00Z", "grammar": "goDuration | 'daily at HH:MMZ'", "scope": "endpoint-configured, per-binding-evaluated" }
+    },
+    {
+      "where": "comparison with source-bigquery-batch",
+      "description": "Material difference, mined separately: source-bigquery-batch is the generic BigQuery batch connector where the user authors the SQL and the cursor columns. This connector shares only the BigQuery client and the `schedule`/`source-boilerplate` packages — it exposes NO user query field at all. Everything is hardcoded to GA4's export layout: three table prefixes, fixed cursor column and type per stream, fixed key columns, and a shard-window scheduler that has no analogue in the generic connector. If a registry unifies them under one 'bigquery' entry, the shard-recapture policy and the GA4-specific keys will be lost."
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "main.go", "lines": "95-105", "snippet": "return bqclient.Connect(ctx, billingProjectID, credOption)" },
+    "credentialModes[0].scheme": { "file": ".snapshots/TestSpec", "lines": "30-37", "snippet": "\"credentials_json\": { \"title\": \"Service Account JSON\", \"multiline\": true, \"secret\": true }" },
+    "credentialModes[1].scheme": { "file": ".snapshots/TestSpec", "lines": "55-72", "snippet": "\"gcp_service_account_to_impersonate\" ... \"gcp_workload_identity_pool_audience\" ... \"title\": \"GCP IAM\"" },
+    "execution.mode": { "file": "driver.go", "lines": "272-279", "snippet": "if b := c.findPollDue(); b != nil { if err := c.runPollCycle(ctx, b); err != nil {" },
+    "execution.defaultSchedule": { "file": "main.go", "lines": "46-49", "snippet": "defaultPollSchedule = \"daily at 12:00Z\"" },
+    "execution.continuity.notes": { "file": "driver.go", "lines": "84-86", "snippet": "func (Driver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) { return &pc.Response_Applied{ActionDescription: \"\"}, nil }" },
+    "execution.continuity.ourSideLoss": { "file": "driver.go", "lines": "129-132", "snippet": "In cases where there exists a backlog of uncaptured tables larger than the live window (initial backfills and paused-capture catchup), this backlog will only be captured once" },
+    "configFields": { "file": "main.go", "lines": "26-43", "snippet": "ProjectID string `json:\"project_id\"` ... Advanced advancedConfig `json:\"advanced,omitempty\"`" },
+    "configFields[7]": { "file": "main.go", "lines": "34-34", "snippet": "WindowDays int `json:\"window_days,omitempty\" ... Defaults to 4 which aligns with GA4's 72-hour late-event window." },
+    "discovery.method": { "file": "discovery.go", "lines": "237-242", "snippet": "\"SELECT table_name FROM %s.%s.INFORMATION_SCHEMA.TABLES WHERE %s\"" },
+    "discovery.excludes[0]": { "file": "discovery.go", "lines": "271-276", "snippet": "var dateSuffixRe = regexp.MustCompile(`^[0-9]{8}$`)" },
+    "discovery.excludes[1]": { "file": "README.md", "lines": "52-53", "snippet": "- Streaming intraday tables (`events_intraday_*`) are not captured.\n- GA360 Fresh Daily tables (`events_fresh_*`) are not captured." },
+    "streams[0].primaryKey": { "file": "discovery.go", "lines": "77-83", "snippet": "KeyColumns: []string{\"/event_timestamp\", \"/event_name\", \"/user_pseudo_id\", \"/event_bundle_sequence_id\", \"/batch_event_index\"}" },
+    "streams[0].cursorField": { "file": "discovery.go", "lines": "75-76", "snippet": "CursorColumn: \"event_timestamp\", CursorType: \"INT64\"" },
+    "streams[0].pull.backfill.querySketch": { "file": "driver.go", "lines": "749-752", "snippet": "return fmt.Sprintf(\"SELECT * FROM %s ORDER BY %s\", tableRef, cursorCol)" },
+    "streams[0].pull.incremental.querySketch": { "file": "driver.go", "lines": "752-752", "snippet": "return fmt.Sprintf(\"SELECT * FROM %s WHERE %s > @cursor ORDER BY %s\", tableRef, cursorCol, cursorCol)" },
+    "streams[0].pull.incremental.chunking": { "file": "driver.go", "lines": "453-463", "snippet": "case T <= state.FinalThrough: shouldEnqueue = false\ncase hasFullWindow && T <= windowOldest: shouldEnqueue = true\ncase T <= state.PrimaryThrough: shouldEnqueue = captureIntermediate" },
+    "streams[0].pull.backfill.chunking": { "file": "driver.go", "lines": "684-691", "snippet": "if documentsSinceLastCheckpoint >= documentsPerCheckpoint { if haveLastEmittedCursor && !cursorValuesEqual(lastEmittedCursor, rowCursor) { current.Cursor = lastEmittedCursor" },
+    "streams[1].primaryKey": { "file": "discovery.go", "lines": "99-102", "snippet": "KeyColumns: []string{\"/_meta/source/table_date\", \"/user_id\"}" },
+    "streams[2].primaryKey": { "file": "discovery.go", "lines": "113-116", "snippet": "KeyColumns: []string{\"/_meta/source/table_date\", \"/pseudo_user_id\"}" },
+    "streamMode": { "file": "discovery.go", "lines": "33-38", "snippet": "// Discovery emits exactly one binding per (dataset, stream_type) pair which has matching tables." },
+    "unionMisfits[3].description": { "file": "README.md", "lines": "58-59", "snippet": "- Tables that GA4 modifies after they have rotated out of the live window\n  are not re-captured." },
+    "execution.continuity.artifacts": { "file": "driver.go", "lines": "546-556", "snippet": "\"SELECT table_name FROM %s.%s.INFORMATION_SCHEMA.TABLES WHERE table_name LIKE '%s%%'\"" }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].tier": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "streamMode": "medium",
+    "discovery": "high",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[1].cursorField": "high",
+    "streams[2].cursorField": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultPort": "BigQuery is reached through the Google client library over HTTPS; no port is named anywhere in the connector.",
+    "transports[0].spec.sslPolicy": "Not configurable; TLS is whatever cloud.google.com/go/bigquery does by default. Nothing in the connector speaks to it.",
+    "transports[0].spec.tunnelSupport": "No networkTunnel / sshForwarding fields in the config struct or the generated spec snapshot.",
+    "streams[].schedules[].schedule.kind": "Recorded as 'other' deliberately. The value can be either a Go duration ('24h') or a 'daily at HH:MMZ' literal, neither of which is an interval-in-seconds or a cron expression, and the user may supply either at runtime.",
+    "streams[].writeDisposition": "Recorded as 'merge' because every binding has a non-empty collection key and shards are re-read in full and re-emitted. But the connector itself never states a materialization disposition — the merge is a property of Flow's keyed-collection reduction, not of this code. Downgraded to medium confidence rather than asserted.",
+    "streams[].supportedSyncModes": "Recorded as full_refresh+incremental, but this is an inference from the shape of the state machine, not a declared capability: the connector has no sync-mode field and always runs the same shard-scheduling loop. A binding with no prior state performs the historical sweep; one with state performs the window recapture.",
+    "credentialModes[1].tier": "GCPIAM has no OAuth client id/secret, so T2_BYO_APP is an approximation chosen because the user must provision a Workload Identity Pool and an impersonation target. The tier ladder has no rung for 'BYO cloud IAM federation'.",
+    "streams[].pull.*.chunking cost characteristics": "The connector emits no row-count or bytes-scanned estimate and sets no BigQuery maximumBytesBilled, so the per-poll scan cost of a live window cannot be bounded from the code.",
+    "discovery.excludes (dataset-level filtering)": "When cfg.dataset is unset, every dataset in the project is inspected. The code has no allow/deny list for dataset names, so a project with many unrelated datasets pays a full INFORMATION_SCHEMA sweep per dataset per discovery; whether that is intended is not stated."
+  }
+}

@@ -18,6 +18,7 @@ export const ITEM_IDS = {
   analyticsEvents: "analytics_events",
   sessionReplays: "session_replays",
   onboardingCall: "onboarding_call",
+  importedRows: "imported_rows",
 } as const;
 
 export type ItemId = typeof ITEM_IDS[keyof typeof ITEM_IDS];
@@ -32,6 +33,11 @@ export type PlanProductOfferings = {
   analyticsTimeoutSeconds: number,
   analyticsEvents: number,
   sessionReplays: number,
+  // Imported Data Sources rows resident in ClickHouse. Unlike every other limit
+  // here this one meters STORAGE rather than throughput, so it does not repeat
+  // monthly: it is a standing ceiling on how much of a customer's external data
+  // may live in our warehouse at once.
+  importedRows: number,
 };
 
 /**
@@ -49,6 +55,7 @@ export const PLAN_LIMITS: {
     analyticsTimeoutSeconds: 10,
     analyticsEvents: 100_000,
     sessionReplays: 2_500,
+    importedRows: 50_000,
   },
   team: {
     seats: 4,
@@ -57,6 +64,7 @@ export const PLAN_LIMITS: {
     analyticsTimeoutSeconds: 60,
     analyticsEvents: 500_000,
     sessionReplays: 2_500,
+    importedRows: 1_000_000,
   },
   growth: {
     seats: 4,
@@ -65,6 +73,7 @@ export const PLAN_LIMITS: {
     analyticsTimeoutSeconds: 300,
     analyticsEvents: 1_000_000,
     sessionReplays: 2_500,
+    importedRows: 10_000_000,
   },
 };
 

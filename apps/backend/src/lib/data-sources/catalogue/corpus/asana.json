@@ -1,0 +1,878 @@
+{
+  "id": "asana",
+  "estuaryDir": "source-asana",
+  "displayName": "Asana",
+  "description": "Imports Asana work-management data (workspaces, teams, projects, sections, tasks, stories, tags, attachments, portfolios, custom fields, users and events) from the Asana REST API.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://app.asana.com/api/1.0/" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `1.0` embedded in the base URL (`/api/1.0/`); no version header or query param is sent"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Personal Access Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.personal_access_token" }
+    },
+    {
+      "name": "OAuth 2.0 (bring-your-own app + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://app.asana.com/-/oauth_authorize",
+        "tokenUrl": "https://app.asana.com/-/oauth_token",
+        "scopes": ["default"],
+        "grant": "refresh_token"
+      }
+    },
+    {
+      "name": "Legacy top-level access_token (undeclared in spec, back-compat only)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials", "displayName": "Authentication", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminated union (discriminator `option_title`) selecting OAuth Credentials or PAT Credentials." },
+    { "name": "credentials.option_title", "displayName": "Credentials title", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Const discriminator: 'OAuth Credentials' or 'PAT Credentials'." },
+    { "name": "credentials.personal_access_token", "displayName": "Personal Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Asana Personal Access Token, generated in the Asana developer console. Required in the PAT variant." },
+    { "name": "credentials.client_id", "displayName": "client_id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth app client id. Required in the OAuth variant." },
+    { "name": "credentials.client_secret", "displayName": "client_secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth app client secret. Required in the OAuth variant." },
+    { "name": "credentials.refresh_token", "displayName": "refresh_token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth refresh token. Required in the OAuth variant; populated by the hosted OAuth flow when Estuary registers the app." },
+    { "name": "organization_export_ids", "displayName": "Organization export ids", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Undeclared in spec.json (the schema sets additionalProperties: true), but read by source.py: when present it enables the additional `organization_exports` stream, one record per supplied export gid." },
+    { "name": "test_mode", "displayName": "Test mode", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Undeclared in spec.json; read by source.py and used to cap stories_compact / stories parent slices at 100 so integration tests do not run for hours." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the stream this binding captures (from the shared estuary-cdk Airbyte shim ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "'full_refresh' or 'incremental'. Every Asana stream discovers as full_refresh." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Enclosing schema namespace; unused by Asana (no stream declares one)." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Shim ResourceConfig field; unused by Asana (no stream declares a default cursor field)." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "workspaces",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "workspaces",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<comma-joined property list derived from the stream's JSON schema; nested objects requested as `<prop>.gid`>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "projects",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "workspace": "{workspace_gid}" },
+          "pathPlaceholders": { "workspace_gid": "gid of each record from the `workspaces` stream; sent as the `workspace` QUERY PARAM, not in the path" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "tags",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "workspace": "{workspace_gid}" },
+          "pathPlaceholders": { "workspace_gid": "gid of each record from the `workspaces` stream; sent as the `workspace` query param" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema; `photo` requested whole rather than as `photo.gid`>", "workspace": "{workspace_gid}" },
+          "pathPlaceholders": { "workspace_gid": "gid of each record from the `workspaces` stream; sent as the `workspace` query param" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "custom_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "workspaces/{workspace_gid}/custom_fields",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "workspace_gid": "gid of each record from the `workspaces` stream" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "organizations/{workspace_gid}/teams",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "workspace_gid": "gid of each record from the `workspaces` stream (workspace gid is used as the organization gid)" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "team_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "teams/{team_gid}/team_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "team_gid": "gid of each record from the `teams` stream, which is itself iterated per workspace (workspaces -> organizations/{workspace_gid}/teams -> teams/{team_gid}/team_memberships)" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sections_compact",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "projects/{project_gid}/sections",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "project_gid": "gid of each record from the `projects` stream (which is itself per-workspace)" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sections",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "sections/{section_gid}",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "section_gid": "gid of each record from the `sections_compact` stream (workspaces -> projects -> projects/{project_gid}/sections -> sections/{section_gid}); one HTTP request per section" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tasks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "tasks",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "project": "{project_gid}", "opt_fields": "<derived from schema; `custom_fields` requested whole, `hearts`/`likes` as `<prop>.user.gid`, `memberships` as `memberships.(project|section).gid`>" },
+          "pathPlaceholders": { "project_gid": "gid of each record from the `projects` stream; sent as the `project` QUERY PARAM, not in the path" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "stories_compact",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "tasks/{task_gid}/stories",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "task_gid": "gid of each record from the `tasks` stream (workspaces -> projects -> tasks?project= -> tasks/{task_gid}/stories). When endpoint config sets test_mode, only the first 100 task slices are iterated." },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "stories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "stories/{story_gid}",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema; the `target` object is expanded to target.gid,target.name,target.resource_type,target.resource_subtype>" },
+          "pathPlaceholders": { "story_gid": "gid of each record from the `stories_compact` stream (workspaces -> projects -> tasks -> tasks/{task_gid}/stories -> stories/{story_gid}); one HTTP request per story. test_mode caps this at 100 slices." },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "attachments_compact",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "attachments",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "parent": "{parent_gid}" },
+          "pathPlaceholders": { "parent_gid": "gid of each record from BOTH the `projects` stream and the `tasks` stream (two slice generators concatenated); sent as the `parent` query param" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "attachments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "attachments/{attachment_gid}",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "attachment_gid": "gid of each record from the `attachments_compact` stream (projects+tasks -> attachments?parent= -> attachments/{attachment_gid}); one HTTP request per attachment" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "portfolios_compact",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "portfolios",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "workspace": "{workspace_gid}", "owner": "{me_gid}" },
+          "pathPlaceholders": {
+            "workspace_gid": "gid of each record from the `workspaces` stream; sent as the `workspace` query param",
+            "me_gid": "gid from a one-off cached GET https://app.asana.com/api/1.0/users/me; sent as the `owner` query param, so only portfolios owned by the authenticating user are returned"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "portfolios",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "portfolios/{portfolio_gid}",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "portfolio_gid": "gid of each record from the `portfolios_compact` stream; one HTTP request per portfolio. HTTP 402 (non-paid org) yields zero records instead of failing." },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "portfolios_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "portfolio_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "portfolio": "{portfolio_gid}" },
+          "pathPlaceholders": { "portfolio_gid": "gid of each record from the `portfolios_compact` stream; sent as the `portfolio` query param. Note the collection path is singular-prefixed `portfolio_memberships` while the stream is named `portfolios_memberships`." },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/created_at"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "events",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>", "resource": "{resource_gid}", "sync": "<Asana sync token; null on the first request of a slice>" },
+          "pathPlaceholders": { "resource_gid": "gid of each record from BOTH the `projects` stream and the `tasks` stream (two slice generators concatenated); sent as the `resource` query param" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "sync",
+            "cursorPath": "/sync",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "organization_exports",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/gid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "organization_exports/{organization_export_gid}",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": { "limit": 100, "opt_fields": "<derived from schema>" },
+          "pathPlaceholders": { "organization_export_gid": "each id supplied in the endpoint config field `organization_export_ids`; NOT derived from a parent stream. This stream is only registered when that config field is present, which is why it is absent from the discover snapshot." },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "/next_page/offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two credential modes are offered and the easiest is a single self-serve Personal Access Token that the user generates in the Asana developer console and pastes into `credentials.personal_access_token`; it is sent as a bearer token with no app registration (source.py returns airbyte_cdk TokenAuthenticator for it). The OAuth mode is standalone T3_BYO_REFRESH — spec.json requires client_id, client_secret AND refresh_token, and the connector only ever performs a refresh_token grant against https://app.asana.com/-/oauth_token (it never runs the authorization_code leg itself). Estuary's hosted control plane supplies the app: __main__.py declares flow.OAuth2Spec(provider='asana') with the authorize/token URL templates and spec.json declares advanced_auth with complete_oauth_server_input/output specs, so on the hosted platform the user only clicks through consent. That hosted convenience does not change the standalone tier, and it is moot for the overall rating because the PAT path is already T1.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.snapshot.pathPlaceholders",
+      "description": "pathPlaceholders is typed as a map for parent-scoped PATHS, but roughly half of Asana's parent scoping is applied as a QUERY PARAM instead of a path segment (projects/tags/users take `workspace=`, tasks takes `project=`, attachments_compact and events take `parent=`/`resource=`, portfolios_memberships takes `portfolio=`). Modelling those as pathPlaceholders is a lie about where the value goes; modelling them only in `params` loses the fact that they come from iterating a parent stream. I recorded both (the value appears in `params` and the provenance in `pathPlaceholders`) and disambiguated in the description text, but the schema should say this explicitly.",
+      "proposedShape": {
+        "parentScoping": [
+          { "parentStream": "projects", "childField": "project_gid", "boundTo": "query_param|path_segment", "name": "project", "fanout": "one_request_per_parent_record" }
+        ]
+      }
+    },
+    {
+      "where": "streams[*].pull.snapshot.pathPlaceholders (multi-parent)",
+      "description": "attachments_compact and events each concatenate TWO independent parent slice generators (projects gids AND tasks gids) into the same placeholder. A single-valued map cannot express 'this placeholder is fed by the union of two parent streams'.",
+      "proposedShape": { "parentScoping": [{ "childField": "parent_gid", "parentStreams": ["projects", "tasks"], "combine": "concat" }] }
+    },
+    {
+      "where": "streams[*].pull.snapshot (detail-fetch streams)",
+      "description": "attachments, sections, stories, portfolios and organization_exports are not collection endpoints at all: they issue ONE GET per id harvested from a companion `*_compact` stream and return a single object under /data, not an array. There is no page to paginate. The PullSpec union has no way to say 'record-detail fan-out' as distinct from 'list endpoint', so a reader cannot tell that stories costs one request per story (the full chain is workspaces -> projects -> tasks -> stories_compact -> stories, i.e. potentially millions of requests; the connector itself caps this at 100 slices under test_mode because tests exceeded two hours).",
+      "proposedShape": { "kind": "http_detail", "path": "stories/{story_gid}", "idsFrom": { "stream": "stories_compact", "field": "gid" }, "recordsPath": "/data", "singleObject": true }
+    },
+    {
+      "where": "streams[*].pull.snapshot.params.opt_fields",
+      "description": "Every request carries an `opt_fields` query param whose value is COMPUTED at runtime from the stream's own JSON schema (top-level scalars verbatim, nested objects as `<prop>.gid`, with per-stream overrides in Tasks/Users/Stories). params is typed as a static map, so the single most important query parameter in this connector cannot be represented faithfully — omitting it would make Asana return only gid/name/resource_type and silently truncate every column.",
+      "proposedShape": { "params": { "opt_fields": { "kind": "derived", "from": "stream_schema", "rule": "scalars verbatim; object props as <prop>.gid; per-stream overrides" } } }
+    },
+    {
+      "where": "streams[events]",
+      "description": "The Asana events endpoint is a sync-token change feed, not a list: `sync` is both the pagination token and the resume token, and a 412 means the token expired and the caller must re-snapshot. That is execution.continuity-shaped (our-side loss on a stale token) but execution.mode is 'poll' and the schema only requires continuity for mode 'log'. Worse, the connector holds sync_token on the instance and never persists it across runs, and never seeds it, so in practice this behaves as a full re-read.",
+      "proposedShape": { "continuity": { "ourSideLoss": "sync token invalidated -> HTTP 412 -> full re-read", "scope": "per-resource" } }
+    },
+    {
+      "where": "streams[*].schedules / execution.defaultSchedule",
+      "description": "Neither the connector nor the estuary-cdk Airbyte shim declares any interval or cron. The only scheduling knob found is `intervalSeconds` on the platform-side CaptureSpec in estuary_cdk/flow.py, which the connector never sets. There is no connector-owned schedule to record.",
+      "proposedShape": { "defaultSchedule": { "kind": "platform_owned", "field": "CaptureSpec.intervalSeconds" } }
+    },
+    {
+      "where": "streams[organization_exports].pull.snapshot.pathPlaceholders",
+      "description": "Likely BUG worth flagging rather than modelling: OrganizationExports.stream_slices yields a list containing a single DICT COMPREHENSION (`yield from [{'organization_export_gid': id for id in self._organization_export_ids}]`) rather than a list comprehension of dicts, so all keys collapse and only the LAST configured export id is ever fetched. I recorded the intended semantics (one slice per configured id) and note the discrepancy here.",
+      "proposedShape": {}
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_asana/streams.py", "lines": "26-28", "snippet": "class AsanaStream(HttpStream, ABC):\n    url_base = \"https://app.asana.com/api/1.0/\"\n    primary_key = \"gid\"" },
+    "credentialModes[0].scheme": { "file": "source_asana/source.py", "lines": "54-55", "snippet": "if \"personal_access_token\" in creds:\n    return TokenAuthenticator(token=creds[\"personal_access_token\"])" },
+    "credentialModes[1].scheme": { "file": "source_asana/source.py", "lines": "57-62", "snippet": "return AsanaOauth2Authenticator(\n    token_refresh_endpoint=\"https://app.asana.com/-/oauth_token\"," },
+    "credentialModes[1].scheme.grant": { "file": "source_asana/oauth.py", "lines": "28-30", "snippet": "\"grant_type\": (None, \"refresh_token\"),\n\"refresh_token\": (None, self.refresh_token)," },
+    "credentialModes[1].scheme.authUrl": { "file": "source_asana/__main__.py", "lines": "23-24", "snippet": "authUrlTemplate=(\n    f\"https://app.asana.com/-/oauth_authorize?\"" },
+    "credentialModes[1].scheme.scopes": { "file": "source_asana/__main__.py", "lines": "29", "snippet": "f\"scope=default\"" },
+    "credentialModes[2].scheme": { "file": "source_asana/source.py", "lines": "49-52", "snippet": "if \"access_token\" in config:\n    # Before Oauth we had Person Access Token stored under \"access_token\"\n    return TokenAuthenticator(token=config[\"access_token\"])" },
+    "configFields": { "file": "source_asana/spec.json", "lines": "8-22", "snippet": "\"required\": [\"credentials\"],\n\"properties\": { \"credentials\": {\n  \"discriminator\": { \"propertyName\": \"option_title\" }," },
+    "configFields[organization_export_ids]": { "file": "source_asana/source.py", "lines": "86-87", "snippet": "if \"organization_export_ids\" in config:\n    streams.append(OrganizationExports(organization_export_ids=config.get(\"organization_export_ids\"), **args))" },
+    "configFields[test_mode]": { "file": "source_asana/source.py", "lines": "65", "snippet": "args = {\"authenticator\": self._get_authenticator(config), \"test_mode\": config.get(\"test_mode\", False)}" },
+    "configFields[stream]": { "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py", "lines": "68-72", "snippet": "stream: Annotated[str, Field(description=\"Name of this stream\")]\nsync_mode: Literal[\"full_refresh\", \"incremental\"] = Field(alias=\"syncMode\"," },
+    "execution.mode": { "file": "source_asana/streams.py", "lines": "13", "snippet": "from airbyte_cdk.sources.streams.http import HttpStream" },
+    "streamMode": { "file": "source_asana/source.py", "lines": "66-67", "snippet": "streams = [\n    AttachmentsCompact(**args)," },
+    "streams[0].pull.snapshot.paginator": { "file": "source_asana/streams.py", "lines": "62-65", "snippet": "decoded_response = response.json()\nnext_page = decoded_response.get(\"next_page\")\nif next_page: return {\"offset\": next_page[\"offset\"]}" },
+    "streams[0].pull.snapshot.paginator.pageSize": { "file": "source_asana/streams.py", "lines": "29-30", "snippet": "# Asana pagination could be from 1 to 100.\npage_size = 100" },
+    "streams[0].pull.snapshot.params": { "file": "source_asana/streams.py", "lines": "70-73", "snippet": "params = {\"limit\": self.page_size}\nparams.update(self.get_opt_fields())\nif next_page_token: params.update(next_page_token)" },
+    "streams[0].pull.snapshot.recordsPath": { "file": "source_asana/streams.py", "lines": "112-114", "snippet": "response_json = response.json()\n# Asana puts records in a container array \"data\"\nyield from response_json.get(\"data\", [])" },
+    "streams[0].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "545-546", "snippet": "def path(self, **kwargs) -> str:\n    return \"workspaces\"" },
+    "streams[1].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "318-319", "snippet": "def path(self, **kwargs) -> str:\n    return \"projects\"" },
+    "streams[1].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "153-158", "snippet": "workspaces_stream = Workspaces(authenticator=self.authenticator)\nfor workspace in workspaces_stream.read_records(sync_mode=SyncMode.full_refresh):\n    yield {\"workspace_gid\": workspace[\"gid\"]}" },
+    "streams[1].pull.snapshot.params.workspace": { "file": "source_asana/streams.py", "lines": "170-172", "snippet": "params = super().request_params(**kwargs)\nparams[\"workspace\"] = stream_slice[\"workspace_gid\"]\nreturn params" },
+    "streams[2].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "488-489", "snippet": "def path(self, **kwargs) -> str:\n    return \"tags\"" },
+    "streams[3].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "532-533", "snippet": "def path(self, **kwargs) -> str:\n    return \"users\"" },
+    "streams[3].pull.snapshot.params.opt_fields": { "file": "source_asana/streams.py", "lines": "536-539", "snippet": "if prop == \"photo\":\n    return prop\nreturn f\"{prop}.gid\"" },
+    "streams[4].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "235-237", "snippet": "workspace_gid = stream_slice[\"workspace_gid\"]\nreturn f\"workspaces/{workspace_gid}/custom_fields\"" },
+    "streams[5].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "515-517", "snippet": "workspace_gid = stream_slice[\"workspace_gid\"]\nreturn f\"organizations/{workspace_gid}/teams\"" },
+    "streams[6].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "521-523", "snippet": "team_gid = stream_slice[\"team_gid\"]\nreturn f\"teams/{team_gid}/team_memberships\"" },
+    "streams[6].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "525-528", "snippet": "yield from self.read_slices_from_records(\n    stream_class=Teams, slice_field=\"team_gid\")" },
+    "streams[7].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "403-405", "snippet": "project_gid = stream_slice[\"project_gid\"]\nreturn f\"projects/{project_gid}/sections\"" },
+    "streams[7].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "181-184", "snippet": "project_slices = self.read_slices_from_records(\n    stream_class=Projects, slice_field=\"project_gid\")" },
+    "streams[8].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "409-411", "snippet": "section_gid = stream_slice[\"section_gid\"]\nreturn f\"sections/{section_gid}\"" },
+    "streams[8].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "413-416", "snippet": "yield from self.read_slices_from_records(\n    stream_class=SectionsCompact, slice_field=\"section_gid\")" },
+    "streams[9].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "493-494", "snippet": "def path(self, **kwargs) -> str:\n    return \"tasks\"" },
+    "streams[9].pull.snapshot.params.project": { "file": "source_asana/streams.py", "lines": "499-501", "snippet": "params = super().request_params(stream_slice=stream_slice, **kwargs)\nparams[\"project\"] = stream_slice[\"project_gid\"]\nreturn params" },
+    "streams[9].pull.snapshot.params.opt_fields": { "file": "source_asana/streams.py", "lines": "504-509", "snippet": "if prop == \"custom_fields\": return prop\nelif prop in (\"hearts\", \"likes\"): return f\"{prop}.user.gid\"\nelif prop == \"memberships\": return \"memberships.(project|section).gid\"" },
+    "streams[10].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "432-434", "snippet": "task_gid = stream_slice[\"task_gid\"]\nreturn f\"tasks/{task_gid}/stories\"" },
+    "streams[10].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "437-448", "snippet": "# This streams causes tests to timeout (> 2hrs), so we limit stream slices to 100\nif self.test_mode: yield from islice(self.read_slices_from_records(stream_class=Tasks, slice_field=\"task_gid\"), 100,)" },
+    "streams[11].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "452-454", "snippet": "story_gid = stream_slice[\"story_gid\"]\nreturn f\"stories/{story_gid}\"" },
+    "streams[11].pull.snapshot.params.opt_fields": { "file": "source_asana/streams.py", "lines": "457-459", "snippet": "if prop == \"target\":\n    # Nested object fields must be explicitly requested via opt_fields.\n    return \"target.gid,target.name,target.resource_type,target.resource_subtype\"" },
+    "streams[12].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "194-195", "snippet": "def path(self, stream_slice: Mapping[str, Any] = None, **kwargs) -> str:\n    return \"attachments\"" },
+    "streams[12].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "204-210", "snippet": "yield from self.read_slices_from_records(stream_class=Projects, slice_field=\"parent_gid\")\nyield from self.read_slices_from_records(stream_class=Tasks, slice_field=\"parent_gid\")" },
+    "streams[12].pull.snapshot.params.parent": { "file": "source_asana/streams.py", "lines": "200-202", "snippet": "params = super().request_params(**kwargs)\nparams[\"parent\"] = stream_slice[\"parent_gid\"]\nreturn params" },
+    "streams[13].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "214-216", "snippet": "attachment_gid = stream_slice[\"attachment_gid\"]\nreturn f\"attachments/{attachment_gid}\"" },
+    "streams[13].pull.snapshot.pathPlaceholders": { "file": "source_asana/streams.py", "lines": "218-221", "snippet": "yield from self.read_slices_from_records(\n    stream_class=AttachmentsCompact, slice_field=\"attachment_gid\")" },
+    "streams[14].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "323-324", "snippet": "def path(self, **kwargs) -> str:\n    return \"portfolios\"" },
+    "streams[14].pull.snapshot.pathPlaceholders.me_gid": { "file": "source_asana/streams.py", "lines": "331-332", "snippet": "user_data = self.get_current_user_data()\nparams[\"owner\"] = user_data.get(\"gid\")" },
+    "streams[14].pull.snapshot.params.owner": { "file": "source_asana/streams.py", "lines": "133-134", "snippet": "def get_current_user_data(self) -> dict:\n    url = f\"{self.url_base}users/me\"" },
+    "streams[15].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "349-351", "snippet": "portfolio_gid = stream_slice[\"portfolio_gid\"]\nreturn f\"portfolios/{portfolio_gid}\"" },
+    "streams[16].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "373-374", "snippet": "def path(self, **kwargs) -> str:\n    return \"portfolio_memberships\"" },
+    "streams[16].pull.snapshot.params.portfolio": { "file": "source_asana/streams.py", "lines": "384-386", "snippet": "params = super().request_params(stream_slice=stream_slice, **kwargs)\nparams[\"portfolio\"] = stream_slice[\"portfolio_gid\"]\nreturn params" },
+    "streams[17].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "246-247", "snippet": "def path(self, stream_slice: Mapping[str, Any] = None, **kwargs) -> str:\n    return \"events\"" },
+    "streams[17].pull.snapshot.paginator": { "file": "source_asana/streams.py", "lines": "272-278", "snippet": "has_more = bool(payload.get(\"has_more\"))\nif not has_more: return None\nreturn {\"sync\": self.sync_token}" },
+    "streams[17].pull.snapshot.params.resource": { "file": "source_asana/streams.py", "lines": "283-286", "snippet": "params = super().request_params(**kwargs)\nparams[\"resource\"] = stream_slice[\"resource_gid\"]\nparams[\"sync\"] = self.sync_token" },
+    "streams[17].primaryKey": { "file": "source_asana/streams.py", "lines": "240-241", "snippet": "class Events(AsanaStream):\n    primary_key = \"created_at\"" },
+    "streams[18].pull.snapshot.path": { "file": "source_asana/streams.py", "lines": "302-304", "snippet": "organization_export_gid = stream_slice[\"organization_export_gid\"]\nreturn f\"organization_exports/{organization_export_gid}\"" },
+    "streams[*].primaryKey": { "file": "tests/snapshots/snapshots__discover__capture.stdout.json", "lines": "74-82", "snippet": "\"key\": [ \"/gid\" ],\n\"resourceConfig\": { \"stream\": \"attachments_compact\", \"syncMode\": \"full_refresh\" }" },
+    "streams[*].supportedSyncModes": { "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py", "lines": "229-234", "snippet": "resource_config = ResourceConfig(stream=stream.name, syncMode=\"full_refresh\")\nif AirbyteSyncMode.incremental in stream.supported_sync_modes:\n    resource_config.sync_mode = \"incremental\"" },
+    "authTierOverall": { "file": "source_asana/spec.json", "lines": "53-54", "snippet": "\"title\": \"Authenticate with Personal Access Token\",\n\"required\": [\"personal_access_token\"]" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "estuaryDir": "high",
+    "displayName": "high",
+    "description": "high",
+    "category": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].scheme.type": "medium",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].scheme.grant": "high",
+    "credentialModes[1].scheme.scopes": "high",
+    "credentialModes[2]": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "configFields[organization_export_ids].type": "medium",
+    "streamMode": "high",
+    "streams[*].pull.snapshot.path": "high",
+    "streams[*].pull.snapshot.pathPlaceholders": "high",
+    "streams[*].pull.snapshot.recordsPath": "high",
+    "streams[*].pull.snapshot.paginator": "high",
+    "streams[17].pull.snapshot.paginator": "medium",
+    "streams[*].pull.snapshot.params.opt_fields": "medium",
+    "streams[*].primaryKey": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].writeDisposition": "low",
+    "streams[*].schedules": "high",
+    "streams[18]": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "Neither source-asana nor estuary-cdk's Airbyte shim declares an interval or cron. The only scheduling field in scope is `intervalSeconds` on the platform-side CaptureSpec (estuary-cdk/estuary_cdk/flow.py:56), which the connector never sets, so there is no connector-owned default to report.",
+    "streams[*].schedules": "Same reason as execution.defaultSchedule: ResourceConfig in shim_airbyte_cdk.py carries only stream / syncMode / namespace / cursorField. No per-binding schedule exists.",
+    "execution.continuity": "mode is 'poll' and no server-side artifact is created: every stream is a plain GET, and the only stateful token (the Events `sync` token) lives on an in-process attribute that is never persisted to connector state, so nothing accrues on the customer side and nothing is lost by pausing. Reported as null rather than inventing an artifact list. The Events 412 sync-token-expiry path is described under unionMisfits instead.",
+    "streams[*].cursorField": "No stream sets default_cursor_field and none registers an incremental sync mode; the shim leaves ResourceConfig.cursor_field at None (confirmed absent from every binding in the discover snapshot). There is no incremental leg, hence incrementalParam is null everywhere.",
+    "streams[*].pull.backfill / streams[*].pull.incremental": "All 18 discovered bindings report syncMode full_refresh, so there is no historical/ongoing split — the whole collection is re-read each run and the single pull shape is recorded under `snapshot`.",
+    "streams[*].writeDisposition": "Recorded as 'merge' on the basis that each binding is keyed (/gid, or /created_at for events) and the connector emits no deletions or tombstones, so a repeat full read upserts by key. The connector code itself never states a write disposition, and Estuary's reduction behaviour for a full_refresh binding with a source-defined key is decided outside the connector, so this is a low-confidence inference rather than an extracted fact.",
+    "transports[0].spec.defaultHeaders": "No connector-wide default headers are set on the HttpStream subclasses. The only explicit header construction is the ad-hoc `users/me` lookup, which sends Accept: application/json plus the authenticator's header (streams.py:136-137); whether the paged requests also carry Accept is decided by airbyte_cdk internals that are not vendored here.",
+    "credentialModes[0].scheme.type": "source.py passes the token to airbyte_cdk's TokenAuthenticator without arguments; the resulting header name and 'Bearer' prefix come from airbyte_cdk, which is not vendored in this directory (estuary-cdk only shims the Airbyte source interface). Recorded as bearer on the strength of TokenAuthenticator's documented default, not on a line of source read here.",
+    "streams[13,8,11,15,18].pull.snapshot.paginator": "These detail-fetch streams inherit AsanaStream.next_page_token unchanged, so the offset-cursor paginator is what the code will execute; in practice a single-object /data response carries no next_page and the loop terminates after one request. The recorded paginator is the inherited mechanism, not evidence that these endpoints page.",
+    "streams[17].pull.snapshot.paginator.cursorPath": "Events assigns self.sync_token from payload['sync'] inside parse_response, and next_page_token re-reads the body but uses the instance attribute (the in-line assignment there is commented out, streams.py:273). The token therefore comes from the response body key `sync`, but the read is order-dependent between parse_response and next_page_token; classified cursor/tokenFrom=body with medium confidence.",
+    "streams[18].pull.snapshot": "organization_exports never appears in the discover snapshot because it is only registered when the undeclared config field organization_export_ids is present. Its path and slice source are read from code; the primaryKey /gid is inferred from AsanaStream's class default (primary_key = 'gid'), not confirmed by a snapshot."
+  }
+}

@@ -1,0 +1,379 @@
+{
+  "id": "gladly",
+  "estuaryDir": "source-gladly",
+  "displayName": "Gladly",
+  "description": "Imports customer-service events (conversations, contacts, customers, tasks, agent status/availability, payment requests) from the Gladly Events API.",
+  "category": "support",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{organization}.gladly.com",
+          "placeholders": {
+            "organization": "endpoint config field `organization` supplied by the user; the whole base URL can instead be overridden verbatim by the optional advanced config field `advanced.base_url` (e.g. for sandbox accounts)"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `api/v1/` in the request path"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Agent email + API token (HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "agentEmail",
+        "passwordField": "apiToken"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "interval", "seconds": 30 },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "The Gladly Events API only serves events from the last 24 hours. If the connector cannot advance its timestamp cursor for more than 24 hours, the API errors on the stale `startAt` and the missed events are permanently unrecoverable — recovery requires bumping the backfill counter, which restarts from a fresh 23-hours-ago cursor and leaves a data gap.",
+      "resumeWindow": "24 hours (the connector starts its cursor at now-23h to leave ~1h of slack)",
+      "releasedOnShutdown": null,
+      "notes": "No server-side artifacts of any kind are created on the customer's side — the connector only issues GETs against a hosted events endpoint, so nothing accrues on their infra. All continuity risk is on our side and is a hard retention cliff. The connector also self-advances the cursor to now-5min when a poll returns zero events (only if the cursor is already >6h stale) specifically to keep it from aging out of the 24h window."
+    }
+  },
+
+  "configFields": [
+    { "name": "organization", "displayName": "Organization", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Organization to Request Data From; forms the subdomain of the base URL." },
+    { "name": "agentEmail", "displayName": "Agent Email", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Agent Email Address to use for Authentication (Basic auth username)." },
+    { "name": "apiToken", "displayName": "API Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "API Token to use for Authentication (Basic auth password)." },
+    { "name": "advanced.base_url", "displayName": "Base URL", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Optional override of the base URL, useful for sandbox accounts not served at https://{organization}.gladly.com." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK-standard ResourceConfig)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Interval between updates for this resource, ISO-8601 duration; the connector seeds each binding with 30 seconds." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "AgentAvailabilityEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "AGENT_AVAILABILITY" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "AgentStatusEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "AGENT_STATUS" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ContactEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "CONTACT" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ConversationEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "CONVERSATION" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CustomerEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "CUSTOMER" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PaymentRequestEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "PAYMENT_REQUEST" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TaskEvents",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [{ "role": "incremental poll", "schedule": { "kind": "interval", "seconds": 30 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "api/v1/events",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": { "startAt": "<log cursor, ISO-8601>", "entities": "TASK" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": { "param": "startAt", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode exists: HTTP Basic with the user's Gladly agent email as username and a self-serve API token as password. No OAuth app registration and no refresh token is involved anywhere in the connector or in the CDK path it uses (TokenSource is constructed with oauth_spec=None and BasicAuth credentials, which the CDK base64-encodes into an `Authorization: Basic` header). Two secrets-ish fields, but both come from the user's own Gladly account with no app registration, so T1.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "The base URL is BOTH templated and overridable: normally `https://{organization}.gladly.com` built from a config field, but a single optional advanced field replaces the whole thing verbatim. Neither `template` nor `constant` alone captures the 'template with a full user override' shape, and there is no way to record the fallback precedence.",
+      "proposedShape": { "kind": "template_with_override", "template": "https://{organization}.gladly.com", "placeholders": { "organization": "config.organization" }, "overrideField": "advanced.base_url" }
+    },
+    {
+      "where": "execution.mode",
+      "description": "This connector is neither a clean `poll` nor a clean `log`. It is an interval poll (30s) of a hosted append-only event log with a hard 24h server-side retention window and NO backfill capability at all — the CDK binding is opened with only `fetch_changes`, no `fetch_page`. `poll` was chosen because there is no replication artifact and slices are produced by repeated bounded HTTP requests, but the continuity risk profile is log-shaped (retention cliff).",
+      "proposedShape": { "mode": "polled_log", "retentionWindow": "24h", "backfillSupported": false }
+    },
+    {
+      "where": "streams[*].pull.incremental (record framing)",
+      "description": "The response is not a JSON envelope but a newline-delimited stream consumed line-by-line as it arrives (CDK `request_lines`), each line one Event document. `recordsPath` has no meaning here; `null` is used but is indistinguishable from 'records are the top-level array'.",
+      "proposedShape": { "responseFraming": "ndjson_stream", "recordsPath": null }
+    },
+    {
+      "where": "streams[*] (one endpoint, seven bindings)",
+      "description": "All seven streams are the same path and the same document model, differentiated only by the `entities` query param value. The schema has no way to express 'one parameterized endpoint fanned out into N bindings', so the endpoint is repeated verbatim seven times.",
+      "proposedShape": { "streamFamily": { "path": "api/v1/events", "discriminatorParam": "entities", "values": ["AGENT_AVAILABILITY", "AGENT_STATUS", "CONTACT", "CONVERSATION", "CUSTOMER", "PAYMENT_REQUEST", "TASK"] } }
+    },
+    {
+      "where": "execution.continuity.releasedOnShutdown",
+      "description": "The field presumes server-side artifacts exist. With an empty `artifacts` list the question is unanswerable rather than true or false, so it is left null.",
+      "proposedShape": { "releasedOnShutdown": "n/a" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_gladly/api.py",
+      "lines": "26-27",
+      "snippet": "base = config.advanced.base_url if config.advanced.base_url else f\"https://{config.organization}.gladly.com\"\n    url = urljoin(base, \"api/v1/events\")"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_gladly/api.py",
+      "lines": "27",
+      "snippet": "url = urljoin(base, \"api/v1/events\")"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_gladly/resources.py",
+      "lines": "24-30",
+      "snippet": "http.token_source = TokenSource(\n        oauth_spec=None,\n        credentials=BasicAuth(username=config.agentEmail, password=config.apiToken),"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-311",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n            return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode(),)"
+    },
+    "execution.defaultSchedule": {
+      "file": "source_gladly/resources.py",
+      "lines": "69-71",
+      "snippet": "initial_config=ResourceConfig(\n                name=resource_name, interval=timedelta(seconds=30)\n            ),"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_gladly/api.py",
+      "lines": "13-16",
+      "snippet": "# present time as the API will provide. The API will return an error if log_cursor is more than 24\n# hours in the past. If the connector is unable to make requests and update the cursor for more than\n# 24 hours, it will throw errors and require an update of the backfill counter to continue."
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source_gladly/resources.py",
+      "lines": "53-58",
+      "snippet": "# The Gladly Events API allows looking back within the last 24 hours only and does not support\n    # backfilling. The offset of 23 hours means we won't try to immediately request data outside of\n    started_at = datetime.now(tz=UTC) - timedelta(hours=23)"
+    },
+    "streamMode": {
+      "file": "source_gladly/models.py",
+      "lines": "14-22",
+      "snippet": "EVENTS_ENTITY_TYPES: list[tuple[str, str]] = [\n    (\"AGENT_AVAILABILITY\", \"AgentAvailabilityEvents\"),\n    (\"AGENT_STATUS\", \"AgentStatusEvents\"),"
+    },
+    "streams[*].primaryKey": {
+      "file": "source_gladly/resources.py",
+      "lines": "61-64",
+      "snippet": "common.Resource(\n            name=resource_name,\n            key=[\"/id\"],"
+    },
+    "streams[*].cursorField": {
+      "file": "source_gladly/api.py",
+      "lines": "46-47",
+      "snippet": "doc_count += 1\n        last_ts = event.timestamp"
+    },
+    "streams[*].pull.incremental.params": {
+      "file": "source_gladly/api.py",
+      "lines": "29-32",
+      "snippet": "params = {\n        \"startAt\": log_cursor.isoformat(),\n        \"entities\": entity,\n    }"
+    },
+    "streams[*].pull.incremental.paginator": {
+      "file": "source_gladly/api.py",
+      "lines": "36-37",
+      "snippet": "_, lines = await http.request_lines(log, url, params=params)\n    async for line in lines():"
+    },
+    "streams[*].pull.backfill": {
+      "file": "source_gladly/resources.py",
+      "lines": "44-51",
+      "snippet": "common.open_binding(\n            binding, binding_index, state, task,\n            fetch_changes=functools.partial(fetch_events, http, config, entity,),"
+    },
+    "configFields": {
+      "file": "source_gladly/models.py",
+      "lines": "25-52",
+      "snippet": "class EndpointConfig(BaseModel):\n    organization: str = Field(...)\n    apiToken: str = Field(..., json_schema_extra={\"secret\": True})"
+    },
+    "configFields[interval]": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "resourceConfigSchema.properties.interval",
+      "snippet": "\"interval\": { \"default\": \"PT0S\", \"description\": \"Interval between updates for this resource\", \"format\": \"duration\" }"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "authTierOverall": "high",
+    "execution.mode": "medium",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "streamMode": "high",
+    "streams[*].pull.incremental.path": "high",
+    "streams[*].pull.incremental.paginator": "high",
+    "streams[*].pull.incremental.incrementalParam": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].supportedSyncModes": "medium",
+    "streams[*].writeDisposition": "medium",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No headers are set anywhere in the connector; the only header is the CDK-injected Authorization. Recording an empty dict would falsely imply the connector chose to send none of its own beyond auth, so null.",
+    "streams[*].pull.incremental.recordsPath": "The response is newline-delimited JSON consumed via the CDK's request_lines, not a JSON envelope, so no records path exists in the source. null here means 'not applicable', not 'top level'.",
+    "streams[*].pull.backfill": "The connector deliberately supports no backfill: open_binding is called with fetch_changes only, and the source comment states the Events API 'does not support backfilling'.",
+    "streams[*].snapshot": "No snapshot/full-re-read leg exists in the code.",
+    "execution.continuity.releasedOnShutdown": "No server-side artifacts are created, so the question does not apply; see unionMisfits.",
+    "discovery": "streamMode is static; discover() simply returns the seven hard-coded resources from all_resources, with no query against the customer's own schema.",
+    "streams[*].pull.incremental.params.startAt (exact wire format)": "log_cursor.isoformat() on an aware datetime — ISO-8601 with offset — but the connector never pins a specific offset representation or millisecond precision on the request side, so only 'iso8601' is claimed. (The code does assume the API returns millisecond-precision timestamps, per the +1ms cursor bump.)"
+  }
+}

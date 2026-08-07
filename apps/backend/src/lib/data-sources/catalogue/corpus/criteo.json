@@ -1,0 +1,499 @@
+{
+  "id": "criteo",
+  "estuaryDir": "source-criteo",
+  "displayName": "Criteo",
+  "description": "Imports Criteo advertising objects (audiences, advertisers, ad sets, campaigns, categories) and user-defined statistics reports from the Criteo Marketing Solutions API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.criteo.com" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment — each stream hardcodes its own API generation as the first path segment: '/2021-04/...', '/preview/...', '/legacy/marketing/v1/...'"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Criteo API OAuth2 client credentials (client id + secret)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://api.criteo.com/oauth2/token",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Criteo API client id, exchanged for a bearer token via the client_credentials grant." },
+    { "name": "client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Criteo API client secret." },
+    { "name": "advertiser_ids", "displayName": "Advertiser IDs", "required": true, "secret": false, "scope": "endpoint", "type": "array", "description": "Declared required in the config schema, but no stream in the connector reads it (see unionMisfits / abstained)." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "ISO-8601 datetime; used only as the statistics report startDate. Object streams ignore it." },
+    { "name": "reports", "displayName": "Reports", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "List of statistics report definitions. Each entry creates one additional stream named after the entry." },
+    { "name": "reports[].name", "displayName": "Report Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Becomes the stream / collection name for this report." },
+    { "name": "reports[].dimensions", "displayName": "Dimensions", "required": true, "secret": false, "scope": "endpoint", "type": "array", "description": "Criteo report dimensions; also become the stream's primary key." },
+    { "name": "reports[].metrics", "displayName": "Metrics", "required": true, "secret": false, "scope": "endpoint", "type": "array", "description": "Criteo report metrics." },
+    { "name": "reports[].currency", "displayName": "Currency", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Report currency; defaults to USD." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Singer stream / tap_stream_id selected for this binding (from the shim's resourceConfigSchema)." },
+    { "name": "replication_method", "displayName": "Replication Method", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "INCREMENTAL or FULL_TABLE. Discovery emits FULL_TABLE for every Criteo stream." },
+    { "name": "replication_key", "displayName": "Replication Key", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Required by the shim only when replication_method is INCREMENTAL; no Criteo stream declares one." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Singer SDK discover over a statically registered stream-class list, plus one dynamically instantiated report stream per entry in the `reports` endpoint config",
+    "querySketch": null,
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "audiences",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/2021-04/audiences",
+          "httpMethod": "GET",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "advertisers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/2021-04/advertisers/me",
+          "httpMethod": "GET",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ad_sets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/2021-04/marketing-solutions/ad-sets/search",
+          "httpMethod": "POST",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/preview/marketing-solutions/campaigns/search",
+          "httpMethod": "POST",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "legacy_audiences",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/legacy/marketing/v1/audiences",
+          "httpMethod": "GET",
+          "recordsPath": "$.audiences[*]",
+          "params": { "advertiserId": "77480 (HARDCODED literal in the path string, not taken from config — see unionMisfits)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "legacy_campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/legacy/marketing/v1/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "legacy_categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/legacy/marketing/v1/categories",
+          "httpMethod": "GET",
+          "recordsPath": "$.data[*]",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "<reports[].name>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<each entry of reports[].dimensions>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/2021-04/statistics/report",
+          "httpMethod": "POST",
+          "recordsPath": "$.Rows[*]",
+          "params": {
+            "_note": "sent as a JSON request BODY, not query params",
+            "dimensions": "reports[].dimensions",
+            "metrics": "reports[].metrics",
+            "currency": "reports[].currency (default USD)",
+            "format": "json",
+            "timezone": "UTC",
+            "startDate": "config.start_date, ISO-8601",
+            "endDate": "datetime.now(UTC) at request time"
+          },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T2_BYO_APP",
+  "authTierRationale": "The only credential mode is OAuth2 client_credentials: the user must create their own Criteo API application in the Criteo developer portal and supply its client_id and client_secret. There is no hosted OAuth flow — the Estuary shim is constructed without an `oauth2` argument, so no OAuth2 spec is advertised to the control plane and no authorization_code redirect exists. No refresh token is ever supplied by the user (the client_credentials grant mints short-lived tokens directly), so this is not T3. It is above T1 because the credential is an app registration (id + secret pair), not a self-serve single API key.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[7].pull.snapshot (statistics report)",
+      "description": "The statistics stream is not a list endpoint. It POSTs a report DEFINITION (dimensions, metrics, currency, format, timezone, startDate, endDate) to /2021-04/statistics/report and the response is a rendered report, whose row array is read at $.Rows[*]. The connector pins format:\"json\", but the same Criteo endpoint also serves CSV/XML when `format` is changed — so the response body is a report artifact, not a paged resource collection. PullSpec kind 'http' has no place to express a request body, so the report definition had to be smuggled into `params` with a note.",
+      "proposedShape": {
+        "kind": "report",
+        "path": "/2021-04/statistics/report",
+        "httpMethod": "POST",
+        "definitionBody": { "dimensions": [], "metrics": [], "currency": "USD", "timezone": "UTC", "startDate": "<iso>", "endDate": "<iso>" },
+        "responseFormat": "json|csv|xml",
+        "responseFormatParam": "format",
+        "rowsPath": "$.Rows[*]",
+        "windowing": { "startFrom": "config.start_date", "endAt": "now", "rewindow": "whole range re-requested every sync" },
+        "asynchronous": false
+      }
+    },
+    {
+      "where": "PullSpec (kind: http) generally",
+      "description": "Two object streams (ad_sets, campaigns) are POST 'search' endpoints that send an empty JSON body `{}`. The schema's http PullSpec has `params` but no `requestBody`, so a POST-with-body pull cannot be represented faithfully; `params` conflates query string and body.",
+      "proposedShape": { "kind": "http", "httpMethod": "POST", "queryParams": {}, "requestBody": {}, "requestBodyIsFilter": true }
+    },
+    {
+      "where": "streams[4].pull.snapshot.params (legacy_audiences)",
+      "description": "The advertiserId is not a parameter at all — it is a literal query string baked into the stream's `path` attribute (`/legacy/marketing/v1/audiences?advertiserId=77480`). The schema has no way to say 'this path contains a hardcoded tenant identifier belonging to someone else', which is a correctness hazard, not a config fact.",
+      "proposedShape": { "kind": "http", "path": "/legacy/marketing/v1/audiences", "hardcodedParams": { "advertiserId": "77480" }, "hardcodedParamsWarning": "literal, not tenant-derived" }
+    },
+    {
+      "where": "configFields / streams",
+      "description": "`advertiser_ids` is a required endpoint config field that no stream reads. It is neither a connection setting nor a per-binding setting in any operative sense — it is dead required config. The schema's `required: true` implies load-bearing, which is misleading here.",
+      "proposedShape": { "name": "advertiser_ids", "required": true, "referencedByStreams": [], "status": "declared_unused" }
+    },
+    {
+      "where": "streamMode / discovery",
+      "description": "'mixed' is being used in an unusual sense: the dynamic half is not discovered from the customer's remote schema, it is expanded from a list the user typed into the ENDPOINT config (`reports`). No network call informs it. A third origin — 'config_expanded' — would be more accurate than reusing 'discovered'.",
+      "proposedShape": { "streamMode": "mixed", "streams[].origin": "static|discovered|config_expanded", "expandedFrom": "reports" }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "The connector carries no notion of a schedule at any level. It is a Singer tap driven by the Estuary shim, which runs the tap to completion and exits; cadence is entirely a Flow control-plane property external to this repository directory. Emitting nulls/empty lists is correct but indistinguishable from 'not yet determined'.",
+      "proposedShape": { "defaultSchedule": null, "scheduleOwner": "external_control_plane" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_criteo/tap_criteo/client.py",
+      "lines": "18",
+      "snippet": "url_base = \"https://api.criteo.com\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "25,33,41",
+      "snippet": "path = \"/2021-04/audiences\"\n    path = \"/2021-04/advertisers/me\"\n    path = \"/2021-04/marketing-solutions/ad-sets/search\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_criteo/tap_criteo/auth.py",
+      "lines": "23-27,42",
+      "snippet": "return {\"client_id\": self.config[\"client_id\"], \"client_secret\": self.config[\"client_secret\"], \"grant_type\": \"client_credentials\"}\n        return cls(stream=stream, auth_endpoint=\"https://api.criteo.com/oauth2/token\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "__main__.py",
+      "lines": "4-7",
+      "snippet": "shim_singer_sdk.CaptureShim(\n    config_schema=TapCriteo.config_jsonschema,\n    delegate_factory=TapCriteo,\n).main()"
+    },
+    "authTierOverall": {
+      "file": "source_criteo/tap_criteo/tap.py",
+      "lines": "36-37",
+      "snippet": "th.Property(\"client_id\", th.StringType, required=True, secret=True),\n        th.Property(\"client_secret\", th.StringType, required=True, secret=True),"
+    },
+    "configFields": {
+      "file": "source_criteo/tap_criteo/tap.py",
+      "lines": "35-55",
+      "snippet": "config_jsonschema = th.PropertiesList(\n        th.Property(\"client_id\", th.StringType, required=True, secret=True),"
+    },
+    "configFields[9].scope": {
+      "file": "../python/flow_sdk/shim_singer_sdk.py",
+      "lines": "358-360",
+      "snippet": "\"replication_method\": {\"type\": \"string\", \"enum\": [REPLICATION_INCREMENTAL, REPLICATION_FULL_TABLE]},\n        \"replication_key\": {\"type\": \"string\"}"
+    },
+    "streamMode": {
+      "file": "source_criteo/tap_criteo/tap.py",
+      "lines": "63-73",
+      "snippet": "objects = [stream_class(tap=self) for api in (\"current\", \"preview\", \"legacy\") for stream_class in OBJECT_STREAMS[api]]\n        reports = [REPORTS_BASE(tap=self, report=report) for report in self.config[\"reports\"]]\n        return objects + reports"
+    },
+    "discovery.method": {
+      "file": "source_criteo/tap_criteo/tap.py",
+      "lines": "11-27",
+      "snippet": "OBJECT_STREAMS: Dict[str, List[Type[CriteoStream]]] = {\n    \"legacy\": [...], \"current\": [...], \"preview\": [...]}\nREPORTS_BASE = v202104.StatsReportStream"
+    },
+    "streams[0].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "21-26",
+      "snippet": "class AudiencesStream(CriteoStream):\n    name = \"audiences\"\n    path = \"/2021-04/audiences\""
+    },
+    "streams[0].pull.snapshot.recordsPath": {
+      "file": "source_criteo/tap_criteo/client.py",
+      "lines": "20",
+      "snippet": "records_jsonpath = \"$.data[*]\""
+    },
+    "streams[0].primaryKey": {
+      "file": "source_criteo/tap_criteo/client.py",
+      "lines": "22",
+      "snippet": "primary_keys = (\"id\",)"
+    },
+    "streams[1].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "29-34",
+      "snippet": "class AdvertisersStream(CriteoStream):\n    name = \"advertisers\"\n    path = \"/2021-04/advertisers/me\""
+    },
+    "streams[2].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "37-42",
+      "snippet": "class AdSetsStream(CriteoSearchStream):\n    name = \"ad_sets\"\n    path = \"/2021-04/marketing-solutions/ad-sets/search\""
+    },
+    "streams[2].pull.snapshot.httpMethod": {
+      "file": "source_criteo/tap_criteo/client.py",
+      "lines": "46-49",
+      "snippet": "class CriteoSearchStream(CriteoStream):\n    \"\"\"Search stream.\"\"\"\n    rest_method = \"post\""
+    },
+    "streams[3].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202107.py",
+      "lines": "10-15",
+      "snippet": "class CampaignsStream(CriteoSearchStream):\n    name = \"campaigns\"\n    path = \"/preview/marketing-solutions/campaigns/search\""
+    },
+    "streams[4].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202007.py",
+      "lines": "10-16",
+      "snippet": "name = \"legacy_audiences\"\n    records_jsonpath = \"$.audiences[*]\"\n    path = \"/legacy/marketing/v1/audiences?advertiserId=77480\""
+    },
+    "streams[5].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202007.py",
+      "lines": "19-24",
+      "snippet": "class CampaignsStream(CriteoStream):\n    name = \"legacy_campaigns\"\n    path = \"/legacy/marketing/v1/campaigns\""
+    },
+    "streams[6].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202007.py",
+      "lines": "27-32",
+      "snippet": "class CategoriesStream(CriteoStream):\n    name = \"legacy_categories\"\n    path = \"/legacy/marketing/v1/categories\""
+    },
+    "streams[7].pull.snapshot": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "66-69,115-123",
+      "snippet": "path = \"/2021-04/statistics/report\"\n    records_jsonpath = \"$.Rows[*]\"\n    rest_method = \"post\""
+    },
+    "streams[7].primaryKey": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "93-96",
+      "snippet": "self.dimensions = report[\"dimensions\"]\n        self.metrics = report[\"metrics\"]\n        self.primary_keys = self.dimensions"
+    },
+    "streams[7].name": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "82,91",
+      "snippet": "name = report[\"name\"]\n        super().__init__(tap, name=name, schema=schema)"
+    },
+    "streams[].supportedSyncModes": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "discover output, all 8 entries",
+      "snippet": "\"replication_method\": \"FULL_TABLE\""
+    },
+    "streams[7].pull.snapshot.params": {
+      "file": "source_criteo/tap_criteo/streams/v202104.py",
+      "lines": "112-123",
+      "snippet": "start_date = parse(self.config[\"start_date\"])\n        end_date = datetime.now(UTC)\n        return {\"dimensions\": ..., \"format\": \"json\", \"timezone\": \"UTC\", ...}"
+    },
+    "execution.mode": {
+      "file": "__main__.py",
+      "lines": "1-7",
+      "snippet": "from flow_sdk import shim_singer_sdk\nfrom tap_criteo.tap import TapCriteo"
+    },
+    "unionMisfits[3].description": {
+      "file": "source_criteo/tap_criteo/tap.py",
+      "lines": "38",
+      "snippet": "th.Property(\"advertiser_ids\", th.ArrayType(th.StringType), required=True),"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[2].pull.snapshot.path": "high",
+    "streams[3].pull.snapshot.path": "high",
+    "streams[4].pull.snapshot.path": "high",
+    "streams[5].pull.snapshot.path": "high",
+    "streams[6].pull.snapshot.path": "high",
+    "streams[7].pull.snapshot.path": "high",
+    "streams[].recordsPath": "high",
+    "streams[].primaryKey": "high",
+    "streams[].supportedSyncModes": "high",
+    "streams[].pull.snapshot.paginator": "low",
+    "streams[].writeDisposition": "medium",
+    "streams[7].kind": "high"
+  },
+
+  "abstained": {
+    "streams[*].pull.snapshot.paginator": "Recorded as {\"type\":\"none\"} because the connector itself contains ZERO pagination logic: no stream overrides get_next_page_token, get_new_paginator, get_url_params, or next_page_token_jsonpath, and prepare_request_payload explicitly ignores its next_page_token argument (marked noqa ARG002 in both client.py and v202104.py). Whatever pagination happens is therefore entirely the singer_sdk 0.33.0 RESTStream default, and singer_sdk is a pinned external dependency not vendored in this directory, so its default paginator could not be read from source here. Treat 'none' as 'the connector encodes no pagination', NOT as 'the Criteo API returns everything in one response' — the Criteo /2021-04 endpoints are known to be paged, so this is the highest-risk silent-truncation surface in this connector.",
+    "streams[*].writeDisposition": "Inferred 'merge' from FULL_TABLE replication plus a declared collection key (/id, or the report dimensions) in the discover snapshot and acmeCo/flow.yaml. Nothing in the connector emits deletes or tombstones, so snapshot_with_tombstone is ruled out; but whether Flow reduces a full re-read as merge or append is decided by the control plane, not by any code in this directory.",
+    "streams[*].schedules": "No schedule of any kind (interval, cron, or duration literal) appears anywhere in the connector or in the Singer shim. Cadence is imposed by the Flow control plane outside this directory.",
+    "execution.continuity": "Null rather than a filled object: this is a stateless HTTP poll connector. It creates no server-side artifact at Criteo (no report job id is persisted, no export/job resource is created — the statistics POST is synchronous), nothing accrues on the customer side if we stop, and nothing is lost on ours because every stream re-reads its whole range on each run. There is nothing to describe.",
+    "streams[*].cursorField": "No stream declares replication_key or is_sorted, and discovery emits FULL_TABLE for all 8 streams. config.start_date is used only as a fixed report window floor, never advanced from state, so it is not a cursor.",
+    "credentialModes[0].scopes": "The client_credentials request body contains only client_id, client_secret and grant_type — no scope parameter is sent, and no scope list appears anywhere in the connector. Emitted as [] meaning 'none requested', not 'unknown'.",
+    "credentialModes[0].authUrl": "There is no authorization endpoint: client_credentials has no user-redirect leg, and the shim is instantiated without an oauth2 spec so the Estuary control plane advertises no OAuth flow for this connector.",
+    "streams[7].name": "The report stream's name is whatever the user types into reports[].name, so no literal name exists in the code. Emitted as the placeholder <reports[].name> with kind:\"archetype\". (The checked-in fixtures happen to use \"MyReport\" and the upstream meltano.yml uses \"daily_clicks\"/\"daily_displays\", but those are examples, not shipped streams.) Note the class-level attribute name=\"statistics\" is always overwritten in __init__ and never reaches the catalog.",
+    "streams[7].schema": "The report record schema is constructed at runtime from the user's chosen dimensions and metrics against a fixed type map, so there is no fixed field list to report. A dimension or metric absent from that map raises KeyError during discovery rather than being passed through."
+  }
+}

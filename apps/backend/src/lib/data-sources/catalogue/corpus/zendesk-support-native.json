@@ -1,0 +1,2637 @@
+{
+  "id": "zendesk-support-native",
+  "estuaryDir": "source-zendesk-support-native",
+  "displayName": "Zendesk Support",
+  "description": "Imports Zendesk Support helpdesk data (tickets and their audits/comments/metrics/side conversations, users, organizations, help center posts and articles, Talk calls, audit logs and account configuration objects) from a Zendesk instance.",
+  "category": "support",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{subdomain}.zendesk.com/api/v2",
+          "placeholders": {
+            "subdomain": "the `subdomain` endpoint config field supplied by the user; validated against ^[a-z][a-z0-9-]{2,62}$"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2` in the base URL"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Email & API Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.username",
+        "passwordField": "credentials.password"
+      }
+    },
+    {
+      "name": "OAuth (rotating access + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+        "tokenUrl": "https://{subdomain}.zendesk.com/oauth/tokens",
+        "scopes": [
+          "read"
+        ],
+        "grant": "authorization_code"
+      }
+    },
+    {
+      "name": "Deprecated OAuth Credentials (long-lived access token)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+        "tokenUrl": "https://{subdomain}.zendesk.com/oauth/tokens",
+        "scopes": [
+          "read"
+        ],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure HTTP polling. The connector creates no server-side object in the customer's Zendesk instance; all resumption state (a datetime log cursor, or an opaque base64 incremental-export cursor for tickets/users and their children) is held by Flow. Nothing accrues on the customer's side while paused. The code contains no cursor-expiry handling, so no `ourSideLoss` is asserted; see `abstained`."
+    }
+  },
+  "configFields": [
+    {
+      "name": "subdomain",
+      "displayName": "Subdomain",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Zendesk subdomain from the account URL https://{MY_SUBDOMAIN}.zendesk.com. Pattern-validated as ^[a-z][a-z0-9-]{2,62}$."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC YYYY-MM-DDTHH:MM:SSZ. Data generated before this is not replicated. Defaults to 30 days before the present."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Authentication",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator selecting the credential variant: 'Email & API Token', 'OAuth Credentials', or the hidden 'Deprecated OAuth Credentials'."
+    },
+    {
+      "name": "credentials.username",
+      "displayName": "Email",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Email & API Token variant. The connector appends the literal suffix '/token' to the supplied email before HTTP Basic encoding."
+    },
+    {
+      "name": "credentials.password",
+      "displayName": "API Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Email & API Token variant: the Zendesk API token, used as the HTTP Basic password."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth variants: Zendesk OAuth client id."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth variants: Zendesk OAuth client secret."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Rotating OAuth variant only."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Present on both the rotating OAuth variant and the deprecated long-lived OAuth variant."
+    },
+    {
+      "name": "credentials.access_token_expires_at",
+      "displayName": "Access token expiration time.",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Rotating OAuth variant only. Tokens are minted with the maximum Zendesk lifetime of 2 days and are refreshed only at connector startup."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Binding/stream name; also the resource path pointer."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Interval between sweeps for this binding, defaulted per stream by the connector (5, 15, 30 or 60 minutes)."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": {
+    "method": "Static list, filtered at discover-time by four live capability probes against the account",
+    "querySketch": "GET /audit_logs (403 'You do not have access to this page.' -> not Enterprise, drop audit_logs/account_attributes/schedules/sla_policies); GET /community/posts (404 -> no Help Center, drop posts/post_comments/post_comment_votes/post_votes/topics); GET /channels/voice/stats/account_overview (403|404 -> Talk disabled, drop calls/call_legs); GET /account/settings (settings.side_conversations.show_in_context_panel false -> drop side_conversations)",
+    "excludes": [
+      "audit_logs",
+      "account_attributes",
+      "schedules",
+      "sla_policies",
+      "posts",
+      "post_comments",
+      "post_comment_votes",
+      "post_votes",
+      "topics",
+      "calls",
+      "call_legs",
+      "side_conversations"
+    ],
+    "allowlist": "The full stream set is shipped by the connector; probes only subtract from it."
+  },
+  "streams": [
+    {
+      "name": "custom_ticket_statuses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "custom_statuses",
+          "httpMethod": "GET",
+          "recordsPath": "/custom_statuses",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "schedules",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "business_hours/schedules",
+          "httpMethod": "GET",
+          "recordsPath": "/schedules",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "account_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "routing/attributes",
+          "httpMethod": "GET",
+          "recordsPath": "/attributes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "per_page",
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sla_policies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "slas/policies",
+          "httpMethod": "GET",
+          "recordsPath": "/sla_policies",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "per_page",
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "tags",
+          "httpMethod": "GET",
+          "recordsPath": "/tags",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "custom_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 1800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "custom_roles",
+          "httpMethod": "GET",
+          "recordsPath": "/custom_roles",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "per_page",
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ticket_forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 1800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "ticket_forms",
+          "httpMethod": "GET",
+          "recordsPath": "/ticket_forms",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "per_page",
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "automations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "automations",
+          "httpMethod": "GET",
+          "recordsPath": "/automations",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "brands",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "brands",
+          "httpMethod": "GET",
+          "recordsPath": "/brands",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "groups",
+          "httpMethod": "GET",
+          "recordsPath": "/groups",
+          "params": {
+            "exclude_deleted": "false"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "group_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "group_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "/group_memberships",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "macros",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "macros",
+          "httpMethod": "GET",
+          "recordsPath": "/macros",
+          "params": {
+            "include": "permissions"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "organization_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "organization_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "/organization_memberships",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "posts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/posts",
+          "httpMethod": "GET",
+          "recordsPath": "/posts",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ticket_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "ticket_fields",
+          "httpMethod": "GET",
+          "recordsPath": "/ticket_fields",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "topics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/topics",
+          "httpMethod": "GET",
+          "recordsPath": "/topics",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "articles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "help_center/articles",
+          "httpMethod": "GET",
+          "recordsPath": "/articles",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 900
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "help_center/categories",
+          "httpMethod": "GET",
+          "recordsPath": "/categories",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ticket_skips",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "skips",
+          "httpMethod": "GET",
+          "recordsPath": "/skips",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "skips",
+          "httpMethod": "GET",
+          "recordsPath": "/skips",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_metric_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "time",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/ticket_metric_events",
+          "httpMethod": "GET",
+          "recordsPath": "/ticket_metric_events",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/ticket_metric_events",
+          "httpMethod": "GET",
+          "recordsPath": "/ticket_metric_events",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_activities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "activities",
+          "httpMethod": "GET",
+          "recordsPath": "/activities",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "activities",
+          "httpMethod": "GET",
+          "recordsPath": "/activities",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "satisfaction_ratings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "satisfaction_ratings",
+          "httpMethod": "GET",
+          "recordsPath": "/satisfaction_ratings",
+          "params": {
+            "start_time": "<window start, unix seconds>",
+            "end_time": "<window end, unix seconds; window capped at 30 days>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "satisfaction_ratings",
+          "httpMethod": "GET",
+          "recordsPath": "/satisfaction_ratings",
+          "params": {
+            "start_time": "<window start, unix seconds>",
+            "end_time": "<window end, unix seconds; window capped at 30 days>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "audit_logs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "created_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "audit_logs",
+          "httpMethod": "GET",
+          "recordsPath": "/audit_logs",
+          "params": {
+            "page[size]": 100,
+            "sort": "created_at",
+            "filter[created_at][]": "[<start iso8601>, <end iso8601>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "filter[created_at][]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "audit_logs",
+          "httpMethod": "GET",
+          "recordsPath": "/audit_logs",
+          "params": {
+            "page[size]": 100,
+            "sort": "created_at",
+            "filter[created_at][]": "[<start iso8601>, <end iso8601>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "filter[created_at][]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "organizations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/organizations",
+          "httpMethod": "GET",
+          "recordsPath": "/organizations",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/organizations",
+          "httpMethod": "GET",
+          "recordsPath": "/organizations",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "calls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "channels/voice/stats/incremental/calls",
+          "httpMethod": "GET",
+          "recordsPath": "/calls",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": null,
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "channels/voice/stats/incremental/calls",
+          "httpMethod": "GET",
+          "recordsPath": "/calls",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": null,
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "call_legs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "channels/voice/stats/incremental/legs",
+          "httpMethod": "GET",
+          "recordsPath": "/legs",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": null,
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "channels/voice/stats/incremental/legs",
+          "httpMethod": "GET",
+          "recordsPath": "/legs",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "/end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": null,
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tickets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/tickets",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/tickets",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/users/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/users",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/users/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/users",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/tickets/*/metric_set",
+          "params": {
+            "include": "metric_sets"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "/tickets/*/metric_set",
+          "params": {
+            "include": "metric_sets"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "per_page",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_audits",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/audits",
+          "httpMethod": "GET",
+          "recordsPath": "/audits",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/audits",
+          "httpMethod": "GET",
+          "recordsPath": "/audits",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/comments",
+          "httpMethod": "GET",
+          "recordsPath": "/comments",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/comments",
+          "httpMethod": "GET",
+          "recordsPath": "/comments",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "side_conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/side_conversations",
+          "httpMethod": "GET",
+          "recordsPath": "/side_conversations",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "/next_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/side_conversations",
+          "httpMethod": "GET",
+          "recordsPath": "/side_conversations",
+          "params": null,
+          "pathPlaceholders": {
+            "ticket_id": "id of each non-deleted ticket streamed from the incremental/tickets/cursor export"
+          },
+          "paginator": {
+            "type": "next_url",
+            "nextUrlPath": "/next_page"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "post_votes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 1800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/votes",
+          "httpMethod": "GET",
+          "recordsPath": "/votes",
+          "params": null,
+          "pathPlaceholders": {
+            "post_id": "id of each post whose vote_count/comment_count is non-zero, streamed from the community/posts stream"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "post_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 1800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/comments",
+          "httpMethod": "GET",
+          "recordsPath": "/comments",
+          "params": null,
+          "pathPlaceholders": {
+            "post_id": "id of each post whose vote_count/comment_count is non-zero, streamed from the community/posts stream"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "post_comment_votes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding sweep interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 1800
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "snapshot": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/comments/{comment_id}/votes",
+          "httpMethod": "GET",
+          "recordsPath": "/votes",
+          "params": null,
+          "pathPlaceholders": {
+            "post_id": "post id carried on each post comment",
+            "comment_id": "id of each post comment whose vote_count is non-zero"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/meta/after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The easiest offered mode is 'Email & API Token': the user pastes their Zendesk login email plus a self-serve API token generated in Zendesk admin, and the CDK's TokenSource sends them as HTTP Basic (the connector appends '/token' to the email, which is Zendesk's documented API-token Basic form). No app registration. The two OAuth modes are harder: both require the user's own Zendesk OAuth client id + secret (T2), and the current rotating mode additionally persists a refresh token plus access token and expiry (T3). Estuary's hosted control plane can run the authorization-code flow on the user's behalf via OAUTH2_SPEC, but standalone those modes are T2/T3.",
+  "unionMisfits": [
+    {
+      "where": "streams[?name=calls|call_legs].pull.*.paginator.terminateOn",
+      "description": "The Talk incremental export has no end-of-stream envelope flag. The loop terminates when the cursor it is about to send back equals the one it just sent (response end_time == request start_time). None of envelope_flag / short_page / absent_token / explicit_total describes 'the returned token is unchanged', so terminateOn is left null.",
+      "proposedShape": {
+        "terminateOn": "unchanged_token"
+      }
+    },
+    {
+      "where": "streams[?name=organizations|calls|call_legs].pull.*.paginator",
+      "description": "Time-based incremental exports are a hybrid: the pagination token IS the incremental watermark (a unix-second end_time echoed back as the next start_time), so `paginator` and `incrementalParam` name the same parameter and pages deliberately overlap by at least one record. A pure 'cursor' classification loses the fact that the token is a timestamp, is inclusive, and that the connector raises a hard error when >=1000 records share an updated_at (unadvanceable cursor).",
+      "proposedShape": {
+        "type": "time_watermark_cursor",
+        "param": "start_time",
+        "tokenPath": "/end_time",
+        "inclusive": true,
+        "unit": "unix_seconds"
+      }
+    },
+    {
+      "where": "streams[?name=tickets|users].pull.*.paginator",
+      "description": "The incremental cursor export's page size is adaptive rather than fixed: requests start at per_page=1000 and halve on each HTTP 504 'upstream request timeout' down to 1. `pageSize` records only the starting value. The cursor is also base64-decoded before being checkpointed and re-encoded before being sent.",
+      "proposedShape": {
+        "pageSize": 1000,
+        "pageSizeAdaptation": "halve on 504 upstream timeout, floor 1",
+        "tokenEncoding": "base64 on the wire, decoded in state"
+      }
+    },
+    {
+      "where": "streams[?name in client-side-filtered set].pull.incremental.incrementalParam",
+      "description": "Eleven cursor-paginated and two page-paginated streams have NO server-side incremental parameter at all: every sweep re-reads the entire collection and the connector discards records whose updated_at is not greater than the log cursor. They are genuinely incremental from Flow's perspective but full-scan at the API. `incrementalParam: null` on an `incremental` PullSpec understates the cost.",
+      "proposedShape": {
+        "filtering": "client_side",
+        "fullScanPerSweep": true,
+        "recordCursorField": "updated_at"
+      }
+    },
+    {
+      "where": "streams[?name=ticket_audits|ticket_comments|side_conversations|post_votes|post_comments|post_comment_votes].pull",
+      "description": "Parent-driven streams: their log cursor is the PARENT stream's cursor (the tickets incremental-export cursor, or the posts updated_at watermark), not any field of the emitted record. There is no single PullSpec \u2014 each sweep is a parent pull plus one child pull per parent id, with the checkpoint taken at parent-page boundaries. The `pathPlaceholders` field carries this, but the two-request-family structure and the cursor's provenance do not fit.",
+      "proposedShape": {
+        "kind": "parent_child",
+        "parentStream": "tickets",
+        "parentFilter": "skip tickets whose status == 'deleted'",
+        "child": "<PullSpec>",
+        "checkpointAt": "parent page boundary"
+      }
+    },
+    {
+      "where": "streams[?name=ticket_metrics].pull",
+      "description": "ticket_metrics is not its own endpoint. It calls the tickets incremental cursor export with `include=metric_sets` and emits the sideloaded `metric_set` sub-object of each ticket, dropping tickets that have none. `recordsPath` is expressed as '/tickets/*/metric_set' but that is a projection out of the parent record, not an envelope path.",
+      "proposedShape": {
+        "kind": "sideload",
+        "ofStream": "tickets",
+        "includeParam": "metric_sets",
+        "projection": "/metric_set"
+      }
+    },
+    {
+      "where": "streams[?name=satisfaction_ratings].pull",
+      "description": "Windowed rather than watermark-driven: each sweep requests a closed [start_time, end_time] window capped at 30 days and advances the cursor to the window end regardless of what came back, so the cursor is wall-clock, not record-derived. Two query params jointly form the incremental filter; `incrementalParam` holds only one.",
+      "proposedShape": {
+        "windowParams": {
+          "start": "start_time",
+          "end": "end_time"
+        },
+        "maxWindow": "30 days",
+        "cursorSource": "window_end"
+      }
+    },
+    {
+      "where": "streams[].pull.snapshot / streamMode",
+      "description": "Which streams exist is decided at discover time by four live HTTP capability probes (Enterprise plan, Help Center, Talk, side conversations). The list is neither purely static nor discovered from a customer schema; `streamMode: static` plus a `discovery` block describing subtraction is the closest fit.",
+      "proposedShape": {
+        "streamMode": "static_gated",
+        "gates": [
+          {
+            "probe": "GET /audit_logs",
+            "dropsOnFailure": [
+              "audit_logs",
+              "account_attributes",
+              "schedules",
+              "sla_policies"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "where": "execution.defaultSchedule vs streams[].schedules",
+      "description": "Per-binding intervals are connector-supplied defaults on ResourceConfig.interval that the user may override in the binding config; they are not fixed schedules. The Schedule union cannot express 'default, user-overridable'.",
+      "proposedShape": {
+        "kind": "interval",
+        "seconds": 300,
+        "overridable": true
+      }
+    }
+  ],
+  "evidence": {
+    "streams[?name=custom_ticket_statuses].pull.snapshot.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "255-258",
+      "snippet": "(\"custom_ticket_statuses\", \"custom_statuses\", CustomTicketStatusesResponse),\n(\"schedules\", \"business_hours/schedules\", SchedulesResponse),"
+    },
+    "streams[?name=schedules].pull.snapshot.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "255-258",
+      "snippet": "(\"custom_ticket_statuses\", \"custom_statuses\", CustomTicketStatusesResponse),\n(\"schedules\", \"business_hours/schedules\", SchedulesResponse),"
+    },
+    "streams[?name=account_attributes].pull.snapshot.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "275-278",
+      "snippet": "(\"account_attributes\", \"routing/attributes\", AccountAttributesResponse),\n(\"sla_policies\", \"slas/policies\", SlaPoliciesResponse),"
+    },
+    "streams[?name=sla_policies].pull.snapshot.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "275-278",
+      "snippet": "(\"account_attributes\", \"routing/attributes\", AccountAttributesResponse),\n(\"sla_policies\", \"slas/policies\", SlaPoliciesResponse),"
+    },
+    "streams[?name=tags].pull.snapshot.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "297-299",
+      "snippet": "(\"tags\", \"tags\", TagsResponse),"
+    },
+    "streams[?name=custom_roles].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "390-393",
+      "snippet": "(\"custom_roles\", \"custom_roles\", CustomRolesResponse),\n(\"ticket_forms\", \"ticket_forms\", TicketFormsResponse),"
+    },
+    "streams[?name=ticket_forms].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "390-393",
+      "snippet": "(\"custom_roles\", \"custom_roles\", CustomRolesResponse),\n(\"ticket_forms\", \"ticket_forms\", TicketFormsResponse),"
+    },
+    "streams[?name=automations].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"automations\", \"automations\", None, ...Response),"
+    },
+    "streams[?name=brands].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"brands\", \"brands\", None, ...Response),"
+    },
+    "streams[?name=groups].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"groups\", \"groups\", {\"exclude_deleted\": \"false\"}, ...Response),"
+    },
+    "streams[?name=group_memberships].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"group_memberships\", \"group_memberships\", None, ...Response),"
+    },
+    "streams[?name=macros].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"macros\", \"macros\", {\"include\": \"permissions\"}, ...Response),"
+    },
+    "streams[?name=organization_memberships].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"organization_memberships\", \"organization_memberships\", None, ...Response),"
+    },
+    "streams[?name=posts].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"posts\", \"community/posts\", None, ...Response),"
+    },
+    "streams[?name=ticket_fields].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"ticket_fields\", \"ticket_fields\", None, ...Response),"
+    },
+    "streams[?name=topics].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"topics\", \"community/topics\", None, ...Response),"
+    },
+    "streams[?name=articles].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"articles\", \"help_center/articles\", None, ...Response),"
+    },
+    "streams[?name=categories].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "451-463",
+      "snippet": "(\"categories\", \"help_center/categories\", None, ...Response),"
+    },
+    "streams[?name=ticket_skips].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "330-334",
+      "snippet": "(\"ticket_skips\", \"skips\", FilterParam.START_TIME, \"updated_at\", ...Response),"
+    },
+    "streams[?name=ticket_metric_events].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "330-334",
+      "snippet": "(\"ticket_metric_events\", \"incremental/ticket_metric_events\", FilterParam.START_TIME, \"time\", ...Response),"
+    },
+    "streams[?name=ticket_activities].pull.incremental.path": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "330-334",
+      "snippet": "(\"ticket_activities\", \"activities\", FilterParam.START_TIME, \"updated_at\", ...Response),"
+    },
+    "streams[?name=satisfaction_ratings].pull.incremental": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "364-370",
+      "snippet": "url = f\"{url_base(subdomain)}/satisfaction_ratings\"\nparams = {\"start_time\": start, \"end_time\": end, \"page[size]\": CURSOR_PAGINATION_PAGE_SIZE}"
+    },
+    "streams[?name=audit_logs].pull.incremental": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "1116-1125",
+      "snippet": "url = f\"{url_base(subdomain)}/audit_logs\"\nparams = {\"page[size]\": ..., \"sort\": \"created_at\", \"filter[created_at][]\": [start, end]}"
+    },
+    "streams[?name=organizations].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "462-464",
+      "snippet": "url = f\"{url_base(subdomain)}/incremental/{path}\"\nparams = {\"start_time\": _dt_to_s(start_date)}"
+    },
+    "streams[?name=calls].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "591-593",
+      "snippet": "url = f\"{url_base(subdomain)}/channels/voice/stats/incremental/{path}\"\nparams = {\"start_time\": _dt_to_s(start_date)}"
+    },
+    "streams[?name=call_legs].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "591-593",
+      "snippet": "url = f\"{url_base(subdomain)}/channels/voice/stats/incremental/{path}\"\nparams = {\"start_time\": _dt_to_s(start_date)}"
+    },
+    "streams[?name=tickets].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "757-764",
+      "snippet": "url = f\"{url_base(subdomain)}/incremental\"\ncase \"tickets\": url += \"/tickets/cursor\"\ncase \"users\": url += \"/users/cursor\""
+    },
+    "streams[?name=users].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "757-764",
+      "snippet": "url = f\"{url_base(subdomain)}/incremental\"\ncase \"tickets\": url += \"/tickets/cursor\"\ncase \"users\": url += \"/users/cursor\""
+    },
+    "streams[?name=ticket_metrics].pull.incremental": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "1213-1217",
+      "snippet": "sideload_params = {\"include\": \"metric_sets\"}\ngenerator = _fetch_incremental_cursor_export_resources(http, subdomain, \"tickets\", ...)"
+    },
+    "streams[?name=ticket_audits].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "864-867",
+      "snippet": "url = f\"{url_base(subdomain)}/tickets/{ticket_id}/{path}\"\nparams = {\"page[size]\": CURSOR_PAGINATION_PAGE_SIZE}"
+    },
+    "streams[?name=ticket_comments].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "864-867",
+      "snippet": "url = f\"{url_base(subdomain)}/tickets/{ticket_id}/{path}\"\nparams = {\"page[size]\": CURSOR_PAGINATION_PAGE_SIZE}"
+    },
+    "streams[?name=side_conversations].pull.incremental": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "994-1004",
+      "snippet": "url = f\"{url_base(subdomain)}/tickets/{ticket_id}/side_conversations\"\n...\nurl = response.next_page"
+    },
+    "streams[?name=post_votes].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "1282-1284",
+      "snippet": "path = f\"community/posts/{post.id}/{path_segment}\"\nasync for child_resource in snapshot_cursor_paginated_resources(http, subdomain, path, ...)"
+    },
+    "streams[?name=post_comments].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "1282-1284",
+      "snippet": "path = f\"community/posts/{post.id}/{path_segment}\"\nasync for child_resource in snapshot_cursor_paginated_resources(http, subdomain, path, ...)"
+    },
+    "streams[?name=post_comment_votes].pull.incremental.path": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "1312-1314",
+      "snippet": "path = f\"community/posts/{post_comment.post_id}/comments/{post_comment.id}/votes\""
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "55-56",
+      "snippet": "def url_base(subdomain: str) -> str:\n    return f\"https://{subdomain}.zendesk.com/api/v2\""
+    },
+    "transports[0].spec.baseUrl.placeholders.subdomain": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "114-118",
+      "snippet": "subdomain: str = Field(\n    title=\"Subdomain\",\n    pattern=SUBDOMAIN_REGEX,"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "94-105",
+      "snippet": "class ApiToken(BasicAuth):\n    username: Annotated[str, AfterValidator(lambda s: s + '/token')] = Field(title=\"Email\")\n    password: str = Field(title=\"API Token\", ...)"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n    return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode())"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "49-60",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(provider=\"zendesk\", ...\n    authUrlTemplate=(\"https://{{{ config.subdomain }}}.zendesk.com/oauth/authorizations/new?...scope=read&...\")\n    accessTokenUrlTemplate=(\"https://{{{ config.subdomain }}}.zendesk.com/oauth/tokens\"),"
+    },
+    "credentialModes[1].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "233-249",
+      "snippet": "class BaseOAuth2Credentials(...):\n    refresh_token: str = Field(title=\"Refresh Token\", ...)\nclass RotatingOAuth2Credentials(BaseOAuth2Credentials, ...):\n    access_token: str = ..."
+    },
+    "credentialModes[2].tier": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "224-230",
+      "snippet": "class LongLivedClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData, metaclass=abc.ABCMeta):\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True})"
+    },
+    "credentialModes": {
+      "file": "source_zendesk_support_native/models.py",
+      "lines": "125-128",
+      "snippet": "credentials: OAuth2Credentials | ApiToken | DeprecatedOAuthCredentials = Field(\n    discriminator=\"credentials_title\", title=\"Authentication\",)"
+    },
+    "execution.mode": {
+      "file": "source_zendesk_support_native/resources.py",
+      "lines": "217-219",
+      "snippet": "initial_config=ResourceConfig(\n    name=\"audit_logs\", interval=timedelta(minutes=5)\n),"
+    },
+    "discovery.querySketch": {
+      "file": "source_zendesk_support_native/resources.py",
+      "lines": "105-156",
+      "snippet": "await http.request(log, f\"{url_base(config.subdomain)}/audit_logs\")\n... f\"{url_base(config.subdomain)}/community/posts\" ...\n... f\"{url_base(config.subdomain)}/channels/voice/stats/account_overview\""
+    },
+    "discovery.excludes": {
+      "file": "source_zendesk_support_native/resources.py",
+      "lines": "77-102",
+      "snippet": "ENTERPRISE_STREAMS = [\"audit_logs\", \"account_attributes\", \"schedules\", \"sla_policies\"]\nHELP_DESK_STREAMS = [\"posts\", \"post_comments\", \"post_comment_votes\", \"post_votes\", \"topics\"]\nTALK_STREAMS = [\"calls\", \"call_legs\"]"
+    },
+    "paginator.cursor": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "146-162",
+      "snippet": "params = {\"page[size]\": CURSOR_PAGINATION_PAGE_SIZE}\nif not response.meta.has_more: return\nif response.meta.after_cursor: params[\"page[after]\"] = response.meta.after_cursor"
+    },
+    "paginator.page": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "116-135",
+      "snippet": "params = {\"per_page\": CURSOR_PAGINATION_PAGE_SIZE, \"page\": page_num}\nif not response.next_page: return\npage_num += 1; params[\"page\"] = page_num"
+    },
+    "paginator.export_cursor": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "791-805",
+      "snippet": "next_page_cursor, end_of_stream = remainder.after_cursor, remainder.end_of_stream\nif end_of_stream: return\nparams[\"cursor\"] = next_page_cursor"
+    },
+    "paginator.export_cursor.pageSize": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "729-741",
+      "snippet": "page_size = MAX_INCREMENTAL_EXPORT_PAGE_SIZE\nwhile page_size >= MIN_PAGE_SIZE:\n    params[\"per_page\"] = page_size"
+    },
+    "paginator.time_export": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "511-518",
+      "snippet": "if remainder.end_of_stream:\n    ...\n    return\nparams[\"start_time\"] = remainder.end_time"
+    },
+    "paginator.talk_export": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "642-647",
+      "snippet": "if params[\"start_time\"] == remainder.end_time:\n    ...\n    return\nparams[\"start_time\"] = remainder.end_time"
+    },
+    "paginator.next_url": {
+      "file": "source_zendesk_support_native/api.py",
+      "lines": "996-1004",
+      "snippet": "while url:\n    response = SideConversationsResponse.model_validate_json(await http.request(log, url))\n    ...\n    url = response.next_page"
+    },
+    "streams[].writeDisposition.snapshot_with_tombstone": {
+      "file": "source_zendesk_support_native/resources.py",
+      "lines": "292-299",
+      "snippet": "fetch_snapshot=functools.partial(snapshot_resources, ...),\ntombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))"
+    },
+    "streams[].schedules": {
+      "file": "source_zendesk_support_native/resources.py",
+      "lines": "450-453",
+      "snippet": "initial_config=ResourceConfig(\n    name=name, interval=timedelta(minutes=30)\n),"
+    }
+  },
+  "confidence": {
+    "streams[?name=custom_ticket_statuses].pull.snapshot.path": "high",
+    "streams[?name=schedules].pull.snapshot.path": "high",
+    "streams[?name=account_attributes].pull.snapshot.path": "high",
+    "streams[?name=sla_policies].pull.snapshot.path": "high",
+    "streams[?name=tags].pull.snapshot.path": "high",
+    "streams[?name=custom_roles].pull.incremental.path": "high",
+    "streams[?name=ticket_forms].pull.incremental.path": "high",
+    "streams[?name=automations].pull.incremental.path": "high",
+    "streams[?name=brands].pull.incremental.path": "high",
+    "streams[?name=groups].pull.incremental.path": "high",
+    "streams[?name=group_memberships].pull.incremental.path": "high",
+    "streams[?name=macros].pull.incremental.path": "high",
+    "streams[?name=organization_memberships].pull.incremental.path": "high",
+    "streams[?name=posts].pull.incremental.path": "high",
+    "streams[?name=ticket_fields].pull.incremental.path": "high",
+    "streams[?name=topics].pull.incremental.path": "high",
+    "streams[?name=articles].pull.incremental.path": "high",
+    "streams[?name=categories].pull.incremental.path": "high",
+    "streams[?name=ticket_skips].pull.incremental.path": "high",
+    "streams[?name=ticket_metric_events].pull.incremental.path": "high",
+    "streams[?name=ticket_activities].pull.incremental.path": "high",
+    "streams[?name=satisfaction_ratings].pull.incremental": "high",
+    "streams[?name=audit_logs].pull.incremental": "high",
+    "streams[?name=organizations].pull.incremental.path": "high",
+    "streams[?name=calls].pull.incremental.path": "high",
+    "streams[?name=call_legs].pull.incremental.path": "high",
+    "streams[?name=tickets].pull.incremental.path": "high",
+    "streams[?name=users].pull.incremental.path": "high",
+    "streams[?name=ticket_metrics].pull.incremental": "high",
+    "streams[?name=ticket_audits].pull.incremental.path": "high",
+    "streams[?name=ticket_comments].pull.incremental.path": "high",
+    "streams[?name=side_conversations].pull.incremental": "high",
+    "streams[?name=post_votes].pull.incremental.path": "high",
+    "streams[?name=post_comments].pull.incremental.path": "high",
+    "streams[?name=post_comment_votes].pull.incremental.path": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.baseUrl.placeholders.subdomain": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "high",
+    "credentialModes[2].tier": "medium",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "paginator.cursor": "high",
+    "paginator.page": "high",
+    "paginator.export_cursor": "high",
+    "paginator.export_cursor.pageSize": "high",
+    "paginator.time_export": "high",
+    "paginator.talk_export": "high",
+    "paginator.next_url": "high",
+    "streams[].writeDisposition.snapshot_with_tombstone": "high",
+    "streams[].schedules": "high",
+    "streams[?name=calls].pull.incremental.paginator": "medium",
+    "streams[?name=call_legs].pull.incremental.paginator": "medium",
+    "execution.continuity": "medium",
+    "streams[].recordsPath": "high",
+    "streams[?name=ticket_metrics].pull.incremental.recordsPath": "medium",
+    "configFields[?name=credentials.*].required": "medium"
+  },
+  "abstained": {
+    "streams[?name=calls].pull.incremental.paginator.terminateOn": "The Talk incremental export carries no end_of_stream flag; the loop stops when the echoed end_time equals the start_time just sent. No member of the terminateOn enum expresses 'token unchanged', and picking envelope_flag or absent_token would be wrong. See unionMisfits.",
+    "streams[?name=call_legs].pull.incremental.paginator.terminateOn": "Same as calls: termination is 'returned cursor equals sent cursor', which the terminateOn enum cannot express.",
+    "streams[?name=tickets].cursorField": "The checkpoint is an opaque base64 incremental-export cursor string (or, on first run, a stringified unix timestamp), not a document field. No record field is compared.",
+    "streams[?name=users].cursorField": "Same opaque incremental-export cursor as tickets.",
+    "streams[?name=ticket_metrics].cursorField": "Inherits the tickets incremental-export cursor; no field of the emitted metric_set is used for ordering.",
+    "streams[?name=ticket_audits].cursorField": "Parent-driven: the checkpoint is the tickets export cursor taken at parent-page boundaries, not a field of the audit record.",
+    "streams[?name=ticket_comments].cursorField": "Parent-driven; same as ticket_audits.",
+    "streams[?name=side_conversations].cursorField": "Parent-driven; same as ticket_audits.",
+    "streams[?name=post_votes].cursorField": "The log cursor advances on the parent post's updated_at; the vote records themselves are read whole per post and carry no cursor field the connector inspects.",
+    "streams[?name=post_comments].cursorField": "Same as post_votes: cursor lives on the parent post.",
+    "streams[?name=post_comment_votes].cursorField": "Two levels of parent (post -> comment); the cursor is the post updated_at watermark.",
+    "streams[?name=satisfaction_ratings].cursorField": "The cursor is a wall-clock window end (min(now-61s, cursor+30d)), advanced whether or not records were returned; no record field is read.",
+    "streams[?name=account_attributes].pull.snapshot.recordsPath.total": "The offset-paginated snapshots expose no total count; only the presence/absence of next_page is used, so explicit_total termination was not asserted.",
+    "execution.continuity.ourSideLoss": "Nothing in the connector or CDK handles an expired or invalidated Zendesk incremental-export cursor, and no retention window is referenced. Whether Zendesk itself invalidates old cursors is not determinable from this source.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable: the connector creates no server-side artifact to release, so the field is left null rather than asserted true.",
+    "transports[0].spec.defaultHeaders": "No default headers are set on the session; only the Authorization header injected by the CDK TokenSource.",
+    "streams[?name=organizations].pull.backfill.paginator.pageSize": "The time-based export sends no per_page; the 1,000-record page size is an observed server behaviour the code only reacts to (it raises if >=1000 records share an updated_at), never requests.",
+    "configFields[?name=credentials.username].secret": "Marked non-secret because BasicAuth.username carries no secret annotation in the CDK, though it is half of a Basic credential pair.",
+    "streams[].supportedSyncModes.full_refresh": "Reported as supported for every incremental stream because Flow can always re-backfill a binding; the connector does not itself expose a per-stream mode toggle."
+  }
+}

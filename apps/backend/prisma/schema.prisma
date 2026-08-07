@@ -183,6 +183,9 @@ model Tenancy {
   workflowRuns WorkflowRun[]
   workflowEvents WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
+  dataSources DataSource[]
+  dataSourceStreams DataSourceStream[]
+  dataSourceSyncRuns DataSourceSyncRun[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -2095,4 +2098,160 @@ model WorkflowScheduleCursor {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, workflowId, scheduleKey])
+}
+
+// ─── Data Sources ───────────────────────────────────────────────────────────
+//
+// INBOUND data movement: external system -> Hexclave. The mirror-image
+// OUTBOUND path (Hexclave -> a customer's own warehouse) is `external-db-sync`
+// and shares nothing with this; the two vocabularies are kept apart on purpose
+// so "sync" never has to be disambiguated by direction.
+//
+// The imported ROWS live in ClickHouse (`analytics_internal.imported_rows`), not
+// here. Postgres holds only the sync CONFIG that has to exist regardless —
+// cursor position, sync mode, primary key, enabled/disabled, credential ref —
+// plus the connector's discover-time schema, which the stream selector needs
+// BEFORE the first sync when zero rows exist.
+//
+// Like Workflows, these tables are available to every project: the alpha-stage
+// `data-sources-alpha` app gates dashboard visibility only.
+
+enum DataSourceStatus {
+  HEALTHY
+  SYNCING
+  FAILED
+  PAUSED
+}
+
+enum DataSourceSyncRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model DataSource {
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Catalogue key, e.g. "stripe-native". Not a foreign key: the catalogue is
+  // code, and a source must survive its connector being renamed or withdrawn
+  // (it then reads as unsupported rather than vanishing).
+  connectorId String
+  displayName String
+
+  status    DataSourceStatus @default(PAUSED)
+  lastError String?
+
+  // Non-secret connector settings (subdomain, start date, base URL, …).
+  config Json @default("{}")
+
+  // KMS envelope { edkBase64, ciphertextBase64 } over the JSON credential
+  // bundle. Write-only by construction: no read path returns it, and the
+  // dashboard only ever reports whether it is set.
+  encryptedCredentials Json?
+
+  // "manual" | "interval" | "cron"
+  scheduleKind  String  @default("manual")
+  // Minutes for "interval", a cron expression for "cron", null for "manual".
+  scheduleValue String?
+
+  nextSyncAt   DateTime?
+  lastSyncedAt DateTime?
+
+  streams DataSourceStream[]
+  runs    DataSourceSyncRun[]
+
+  @@id([tenancyId, id])
+  // The sync-step cron claims due sources with this index.
+  @@index([tenancyId, nextSyncAt])
+  @@index([nextSyncAt])
+}
+
+model DataSourceStream {
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dataSourceId String @db.Uuid
+
+  streamName String
+  enabled    Boolean @default(false)
+
+  // "full_refresh" | "incremental"
+  syncMode        String  @default("full_refresh")
+  cursorField     String?
+  // Empty array means the stream is keyless and rows are appended.
+  primaryKeyFields String[] @default([])
+
+  // Durable incremental high-water mark. Only advanced once a stream drains
+  // fully, so a suspended slice can never skip unread records.
+  cursorValue String?
+
+  // Discover-time schema for THIS stream. Present before the first sync, which
+  // is what lets the stream selector render — and what makes an
+  // enabled-but-empty stream visible, where DISTINCT over ClickHouse alone
+  // would report it as not connected.
+  discoveredSchema Json?
+
+  // Pending schema drift, as a diff awaiting approve-or-ignore.
+  pendingDrift Json?
+
+  lastRowCount BigInt @default(0)
+
+  source DataSource @relation(fields: [tenancyId, dataSourceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, dataSourceId, streamName])
+  @@index([tenancyId, dataSourceId])
+}
+
+model DataSourceSyncRun {
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dataSourceId String @db.Uuid
+
+  status DataSourceSyncRunStatus @default(RUNNING)
+  // "manual" | "schedule"
+  trigger String
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  rowsSynced Int @default(0)
+  // Number of cron ticks this run has consumed, for observability into runs
+  // that are advancing slowly rather than stuck.
+  ticks      Int @default(0)
+
+  error String?
+
+  // Resumable state machine position: which streams remain, and where the
+  // in-progress stream's paginator and cursor had reached.
+  state Json @default("{}")
+
+  // Held by the tick currently advancing this run, so two overlapping cron
+  // invocations cannot double-import the same slice.
+  claimedUntil DateTime?
+
+  source DataSource @relation(fields: [tenancyId, dataSourceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, dataSourceId, createdAt(sort: Desc)])
+  // The cron picks up unfinished runs across all tenancies with this index.
+  @@index([status, claimedUntil])
 }

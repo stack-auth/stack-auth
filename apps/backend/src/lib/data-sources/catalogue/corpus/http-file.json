@@ -1,0 +1,359 @@
+{
+  "id": "http-file",
+  "estuaryDir": "source-http-file",
+  "displayName": "HTTP File",
+  "description": "Captures the contents of a single file hosted at a user-supplied HTTP(S) URL, parsing it into records.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "objectStore",
+        "store": "https"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "No credentials (public URL)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "`credentials` is optional and nullable; when omitted no Authorization header is set and the GET is anonymous. This is the common case for a public dataset URL and requires the user to supply nothing but the URL."
+      }
+    },
+    {
+      "name": "Basic authentication",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.user",
+        "passwordField": "credentials.password"
+      }
+    },
+    {
+      "name": "Custom HTTP headers",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "<user-supplied; headers.items[].key is a free-text string with no allowlist>",
+        "field": "headers.items[].value",
+        "prefix": null
+      }
+    },
+    {
+      "name": "Credentials embedded in the URL userinfo",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "A URL of the form https://user:pass@host is accepted by config validation (explicitly covered by a unit test). The connector itself does nothing with the userinfo; Go's net/http Client applies it as an Authorization: Basic header when the request carries no Authorization header of its own. This mode therefore exists as stdlib behaviour rather than as connector code."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Intermediate versions of the file. The connector only ever sees whatever the URL serves at the moment it runs, so any revision published and replaced while we are stopped is never captured. For the stream.wikimedia.org carve-out (an unbounded SSE feed), the loss is total for the outage window: reconnection re-opens the URL and starts reading at the stream's head with no resume offset.",
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Nothing is created on the customer's side at all: the connector issues a plain unauthenticated-or-authenticated GET and holds no server-side object, cursor, or subscription. Stopping between ticks costs the customer nothing. The only state is Flow-side (minBound/maxBound/maxMod/path/records in the capture checkpoint). Note that a non-2xx response is a hard error that fails the whole invocation, so a URL that 404s while we are stopped simply fails the next sweep rather than silently degrading."
+    }
+  },
+
+  "configFields": [
+    { "name": "url", "displayName": "HTTP File URL", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The HTTP URL of the source file to capture. Must parse and be absolute (must carry a scheme); no scheme or host allowlist is applied." },
+    { "name": "credentials.user", "displayName": "Username", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Username, if required to access the HTTP endpoint. Marked secret:true in the config schema even though it is a username." },
+    { "name": "credentials.password", "displayName": "Password", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Password, if required to access the HTTP endpoint." },
+    { "name": "headers.items", "displayName": "Additional HTTP Headers", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Additional HTTP headers sent with the file request. Wrapped in an enclosing object purely so the UI renders them on their own tab." },
+    { "name": "headers.items[].key", "displayName": "Header Key", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Header name. Free text, no allowlist or denylist." },
+    { "name": "headers.items[].value", "displayName": "Header Value", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Header value; marked secret so API keys can be placed here." },
+    { "name": "parser.compression", "displayName": "Compression", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "zip | gzip | zstd | none. Default null = auto-detect. Schema is embedded verbatim from the flow parser spec." },
+    { "name": "parser.format.type", "displayName": "Format", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Default {\"type\":\"auto\"} = infer from file extension / MIME type. Documented options: Avro, CSV, JSON, Protobuf, W3C Extended Log; the filesource format-resolution helper additionally recognises parquet, jsonl, tsv, xls, xlsx, xlsm, xml, ods." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding resource field, defaulted by discovery to the final path segment of the URL. Multiple bindings (multiple URLs) are supported in one task." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "No remote listing. Discover() opens the URL once and returns exactly one binding whose stream name is derived from the configured URL string itself.",
+    "querySketch": "name = last non-empty segment of the URL path with trailing slashes trimmed; if the path is empty, name = URL hostname",
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<final path segment of the configured URL, or the hostname when the path is empty>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "objects",
+          "prefix": null,
+          "matchExpr": null,
+          "matchExprKind": null,
+          "format": "auto",
+          "compression": "auto-detected (zip | gzip | zstd | none), overridable via parser.compression; the response's Content-Encoding header is also fed into the parser config, as is Content-Type",
+          "listing": "There is no listing API. A single unconditional GET is issued at connect time (before Validate, Discover and every Pull), and List() synthesises exactly one ObjectInfo from that response's headers, then returns EOF: Path = final URL path segment, ContentSum = ETag, ContentType = Content-Type, ContentEncoding = Content-Encoding, Size = Content-Length (-1 when absent), ModTime = Last-Modified — falling back to time.Now() when Last-Modified is absent. Re-fetch across syncs is decided ENTIRELY by that ModTime against the filesource mod-time window: the object is skipped unless MinBound < ModTime < MaxBound, where MaxBound = now + 2s and MinBound is the previous sweep's MaxMod (FilesAreMonotonic() is false, so MinBound advances each sweep in which a file was processed). Consequences: (a) with a Last-Modified header, the file is re-ingested only when that header advances; (b) without one, ModTime = now on every sweep, so the whole file is re-ingested on every single sweep, forever; (c) a Last-Modified more than 2s in the future is skipped until wall-clock catches up. No conditional request is ever made — no If-None-Match and no If-Modified-Since — so the ETag that is captured is never used for anything. A Content-Length of exactly 0 causes the object to be skipped unconditionally.",
+          "objectChunking": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The cheapest mode is no credentials at all: a public URL needs only the `url` field. Where auth is needed it is a self-serve username/password pair (HTTP Basic) or a static API-key header the user pastes in. There is no OAuth2 block in the Source struct and no client-registration step, so nothing rises above T1.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec",
+      "description": "Typed as objectStore/https, but there is no object store and no listing. The 'store' is one fixed URL; the 'listing' is a synthetic single-entry Listing fabricated from the response headers of a GET that has already been issued. Notably the request is made in Connect(), i.e. before any skip decision — so every sweep opens a connection and pulls response headers even when the object will be skipped and no bytes are read (and in that skip path resp.Body is never closed, though the process exits immediately after).",
+      "proposedShape": { "kind": "singleUrl", "url": "<user-supplied>", "listing": "synthetic-single-object-from-response-headers", "method": "GET" }
+    },
+    {
+      "where": "streams[0].cursorField / streams[0].pull.snapshot",
+      "description": "The real cursor is not a record field and not an object-listing token — it is an HTTP response header (Last-Modified) compared against a three-part time window carried in the capture checkpoint (minBound exclusive-low, maxBound = now+2s exclusive-high, maxMod). The PullSpec 'objects' shape has nowhere to express a header-derived mod-time cursor, so it has been prose-encoded into `listing`. A first-class shape would make the re-fetch predicate explicit, because the failure mode is severe and silent in both directions (no Last-Modified => infinite full re-ingest; a frozen Last-Modified on changing content => updates never captured).",
+      "proposedShape": { "refetchPredicate": { "kind": "modTimeWindow", "modTimeSource": "http_header:Last-Modified", "fallbackWhenAbsent": "wall_clock_now", "lowerBound": "prior sweep maxMod (exclusive)", "upperBound": "now + 2s (exclusive)", "conditionalRequest": null } }
+    },
+    {
+      "where": "streams[0].writeDisposition",
+      "description": "'merge' is the closest fit but is not exact. Documents are keyed on (/_meta/file, /_meta/offset); /_meta/file is the constant filename and offsets restart at 0 on every re-ingest, so a re-read of a changed file upserts over the previous run's keys. But there is no tombstone step: if the file SHRINKS, the records at the now-nonexistent tail offsets from the previous ingest are never deleted and remain in the collection indefinitely. It is a keyed overwrite without truncation, which is neither clean merge nor snapshot_with_tombstone.",
+      "proposedShape": { "writeDisposition": "merge_without_truncation", "staleTailRisk": true }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "The connector has no scheduler of any kind. Pull() performs exactly one sweep per binding and returns; cadence is entirely a property of how the Flow runtime restarts the container. There is no interval, cron, or duration anywhere in the connector or in the shared filesource package. Emitted as an empty schedules list rather than a fabricated interval.",
+      "proposedShape": { "schedule": { "kind": "externally_driven", "description": "one sweep per process invocation; cadence owned by the orchestrator" } }
+    },
+    {
+      "where": "transports[0] (egress policy)",
+      "description": "SECURITY: the URL is entirely user-supplied and validation is only `url.Parse` succeeds AND `IsAbs()` (i.e. a scheme is present). There is NO scheme allowlist (nothing restricts to http/https at config time — non-HTTP schemes are only rejected later, incidentally, by net/http's 'unsupported protocol scheme' error), NO host or IP restriction, and no private-range / link-local / loopback / DNS-rebinding guard. http://127.0.0.1:8080/, http://169.254.169.254/latest/meta-data/ and internal hostnames all pass validation and are fetched. Furthermore the fetch uses http.DefaultClient with no CheckRedirect override, so redirects ARE followed (stdlib default, up to 10 hops) to arbitrary hosts, meaning an allowlisted URL can bounce to an internal one. Go strips Authorization/Cookie/WWW-Authenticate on cross-domain redirects, which protects credentials.user/password, but user-supplied headers.items entries (the documented place to put API keys, e.g. X-Api-Key) are NOT in that sensitive-header list and are forwarded to the redirect target verbatim. Any hosted deployment must impose its own egress allowlist and redirect policy; the connector supplies none.",
+      "proposedShape": { "egress": { "schemeAllowlist": [], "hostPolicy": "unrestricted", "followsRedirects": true, "maxRedirects": 10, "redirectHostPinned": false, "customHeadersForwardedAcrossRedirect": true } }
+    },
+    {
+      "where": "execution.mode",
+      "description": "Typed 'poll', but the connector contains a hardcoded carve-out that turns it into a continuous stream reader: if the URL contains both 'stream.wikimedia.org' and '/stream/', the body reader is wrapped so that HTTP/2 'stream ID …; CANCEL; received from peer' errors trigger up to 3 reconnects. Reconnection re-issues the GET and reads from the stream's HEAD with no resume — events during the gap are silently lost, and already-delivered events can be re-emitted at reset offsets. A vendor-specific hostname substring gating a different execution mode does not fit any connector-level classification.",
+      "proposedShape": { "mode": "poll", "hostSpecificOverride": { "matchHostSubstring": "stream.wikimedia.org", "matchPathSubstring": "/stream/", "becomes": "continuous", "resumeSemantics": "from_head_no_offset", "maxRetries": 3 } }
+    },
+    {
+      "where": "credentialModes[2].scheme.header",
+      "description": "The 'header' credential scheme assumes a fixed header name determined by the connector. Here BOTH the name and the value are user-supplied free text in an unbounded array, so the connector cannot name the header. It is a generic header-injection mechanism rather than a specific auth scheme.",
+      "proposedShape": { "type": "arbitraryHeaders", "nameField": "headers.items[].key", "valueField": "headers.items[].value", "repeated": true }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-http-file/main.go",
+      "lines": "128-142",
+      "snippet": "req := (&http.Request{\n\t\tMethod: \"GET\",\n\t\tURL:    parsedURL,"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source-http-file/main.go",
+      "lines": "137-139",
+      "snippet": "if cfg.Credentials != nil {\n\t\treq.SetBasicAuth(cfg.Credentials.User, cfg.Credentials.Password)\n\t}"
+    },
+    "credentialModes[2].scheme": {
+      "file": "source-http-file/main.go",
+      "lines": "134-136",
+      "snippet": "for _, header := range cfg.Headers.Items {\n\t\treq.Header.Add(header.Key, header.Value)\n\t}"
+    },
+    "credentialModes[3].scheme": {
+      "file": "source-http-file/http_file_test.go",
+      "lines": "35-38",
+      "snippet": "{\n\t\t\turl:  \"https://foo:bar@example.com:8081\",\n\t\t\tname: \"example.com\","
+    },
+    "configFields": {
+      "file": "source-http-file/main.go",
+      "lines": "326-388",
+      "snippet": "ConfigSchema: func(parserSchema json.RawMessage) json.RawMessage {\n\t\t\treturn json.RawMessage(`{\n        \"$schema\": \"http://json-schema.org/draft-07/schema#\","
+    },
+    "configFields[0]": {
+      "file": "source-http-file/main.go",
+      "lines": "331-337",
+      "snippet": "\"required\": [\"url\"],\n        \"properties\": {\n\t\t\t\"url\": {"
+    },
+    "configFields[1].secret": {
+      "file": "source-http-file/main.go",
+      "lines": "346-351",
+      "snippet": "\"user\": {\n\t\t\t\t\t\t\"type\": \"string\",\n\t\t\t\t\t\t\"title\": \"Username\","
+    },
+    "configFields[5].secret": {
+      "file": "source-http-file/main.go",
+      "lines": "377-380",
+      "snippet": "\"value\": {\n\t\t\t\t\t\t\t\t\t\t\t\"type\": \"string\",\n\t\t\t\t\t\t\t\t\t\t\t\"title\": \"Header Value\","
+    },
+    "configFields[6]": {
+      "file": "docs/reference/Connectors/capture-connectors/http-file.md",
+      "lines": "126-130",
+      "snippet": "   * **zip**\n   * **gzip**\n   * **zstd**"
+    },
+    "configFields[8]": {
+      "file": "filesource/filesource.go",
+      "lines": "150-151",
+      "snippet": "type resource struct {\n\tStream      string   `json:\"stream\" jsonschema:\"title=Stream to capture from\"..."
+    },
+    "discovery.method": {
+      "file": "filesource/filesource.go",
+      "lines": "224-231",
+      "snippet": "var root = conn.config.DiscoverRoot()\n\tresourceJSON, err := json.Marshal(resource{Stream: root})"
+    },
+    "discovery.querySketch": {
+      "file": "source-http-file/main.go",
+      "lines": "55-61",
+      "snippet": "var pathPieces = strings.Split(strings.TrimRight(p.Path, \"/\"), \"/\")\n\tvar name = pathPieces[len(pathPieces)-1]\n\tif name == \"\" { return p, p.Hostname(), nil }"
+    },
+    "streams[0].primaryKey": {
+      "file": "filesource/filesource.go",
+      "lines": "234",
+      "snippet": "Key:                []string{\"/_meta/file\", \"/_meta/offset\"},"
+    },
+    "streams[0].pull.snapshot.listing": {
+      "file": "source-http-file/main.go",
+      "lines": "206-210",
+      "snippet": "if mt := s.resp.Header.Get(\"Last-Modified\"); mt == \"\" {\n\t\t\t\tmodTime = time.Now()\n\t\t\t} else if modTime, err = http.ParseTime(mt); err != nil {"
+    },
+    "streams[0].pull.snapshot.listing.singleEntry": {
+      "file": "source-http-file/main.go",
+      "lines": "196-200",
+      "snippet": "return filesource.ListingFunc(func() (filesource.ObjectInfo, error) {\n\t\tif emitted {\n\t\t\treturn filesource.ObjectInfo{}, io.EOF"
+    },
+    "streams[0].pull.snapshot.listing.etagUnused": {
+      "file": "source-http-file/main.go",
+      "lines": "221-223",
+      "snippet": "ContentEncoding: s.resp.Header.Get(\"Content-Encoding\"),\n\t\t\t\tContentSum:      s.resp.Header.Get(\"ETag\"),\n\t\t\t\tContentType:     s.resp.Header.Get(\"Content-Type\"),"
+    },
+    "streams[0].pull.snapshot.listing.window": {
+      "file": "filesource/state.go",
+      "lines": "146-151",
+      "snippet": "if !modTime.After(p.MinBound) {\n\t\treturn true, fmt.Sprintf(\"!modTime.After(MinBound): ...\")\n\t}"
+    },
+    "streams[0].pull.snapshot.listing.minBoundAdvance": {
+      "file": "filesource/state.go",
+      "lines": "112-115",
+      "snippet": "minBound = *p.MaxMod"
+    },
+    "streams[0].pull.snapshot.listing.monotonicFalse": {
+      "file": "source-http-file/main.go",
+      "lines": "99-103",
+      "snippet": "func (c config) FilesAreMonotonic() bool {\n\t// Conceptually, if the source files are monotonic, ...\n\treturn false"
+    },
+    "streams[0].pull.snapshot.listing.horizon": {
+      "file": "filesource/filesource.go",
+      "lines": "266",
+      "snippet": "var horizon = time.Now().Add(src.TimeHorizonDelta).Round(time.Second).UTC()"
+    },
+    "streams[0].pull.snapshot.listing.horizonDelta": {
+      "file": "source-http-file/main.go",
+      "lines": "394-401",
+      "snippet": "// The scenario that the the `MaxBound` protects against is only possible\n\t\t// when a listing can return multiple files, which is never the case for\n\t\t// this single-file connector."
+    },
+    "streams[0].pull.snapshot.listing.zeroSizeSkip": {
+      "file": "filesource/filesource.go",
+      "lines": "384-386",
+      "snippet": "if obj.Size == 0 {\n\t\t\treturn true, \"object has size of 0\"\n\t\t}"
+    },
+    "streams[0].pull.snapshot.compression": {
+      "file": "filesource/filesource.go",
+      "lines": "523-527",
+      "snippet": "if obj.ContentType != \"\" { cfg.ContentType = obj.ContentType }\n\tif obj.ContentEncoding != \"\" { cfg.ContentEncoding = obj.ContentEncoding }"
+    },
+    "streams[0].pull.snapshot.objectChunking": {
+      "file": "source-http-file/main.go",
+      "lines": "230-236",
+      "snippet": "func (s *httpSource) Read(ctx context.Context, obj filesource.ObjectInfo) (io.ReadCloser, filesource.ObjectInfo, error) {\n\t// We already started our read under a different parent context."
+    },
+    "streams[0].matchExpr": {
+      "file": "source-http-file/main.go",
+      "lines": "109-111",
+      "snippet": "func (c config) PathRegex() string {\n\treturn \"\"\n}"
+    },
+    "execution.mode": {
+      "file": "filesource/filesource.go",
+      "lines": "304-312",
+      "snippet": "grp.Go(func() error {\n\t\t\tif err := r.sweep(ctx); err != nil {"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-http-file/main.go",
+      "lines": "186-189",
+      "snippet": "// HTTP/2 connection cancellation error. ... The httpSource does not try to resume where it left off previously,\n\t\t// and it simply creates a new connection that starts reading at the stream's head."
+    },
+    "unionMisfits[4].description": {
+      "file": "source-http-file/main.go",
+      "lines": "47-52",
+      "snippet": "var p, err = url.Parse(c.URL)\n\tif err != nil { ... } else if !p.IsAbs() {\n\t\treturn nil, \"\", fmt.Errorf(\"URL %q is not valid ...\")"
+    },
+    "unionMisfits[4].redirects": {
+      "file": "source-http-file/main.go",
+      "lines": "142",
+      "snippet": "resp, err := http.DefaultClient.Do(req)"
+    },
+    "unionMisfits[5].description": {
+      "file": "source-http-file/main.go",
+      "lines": "64-66",
+      "snippet": "func isWikimediaStream(url string) bool {\n\treturn strings.Contains(url, \"stream.wikimedia.org\") && strings.Contains(url, \"/stream/\")\n}"
+    },
+    "unionMisfits[5].maxRetries": {
+      "file": "source-http-file/main.go",
+      "lines": "272-278",
+      "snippet": "const maxRetries = 3\n\tfor attempt := range maxRetries {\n\t\tn, err = w.ctxReader.Read(p)"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "credentialModes[2]": "high",
+    "credentialModes[3]": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "medium",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].schedules": "high",
+    "streams[0].pull.snapshot.listing": "high",
+    "streams[0].pull.snapshot.format": "high",
+    "streams[0].pull.snapshot.compression": "high",
+    "streams[0].pull.snapshot.objectChunking": "high",
+    "authTierOverall": "high",
+    "unionMisfits[4]": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.baseUrl": "The objectStore transport variant has no baseUrl member. The effective base URL is the entire user-supplied `url` config field; there is no vendor-fixed origin to record.",
+    "streams[0].cursorField": "Deliberately null: there is no record-level or column-level cursor. The re-fetch decision is made on the HTTP Last-Modified response header before any record is parsed. Recorded in full in pull.snapshot.listing and unionMisfits[1] rather than forced into this field.",
+    "streams[0].name": "Not knowable from the source. The stream name is computed at discovery time from the user's URL (final path segment, or hostname when the path is empty), so no literal name exists in the connector. Emitted as an archetype.",
+    "streams[0].schedules": "Empty rather than guessed. Neither source-http-file nor the shared filesource package contains any interval, cron, or duration: Pull() runs one sweep per binding and returns. Cadence is set entirely by how the Flow runtime re-invokes the container, which is outside this repository.",
+    "unionMisfits[4].maxRedirects": "Stated as 10 from Go's net/http documented default for http.DefaultClient, not from anything in this repository — the connector sets no CheckRedirect at all. The load-bearing, code-verified fact is only that redirects are NOT disabled and NOT host-pinned.",
+    "unionMisfits[4].credentialLeakOnRedirect": "That Go strips Authorization/Cookie/WWW-Authenticate on cross-domain redirects while forwarding other headers is stdlib behaviour inferred from the standard library, not observed in this repository. The connector-side fact is that it applies no redirect policy of its own, so whatever the stdlib does is what happens.",
+    "streams[0].pull.snapshot.format": "'auto' is the default; the authoritative list of concrete formats lives in the flow parser's embedded spec (github.com/estuary/flow v0.6.10), which is not vendored here. The format names recorded come from the connector docs page and from filesource's isParquetFile extension table, not from the parser spec itself.",
+    "streams[0].writeDisposition": "'merge' chosen with reservation. The key (/_meta/file, /_meta/offset) makes re-ingestion an upsert, but the union offers no member for keyed-overwrite-without-truncation; see unionMisfits[2] for the stale-tail behaviour that 'merge' does not convey."
+  }
+}

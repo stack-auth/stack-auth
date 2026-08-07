@@ -1,0 +1,459 @@
+{
+  "id": "kafka",
+  "estuaryDir": "source-kafka",
+  "displayName": "Apache Kafka",
+  "description": "Continuously consumes messages from Kafka topics, decoding Avro, JSON, or Protobuf payloads (optionally via a Confluent Schema Registry) into one document per message.",
+  "category": "streaming",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "The record source: the Kafka cluster itself, reached with librdkafka via a BaseConsumer.",
+      "spec": {
+        "kind": "stream",
+        "system": "kafka",
+        "endpointConfig": "A single free-form comma-separated `bootstrap_servers` host:port list (no default port supplied by the connector). The wire security protocol is derived, not configured: (credentials, tls) -> SASL_SSL / SASL_PLAINTEXT / SSL / PLAINTEXT. The client is always created with enable.auto.commit=false, group.id=\"source-kafka\" (a placeholder librdkafka demands), and statistics.interval.ms=300000 for lag logging."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Confluent Schema Registry: consulted at discovery time (GET /subjects, then GET /subjects/{topic}-key|-value/versions/latest) to learn each topic's key/value schema, and inline during the capture (GET /schemas/ids/{id}, cached per id) to decode the Confluent wire framing of each message. Optional — when `schema_registry_type` is `no_schema_registry` this transport is absent and all payloads are parsed as JSON.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "the user-supplied `schema_registry.endpoint` config field, e.g. https://registry-id.us-east-2.aws.confluent.cloud; the connector concatenates paths onto it verbatim"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "SASL username & password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "sasl",
+        "mechanisms": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"]
+      }
+    },
+    {
+      "name": "AWS MSK IAM",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_access_key_id", "credentials.aws_secret_access_key", "credentials.region"]
+      }
+    },
+    {
+      "name": "Schema Registry API key (HTTP basic)",
+      "appliesToTransport": "sidecar",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "schema_registry.username",
+        "passwordField": "schema_registry.password"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "schedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Unread messages are silently lost. The broker's own retention.ms / retention.bytes deletes segments regardless of our read position, and an assignment for an offset the broker has since discarded resumes at whatever is still retained — a gap in the captured stream that reports as a clean sync.",
+      "resumeWindow": "The retention window of each captured topic (retention.ms / retention.bytes), which is set by the customer and is not read, validated, or surfaced by the connector.",
+      "releasedOnShutdown": null,
+      "notes": "There is genuinely no lease. The consumer is built with enable.auto.commit=false and never commits an offset; `group.id` is set to the literal \"source-kafka\" only because librdkafka rejects an empty value. Partitions are attached with a manual `assign()` of an explicit TopicPartitionList rather than `subscribe()`, so the connector never joins a consumer group, never writes to __consumer_offsets, and holds no broker-side group or rebalance state. The code comments say so directly: librdkafka's own `consumer_lag` statistic is deliberately ignored because it is derived from a committed offset this connector never writes. Read position lives entirely in Flow's connector checkpoint (`bindingStateV1` -> {stateKey: {partitions: {partitionId: offset}}}), emitted as a merge-patch after every single message and resumed as Offset(offset+1), or Offset::Beginning for a partition with no stored offset. Consequence: stopping costs the customer nothing — nothing accrues on their brokers, no segments are held open, no group is left rebalancing — so `releasedOnShutdown` is vacuous (there is nothing to release). The entire risk is on our side and is a deadline, not a backlog: pause longer than the topic's retention and the unread data is gone. This is the mirror image of the WAL/binlog abandonment risk."
+    }
+  },
+
+  "configFields": [
+    {
+      "name": "bootstrap_servers",
+      "displayName": "Bootstrap Servers",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Comma-separated initial Kafka cluster servers to connect to; the client learns the rest of the cluster from one of these."
+    },
+    {
+      "name": "credentials.auth_type",
+      "displayName": "Credentials type",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Discriminator selecting the credential variant: \"user_password\" (SASL user & password) or \"AWS\" (AWS MSK IAM). `credentials` is listed as required in the published JSON schema, but the Rust type is Option: when omitted entirely the client falls back to PLAINTEXT/SSL, documented as dev/test only."
+    },
+    {
+      "name": "credentials.mechanism",
+      "displayName": "SASL Mechanism",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "SASL mechanism for the user_password variant: PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512. Defaults to PLAIN. Required within that variant."
+    },
+    {
+      "name": "credentials.username",
+      "displayName": "Username",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "SASL username (user_password variant)."
+    },
+    {
+      "name": "credentials.password",
+      "displayName": "Password",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "SASL password (user_password variant)."
+    },
+    {
+      "name": "credentials.aws_access_key_id",
+      "displayName": "AWS Access Key ID",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "AWS access key id used to mint an MSK IAM OAUTHBEARER token locally (AWS variant)."
+    },
+    {
+      "name": "credentials.aws_secret_access_key",
+      "displayName": "AWS Secret Access Key",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "AWS secret access key used to mint an MSK IAM OAUTHBEARER token locally (AWS variant)."
+    },
+    {
+      "name": "credentials.region",
+      "displayName": "AWS Region",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "AWS region of the MSK cluster (AWS variant). The AWS variant additionally requires tls=system_certificates: the connector aborts unless the derived protocol is SASL_SSL."
+    },
+    {
+      "name": "tls",
+      "displayName": "TLS Settings",
+      "required": false,
+      "secret": false,
+      "type": "string",
+      "description": "Only accepted value is \"system_certificates\" (also the schema default). Combined with credentials it selects the security protocol: SASL_SSL (creds+tls), SASL_PLAINTEXT (creds only), SSL (tls only), PLAINTEXT (neither)."
+    },
+    {
+      "name": "schema_registry.schema_registry_type",
+      "displayName": "Schema Registry type",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Discriminator: \"confluent_schema_registry\" or \"no_schema_registry\"."
+    },
+    {
+      "name": "schema_registry.endpoint",
+      "displayName": "Schema Registry Endpoint",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Confluent Schema Registry API endpoint, e.g. https://registry-id.us-east-2.aws.confluent.cloud. Base URL of the sidecar transport."
+    },
+    {
+      "name": "schema_registry.username",
+      "displayName": "Schema Registry Username",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Schema registry HTTP basic-auth username; the 'Key' of a Confluent Cloud schema registry API key."
+    },
+    {
+      "name": "schema_registry.password",
+      "displayName": "Schema Registry Password",
+      "required": true,
+      "secret": true,
+      "type": "string",
+      "description": "Schema registry HTTP basic-auth password; the 'Secret' of a Confluent Cloud schema registry API key."
+    },
+    {
+      "name": "schema_registry.enable_json_only",
+      "displayName": "Capture Messages in JSON Format Only",
+      "required": true,
+      "secret": false,
+      "type": "boolean",
+      "description": "Must be literally true when no schema registry is configured; a false value is rejected during deserialization with a custom error. Acknowledges that all payloads will be parsed as JSON and that discovered collections are keyed by message partition & offset."
+    },
+    {
+      "name": "topic",
+      "displayName": "Topic",
+      "required": true,
+      "secret": false,
+      "type": "string",
+      "description": "Per-binding resource config (not endpoint config): the Kafka topic to capture messages from. resource_path_pointers is [\"/topic\"]."
+    }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Kafka Metadata API via the consumer client (fetch_metadata over all topics, 60s timeout), then — only when a Confluent Schema Registry is configured — HTTP GET /subjects on the registry, plus GET /subjects/{topic}-key|-value/versions/latest and GET /schemas/ids/{id} (10 concurrent) for each topic that has a matching subject.",
+    "querySketch": "list cluster topics -> drop internal topics -> sort -> intersect registry subject names against the topic list by stripping the '-key'/'-value' suffix -> fetch the latest key and/or value schema for each matching topic (an unsupported schema is logged and skipped rather than failing discovery) -> emit one binding per topic with resource config {topic}, resource path [topic], recommended name = topic, and a document schema carrying x-infer-schema plus a required /_meta envelope (topic, partition, offset, op) and a conditional reduce {delete:true, strategy:'merge'} when _meta.op == 'd' -> collection key = the non-object leaf JSON pointers of the registered message-key schema when that schema passes a usability check, else the default ['/_meta/partition','/_meta/offset'].",
+    "excludes": ["__consumer_offsets", "__amazon_msk_canary", "_schemas"],
+    "allowlist": null
+  },
+  "streams": [],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Every supported credential is a value the user can self-serve from their own cluster: a SASL username/password (PLAIN or SCRAM-SHA-256/512), or an AWS access key id/secret/region for MSK IAM. The one OAuth-shaped path (sasl.mechanism=OAUTHBEARER) is not user-registered OAuth — the connector mints an MSK SigV4 bearer token itself from the supplied AWS keys via a ClientContext callback, and the spec response reports oauth2: None. The optional schema registry adds only a basic-auth key/secret pair. No app registration and no refresh token anywhere.",
+
+  "unionMisfits": [
+    {
+      "where": "streams / streams[].pull (container, not shape)",
+      "description": "v2's `pull.partitioned_log` finally describes what this connector does, but it is only reachable as a member of `streams[].pull`, and per rule 7 a fully-discovered stream transport has an empty `streams` list — the connector names no topic literally. So the one pull shape that applies uniformly to every binding has nowhere to be recorded. The same gap swallows the fact that a tombstone (absent payload) sets _meta.op='d' and the discovered schema turns that into a reducing delete, since `partitioned_log` has no `emitsDeletes` field the way `changes` does. Proposed: a connector-level `defaultPull` used when streamMode is 'discovered' and every binding shares one shape. Its verified value for this connector is given below.",
+      "proposedShape": {
+        "defaultPull": {
+          "backfill": null,
+          "incremental": {
+            "kind": "partitioned_log",
+            "unit": "one Kafka topic-partition; a binding is one topic, assigned as an explicit TopicPartitionList via manual assign() (never subscribe())",
+            "offsetKind": "int64 Kafka offset per partition, stored in the Flow connector checkpoint as bindingStateV1 -> {stateKey: {partitions: {partitionId: offset}}}; resumed as Offset(offset+1), or Offset::Beginning when the partition has no stored offset",
+            "shardable": true,
+            "notes": "Partitions of one binding may be split across concurrent connector shards: HighwayHash over (topic name bytes || little-endian partition id) with a hard-coded 32-byte key, top 32 bits of the hash taken, and the partition skipped unless the hash falls in [range.key_begin, range.key_end]. With no RangeSpec the shard takes every partition. A checkpoint merge-patch is written after every single message. A null message payload is a tombstone: it sets _meta.op='d' and the discovered document schema reduces it as a delete."
+          }
+        },
+        "emitsDeletes": true
+      }
+    },
+    {
+      "where": "streams[].primaryKeyKind / streams[].writeDisposition",
+      "description": "v2's split of `json_pointers` vs `synthetic` correctly names both halves of this connector's bimodality — a usable registered message-key schema yields the leaf JSON pointers of that key (json_pointers), and everything else falls back to the synthetic broker coordinates ['/_meta/partition','/_meta/offset'] — but which branch a topic takes is decided at discovery time from the customer's registry contents, and `writeDisposition` still has to be one constant. json_pointers means the collection has real record identity and reduces/merges by it, honouring tombstones as deletes; synthetic means every message is unique and the stream is effectively append-only. There is no way to say 'merge or append, decided per stream at discovery'.",
+      "proposedShape": {
+        "primaryKeyKind": "json_pointers|synthetic",
+        "determinedAt": "discovery",
+        "writeDisposition": { "whenKeyKind": { "json_pointers": "merge", "synthetic": "append" } },
+        "fallbackPrimaryKey": ["/_meta/partition", "/_meta/offset"]
+      }
+    },
+    {
+      "where": "record identity / document shaping",
+      "description": "Still unrepresentable in v2. Payload decoding is polymorphic and decided per message at runtime from the Confluent wire framing (magic byte 0 followed by a 4-byte big-endian schema id), yielding Avro, JSON, or Protobuf from the same topic; protobuf schemas additionally resolve their registry references depth-first into a FileDescriptorSet. Message-key fields are merged over the payload at the document root and clobber colliding payload fields; a non-record Avro/JSON key is wrapped as {_key: value}; broker metadata (topic, partition, offset, op, headers as UTF-8-or-base64, CreateTime/LogAppendTime timestamp) is injected under /_meta. None of this record-shaping has a home in transports, credentialModes, or any pull member.",
+      "proposedShape": {
+        "recordShaping": {
+          "payloadFormats": ["avro", "json", "protobuf"],
+          "formatDetection": "confluent_wire_format_magic_byte",
+          "keyMergedAtRoot": true,
+          "scalarKeyWrapper": "_key",
+          "metaEnvelope": "/_meta"
+        }
+      }
+    }
+  ],
+
+  "evidence": {
+    "id": {
+      "file": "source-kafka/src/lib.rs",
+      "lines": "46",
+      "snippet": "documentation_url: \"https://go.estuary.dev/source-kafka\".to_string(),"
+    },
+    "description": {
+      "file": "source-kafka/README.md",
+      "lines": "3",
+      "snippet": "This is a flow connector that reads from Kafka topics/partitions."
+    },
+    "transports[0].spec": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "423-427",
+      "snippet": "config.set(\"bootstrap.servers\", self.bootstrap_servers.clone());\nconfig.set(\"security.protocol\", self.security_protocol());"
+    },
+    "transports[0].spec.endpointConfig": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "469-472",
+      "snippet": "(None, Some(TlsSettings::SystemCertificates)) => \"SSL\",\n(None, None) => \"PLAINTEXT\",\n(Some(_), Some(TlsSettings::SystemCertificates)) => \"SASL_SSL\","
+    },
+    "transports[1].spec.baseUrl": {
+      "file": "source-kafka/src/schema_registry.rs",
+      "lines": "179-182",
+      "snippet": "let fetched: FetchedSchema = self\n    .make_request(format!(\"{}/schemas/ids/{}\", self.endpoint, id).as_str())"
+    },
+    "transports[1].purpose": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "379-381",
+      "snippet": "if let Entry::Vacant(e) = schema_cache.entry(schema_id) {\n    e.insert(schema_client.fetch_schema(schema_id).await?);\n}"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "435-437",
+      "snippet": "config.set(\"sasl.mechanism\", mechanism.to_string());\nconfig.set(\"sasl.username\", username);\nconfig.set(\"sasl.password\", password);"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "439-443",
+      "snippet": "Some(Credentials::AWS { .. }) => {\n    if self.security_protocol() != \"SASL_SSL\" { anyhow::bail!(\"must use tls=system_certificates for AWS\") }\n    config.set(\"sasl.mechanism\", \"OAUTHBEARER\");"
+    },
+    "credentialModes[1].tier": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "297-301",
+      "snippet": "let (token, lifetime_ms) = crate::msk_oauthbearer::token(\n    region, aws_access_key_id, aws_secret_access_key,\n)?;"
+    },
+    "credentialModes[2].scheme": {
+      "file": "source-kafka/src/schema_registry.rs",
+      "lines": "390-394",
+      "snippet": "let res = self.http\n    .get(url)\n    .basic_auth(&self.username, Some(&self.password))"
+    },
+    "execution.mode": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "111-114",
+      "snippet": "loop {\n    let msg = consumer\n        .poll(None)"
+    },
+    "execution.schedule": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "113-114",
+      "snippet": ".poll(None)\n.expect(\"polling without a timeout should always produce a message\")"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "326-328",
+      "snippet": "consumer\n    .assign(&topic_partition_list)\n    .context(\"could not assign consumer to topic_partition_list\")?;"
+    },
+    "execution.continuity.customerSideAccrual": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "424-425",
+      "snippet": "config.set(\"enable.auto.commit\", \"false\");\nconfig.set(\"group.id\", \"source-kafka\"); // librdkafka will throw an error if this is left blank"
+    },
+    "execution.continuity.notes": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "355-358",
+      "snippet": "// We avoid librdkafka's `consumer_lag` field, which is\n// derived from the committed offset: this connector never commits\n// offsets (it tracks them in Flow checkpoints), so that field is unreliable."
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "310-313",
+      "snippet": "let offset = match resource_state.partitions.get(&partition) {\n    Some(o) => Offset::Offset(*o + 1), // Don't read the same offset again.\n    None => Offset::Beginning,"
+    },
+    "configFields[0]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "111-114",
+      "snippet": "\"bootstrap_servers\": {\n    \"title\": \"Bootstrap Servers\","
+    },
+    "configFields[1]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "24-28",
+      "snippet": "#[serde(tag = \"auth_type\")]\npub enum Credentials {\n    UserPassword {"
+    },
+    "configFields[2]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "136-143",
+      "snippet": "\"enum\": [ \"PLAIN\", \"SCRAM-SHA-256\", \"SCRAM-SHA-512\" ],\n\"title\": \"SASL Mechanism\",\n\"default\": \"PLAIN\","
+    },
+    "configFields[4]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "151-155",
+      "snippet": "\"password\": {\n    \"secret\": true,\n    \"title\": \"Password\","
+    },
+    "configFields[6]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "178-182",
+      "snippet": "\"aws_secret_access_key\": {\n    \"secret\": true,\n    \"title\": \"AWS Secret Access Key\","
+    },
+    "configFields[8]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "198-204",
+      "snippet": "\"tls\": {\n    \"default\": \"system_certificates\",\n    \"enum\": [ \"system_certificates\" ],"
+    },
+    "configFields[9]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "67-71",
+      "snippet": "#[serde(tag = \"schema_registry_type\")]\npub enum SchemaRegistryConfig {\n    ConfluentSchemaRegistry {"
+    },
+    "configFields[12]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "237-242",
+      "snippet": "\"password\": {\n    \"title\": \"Schema Registry Password\",\n    \"secret\": true"
+    },
+    "configFields[13]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "86-92",
+      "snippet": "Err(de::Error::custom(\n    \"'enable_json_only' must be set to true when no schema registry is configured\",\n))"
+    },
+    "configFields[14]": {
+      "file": "source-kafka/src/configuration.rs",
+      "lines": "477-481",
+      "snippet": "pub struct Resource {\n    #[schemars(title = \"Topic\", description = \"Kafka topic to capture messages from.\")]\n    pub topic: String,"
+    },
+    "streamMode": {
+      "file": "source-kafka/src/discover.rs",
+      "lines": "76-85",
+      "snippet": "Some(Ok(discovered::Binding {\n    recommended_name: topic.to_owned(),\n    resource_path: vec![topic.to_owned()],"
+    },
+    "discovery.method": {
+      "file": "source-kafka/src/discover.rs",
+      "lines": "28-29",
+      "snippet": "let meta = consumer\n    .fetch_metadata(None, KAFKA_METADATA_TIMEOUT)"
+    },
+    "discovery.querySketch": {
+      "file": "source-kafka/src/schema_registry.rs",
+      "lines": "372-383",
+      "snippet": "let subject = format!(\"{}{}\", topic, if key { TOPIC_KEY_SUFFIX } else { TOPIC_VALUE_SUFFIX });\nlet version = self.fetch_latest_version(subject.as_str()).await?;"
+    },
+    "discovery.excludes": {
+      "file": "source-kafka/src/discover.rs",
+      "lines": "22",
+      "snippet": "static KAFKA_INTERNAL_TOPICS: [&str; 3] = [\"__consumer_offsets\", \"__amazon_msk_canary\", \"_schemas\"];"
+    },
+    "authTierOverall": {
+      "file": "source-kafka/src/lib.rs",
+      "lines": "47",
+      "snippet": "oauth2: None,"
+    },
+    "unionMisfits[0].proposedShape": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "360-365",
+      "snippet": "hasher.append(topic.as_bytes());\nhasher.append(&partition.to_le_bytes());\nhash >= range.key_begin && hash <= range.key_end"
+    },
+    "unionMisfits[1]": {
+      "file": "source-kafka/src/discover.rs",
+      "lines": "95",
+      "snippet": "let mut collection_key = vec![\"/_meta/partition\".to_string(), \"/_meta/offset\".to_string()];"
+    },
+    "unionMisfits[2]": {
+      "file": "source-kafka/src/pull.rs",
+      "lines": "374-378",
+      "snippet": "match (schema_client, datum[0]) {\n    (Some(schema_client), 0) => {\n        let schema_id = u32::from_be_bytes(datum[1..5].try_into()?);"
+    }
+  },
+
+  "confidence": {
+    "transports[0]": "high",
+    "transports[1]": "high",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "execution.schedule": "high",
+    "execution.continuity": "high",
+    "execution.continuity.resumeWindow": "medium",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "streams": "high",
+    "authTierOverall": "high",
+    "unionMisfits": "medium"
+  },
+
+  "abstained": {
+    "streams": "Streams are entirely customer-defined: one binding per non-internal topic present in the customer's cluster at discovery time. The connector names no production stream. The seven topics in tests/test.flow.yaml (avro-topic, json-schema-topic, json-raw-topic, protobuf-topic, protobuf-ref-topic, protobuf-wkt-topic, avro-ref-topic) are integration-test fixtures created by the docker-compose harness, not shipped streams, so listing them would misrepresent them. The uniform per-binding pull shape is recorded in unionMisfits[0] instead, since v2 offers no container for it.",
+    "streams[].primaryKey / primaryKeyKind": "Not knowable statically — it is bimodal. `json_pointers` (the non-object leaf pointers of the topic's registered message-key schema) when the registry has a key schema that passes the usability check (no nullable types, every location either required or defaulted, keyable scalar types, additionalProperties:false); `synthetic` (['/_meta/partition','/_meta/offset']) otherwise, including whenever no schema registry is configured or the key schema fails to fetch/parse. Which branch applies depends on the customer's registry contents at discovery time.",
+    "streams[].cursorField": "No single cursor field exists. The resume position is a map partitionId -> Kafka offset held in the Flow checkpoint; /_meta/offset and /_meta/partition are surfaced in the document but neither alone is a usable cursor. Recorded as partitioned_log.offsetKind in unionMisfits[0] instead.",
+    "streams[].writeDisposition": "Depends on the same branch as primaryKeyKind: merge (with tombstone deletes) when a registered message key gives the collection real identity, effectively append when the synthetic partition/offset key makes every document unique. Not determinable without the customer's registry.",
+    "streams[].supportedSyncModes": "Neither 'full_refresh' nor 'incremental' describes the behaviour. There is no refresh; an unseeded binding starts at Offset::Beginning, which is the earliest offset the broker still retains — not full history and not a snapshot — then continues indefinitely.",
+    "execution.continuity.releasedOnShutdown": "Vacuous rather than unknown: the connector leaves no server-side artifact to release (no consumer group membership, no committed offsets, no open segment holds). Recorded as null rather than true to avoid implying a release step exists.",
+    "execution.continuity.resumeWindow": "The window is real but its length is set entirely by the customer's per-topic retention.ms / retention.bytes. The connector never reads, validates, or warns on retention, so no bound can be stated from the source.",
+    "transports[0].spec defaultPort": "Not expressible and not supplied: bootstrap_servers is a free-form comma-separated host:port list with no connector-side default. Port 9092 appears only in the local docker-compose test harness.",
+    "transports[1].spec.apiVersionPinning": "The registry client pins no API version — no Accept header (e.g. application/vnd.schemaregistry.v1+json), no version path segment. The only query parameter used is ?format=serialized on protobuf schema fetches, which selects an encoding, not a version.",
+    "discovery.querySketch (registry-absent path)": "With no schema registry configured, discovery degrades to the Kafka metadata listing alone: every non-internal topic is discovered with the synthetic partition/offset key and JSON-only parsing. The sketch given covers the registry-enabled path."
+  }
+}

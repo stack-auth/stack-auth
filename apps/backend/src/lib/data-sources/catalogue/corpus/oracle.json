@@ -1,0 +1,385 @@
+{
+  "id": "oracle",
+  "estuaryDir": "source-oracle",
+  "displayName": "Oracle",
+  "description": "Captures tables from an Oracle database, backfilling existing rows and then streaming ongoing inserts/updates/deletes read out of the redo and archived redo logs via LogMiner.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "oracle",
+        "defaultPort": 1521,
+        "sslPolicy": null,
+        "tunnelSupport": "Optional SSH bastion forwarding (networkTunnel.sshForwarding.sshEndpoint + privateKey); when configured the driver connects to localhost:1521 through the tunnel instead of the configured address."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Database user and password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password", "database"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "Watermarks table (advanced.watermarksTable, default '<user>.flow_watermarks'; a persistent user table holding one row per capture node_id, upserted by MERGE on every fence). The connector never creates or drops it — it must be pre-provisioned and it survives shutdown.",
+        "LogMiner session state on the mining connection: SYS.DBMS_LOGMNR.ADD_LOGFILE for each selected redo/archive log then SYS.DBMS_LOGMNR.START_LOGMNR, torn down with SYS.DBMS_LOGMNR.END_LOGMNR at the top of each poll iteration.",
+        "In 'extract' dictionary mode, SYS.DBMS_LOGMNR_D.BUILD(STORE_IN_REDO_LOGS) writes a LogMiner dictionary INTO the customer's redo log stream on each addLogFiles call — extra redo volume and extra archived-log bytes that persist on their storage.",
+        "Two dedicated Oracle sessions per capture (outer LogMiner cursor + inner session for the recursive pending-transaction poll), each with ALTER SESSION NLS_* settings and, on a CDB, ALTER SESSION SET CONTAINER=CDB$ROOT.",
+        "EXPLAIN PLAN rows in the schema's PLAN_TABLE (one EXPLAIN per table per connector invocation for the backfill query)."
+      ],
+      "customerSideAccrual": "Archived redo logs on the customer's own storage (FRA / archive destination). The connector holds no server-side registration — there is no replication slot, no guaranteed restore point, no registered capture SCN — so Oracle's own retention/RMAN policy governs deletion and nothing is pinned on our behalf. What does grow on their side while we are stopped is ordinary redo/archive volume under their retention policy, plus, in 'extract' dictionary mode, the periodic dictionary builds written into the redo stream. Because nothing is pinned, a long pause does not wedge their database — it silently invalidates us instead.",
+      "ourSideLoss": "If we resume at a checkpoint SCN whose covering archived log has already been aged out, addLogFiles cannot assemble a contiguous per-thread chain and validateLogFileCoverage fails hard ('redo log gap at start of SCN range' / 'redo log SCN gap in thread N'). The connector deliberately errors rather than mining the partial set, so the change window is lost and the affected tables must be re-backfilled. A RESETLOGS incarnation change is likewise treated as unrecoverable (only a same-RESETLOGS_ID, consecutive-SEQUENCE# gap is tolerated as a benign restart).",
+      "resumeWindow": "Bounded entirely by the customer's archived-log retention. SetupPrerequisites refuses to start when V$ARCHIVED_LOG's oldest FIRST_TIME is under 24 hours old (on databases older than 24h) and warns when retention is under 7 days, so the practical floor is 24h and the recommended window is >= 7 days.",
+      "releasedOnShutdown": false,
+      "notes": "Per-poll LogMiner state IS released (END_LOGMNR runs at the start of every poll iteration, and both mining sessions are closed on Close/stream exit), but the persistent artifact — the watermarks table and its rows — is never dropped, and Acknowledge() is a no-op so no server-side position is ever advanced or freed. Checkpoint is a JSON {SCN, PendingTransactions{XID -> {StartSCN, MessageCount}}}; the SCN is stored without +1 so a restart may replay duplicate events at the boundary rather than skip them."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port at which the database can be reached; ':1521' is appended when no port is given." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as. Default 'flow_capture'." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the specified database user." },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Logical database (service) name to capture from. Default 'ORCL'." },
+    { "name": "historyMode", "displayName": "History Mode", "required": true, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Capture change events without reducing them to a final state." },
+    { "name": "advanced.skip_backfills", "displayName": "Skip Backfills", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated fully-qualified table names not to backfill; '*.*' skips all backfills." },
+    { "name": "advanced.watermarksTable", "displayName": "Watermarks Table", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Fully-qualified '<schema>.<table>' used for watermark writes during backfills. Defaults to '<lowercased user>.flow_watermarks'." },
+    { "name": "advanced.backfill_chunk_size", "displayName": "Backfill Chunk Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Rows fetched per backfill query; default 50000. Only applies to keyed tables." },
+    { "name": "advanced.incremental_chunk_size", "displayName": "Incremental Chunk Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Rows fetched per incremental query; default 10000 (also sets driver PREFETCH_ROWS on the replication connection)." },
+    { "name": "advanced.discover_schemas", "displayName": "Discovery Schema Selection", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "If set, only tables owned by these schemas are discovered." },
+    { "name": "advanced.node_id", "displayName": "Node ID", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Unique 32-bit node ID; used as the 'slot' key for watermark row writes. Defaults to a hash of the task name with the MSB cleared." },
+    { "name": "advanced.dictionary_mode", "displayName": "Dictionary Mode", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "'online' (DICT_FROM_ONLINE_CATALOG), 'extract' (DICT_FROM_REDO_LOGS + DDL_DICT_TRACKING), or 'smart' (default: run online, fall back to extract on a dictionary mismatch until past the maximum LAST_DDL_TIME SCN, then return to online)." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value emitted as _meta/source/tag on every document." },
+    { "name": "advanced.rediscovery_interval", "displayName": "Rediscovery Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string (default '15m') controlling how often discovery re-runs mid-capture to notice schema changes and new tables." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal flags; includes skip_archive_retention_check, use_schema_inference, emit_sourced_schemas." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ssh://user@hostname[:port] bastion to tunnel through." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Private key used to connect to the bastion." },
+    { "name": "namespace", "displayName": "Schema", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Owner/schema in which the table resides (read-only, set by discovery)." },
+    { "name": "stream", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the table to capture (read-only, set by discovery)." },
+    { "name": "mode", "displayName": "Backfill Mode", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "One of '', 'Normal', 'Precise', 'Only Changes', 'Without Primary Key' — selects how preexisting rows are backfilled." },
+    { "name": "priority", "displayName": "Backfill Priority", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Integer priority; highest-priority bindings are backfilled to completion first." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Oracle data-dictionary queries (ALL_TABLES / ALL_TAB_COLUMNS / ALL_CONSTRAINTS + ALL_CONS_COLUMNS / ALL_OBJECTS)",
+    "querySketch": "SELECT DISTINCT NVL(IOT_NAME, TABLE_NAME) AS table_name, owner FROM all_tables WHERE tablespace_name NOT IN (...) AND owner NOT IN (...) AND table_name NOT IN (...) [AND owner IN (<discover_schemas>)]; then columns+PKs from all_tab_columns LEFT JOIN (all_constraints INNER JOIN all_cons_columns ON constraint_type='P') filtered to the discovered owners; then OWNER/OBJECT_NAME/OBJECT_ID/DATA_OBJECT_ID from ALL_OBJECTS WHERE OBJECT_TYPE='TABLE' for the discovered tables plus the watermarks table (these numeric IDs become the DATA_OBJ#/DATA_OBJD# predicate of the LogMiner query).",
+    "excludes": [
+      "tablespace_name IN ('SYSTEM','SYSAUX','SAMPLESCHEMA')",
+      "owner IN ('SYS','SYSTEM','AUDSYS','CTXSYS','DVSYS','DBSFWUSER','DBSNMP','QSMADMIN_INTERNAL','LBACSYS','MDSYS','OJVMSYS','OLAPSYS','ORDDATA','ORDSYS','RDSADMIN','OUTLN','WMSYS','XDB','RMAN$CATALOG','MTSSYS','OML$METADATA','ODI_REPO_USER','RQSYS','PYQSYS','GGS_ADMIN')",
+      "table_name IN ('DBTOOLS$EXECUTION_HISTORY')",
+      "The watermarks table is discovered but flagged OmitBinding so it never becomes a user binding.",
+      "Columns whose data type is not in the supported set (NUMBER/FLOAT/CHAR/VARCHAR(2)/NCHAR/NVARCHAR2/DATE/TIMESTAMP*/INTERVAL*) are dropped with a warning.",
+      "Table names longer than 30 characters are rejected and columns longer than 30 characters are ignored (LogMiner identifier limit)."
+    ],
+    "allowlist": "advanced.discover_schemas, when non-empty, appends AND owner IN (...) to the table-discovery query."
+  },
+
+  "streams": [
+    {
+      "name": "<schema>.<table> with a primary key",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<discovered PK columns, in constraint position order>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "replication poll", "schedule": { "kind": "interval", "seconds": 10 } },
+        { "role": "mid-capture rediscovery", "schedule": { "kind": "other", "literal": "15m", "description": "advanced.rediscovery_interval Go duration, jittered so co-starting captures do not query the catalog in lockstep" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": ["<PK columns>"],
+          "cursorColumns": ["<PK columns>"],
+          "querySketch": "SELECT * FROM (SELECT ROWID, <cast columns> FROM \"<owner>\".\"<table>\" [WHERE lexicographic-tuple-greater-than the resume key] ORDER BY <key> ASC) WHERE ROWNUM <= backfill_chunk_size; CHAR/VARCHAR keys are wrapped in NLSSORT(col,'NLS_SORT=BINARY') on both sides of the comparison for 11g-compatible binary ordering.",
+          "chunking": "Key-ordered pages of backfill_chunk_size (default 50000) rows; resume state is the FDB-tuple-encoded last row key. Complete when a chunk returns fewer rows than the chunk size. NUMBER columns without scale/precision are discovered as string/format=number and marked UnpredictableKeyOrdering, which downgrades a Precise backfill."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": "<owner>",
+          "table": "<table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Oracle SCN (from V$DATABASE.current_scn) plus a map of in-flight transaction XIDs to their start SCN and message count"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> with no primary key (backfill mode 'Without Primary Key')",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/rs_id", "/_meta/source/ssn"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [
+        { "role": "replication poll", "schedule": { "kind": "interval", "seconds": 10 } },
+        { "role": "mid-capture rediscovery", "schedule": { "kind": "other", "literal": "15m", "description": "advanced.rediscovery_interval" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<owner>",
+          "table": "<table>",
+          "keyColumns": [],
+          "cursorColumns": ["ROWID"],
+          "querySketch": "SELECT ROWID, <cast columns> FROM \"<owner>\".\"<table>\" WHERE ROWID >= '<rangeStart>' AND ROWID <= '<rangeEnd>'",
+          "chunking": "ROWID ranges precomputed from DBA_EXTENTS: extents are bucketed into ~256MB groups using db_block_size and width_bucket, and DBMS_ROWID.ROWID_CREATE produces the range boundaries; the final boundary is MAX(ROWID) of the table. Resume state is the range-end ROWID; ROWIDs are not monotonic so the sweep is only eventually consistent, reconciled by concurrent SCN-based change capture."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": "<owner>",
+          "table": "<table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Oracle SCN plus pending-transaction XID map"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> in change-only mode ('Only Changes' / advanced.skip_backfills)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<discovered PK columns, or /_meta/source/rs_id + /_meta/source/ssn when keyless>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "replication poll", "schedule": { "kind": "interval", "seconds": 10 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": "<owner>",
+          "table": "<table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Oracle SCN plus pending-transaction XID map; starts from V$DATABASE.current_scn at first activation"
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is an Oracle username/password plus host and service name, assembled into an oracle:// DSN. No OAuth app registration and no refresh token are involved, so this is T1 in the standalone sense. The real setup burden is DBA privilege and instance configuration rather than credential issuance: the account needs LOGMINING, EXECUTE on SYS.DBMS_LOGMNR and SYS.DBMS_LOGMNR_D, SELECT on V_$DATABASE / V_$LOG / V_$LOGFILE / V_$ARCHIVED_LOG / V_$ARCHIVE_DEST_STATUS / V_$LOGMNR_CONTENTS, SELECT ANY DICTIONARY, and (on a CDB) SET CONTAINER; the database must be in ARCHIVELOG mode with database-level supplemental logging enabled, and a watermarks table must exist and be writable. The optional SSH tunnel adds a private key, which stays T1.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.continuity.artifacts / customerSideAccrual",
+      "description": "Unlike Postgres (replication slot) or MySQL (binlog position), Oracle LogMiner leaves NO server-side reservation, so the accrual model is inverted: the customer's disk is never held hostage by a stopped capture, but the capture is silently invalidated by their retention policy. The schema's binary 'who pays' framing does not have a slot for 'nobody pays while stopped, but we die on resume'. It is also asymmetric across dictionary modes — 'extract' mode actively writes dictionary data into the customer's redo stream (real, recurring write amplification on their storage) while 'online' mode writes nothing.",
+      "proposedShape": {
+        "customerSideAccrual": { "whileStopped": "str|null", "whileRunning": "str|null" },
+        "invalidationMode": "pinned|unpinned_retention_window"
+      }
+    },
+    {
+      "where": "streams[].pull.backfill (kind: table) — backfill/streaming handoff",
+      "description": "The backfill and incremental legs are not independent: they interleave under a watermark fence. Before each fence, StreamToFence MERGEs a UUID into the watermarks table and then reads the LogMiner stream until it observes that exact watermark change event (the watermarks table is itself an activated capture stream, present in the DATA_OBJ#/DATA_OBJD# predicate), which orders backfilled rows against concurrent change events. There is no field in PullSpec expressing this coupling, nor the write-side artifact the handoff requires.",
+      "proposedShape": {
+        "handoff": {
+          "kind": "watermark_fence",
+          "artifact": "<schema>.<table> written by the connector",
+          "fenceToken": "uuid",
+          "observedVia": "the change stream itself"
+        }
+      }
+    },
+    {
+      "where": "execution.defaultSchedule vs streams[].schedules",
+      "description": "Two unrelated cadences run concurrently at connector scope, not binding scope: a 10s LogMiner poll loop (constant pollInterval, also the floor on how fast a stream-to-fence cycle can complete) and a jittered ~15m catalog rediscovery. Attaching both to every stream, as done here, over-states them as per-binding properties.",
+      "proposedShape": { "connectorSchedules": [{ "role": "str", "schedule": "<Schedule>" }] }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "writeDisposition is not a per-stream property here — the endpoint-level `historyMode` boolean flips every binding in the capture from reduced final-state (merge) to unreduced change events (append) at once.",
+      "proposedShape": { "writeDispositionOverride": { "scope": "endpoint", "field": "historyMode" } }
+    },
+    {
+      "where": "discovery",
+      "description": "Discovery is not a one-shot connect-time operation: it re-runs on a jittered interval (advanced.rediscovery_interval, default 15m) for the life of the capture so new tables and schema changes are noticed. The schema models discovery as a connect-time act only.",
+      "proposedShape": { "rediscovery": { "kind": "interval", "literal": "15m", "jittered": true } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-oracle/main.go",
+      "lines": "243-245, 260-269",
+      "snippet": "if !strings.Contains(c.Address, \":\") { c.Address += \":1521\" }\nvar uri = url.URL{ Scheme: \"oracle\", Host: address, User: url.UserPassword(c.User, c.Password) }"
+    },
+    "transports[0].spec.tunnelSupport": {
+      "file": "source-oracle/main.go",
+      "lines": "94-100, 257-259",
+      "snippet": "var sshConfig = &networkTunnel.SshConfig{ SshEndpoint: ..., ForwardHost: host, ForwardPort: port, LocalPort: \"1521\" }\naddress = \"localhost:1521\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-oracle/main.go",
+      "lines": "183-192",
+      "snippet": "var requiredProperties = [][]string{ {\"address\", c.Address}, {\"user\", c.User}, {\"password\", c.Password} }"
+    },
+    "execution.mode": {
+      "file": "source-oracle/replication.go",
+      "lines": "511-526",
+      "snippet": "var startQuery = fmt.Sprintf(\"BEGIN SYS.DBMS_LOGMNR.START_LOGMNR(STARTSCN=>:scn,ENDSCN=>:end,OPTIONS=>%s); END;\", dictionaryOption)"
+    },
+    "execution.defaultSchedule": {
+      "file": "source-oracle/replication.go",
+      "lines": "764-777",
+      "snippet": "const pollInterval = 10 * time.Second\nvar poll = time.NewTicker(pollInterval)"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-oracle/backfill.go",
+      "lines": "192-199",
+      "snippet": "var query = fmt.Sprintf(`MERGE INTO %s USING dual ON (slot=:slot) WHEN MATCHED THEN UPDATE SET watermark=:watermark WHEN NOT MATCHED THEN INSERT (slot, watermark) VALUES (:slot,:watermark)`, db.config.Advanced.WatermarksTable)"
+    },
+    "execution.continuity.artifacts[2]": {
+      "file": "source-oracle/replication.go",
+      "lines": "211-215",
+      "snippet": "if s.dictionaryMode == DictionaryModeExtract {\n  conn.ExecContext(ctx, \"BEGIN SYS.DBMS_LOGMNR_D.BUILD (options => DBMS_LOGMNR_D.STORE_IN_REDO_LOGS); END;\")"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-oracle/replication.go",
+      "lines": "415-431",
+      "snippet": "if files[0].FirstChange > startSCN {\n  return fmt.Errorf(\"redo log gap at start of SCN range for thread %d: first file %q begins at FIRST_CHANGE#=%d, after startSCN=%d\", ...)"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source-oracle/prerequisites.go",
+      "lines": "54-67",
+      "snippet": "row = db.conn.QueryRowContext(ctx, \"SELECT MIN(FIRST_TIME) FROM V$ARCHIVED_LOG A WHERE A.NAME IS NOT NULL\")\nif time.Since(minTimestamp) < (time.Hour * 24) { return fmt.Errorf(\"archived log retention is less than 24 hours...\") }"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source-oracle/replication.go",
+      "lines": "172-182, 1393-1409",
+      "snippet": "conn.ExecContext(ctx, \"BEGIN SYS.DBMS_LOGMNR.END_LOGMNR; END;\")\nfunc (s *replicationStream) Acknowledge(ctx context.Context, cursor json.RawMessage) error { return nil }"
+    },
+    "execution.continuity.notes": {
+      "file": "source-oracle/replication.go",
+      "lines": "604-607, 900-905",
+      "snippet": "type checkpoint struct { SCN SCN; PendingTransactions map[XID]*checkpointTx }\n// we do not +1 here ... may lead to duplicate events being captured on restart"
+    },
+    "configFields": {
+      "file": "source-oracle/.snapshots/TestGeneric-SpecResponse",
+      "lines": "1-160",
+      "snippet": "\"required\": [\"address\",\"user\",\"password\",\"database\",\"historyMode\"], \"title\": \"Oracle Connection\""
+    },
+    "discovery.querySketch": {
+      "file": "source-oracle/discovery.go",
+      "lines": "166-168",
+      "snippet": "SELECT DISTINCT(NVL(IOT_NAME, TABLE_NAME)) AS table_name, owner FROM all_tables WHERE tablespace_name NOT IN (...) AND owner NOT IN (...) and table_name NOT IN ('DBTOOLS$EXECUTION_HISTORY')"
+    },
+    "discovery.allowlist": {
+      "file": "source-oracle/discovery.go",
+      "lines": "174-177",
+      "snippet": "if len(selectedSchemas) > 0 { var schemasComma = strings.Join(selectedSchemas, \"','\"); q = q + fmt.Sprintf(\" AND owner IN ('%s')\", schemasComma) }"
+    },
+    "discovery.excludes[3]": {
+      "file": "source-oracle/discovery.go",
+      "lines": "71-74",
+      "snippet": "if streamID == db.WatermarksTable() { // exclude the watermarks table from the output bindings\n  table.OmitBinding = true }"
+    },
+    "streams[0].pull.backfill.querySketch": {
+      "file": "source-oracle/backfill.go",
+      "lines": "466, 482-483",
+      "snippet": "fmt.Fprintf(query, `SELECT * FROM (SELECT ROWID, %s FROM \"%s\".\"%s\"`, ...)\nfmt.Fprintf(query, \") WHERE ROWNUM <= %d\", db.config.Advanced.BackfillChunkSize)"
+    },
+    "streams[0].pull.incremental.emitsDeletes": {
+      "file": "source-oracle/decode.go",
+      "lines": "303-306",
+      "snippet": "case opDelete:\n  before = make(map[string]any)\n  op = sqlcapture.DeleteOp"
+    },
+    "streams[0].pull.incremental.resumeTokenKind": {
+      "file": "source-oracle/replication.go",
+      "lines": "107-115",
+      "snippet": "if cp.SCN != 0 { startSCN = cp.SCN } else { row = db.conn.QueryRowContext(ctx, \"SELECT current_scn FROM V$DATABASE\") }"
+    },
+    "streams[1].primaryKey": {
+      "file": "source-oracle/main.go",
+      "lines": "364-366",
+      "snippet": "func (db *oracleDatabase) FallbackCollectionKey() []string { return []string{\"/_meta/source/rs_id\", \"/_meta/source/ssn\"} }"
+    },
+    "streams[1].pull.backfill.chunking": {
+      "file": "source-oracle/backfill.go",
+      "lines": "214-218, 277-279",
+      "snippet": "// splits those blocks into 1g buckets ... generating ROWID ranges based on these buckets\ndbms_rowid.rowid_create( 1, first_data_object_id, first_file_id, first_block_id, 0 ) rowid_start"
+    },
+    "streams[2].pull.backfill": {
+      "file": "source-oracle/main.go",
+      "lines": "414-429",
+      "snippet": "if db.config.Advanced.SkipBackfills == \"*.*\" { return false }\nfor _, skipTableName := range strings.Split(db.config.Advanced.SkipBackfills, \",\") { if strings.EqualFold(streamID.String(), skipTableName) { return false } }"
+    },
+    "unionMisfits[1].description": {
+      "file": "source-oracle/replication.go",
+      "lines": "632-682",
+      "snippet": "var fenceWatermark = uuid.New().String()\nif err := s.db.WriteWatermark(ctx, fenceWatermark); err != nil { ... }\nif actual == fenceWatermark { fenceReached = true }"
+    },
+    "unionMisfits[3].description": {
+      "file": "source-oracle/main.go",
+      "lines": "160, 297-299",
+      "snippet": "HistoryMode bool `json:\"historyMode\" jsonschema:\"...description=Capture change events without reducing them to a final state.\"`\nfunc (db *oracleDatabase) HistoryMode() bool { return db.config.HistoryMode }"
+    },
+    "authTierRationale": {
+      "file": "source-oracle/prerequisites.go",
+      "lines": "77-89",
+      "snippet": "row = db.conn.QueryRowContext(ctx, \"SELECT SUPPLEMENTAL_LOG_DATA_ALL, SUPPLEMENTAL_LOG_DATA_MIN FROM V$DATABASE\")\nreturn fmt.Errorf(\"supplemental logging not enabled. Please enable supplemental logging using `%s`\", enableCommand)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "medium",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "high",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "discovery": "high",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[1].pull.backfill": "high",
+    "streams[2]": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[1].writeDisposition": "low",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.sslPolicy": "No TLS/wallet options appear in the config schema or in the DSN construction (scheme oracle://, only PREFETCH_ROWS is appended); the go-ora driver's TLS behaviour is not configured by this connector, so nothing conclusive is stated.",
+    "streams[].cursorField": "There is no time/sequence cursor column. The keyed backfill orders by primary key and the incremental leg is driven by SCN out of LogMiner, neither of which is a per-row cursor field in the schema's sense.",
+    "streams[].name": "The stream list is fully discovered from the customer's catalog; only archetypes are emitted. The single literally-named table in the code is the watermarks table, which is explicitly excluded from bindings.",
+    "streams[1].writeDisposition": "Keyless tables key on /_meta/source/rs_id + /_meta/source/ssn, which are unique per change record, so writes are effectively append-only; but the reduction is decided by Flow's collection spec rather than by any code in this connector, so 'append' is inferred, not read.",
+    "execution.continuity.customerSideAccrual": "Marked medium because the accrual is a property of the customer's ARCHIVELOG/FRA policy rather than anything the connector sets: the code only reads V$ARCHIVED_LOG to check retention. The extract-mode dictionary write into redo is directly evidenced; the general archive growth is inference from LogMiner mechanics.",
+    "streams[].pull.incremental.publication": "Oracle has no publication concept; the equivalent filter is an inline DATA_OBJ#/DATA_OBJD# predicate list built from ALL_OBJECTS for active tables, plus an excluded-owner list, which is not a named server-side object.",
+    "unionMisfits[0].proposedShape": "Proposed shape is a suggestion for schema v3, not extracted fact."
+  }
+}

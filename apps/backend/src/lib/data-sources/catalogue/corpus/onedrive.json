@@ -1,0 +1,284 @@
+{
+  "id": "onedrive",
+  "estuaryDir": "source-onedrive",
+  "displayName": "OneDrive",
+  "description": "Captures files from a folder in a Microsoft OneDrive drive via the Microsoft Graph API and parses them into records.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Enumerate and download DriveItems from a OneDrive drive. Reached exclusively over the Microsoft Graph REST API v1.0 (msgraph-sdk-go for listing; a hand-rolled http.Client GET for content).",
+      "spec": {
+        "kind": "objectStore",
+        "store": "drive"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Microsoft OAuth2 (client id + secret + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        "scopes": ["Files.Read.All", "offline_access", "User.Read"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Nothing is created or held on the customer's side: the connector only issues read-only Graph GETs (children listings and /content downloads) and leaves no server-side object. All resumption state is client-side in the Flow checkpoint (minBound/maxBound/maxMod modification-time window plus the last path and record offset), so an arbitrarily long pause is safe -- a file modified while we are stopped carries a newer lastModifiedDateTime and is picked up on the next sweep. Two caveats, both inherent to modification-time polling rather than to a lease: (a) a file whose content changes without its lastModifiedDateTime advancing past minBound is never re-read; (b) deletions are never observed, so the collection is append/merge-only and tombstones are not emitted. With advanced.ascendingKeys=true, minBound is deliberately never advanced and resumption is by lexicographic path instead, which additionally means files written out of lexicographic order are skipped forever."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The client ID for the OneDrive account (Azure app registration)." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The client secret for the OneDrive account." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The OAuth2 refresh token for the OneDrive account." },
+    { "name": "path", "displayName": "Path", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Absolute path (must start with '/') to the OneDrive folder to read from. Also becomes the discovered binding's stream name / recommended collection name." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Regex (format: regex) matched against every full file path under the folder; non-matching files are skipped." },
+    { "name": "drive_id", "displayName": "Drive ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "The drive to access. If empty, the connector resolves the authenticated user's default drive via /me/drive." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Declares files are written in ascending lexicographic order; switches resumption from the modification-time window to 'start listing at the last path seen'. Default false." },
+    { "name": "parser.compression", "displayName": "Compression", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "One of gzip | zip | zstd | none | null (Auto)." },
+    { "name": "parser.format", "displayName": "Format", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminated object; type is one of auto | avro | json | csv | protobuf | w3cExtendedLog. Defaults to {\"type\":\"auto\"} (inferred from file extension / content type). CSV carries a nested config (delimiter, encoding, headers, etc.)." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Absolute path prefix to sweep for this binding; defaults to the endpoint `path`. Marked x-collection-name." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Graph children listing of the configured folder; Discover itself emits exactly one binding derived from the endpoint config (DiscoverRoot = config.path), not from an enumeration of the drive.",
+    "querySketch": "GET /v1.0/drives/{driveId}/items/root:{path}:/children?$orderby=name  (used by check(); Discover returns a single binding named after the trimmed path)",
+    "excludes": [
+      "objects with size == 0 (treated as folder placeholders)",
+      "paths not matching the matchKeys regex",
+      "paths outside this shard's key range (HW-hash range check)",
+      "parquet objects larger than 8 GB (must be staged to local disk to parse)"
+    ],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<config.path, trimmed of leading/trailing '/'>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModifiedDateTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<config.path> (the binding's `stream`, an absolute folder path)",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "auto (gzip | zip | zstd | none, or auto-detected)",
+          "listing": "First sweep runs the identical code path as the incremental leg with state.minBound = zero time, so every file under the prefix whose lastModifiedDateTime is < maxBound is read. Depth-first recursive walk: GET /v1.0/drives/{driveId}/items/root:{folderPath}:/children?$orderby=name for the root folder, then one such call per folder encountered, pushed onto an explicit stack; folder entries are expanded rather than emitted. Within a folder, paging is handled by msgraphcore.PageIterator, which follows the response's @odata.nextLink URL verbatim (the connector never parses a token out of it).",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "<config.path> (the binding's `stream`, an absolute folder path)",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "auto (gzip | zip | zstd | none, or auto-detected)",
+          "listing": "Same recursive children walk as the backfill; the incremental filter is entirely client-side. Each sweep picks maxBound = now - 30s (Source.TimeHorizonDelta = -30s) and processes only objects with minBound < lastModifiedDateTime < maxBound. On finishing a sweep, minBound advances to maxMod (the largest modification time actually processed), not to maxBound. There is NO Microsoft Graph `delta` token anywhere in this connector, so no delta-token expiry to manage. Mid-sweep resumption uses filesource.Query.StartAt = state.Path: the listing skips items lexicographically before StartAt unless the item path is a prefix of StartAt (so ancestor folders are still descended into), and per-file resumption skips state.Records already-emitted parsed records. When advanced.ascendingKeys is true, minBound is never advanced and StartAt alone drives resumption.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Only one credential mode exists and its JSON schema requires all three of client_id, client_secret and refresh_token; credentials.validate() errors if any is empty. There is no app-password, device-code, client-credentials or certificate alternative, so standalone the user must register their own Azure app AND obtain a refresh token = T3. Estuary's hosted control plane mitigates this: the config carries \"x-oauth2-provider\": \"microsoft\" and main.go ships a pf.OAuth2 spec (authorization_code exchange against login.microsoftonline.com/common, scopes Files.Read.All offline_access User.Read, refresh_token plucked from /refresh_token of the token response), so in Estuary's UI the user just clicks through consent. That hosted flow is a control-plane feature, not something the connector binary provides; the standalone tier is T3_BYO_REFRESH. Note the connector itself only ever performs the refresh_token grant (an oauth2.Config TokenSource seeded with a pre-expired token), never the authorization_code leg.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec",
+      "description": "`objectStore` has no place for the fact that this store is a REST API with its own base URL, API version pinning and paginator. Everything goes through https://graph.microsoft.com/v1.0 (path-segment version pinning), listings are @odata.nextLink-paginated, and content is a plain GET with an `Authorization: Bearer` header. Modelling it as `kind: \"http\"` would be equally wrong because there are no per-stream paths. The paginator, in particular, has nowhere to live: PullSpec `objects` has only a free-text `listing` field.",
+      "proposedShape": {
+        "kind": "objectStore",
+        "store": "drive",
+        "accessedVia": {
+          "kind": "http",
+          "baseUrl": { "kind": "constant", "value": "https://graph.microsoft.com/v1.0" },
+          "apiVersionPinning": "path segment '/v1.0'",
+          "listingPaginator": { "type": "next_url", "nextUrlPath": "@odata.nextLink" }
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull",
+      "description": "backfill and incremental are not two pull shapes here -- they are literally the same code with state.minBound either zero or carried forward. Filling both duplicates the spec; nulling backfill would hide that an initial full sweep happens. A `sameAsIncremental: true` marker (or a single `sweep` slot with a `firstRunBound` note) would express it honestly.",
+      "proposedShape": { "sweep": { "kind": "objects", "firstRunSemantics": "minBound = zero time", "steadyStateSemantics": "minBound = prior sweep's maxMod" } }
+    },
+    {
+      "where": "streams[0].schedules / execution.defaultSchedule",
+      "description": "The connector has no schedule of any kind. filesource.Pull performs exactly one sweep per binding and returns; re-invocation cadence is entirely the Flow runtime's decision and is not encoded in the connector. `schedules: []` reads as 'not yet determined' rather than 'externally driven, by design'.",
+      "proposedShape": { "kind": "externally_driven", "description": "one bounded sweep per connector invocation; cadence owned by the orchestrator" }
+    },
+    {
+      "where": "streams[0].cursorField",
+      "description": "The cursor is a property of the OBJECT (DriveItem.lastModifiedDateTime), not a field of any emitted record -- emitted documents only contain the parsed file contents plus /_meta/file and /_meta/offset. A consumer reading cursorField as a record field would find nothing there. The real resumption state is a triple (minBound, maxBound, maxMod) plus a (path, records) position, which no single cursorField can carry.",
+      "proposedShape": { "cursorKind": "object_metadata", "field": "lastModifiedDateTime", "stateShape": ["minBound", "maxBound", "maxMod", "path", "records", "complete"] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-onedrive/main.go",
+      "lines": "220-225",
+      "snippet": "reqURL, err := url.JoinPath(\n\t\t\"https://graph.microsoft.com\",\n\t\t\"/v1.0/drives\","
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-onedrive/oauth2.go",
+      "lines": "17-22",
+      "snippet": "authURL  = \"https://login.microsoftonline.com/common/oauth2/v2.0/authorize\"\n\ttokenURL = \"https://login.microsoftonline.com/common/oauth2/v2.0/token\"\nvar scopes = []string{\"Files.Read.All\", \"offline_access\", \"User.Read\"}"
+    },
+    "credentialModes[0].tier": {
+      "file": "source-onedrive/main.go",
+      "lines": "377-378",
+      "snippet": "\"required\": [\"client_id\", \"client_secret\", \"refresh_token\"],\n\"x-oauth2-provider\": \"microsoft\","
+    },
+    "credentialModes[0].scheme.grant": {
+      "file": "source-onedrive/oauth2.go",
+      "lines": "105-110",
+      "snippet": "token := &oauth2.Token{\n\t\tRefreshToken: c.RefreshToken,\n\t\tExpiry:       time.Now(), // Require a new access token to be obtained."
+    },
+    "execution.mode": {
+      "file": "filesource/filesource.go",
+      "lines": "336-344",
+      "snippet": "func (r *reader) sweep(ctx context.Context) error {\n\tvar listing, err = r.store.List(ctx, Query{\n\t\tPrefix:    r.prefix,"
+    },
+    "execution.continuity": {
+      "file": "filesource/state.go",
+      "lines": "91-114",
+      "snippet": "func (p *State) finishSweep(monotonic bool) {\n\tif !monotonic {\n\t\tvar minBound = p.MinBound"
+    },
+    "configFields": {
+      "file": "source-onedrive/main.go",
+      "lines": "23-34",
+      "snippet": "type config struct {\n\tPath        string         `json:\"path\"`\n\tCredentials credentials    `json:\"credentials\"`"
+    },
+    "configFields[6]": {
+      "file": "source-onedrive/main.go",
+      "lines": "404-408",
+      "snippet": "\"ascendingKeys\": {\n\t\"type\":        \"boolean\",\n\t\"description\": \"Improve sync speeds by listing files from the end of the last sync, ...\""
+    },
+    "configFields[8]": {
+      "file": "source-onedrive/tests/parser_spec.json",
+      "lines": "1-523",
+      "snippet": "format oneOf titles: Auto, Avro, JSON, CSV, Protobuf, W3C Extended Log; compression oneOf: GZip, Zip Archive, Zstandard, None, Auto"
+    },
+    "discovery.method": {
+      "file": "filesource/filesource.go",
+      "lines": "224-235",
+      "snippet": "var root = conn.config.DiscoverRoot()\nresourceJSON, err := json.Marshal(resource{Stream: root})\nKey:                []string{\"/_meta/file\", \"/_meta/offset\"},"
+    },
+    "discovery.excludes": {
+      "file": "filesource/filesource.go",
+      "lines": "382-396",
+      "snippet": "if obj.Size == 0 {\n\t\treturn true, \"object has size of 0\"\nif r.pathRe != nil && !r.pathRe.MatchString(obj.Path) {"
+    },
+    "streams[0].primaryKey": {
+      "file": "filesource/filesource.go",
+      "lines": "234-235",
+      "snippet": "DocumentSchemaJson: json.RawMessage(minimalDocumentSchema),\nKey:                []string{\"/_meta/file\", \"/_meta/offset\"},"
+    },
+    "streams[0].cursorField": {
+      "file": "source-onedrive/main.go",
+      "lines": "292-295",
+      "snippet": "var modTime time.Time\n\t\tif lastMod := firstUnprocessedItem.GetLastModifiedDateTime(); lastMod != nil {\n\t\t\tmodTime = *lastMod"
+    },
+    "streams[0].pull.incremental.listing": {
+      "file": "filesource/state.go",
+      "lines": "137-153",
+      "snippet": "if !modTime.After(p.MinBound) {\n\t\treturn true, ...\n\tif !p.MaxBound.After(modTime) {"
+    },
+    "streams[0].pull.incremental.listing:startAt": {
+      "file": "source-onedrive/main.go",
+      "lines": "286-289",
+      "snippet": "if listing.startAt != \"\" &&\n\t\t\tlisting.startAt > fullItemPath &&\n\t\t\t!strings.HasPrefix(listing.startAt, fullItemPath) {"
+    },
+    "streams[0].pull.incremental.listing:pagination": {
+      "file": "source-onedrive/main.go",
+      "lines": "169-181",
+      "snippet": "pageIterator, err := msgraphcore.\n\t\tNewPageIterator[models.DriveItemable](\n\t\titems,"
+    },
+    "streams[0].pull.incremental.listing:horizon": {
+      "file": "source-onedrive/main.go",
+      "lines": "437-439",
+      "snippet": "// Set the delta to 30 seconds in the past, to guard against new files appearing with a\n\t\t// timestamp that's equal to the `MinBound` in the state.\n\t\tTimeHorizonDelta: time.Second * -30,"
+    },
+    "streams[0].pull.incremental.objectChunking": {
+      "file": "source-onedrive/main.go",
+      "lines": "230-237",
+      "snippet": "req, err := http.NewRequestWithContext(ctx, \"GET\", reqURL, nil)\n\treq.Header.Set(\"Authorization\", \"Bearer \"+token.AccessToken)\n\tresp, err := odStore.httpClient.Do(req)"
+    },
+    "streams[0].pull.incremental.matchExpr": {
+      "file": "source-onedrive/main.go",
+      "lines": "388-392",
+      "snippet": "\"matchKeys\": {\n\t\"format\": \"regex\",\n\t\"description\": \"Filter applied to all file paths under the specified folder...\""
+    },
+    "discovery.querySketch": {
+      "file": "source-onedrive/main.go",
+      "lines": "150-164",
+      "snippet": "QueryParameters: &drives.ItemItemsItemChildrenRequestBuilderGetQueryParameters{\n\t\t\tOrderby: []string{\"name\"},\n\t\tByDriveItemId(\"root:\"+folderPath+\":\")."
+    },
+    "configFields[5]": {
+      "file": "source-onedrive/main.go",
+      "lines": "90-99",
+      "snippet": "driveID := cfg.DriveID\n\tif driveID == \"\" {\n\t\tdrive, err := graphClient.Me().Drive().Get(ctx, nil)"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[0].tier": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "medium",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.listing:pagination": "medium",
+    "streams[0].pull.incremental.objectChunking": "high",
+    "streams[0].pull.incremental.format": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "There is no schedule in the connector. filesource.Pull (filesource/filesource.go:336-376) runs exactly one sweep per binding and returns; nothing loops or sleeps. Cadence is imposed by whatever re-invokes the connector.",
+    "streams[0].schedules": "Same reason as execution.defaultSchedule -- deliberately empty, not unknown. See unionMisfits[2].",
+    "streams[0].pull.incremental.listing:pagination": "msgraphcore.NextPageIterator is an external dependency (github.com/microsoftgraph/msgraph-sdk-go-core) and is not vendored in this checkout, so its @odata.nextLink handling was not read first-hand. The connector passes the first page plus the request adapter to the iterator and never touches a token itself (main.go:169-187), which rules out token extraction on the connector's side; verbatim next-link following is the documented SDK behaviour but was inferred, not verified from source.",
+    "streams[0].writeDisposition": "Rated medium rather than asserted: the key is (/_meta/file, /_meta/offset) so a re-read of a modified file overwrites the same keys (merge-like), but the connector emits no deletes and the runtime's reduction is a collection-schema property outside the connector. It is definitely NOT snapshot_with_tombstone.",
+    "streamMode": "Rated medium: Discover always returns exactly ONE binding, named from the user's `path`. That is neither a shipped static list nor an enumeration of the customer's namespace. Recorded as 'discovered' because the stream name originates from customer config, but a reader should understand there is only ever one binding per capture.",
+    "transports[0].spec.store": "The enum offers both 'drive' and 'sharepoint'. 'drive' was chosen for OneDrive; note that source-sharepoint uses the byte-identical Graph /drives/{id}/items API, so the two enum members do not actually distinguish different protocols."
+  }
+}

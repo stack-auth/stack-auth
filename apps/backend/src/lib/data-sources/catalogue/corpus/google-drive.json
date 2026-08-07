@@ -1,0 +1,290 @@
+{
+  "id": "google-drive",
+  "estuaryDir": "source-google-drive",
+  "displayName": "Google Drive",
+  "description": "Captures files stored under a Google Drive folder (including Shared Drives) by recursively walking the folder tree and parsing each downloaded file into records.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": { "kind": "objectStore", "store": "drive" }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Service Account Key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "auth_type=\"Service\" plus credentials_json: a Google service-account key JSON blob, exchanged for scoped credentials via google.CredentialsFromJSON with scope https://www.googleapis.com/auth/drive.readonly. The target folder must additionally be shared with the service account's email."
+      }
+    },
+    {
+      "name": "Google OAuth (user-supplied client + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://accounts.google.com/o/oauth2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "scopes": ["https://www.googleapis.com/auth/drive.readonly"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "folderUrl", "displayName": "Folder URL", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "URL of the Google Drive folder to capture from. Must match https://drive.google.com/drive/folders/<id>...; the captured id becomes the listing root." },
+    { "name": "credentials.auth_type", "displayName": "Authentication", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator: \"Service\" (service account key) or \"Client\" (Google OAuth)." },
+    { "name": "credentials.credentials_json", "displayName": "Service Account JSON", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "JSON key of the service account. Required when auth_type=Service." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client id. Required when auth_type=Client." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client secret. Required when auth_type=Client." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth refresh token. Required when auth_type=Client." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Regex (format: regex) filter applied to file paths relative to the folder root; non-matching files are skipped." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Declares files are written in ascending lexicographic order so a sweep may resume from the last processed path instead of relisting the whole tree. Default false." },
+    { "name": "parser", "displayName": "Parser Configuration", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Embedded flow-parser config (format type, compression, csv/json options). Schema is injected at spec time from parser.GetSpec()." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding path prefix to capture; discovery sets it to the Drive folder id extracted from folderUrl." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Drive files.list recursive folder walk (Q: \"'<folderId>' in parents\"), rooted at the folder id parsed out of folderUrl",
+    "querySketch": "files.list(q=\"'<folderId>' in parents\", supportsAllDrives=true, includeItemsFromAllDrives=true, fields=\"nextPageToken, files(id, name, md5Checksum, mimeType, modifiedTime, size)\") paged by nextPageToken",
+    "excludes": [
+      "MIME types beginning with application/vnd.google-apps that are not folders (native Docs/Sheets/Slides) — logged and skipped, never exported",
+      "objects with Size == 0",
+      "paths not matching matchKeys regex",
+      "paths outside the shard's key-range hash",
+      "parquet files larger than 8 GB"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "file-data",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "modifiedTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<Drive folder id parsed from folderUrl>",
+          "matchExpr": "<value of matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "First sweep runs with state MinBound = zero time and MaxBound = now-30s, so every file in the tree whose modifiedTime is below MaxBound is read. Same recursive walk as the incremental leg.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "<Drive folder id parsed from folderUrl>",
+          "matchExpr": "<value of matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "Depth-first walk of the folder tree held on an in-memory stack. Each folder is enumerated by files.list with q=\"'<id>' in parents\"; readdirAll drains ALL nextPageToken pages for that folder before returning and sorts the entries by file Name. nextPageToken is never checkpointed, so listing NEVER resumes mid-folder — a restart re-lists from the root. Resumption is instead by path: Query.StartAt is set to state.Path (the last path processed) and any entry with StartAt > path that is not a prefix of StartAt is skipped. Folder recursion is transparent (Recursive: true), so IsPrefix entries are never emitted to the sweeper. Each entry carries ObjectInfo.Extra = the Drive file id, which is what Read() uses.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Two alternative credential modes. The Service Account Key mode is a single self-serve secret blob pasted into one field (plus sharing the folder with the service-account email) — T1_SIMPLE. The Google OAuth mode requires the user to supply client_id, client_secret AND refresh_token in the endpoint config, all three validated as required, which is T3_BYO_REFRESH standalone; the connector does ship a pf.OAuth2 spec (google_auth.Spec) so Estuary's hosted control plane can run the authorization-code dance with its own registered app and mint the refresh token on the user's behalf, but standalone that mode remains T3. authTierOverall takes the easiest offered mode.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "The connector encodes no schedule at all. Source.Pull performs exactly one sweep per binding, writes a final checkpoint, and returns; there is no polling loop, sleep, interval or cron anywhere in the connector or in the filesource framework. Cadence is entirely the Flow runtime's decision (it re-opens the Pull RPC). The schema has no way to say 'externally driven, one bounded sweep per invocation'.",
+      "proposedShape": { "kind": "externally_driven", "unitOfWork": "one bounded sweep per Pull RPC", "description": "connector exits after a single sweep; the platform decides when to invoke it again" }
+    },
+    {
+      "where": "streams[].pull.incremental (objects PullSpec)",
+      "description": "The incremental cursor for an object-store connector is a time WINDOW, not a token, and the PullSpec `objects` variant has nowhere to record it. State is {minBound, maxBound, maxMod, path, records, complete}: a sweep fixes maxBound = now + TimeHorizonDelta (-30s) at start, reads only files with minBound < modifiedTime < maxBound, and on completion sets the next minBound = maxMod (the greatest modifiedTime actually processed), not maxBound. With advanced.ascendingKeys=true the semantics change materially — minBound is never advanced and `path` is carried across sweeps instead.",
+      "proposedShape": { "cursorKind": "modtime_window", "lowerBound": "minBound (exclusive)", "upperBound": "maxBound = now - 30s (exclusive)", "advanceRule": "next minBound = max modifiedTime processed", "clockSkewGuard": "TimeHorizonDelta = -30s", "monotonicKeysVariant": "ascendingKeys=true freezes minBound and resumes from last path" }
+    },
+    {
+      "where": "streams[].pull.incremental.objectChunking",
+      "description": "Objects are downloaded whole (files.get(id).Download(), no byte ranges), but resumption is nonetheless intra-object at RECORD granularity: state.records counts emitted records and state.skip replays-and-discards that many parsed records after a crash. That is neither 'whole-object' nor byte-range chunking.",
+      "proposedShape": { "objectChunking": null, "intraObjectResume": { "granularity": "record", "mechanism": "checkpointed record count, re-read from byte 0 and discard the first N parsed records" } }
+    },
+    {
+      "where": "streams[0].name",
+      "description": "Discovery emits exactly one binding whose resource `stream` is the raw Drive folder id (a user-specific opaque string) while the recommended collection name is the constant \"file-data\". There is no literal stream list, so the entry above is an archetype named after the recommended collection, not the actual resource path.",
+      "proposedShape": { "streamName": "<folderId>", "recommendedCollectionName": "file-data", "cardinality": "exactly one binding per configured folderUrl" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-google-drive/main.go",
+      "lines": "19-20, 70-84",
+      "snippet": "\"google.golang.org/api/drive/v3\"\nfunc (c config) buildService(ctx context.Context) (*drive.FilesService, error) {"
+    },
+    "credentialModes[0].scheme": {
+      "file": "go/auth/google/config.go",
+      "lines": "63-65",
+      "snippet": "if c.AuthType == SERVICE_AUTH_TYPE {\n\treturn google.CredentialsFromJSON(ctx, []byte(c.CredentialsJSON), scopes...)\n}"
+    },
+    "credentialModes[0].tier": {
+      "file": "go/auth/google/config.go",
+      "lines": "38-44",
+      "snippet": "func (c *CredentialConfig) validateServiceCreds() error {\n\tif c.CredentialsJSON == \"\" {\n\t\treturn fmt.Errorf(\"missing service account credentials JSON\")"
+    },
+    "credentialModes[1].tier": {
+      "file": "go/auth/google/config.go",
+      "lines": "46-53",
+      "snippet": "if c.RefreshToken == \"\" {\n\treturn fmt.Errorf(\"missing refresh token for oauth2\")\n} else if c.ClientID == \"\" {"
+    },
+    "credentialModes[1].scheme": {
+      "file": "go/auth/google/spec.go",
+      "lines": "11-18",
+      "snippet": "AuthUrlTemplate:        fmt.Sprintf(AUTH_URL_TEMPLATE_FORMAT_STR, strings.Join(scopes, \" \")),\nAccessTokenUrlTemplate: \"https://oauth2.googleapis.com/token\","
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source-google-drive/main.go",
+      "lines": "24",
+      "snippet": "scopes            = []string{drive.DriveReadonlyScope}"
+    },
+    "execution.mode": {
+      "file": "filesource/state.go",
+      "lines": "137-153",
+      "snippet": "// Is the path modified before our window (exclusive) ?\nif !modTime.After(p.MinBound) {"
+    },
+    "execution.continuity": {
+      "file": "source-google-drive/main.go",
+      "lines": "298-300",
+      "snippet": "// Set the delta to 30 seconds in the past, to guard against new files appearing with a\n// timestamp that's equal to the `MinBound` in the state.\nTimeHorizonDelta: time.Second * -30,"
+    },
+    "configFields[0]": {
+      "file": "source-google-drive/main.go",
+      "lines": "25-26, 41-46",
+      "snippet": "folderURLReString = \"https://drive.google.com/drive/folders/([^/?]+).*\"\nif folderURLRe.FindStringSubmatch(c.FolderURL) == nil {"
+    },
+    "configFields[6]": {
+      "file": "source-google-drive/main.go",
+      "lines": "253-258",
+      "snippet": "\"matchKeys\": {\n\t\"format\":      \"regex\",\n\t\"description\": \"Filter applied to file paths under the folder URL...\""
+    },
+    "configFields[7]": {
+      "file": "source-google-drive/main.go",
+      "lines": "58-60, 262-266",
+      "snippet": "func (c config) FilesAreMonotonic() bool {\n\treturn c.Advanced.AscendingKeys\n}"
+    },
+    "discovery.querySketch": {
+      "file": "source-google-drive/main.go",
+      "lines": "189-199",
+      "snippet": "Q(fmt.Sprintf(\"'%s' in parents\", folderID)).\n\tSupportsAllDrives(true).\n\tFields(\"nextPageToken, files(id, name, md5Checksum, mimeType, modifiedTime, size)\")"
+    },
+    "discovery.excludes": {
+      "file": "source-google-drive/main.go",
+      "lines": "138-144",
+      "snippet": "if strings.HasPrefix(file.MimeType, \"application/vnd.google-apps\") {\n\tlogrus.WithFields(...).Warn(\"skipping unsupported Google Apps document\")\n\tcontinue"
+    },
+    "streams[0].primaryKey": {
+      "file": "filesource/filesource.go",
+      "lines": "230-235",
+      "snippet": "DocumentSchemaJson: json.RawMessage(minimalDocumentSchema),\nKey:                []string{\"/_meta/file\", \"/_meta/offset\"},"
+    },
+    "streams[0].name": {
+      "file": "source-google-drive/main.go",
+      "lines": "52-56",
+      "snippet": "func (c config) RecommendedName() string {\n\treturn \"file-data\"\n}"
+    },
+    "streams[0].cursorField": {
+      "file": "source-google-drive/main.go",
+      "lines": "127-131",
+      "snippet": "modTime, err := time.Parse(time.RFC3339, file.ModifiedTime)"
+    },
+    "streams[0].pull.incremental.listing": {
+      "file": "source-google-drive/main.go",
+      "lines": "90-107, 209-231",
+      "snippet": "// `query.Prefix` is a Google Drive FolderID.\nif root, err := readdirAll(s.client, ctx, query.Prefix); err != nil {"
+    },
+    "streams[0].pull.incremental.listing.resume": {
+      "file": "source-google-drive/main.go",
+      "lines": "133-135",
+      "snippet": "if query.StartAt > path && !strings.HasPrefix(query.StartAt, path) {\n\t// File or folder is entirely skipped by StartAt.\n\tcontinue"
+    },
+    "streams[0].pull.incremental.matchExpr": {
+      "file": "filesource/filesource.go",
+      "lines": "387-390",
+      "snippet": "// Is the path excluded by our regex ?\nif r.pathRe != nil && !r.pathRe.MatchString(obj.Path) {\n\treturn true, \"regex not matched\""
+    },
+    "streams[0].pull.incremental.objectChunking": {
+      "file": "source-google-drive/main.go",
+      "lines": "180-186",
+      "snippet": "if resp, err := s.client.Get(obj.Extra.(string)).Download(); err != nil {"
+    },
+    "streams[0].pull.incremental.format": {
+      "file": "filesource/filesource.go",
+      "lines": "417-436",
+      "snippet": "if t, _ := cfg.Format[\"type\"].(string); t != \"\" && t != \"auto\" {\ncase \"json\", \"jsonl\", \"csv\", \"tsv\", \"avro\", \"xls\", \"xlsx\", \"xlsm\", \"xml\", \"ods\":"
+    },
+    "unionMisfits[0]": {
+      "file": "filesource/filesource.go",
+      "lines": "304-312",
+      "snippet": "grp.Go(func() error {\n\tif err := r.sweep(ctx); err != nil {\nreturn grp.Wait()"
+    },
+    "unionMisfits[1]": {
+      "file": "filesource/state.go",
+      "lines": "91-133",
+      "snippet": "minBound = *p.MaxMod\n} else {\n*p = State{MinBound: p.MinBound, // Never increment MinBound."
+    },
+    "unionMisfits[2]": {
+      "file": "filesource/state.go",
+      "lines": "182-194",
+      "snippet": "if ll := len(lines); ll < p.skip {\n\tp.skip -= ll\n\treturn nil"
+    }
+  },
+
+  "confidence": {
+    "transports": "high",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "execution.defaultSchedule": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.matchExpr": "high",
+    "streams[0].pull.incremental.objectChunking": "high",
+    "streams[0].pull.incremental.format": "medium",
+    "streams[0].pull.incremental.compression": "low",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[0].pull.incremental.format": "Set to \"auto\" because the connector itself never fixes a format: it forwards the user's parser.Config and sets Filename/ContentType from the Drive metadata so flow-parser sniffs. The enumerable format list is owned by github.com/estuary/flow/go/parser (parser.GetSpec()), which is outside this repo and was not read. The extension set in isParquetFile (json, jsonl, csv, tsv, avro, xls, xlsx, xlsm, xml, ods, parquet) is an in-repo mirror of the parser's table and is the best available evidence, but the connector explicitly warns it must be kept in sync, so it may be incomplete.",
+    "streams[0].pull.incremental.compression": "Compression is a parser.Config concern (ContentEncoding is forwarded from ObjectInfo, which this store always sets to \"\"). No compression handling exists in the connector or filesource; the real list lives in the external parser spec.",
+    "execution.defaultSchedule": "No interval, cron, sleep, or ticker exists anywhere in main.go or filesource. Pull performs one sweep and returns, so cadence is set by the Flow runtime, not the connector. Recorded as null rather than guessed.",
+    "streams[0].schedules": "Same reason as execution.defaultSchedule — per-binding scheduling is not expressed in the connector.",
+    "transports[0].spec.baseUrl": "objectStore transports have no baseUrl field in this schema; the effective endpoint is the google.golang.org/api/drive/v3 client's default (https://www.googleapis.com/drive/v3), which is supplied by the vendored SDK rather than by connector code.",
+    "streams[0].writeDisposition": "Inferred, not stated. The collection key is (/_meta/file, /_meta/offset), so re-reading a modified file re-emits documents at identical keys and Flow reduces them — effectively merge/upsert. The connector emits no deletes and no tombstones; deleted Drive files simply stop appearing in listings and their prior documents persist. No code names a write disposition.",
+    "streams[0].supportedSyncModes": "The resource spec has a SyncMode field but it is jsonschema:\"-\" (hidden) and never read. Incremental behaviour is implicit in the modtime-window state; there is no user-selectable full_refresh mode. Listed as both because the first sweep is a full sweep, but the connector does not model these as modes.",
+    "execution.continuity.artifacts": "Set to null overall: this is a pure read-only poller against Drive (drive.readonly scope). No server-side artifacts are created, no changes-feed startPageToken is requested or stored, nothing accrues on the customer side, and nothing expires on ours — pausing arbitrarily long only means the next sweep sees a wider modifiedTime window."
+  }
+}

@@ -1,0 +1,298 @@
+{
+  "id": "navan",
+  "estuaryDir": "source-navan",
+  "displayName": "Navan",
+  "description": "Imports corporate travel booking records from the Navan booking-data API.",
+  "category": "finance",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.navan.com/v1" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v1` baked into the base URL constant; no version header or query param"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "OAuth2 client credentials (Navan API client id + secret)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": "https://api.navan.com/ta-auth/oauth/token",
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure read-only HTTP polling; the connector creates no server-side objects at Navan. Resumption is a datetime watermark held entirely in Flow connector state (ResourceState.Incremental.cursor); on restart the next sweep simply requests a wider updatedFrom..updatedTo window, so an arbitrarily long pause costs neither side anything beyond a larger catch-up page count. No retention window or resume-token expiry is referenced anywhere in the connector."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Const discriminator, defaults to \"OAuth Credentials\"." },
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Navan API client id; see the Navan help-center booking-data-integration article linked from the config description." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Navan API client secret." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (generic CDK ResourceConfig field)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; CDK default PT0S, Navan ships PT5M for bookings." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "bookings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/uuid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "lastModified",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "polling interval for both the backfill sweep and the incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/bookings",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page": "<1-based page number, from the PageCursor in connector state>",
+            "pageSize": 100,
+            "updatedTo": "<backfill cutoff timestamp, formatted %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": "pageSize",
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/bookings",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "page": "<1-based page number, local loop counter>",
+            "pageSize": 100,
+            "updatedFrom": "<log cursor, formatted %Y-%m-%dT%H:%M:%SZ>",
+            "updatedTo": "<datetime.now() at sweep start, same format>"
+          },
+          "pathPlaceholders": null,
+          "paginator": null,
+          "incrementalParam": { "param": "updatedFrom", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T2_BYO_APP",
+  "authTierRationale": "Exactly one credential mode is offered and it is OAuth2 client_credentials: the user must obtain and paste a client_id AND client_secret pair from Navan's admin console (booking-data integration setup) before the connector will run. ConnectorSpec sets oauth2=None, so there is NO hosted control-plane OAuth app doing the registration on the user's behalf and no browser consent redirect — the standalone tier is therefore T2, not T1. It is not T3: no refresh token is ever requested from the user; ClientCredentialsOAuth2Credentials carries only client_id/client_secret and the CDK mints a short-lived access token per run via the client_credentials grant. Borderline note: because it is a self-serve two-field secret pair rather than a redirect-URI OAuth app registration, this sits at the easy edge of T2 and a reader optimizing for user effort may reasonably see it as T1-adjacent.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].pull.incremental.paginator",
+      "description": "The incremental sweep writes a page loop (`while current_page <= total_pages`, incrementing current_page) but `total_pages` is initialized to 1 and is never reassigned from `response.page.totalPages`. The intended mechanism is unambiguously the same explicit-total page paginator as the backfill, yet the code as written terminates after page 1 and silently drops every later page of a multi-page change window. Neither {\"type\":\"page\",...} (describes intent, not runtime) nor {\"type\":\"none\"} (describes runtime, not intent) is truthful, so the field is abstained to null. The schema has no way to express 'declared paginator that is inert due to a defect'.",
+      "proposedShape": {
+        "paginator": {
+          "type": "page",
+          "limitParam": "pageSize",
+          "pageParam": "page",
+          "pageSize": 100,
+          "startPage": 1,
+          "terminateOn": "explicit_total",
+          "status": "declared_but_inert",
+          "defectNote": "loop bound never read from the response envelope; effective page count is 1"
+        }
+      }
+    },
+    {
+      "where": "streams[0].pull.backfill.incrementalParam",
+      "description": "The backfill request carries a time parameter (`updatedTo`) but it is an UPPER bound freezing the historical sweep at the cutoff, not a lower watermark that advances. `incrementalParam` in the schema only models the advancing lower bound, so the backfill's time-boxing is unrepresentable and is emitted as null, losing the fact that the backfill is time-bounded at all.",
+      "proposedShape": { "windowParams": { "lowerBoundParam": null, "upperBoundParam": "updatedTo", "format": "iso8601" } }
+    },
+    {
+      "where": "streams[0].pull.incremental",
+      "description": "The incremental leg does not rely on the server's updatedFrom filter alone. It re-filters client-side (`modified_ts > cursor_timestamp` gates the yield) and separately tracks a max-seen watermark that becomes the new cursor. Records inside the requested window whose lastModified equals the old cursor are fetched but deliberately suppressed. The PullSpec union models only the request; it cannot express a post-fetch record filter or the max-of-lastModified cursor advancement rule.",
+      "proposedShape": { "postFilter": { "field": "lastModified", "op": ">", "against": "previous_cursor" }, "cursorAdvance": "max(record.lastModified) over the sweep, only if it exceeds the previous cursor" }
+    },
+    {
+      "where": "credentialModes[0].scheme",
+      "description": "One logical credential mode uses TWO different auth placements at two different endpoints, which the flat scheme union cannot hold at once. At the token endpoint the client_id:client_secret pair is sent as an HTTP Basic Authorization header (OAuth2ClientCredentialsPlacement.HEADERS, selected explicitly by the connector, overriding the CDK's FORM default), while the resulting access_token is sent to the data API as `Authorization: Bearer <token>`. The emitted oauth2 member records the grant and token URL but silently drops the Basic-at-token-endpoint placement.",
+      "proposedShape": { "type": "oauth2", "grant": "client_credentials", "clientCredentialsPlacement": "basic_auth_header", "resourceAuth": { "type": "bearer", "header": "Authorization", "prefix": "Bearer" } }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "The connector has one hostname but two distinct path roots on it: data requests go to https://api.navan.com/v1 while the token exchange goes to https://api.navan.com/ta-auth/oauth/token, which is NOT under /v1. `baseUrl` as a single constant implies every request hangs off it, which is false for the auth call.",
+      "proposedShape": { "baseUrl": { "kind": "constant", "value": "https://api.navan.com/v1" }, "authBaseUrl": { "kind": "constant", "value": "https://api.navan.com" } }
+    },
+    {
+      "where": "streams[0].schedules",
+      "description": "The 5-minute interval is a discovery-time DEFAULT written into initial_config; the CDK ResourceConfig exposes `interval` as a user-editable per-binding field, so the real runtime schedule is whatever the customer left in the binding. The Schedule union states a value with no way to mark it as an overridable default versus a fixed connector behaviour.",
+      "proposedShape": { "role": "polling", "schedule": { "kind": "interval", "seconds": 300 }, "origin": "connector_default", "userOverridable": true }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_navan/api.py",
+      "lines": "12",
+      "snippet": "API_BASE_URL = \"https://api.navan.com/v1\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_navan/models.py",
+      "lines": "28-31",
+      "snippet": "OAUTH2_SPEC = OAuth2TokenFlowSpec(\n    accessTokenUrlTemplate=\"https://api.navan.com/ta-auth/oauth/token\",\n    accessTokenResponseMap={\"access_token\": \"/access_token\"},"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_navan/models.py",
+      "lines": "36-40",
+      "snippet": "OAuth2Credentials = (\n        ClientCredentialsOAuth2Credentials.with_client_credentials_placement(\n            OAuth2ClientCredentialsPlacement.HEADERS"
+    },
+    "authTierOverall": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "211-212",
+      "snippet": "class ClientCredentialsOAuth2Credentials(_BaseOAuth2CredentialsData):\n    grant_type: ClassVar[str] = \"client_credentials\""
+    },
+    "authTierRationale": {
+      "file": "source_navan/__init__.py",
+      "lines": "31-34",
+      "snippet": "return ConnectorSpec(\n            configSchema=EndpointConfig.model_json_schema(),\n            oauth2=None,"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "spec.configSchema.$defs.ClientCredentialsOAuth2Credentials",
+      "snippet": "\"client_id\": {\"secret\": true, ...}, \"client_secret\": {\"secret\": true, ...}, \"required\": [\"client_id\", \"client_secret\"]"
+    },
+    "execution.mode": {
+      "file": "source_navan/resources.py",
+      "lines": "36-43",
+      "snippet": "fetch_page=functools.partial(fetch_bookings_page, http,),\n            fetch_changes=functools.partial(fetch_bookings_changes, http,),"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_navan/resources.py",
+      "lines": "49-51",
+      "snippet": "Resource(\n            name=\"bookings\",\n            key=[\"/uuid\"],"
+    },
+    "streams[0].schedules": {
+      "file": "source_navan/resources.py",
+      "lines": "58-60",
+      "snippet": "initial_config=ResourceConfig(\n                name=\"bookings\",\n                interval=timedelta(minutes=5),"
+    },
+    "streams[0].cursorField": {
+      "file": "source_navan/api.py",
+      "lines": "119-122",
+      "snippet": "modified_ts = booking.lastModified\n\n            if modified_ts > last_seen_modified:\n                last_seen_modified = modified_ts"
+    },
+    "streams[0].pull.backfill.path": {
+      "file": "source_navan/api.py",
+      "lines": "26",
+      "snippet": "url = f\"{API_BASE_URL}/bookings\""
+    },
+    "streams[0].pull.backfill.params": {
+      "file": "source_navan/api.py",
+      "lines": "28-37",
+      "snippet": "params: dict[str, int | str] = {\"page\": page, \"pageSize\": page_size,}\n    if updated_from: params[\"updatedFrom\"] = updated_from\n    if updated_to: params[\"updatedTo\"] = updated_to"
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_navan/api.py",
+      "lines": "73-83",
+      "snippet": "if response.page and page < response.page.totalPages:\n        next_page = page + 1\n        yield next_page"
+    },
+    "streams[0].pull.backfill.recordsPath": {
+      "file": "source_navan/models.py",
+      "lines": "59-60",
+      "snippet": "data: list[TData]\n    page: Page | None = None"
+    },
+    "streams[0].pull.incremental.incrementalParam": {
+      "file": "source_navan/api.py",
+      "lines": "98-99",
+      "snippet": "updated_from = dt_to_str(log_cursor)\n    updated_to = datetime.now(tz=log_cursor.tzinfo)"
+    },
+    "streams[0].pull.backfill.params.updatedTo": {
+      "file": "source_navan/utils.py",
+      "lines": "3",
+      "snippet": "DATETIME_STRING_FORMAT = \"%Y-%m-%dT%H:%M:%SZ\""
+    },
+    "streamMode": {
+      "file": "tests/snapshots/snapshots__discover__stdout.json",
+      "lines": "2-6",
+      "snippet": "{\"recommendedName\": \"bookings\", \"resourceConfig\": {\"name\": \"bookings\", \"interval\": \"PT5M\"}"
+    },
+    "unionMisfits[0]": {
+      "file": "source_navan/api.py",
+      "lines": "105-108",
+      "snippet": "current_page = 1\n    total_pages = 1\n\n    while current_page <= total_pages:"
+    },
+    "unionMisfits[3]": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "401-407",
+      "snippet": "case OAuth2ClientCredentialsPlacement.HEADERS:\n                headers[\"Authorization\"] = (\"Basic \" + base64.b64encode(...)"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "medium",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "medium",
+    "authTierOverall": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].schedules": "high",
+    "streams[0].pull.backfill.path": "high",
+    "streams[0].pull.backfill.params": "high",
+    "streams[0].pull.backfill.recordsPath": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.incremental.path": "high",
+    "streams[0].pull.incremental.params": "high",
+    "streams[0].pull.incremental.incrementalParam": "high",
+    "streams[0].pull.incremental.paginator": "low"
+  },
+
+  "abstained": {
+    "streams[0].pull.incremental.paginator": "Set to null deliberately per rule 1. The incremental request sends `page` and `pageSize` and the envelope returns `page.totalPages`, so a page paginator with terminateOn explicit_total is clearly what was intended — but the loop bound `total_pages` is hardcoded to 1 at api.py:106 and never reassigned from the response, so at runtime exactly one page is ever fetched and any change window exceeding 100 bookings is silently truncated. Emitting `page` would assert pagination that does not happen; emitting `none` would assert an intent that is not in the code. Both failure modes are the silent-truncation kind rule 1 warns about, so the field is abstained and the full mechanism is recorded in unionMisfits[0].",
+    "credentialModes[0].scheme.scopes": "No scope list appears anywhere in the connector or in the CDK's client_credentials token exchange (only grant_type plus the Basic-header client credentials are sent). Emitted as an empty list rather than guessing Navan's scope names.",
+    "credentialModes[0].scheme.authUrl": "There is no authorization/consent URL. The client_credentials grant is a direct server-to-server token POST; ConnectorSpec.oauth2 is None so no browser redirect URL exists to record.",
+    "streams[0].pull.backfill.incrementalParam": "Null because the backfill's only time parameter (`updatedTo`) is a fixed upper bound derived from the cutoff, not an advancing lower watermark; see unionMisfits[1].",
+    "streams[0].writeDisposition": "Inferred as `merge` from the declared document key [\"/uuid\"] plus the incremental leg re-emitting changed bookings under the same uuid. The connector never emits tombstones and never declares a disposition explicitly, so this is a reading of CDK convention rather than a stated fact.",
+    "execution.continuity.releasedOnShutdown": "Null because the question does not apply — the connector creates no server-side artifacts to release.",
+    "transports[0].spec.defaultHeaders": "Null: no static headers are set on the data session; the only header applied is the Authorization: Bearer added per-request by the CDK's TokenSource."
+  }
+}

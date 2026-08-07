@@ -1,0 +1,432 @@
+{
+  "id": "ada",
+  "estuaryDir": "source-ada",
+  "displayName": "Ada",
+  "description": "Imports Ada AI-chatbot support data — conversations, messages, knowledge articles/sources/tags, and platform integrations — from a customer's Ada bot instance.",
+  "category": "support",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{bot_handle}.ada.support/api/v2",
+          "placeholders": {
+            "bot_handle": "user-supplied `bot_handle` endpoint config field (the subdomain of the customer's Ada bot dashboard)"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2` baked into the base URL builder"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key (Ada private-app access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "bot_handle", "displayName": "Bot Handle", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The Ada bot handle, taken from the bot dashboard URL {BOT_HANDLE}.ada.support; also forms the API host." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC RFC3339 datetime; data before it is not replicated. Defaults to 12 months ago, which is also Ada's export retention limit." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator constant, always \"Private App Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "API Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Ada API key, sent as an Authorization: Bearer token." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK-generic binding name." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK-generic ISO-8601 duration between updates for this binding; connector defaults are PT15M (full refresh) and PT5M (incremental)." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "articles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v2/knowledge/articles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "meta.next_page_uri (the `cursor` query parameter is parsed out of that URL)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "platform_integrations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v2/platform-integrations",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "meta.next_page_uri (the `cursor` query parameter is parsed out of that URL)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v2/knowledge/sources",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "meta.next_page_uri (the `cursor` query parameter is parsed out of that URL)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 900 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/api/v2/knowledge/tags",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "meta.next_page_uri (the `cursor` query parameter is parsed out of that URL)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v2/export/conversations",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "updated_since": "window lower bound, inclusive (ISO-8601 with Z)",
+            "updated_to": "window upper bound, exclusive; min(cutoff, start + 59 days) + 1s"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "updated_since",
+            "cursorPath": "meta.next_page_uri (the `updated_since` query parameter is parsed out of that URL and resent; `updated_to` is left unchanged)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "updated_since", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v2/export/conversations",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "updated_since": "log cursor, inclusive",
+            "updated_to": "min(now - 48h, cursor + 59 days) + 1s, exclusive"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "updated_since",
+            "cursorPath": "meta.next_page_uri (the `updated_since` query parameter is parsed out of that URL and resent; `updated_to` is left unchanged)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "updated_since", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "messages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "date_created",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep and backfill", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/api/v2/export/messages",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "created_since": "window lower bound, inclusive (ISO-8601 with Z)",
+            "created_to": "window upper bound, exclusive; min(cutoff, start + 59 days) + 1s"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "created_since",
+            "cursorPath": "meta.next_page_uri (the `created_since` query parameter is parsed out of that URL and resent; `created_to` is left unchanged)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "created_since", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/api/v2/export/messages",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": {
+            "created_since": "log cursor, inclusive",
+            "created_to": "min(now - 48h, cursor + 59 days) + 1s, exclusive"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "created_since",
+            "cursorPath": "meta.next_page_uri (the `created_since` query parameter is parsed out of that URL and resent; `created_to` is left unchanged)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "created_since", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Ada API key (a 'Private App Credentials' access token) plus the bot handle. `oauth2=None` is returned in the connector spec and `TokenSource(oauth_spec=None, credentials=config.credentials)` is constructed with the CDK's plain `AccessToken` model, which the CDK forwards verbatim as `Authorization: Bearer <token>` with no token exchange or refresh. No OAuth app registration and no refresh token are required, and no hosted control plane is involved.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.incremental / backfill (PullSpec http)",
+      "description": "The export endpoints are queried in bounded time WINDOWS, not as an open-ended 'everything since X'. Each request carries both a lower and an upper time bound, the window is capped at 59 days (Ada's real limit is 60), the incremental leg additionally holds the upper bound back by a 48-hour eventual-consistency lag, and the backfill start is clamped forward to now-365d because of Ada's export retention limit. PullSpec has `incrementalParam` for the lower bound only, so the upper bound, the window cap, the lag, and the retention clamp have nowhere to live except free-text `params`.",
+      "proposedShape": {
+        "window": {
+          "lowerBoundParam": "updated_since|created_since",
+          "upperBoundParam": "updated_to|created_to",
+          "lowerBoundInclusive": true,
+          "upperBoundInclusive": false,
+          "maxWindow": "P59D",
+          "watermarkLag": "PT48H",
+          "retentionClamp": "P365D",
+          "format": "iso8601"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.*.paginator (cursor)",
+      "description": "The export paginator's cursor parameter name is not a connector constant — it is per-stream (`updated_since` for conversations, `created_since` for messages) and it is the SAME parameter that carries the incremental lower bound. Pagination therefore works by advancing the query's own lower time bound rather than by a distinct page token, so `paginator.cursorParam` and `incrementalParam.param` deliberately collide. The token value is also a timestamp with meaning, not an opaque page token.",
+      "proposedShape": {
+        "type": "advancing_bound",
+        "boundParam": "<same param as incrementalParam.param>",
+        "tokenFrom": "url_query",
+        "tokenTo": "query_param",
+        "opaque": false,
+        "terminateOn": "absent_token"
+      }
+    },
+    {
+      "where": "streams[].pull.*.recordsPath",
+      "description": "Records are not parsed from a materialised JSON body; the connector streams the response through an incremental JSON processor keyed on the JSON path `data.item` (array-element notation), then reads the leftover envelope (`meta.next_page_uri`) after the array is exhausted. `recordsPath: \"data\"` is the closest fit but loses the fact that pagination state is only available AFTER the record stream is drained.",
+      "proposedShape": { "recordsPath": "data", "recordsPathNotation": "streaming_item_pointer", "envelopeReadAfterRecords": true }
+    },
+    {
+      "where": "credentialModes[0]",
+      "description": "The endpoint config declares `credentials` with a pydantic discriminator (`credentials_title`) over a one-member union (only `ApiKey`). This is the CDK's multi-mode credential shape used with a single mode, which is a forward-compatibility hook rather than a real alternative — the emitted spec still renders a `oneOf` with one branch.",
+      "proposedShape": { "credentialModes": [], "discriminatorField": "credentials_title", "singleMemberUnion": true }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "The per-binding interval is a default written into the discovered binding's `ResourceConfig` (PT15M / PT5M) and is user-editable after discovery; it is not a schedule the connector enforces. There is no connector-wide default at all.",
+      "proposedShape": { "schedule": { "kind": "interval", "seconds": 900 }, "authority": "binding_default_user_overridable" }
+    },
+    {
+      "where": "streams[].writeDisposition (full-refresh streams)",
+      "description": "The four full-refresh streams are opened with the CDK's `fetch_snapshot` + an explicit tombstone document (`_meta.op = \"d\"`), so each sweep re-emits the whole collection and tombstones anything that disappeared. Their key is the synthetic `/_meta/row_id`, meaning row identity is positional within a sweep and not stable across sweeps.",
+      "proposedShape": { "writeDisposition": "snapshot_with_tombstone", "keyStability": "positional_within_sweep" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source-ada/source_ada/api.py", "lines": "34-35", "snippet": "def base_url(bot_handle: str):\n    return f\"https://{bot_handle}.ada.support/api/v2\"" },
+    "credentialModes[0].scheme": { "file": "source-ada/source_ada/models.py", "lines": "41-45", "snippet": "class ApiKey(AccessToken):\n    access_token: str = Field(\n        title=\"API Key\"," },
+    "credentialModes[0].tier": { "file": "source-ada/source_ada/resources.py", "lines": "149", "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)" },
+    "authTierOverall": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35-36", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"" },
+    "authTierRationale": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "292-305", "snippet": "if isinstance(self.credentials, (AccessToken, ...)):\n            return (self.authorization_token_type, self.credentials.access_token)" },
+    "configFields": { "file": "source-ada/source_ada/models.py", "lines": "48-60", "snippet": "class EndpointConfig(BaseModel):\n    bot_handle: str = Field(...)\n    start_date: AwareDatetime = Field(..., default_factory=default_start_date)" },
+    "streamMode": { "file": "source-ada/source_ada/models.py", "lines": "122-127", "snippet": "FULL_REFRESH_RESOURCES: list[type[AdaResource]] = [\n    Articles,\n    PlatformIntegrations," },
+    "streams[0].pull.snapshot.path": { "file": "source-ada/source_ada/models.py", "lines": "107-109", "snippet": "class Articles(AdaResource):\n    name: ClassVar[str] = \"articles\"\n    path: ClassVar[str] = \"knowledge/articles\"" },
+    "streams[1].pull.snapshot.path": { "file": "source-ada/source_ada/models.py", "lines": "102-104", "snippet": "class PlatformIntegrations(AdaResource):\n    name: ClassVar[str] = \"platform_integrations\"\n    path: ClassVar[str] = \"platform-integrations\"" },
+    "streams[2].pull.snapshot.path": { "file": "source-ada/source_ada/models.py", "lines": "112-114", "snippet": "class Sources(AdaResource):\n    name: ClassVar[str] = \"sources\"\n    path: ClassVar[str] = \"knowledge/sources\"" },
+    "streams[3].pull.snapshot.path": { "file": "source-ada/source_ada/models.py", "lines": "117-119", "snippet": "class Tags(AdaResource):\n    name: ClassVar[str] = \"tags\"\n    path: ClassVar[str] = \"knowledge/tags\"" },
+    "streams[0].pull.snapshot.paginator": { "file": "source-ada/source_ada/api.py", "lines": "72-80", "snippet": "if not remainder.meta or not remainder.meta.next_page_uri:\n            return\n        cursor = _extract_query_param(remainder.meta.next_page_uri, \"cursor\")" },
+    "streams[0].pull.snapshot.recordsPath": { "file": "source-ada/source_ada/api.py", "lines": "60-65", "snippet": "processor = IncrementalJsonProcessor(\n            body(),\n            \"data.item\"," },
+    "streams[4].pull.incremental.path": { "file": "source-ada/source_ada/api.py", "lines": "92", "snippet": "url = f\"{base_url(bot_handle)}/export/{model.path}\"" },
+    "streams[4].cursorField": { "file": "source-ada/source_ada/models.py", "lines": "131-147", "snippet": "class Conversations(ExportResource):\n    lower_bound_param: ClassVar[str] = \"updated_since\"\n    ... return self.date_updated" },
+    "streams[5].cursorField": { "file": "source-ada/source_ada/models.py", "lines": "150-160", "snippet": "class Messages(ExportResource):\n    lower_bound_param: ClassVar[str] = \"created_since\"\n    ... return self.date_created" },
+    "streams[4].pull.incremental.paginator": { "file": "source-ada/source_ada/api.py", "lines": "119-124", "snippet": "next_lower_bound = _extract_query_param(remainder.meta.next_page_uri, model.lower_bound_param)\n        params[model.lower_bound_param] = next_lower_bound" },
+    "streams[4].pull.incremental.params": { "file": "source-ada/source_ada/api.py", "lines": "99-103", "snippet": "params: dict[str, str] = {\n        model.lower_bound_param: dt_to_str(start),\n        model.upper_bound_param: dt_to_str(end),\n    }" },
+    "streams[0].schedules": { "file": "source-ada/source_ada/resources.py", "lines": "81-83", "snippet": "initial_config=ResourceConfig(\n                name=stream.name, interval=timedelta(minutes=15)\n            )," },
+    "streams[4].schedules": { "file": "source-ada/source_ada/resources.py", "lines": "135-137", "snippet": "initial_config=ResourceConfig(\n                name=stream.name, interval=timedelta(minutes=5)\n            )," },
+    "streams[0].primaryKey": { "file": "source-ada/source_ada/resources.py", "lines": "76-77", "snippet": "name=stream.name,\n            key=[\"/_meta/row_id\"]," },
+    "streams[4].primaryKey": { "file": "source-ada/source_ada/resources.py", "lines": "128-129", "snippet": "name=stream.name,\n            key=[\"/_id\"]," },
+    "streams[0].writeDisposition": { "file": "source-ada/source_ada/resources.py", "lines": "65-71", "snippet": "fetch_snapshot=functools.partial(snapshot_resources, ...),\n            tombstone=BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))" },
+    "execution.mode": { "file": "source-ada/source_ada/api.py", "lines": "127-140", "snippet": "async def fetch_export_resources(... log_cursor: LogCursor):\n    start = log_cursor\n    end = min(now() - EVENTUAL_CONSISTENCY_LAG, start + MAX_EXPORT_WINDOW_SIZE)" },
+    "unionMisfits[0]": { "file": "source-ada/source_ada/api.py", "lines": "27-31", "snippet": "MAX_EXPORT_WINDOW_SIZE = timedelta(days=59)\nEVENTUAL_CONSISTENCY_LAG = timedelta(hours=48)" },
+    "unionMisfits[3]": { "file": "source-ada/source_ada/models.py", "lines": "57-60", "snippet": "credentials: ApiKey = Field(\n        discriminator=\"credentials_title\",\n        title=\"Authentication\",\n    )" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[2].pull.snapshot.path": "high",
+    "streams[3].pull.snapshot.path": "high",
+    "streams[4].pull.incremental.path": "high",
+    "streams[5].pull.incremental.path": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[4].pull.incremental.paginator": "high",
+    "streams[5].pull.incremental.paginator": "high",
+    "streams[4].cursorField": "high",
+    "streams[5].cursorField": "high",
+    "streams[0].primaryKey": "high",
+    "streams[4].primaryKey": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[4].writeDisposition": "medium",
+    "streams[].schedules": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "streams[0].pull.snapshot.recordsPath": "medium",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "streams[].pull.*.paginator.pageSize": "No page-size or limit parameter is ever set by the connector for either the snapshot or the export endpoints; page size is entirely server-decided and never appears in the source.",
+    "streams[].pull.*.paginator.pageSizeParam": "Same — the connector never sends a limit/per_page parameter, and the API's parameter name for one (if any) is not referenced anywhere in the connector.",
+    "transports[0].spec.defaultHeaders": "No connector-level default headers are set; the only header added is the CDK's Authorization header derived from TokenSource.",
+    "streams[0..3].cursorField": "The four full-refresh streams re-read the whole collection each sweep with no time or id filter; no cursor field exists.",
+    "streams[0..3].primaryKey (natural key)": "Records are keyed on the synthetic /_meta/row_id; the connector never names a natural id field for articles, sources, tags, or platform_integrations, and the document model is `extra=allow` with no declared fields.",
+    "execution.defaultSchedule": "There is no connector-wide schedule. Intervals exist only as per-binding ResourceConfig defaults (PT15M / PT5M) that the user can change after discovery.",
+    "streams[].pull.*.paginator.terminateOn (secondary condition)": "The loop terminates when `meta` or `meta.next_page_uri` is absent, and the snapshot loop additionally returns on an empty-string cursor. Whether the API also signals exhaustion via a short page or a total count is not observable from the connector source.",
+    "rateLimits": "No rate-limit handling, retry policy, or concurrency cap is expressed in the connector; any such behaviour lives in the shared CDK HTTP layer and is not connector-specific.",
+    "streams[].pull.backfill vs incremental distinctness": "Backfill and incremental hit the identical path with the identical parameter names; they differ only in which bound the CDK supplies (page cursor vs log cursor) and in the retention clamp applied on the backfill leg."
+  }
+}

@@ -1,0 +1,1714 @@
+{
+  "id": "outreach",
+  "estuaryDir": "source-outreach",
+  "displayName": "Outreach",
+  "description": "Imports sales-engagement records (accounts, prospects, opportunities, calls, emails, tasks, sequencing metadata) from the Outreach.io REST API.",
+  "category": "crm",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.outreach.io/api/v2"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2` baked into the base URL constant"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "OAuth 2.0 (rotating refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://api.outreach.io/oauth/authorize",
+        "tokenUrl": "https://api.outreach.io/oauth/token",
+        "scopes": [
+          "accounts.read",
+          "auditLogs.read",
+          "batches.read",
+          "batchItems.read",
+          "calls.read",
+          "callDispositions.read",
+          "callPurposes.read",
+          "complianceRequests.read",
+          "contentCategories.read",
+          "contentCategoryMemberships.read",
+          "contentCategoryOwnerships.read",
+          "currencyTypes.read",
+          "customObjectRecords.read",
+          "datedConversionRates.read",
+          "duties.read",
+          "emailAddresses.read",
+          "events.read",
+          "favorites.read",
+          "imports.read",
+          "jobRoles.read",
+          "mailboxes.read",
+          "mailings.read",
+          "mailAliases.read",
+          "opportunities.read",
+          "opportunityProspectRoles.read",
+          "opportunityStages.read",
+          "orgSettings.read",
+          "personas.read",
+          "phoneNumbers.read",
+          "products.read",
+          "profiles.read",
+          "prospects.read",
+          "purchases.read",
+          "recipients.read",
+          "recordActorAssignments.read",
+          "roles.read",
+          "rulesets.read",
+          "sequences.read",
+          "sequenceStates.read",
+          "sequenceSteps.read",
+          "sequenceTemplates.read",
+          "snippets.read",
+          "stages.read",
+          "tasks.read",
+          "taskDispositions.read",
+          "taskPriorities.read",
+          "taskPurposes.read",
+          "teams.read",
+          "templates.read",
+          "users.read",
+          "webhooks.read"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": {
+      "kind": "interval",
+      "seconds": 300
+    },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "The stored refresh token ROTATES: at startup, if the access token expires within 5 minutes, the CDK exchanges the refresh token and overwrites BOTH access_token and refresh_token in the (re-encrypted) endpoint config, emitting a config_update event. RotatingOAuth2Credentials are deliberately never refreshed mid-run. So the credential in config is single-use: if a rotation is performed but the updated config is not durably persisted (or two connector instances rotate concurrently), the previously stored refresh token is dead and the connection must be re-authorized by the user. Outreach's own refresh-token idle-expiry window is not stated in the source.",
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure poll connector: no server-side objects (slots, subscriptions, scratch tables) are created on the customer's Outreach org, so pausing between cron ticks costs the customer nothing. The only continuity hazard is credential rotation, not data retention. Data loss on a long pause is also bounded only by `start_date` semantics: on resume the incremental cursor simply resumes from the last checkpointed datetime, walking forward in `window_size` (default P1D) windows, so a long pause means many catch-up windows rather than lost records."
+    }
+  },
+  "configFields": [
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime (YYYY-MM-DDTHH:MM:SSZ); data before this is not replicated. Defaults to 30 days before the present."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator; const \"OAuth Credentials\" (only one credential shape exists)."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth application client id."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth application client secret."
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth refresh token; rotated and rewritten into the config on each startup exchange."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Current OAuth access token; sent as `Authorization: Bearer`."
+    },
+    {
+      "name": "credentials.access_token_expires_at",
+      "displayName": "Access token expiration time.",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Expiry of the stored access token; rotation is triggered when this is within 5 minutes of now at startup."
+    },
+    {
+      "name": "advanced.window_size",
+      "displayName": "Window size",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "ISO 8601 duration bounding how far one incremental invocation advances. Default P1D, min 5s, max 365d."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource (binding)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Interval between updates for this binding. Connector ships PT5M as the initial value for every stream (CDK schema default is PT0S)."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "accounts",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "accounts",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "calls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "calls",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "calls",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "call_dispositions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "callDispositions",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "callDispositions",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "call_purposes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "callPurposes",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "callPurposes",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "email_addresses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "emailAddresses",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "emailAddresses",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "createdAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "events",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "createdAt",
+            "newFilterSyntax": "true",
+            "filter[createdAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[createdAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[createdAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "events",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "createdAt",
+            "newFilterSyntax": "true",
+            "filter[createdAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[createdAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[createdAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "mailboxes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "mailboxes",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "mailboxes",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "mailings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "mailings",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "mailings",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "opportunities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "opportunities",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "opportunities",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "opportunity_stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "opportunityStages",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "opportunityStages",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "prospects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "prospects",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "prospects",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "stages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "stages",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "stages",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tasks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "tasks",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "tasks",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "teams",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "teams",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "templates",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "templates",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updatedAt",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config `interval`)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "users",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "users",
+          "httpMethod": "GET",
+          "recordsPath": "/data",
+          "params": {
+            "sort": "updatedAt",
+            "newFilterSyntax": "true",
+            "filter[updatedAt][gte]": "<window lower bound, %Y-%m-%dT%H:%M:%SZ>",
+            "filter[updatedAt][lte]": "<window upper bound, %Y-%m-%dT%H:%M:%SZ>",
+            "provideDataConnections": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "/links/next  (the value is extracted from the `page[after]` query parameter of that URL, not followed verbatim)",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "filter[updatedAt][gte]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Exactly one credential mode is offered and its schema marks client_id, client_secret, refresh_token, access_token and access_token_expires_at all REQUIRED \u2014 the standalone user must register their own Outreach OAuth application AND supply a live refresh token plus a live access token and its expiry. There is no API-key alternative. Estuary's hosted control plane can fill these in via the `oauth2` block in the spec (provider \"outreach\", x-oauth2-provider on the credentials model), but that is a control-plane convenience; run standalone the tier is T3. Additional operational weight: the refresh token ROTATES on every exchange and the connector writes the new pair back into the endpoint config via a config_update event, so a copied/static refresh token will not keep working.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull",
+      "description": "Each binding runs TWO concurrent incremental sweeps, not one: the CDK is opened with a `fetch_changes` mapping of two named subtasks \u2014 \"realtime\" (no lag) and \"lookback\" (horizon = now - 6h, cursor initialized 6h behind) \u2014 each with its own independent checkpointed cursor, both hitting the same path. The lookback leg re-reads the trailing 6 hours to catch late-landing/unsorted updates, and duplicate suppression is done client-side via the CDK emitted-changes cache. `pull.incremental` can only hold one PullSpec, so the second leg is invisible in this shape.",
+      "proposedShape": {
+        "pull": {
+          "incremental": [
+            {
+              "role": "realtime",
+              "lagBehindNow": null,
+              "spec": "<PullSpec>"
+            },
+            {
+              "role": "lookback",
+              "lagBehindNow": "PT6H",
+              "dedupe": "emitted_changes_cache",
+              "spec": "<PullSpec>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.*.paginator / page sizing",
+      "description": "Page size is not a fixed constant: the connector starts at page[size]=1000 and, on an HTTP 502 'Bad Gateway' (interpreted as a server-side query timeout from asking for too much), halves the page size and retries, down to a floor of 1, failing only when 1 also fails. The Paginator union has a scalar `pageSize` with no way to express an adaptive/backoff page size.",
+      "proposedShape": {
+        "pageSize": {
+          "kind": "adaptive_halving",
+          "initial": 1000,
+          "floor": 1,
+          "trigger": "HTTP 502 Bad Gateway"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental (windowing)",
+      "description": "The incremental leg is not a single open-ended `since` query; it is an explicit closed [lower, upper] date window (upper = min(cursor + window_size, horizon)) because the API returns records unsorted within a query and sometimes ignores the server-side upper bound. `incrementalParam` describes only the lower-bound param and cannot express the paired upper bound or the window-advance semantics.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "lowerParam": "filter[<cursor>][gte]",
+          "upperParam": "filter[<cursor>][lte]",
+          "windowSizeFrom": "advanced.window_size",
+          "format": "iso8601",
+          "outOfWindowRecords": "dropped and re-fetched in their own window"
+        }
+      }
+    },
+    {
+      "where": "execution.continuity",
+      "description": "`continuity` is framed around server-side capture artifacts (slots, consumer groups). For a poll+rotating-OAuth connector the real continuity risk is credential-shaped: a single-use refresh token whose replacement must be durably persisted by the control plane. Recorded under `ourSideLoss` for lack of a better slot.",
+      "proposedShape": {
+        "credentialContinuity": {
+          "rotates": true,
+          "rotatedAt": "connector startup when access token expires within 5m",
+          "persistedVia": "encrypted config_update event to the control plane",
+          "failureMode": "lost rotation => user must re-authorize"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_outreach/api.py",
+      "lines": "21",
+      "snippet": "API = \"https://api.outreach.io/api/v2\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_outreach/models.py",
+      "lines": "94-114",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(provider=\"outreach\", authUrlTemplate=(\"https://api.outreach.io/oauth/authorize?...\"), accessTokenUrlTemplate=\"https://api.outreach.io/oauth/token\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "RotatingOAuth2Credentials.required",
+      "snippet": "\"required\": [\"client_id\", \"client_secret\", \"refresh_token\", \"access_token\", \"access_token_expires_at\"]"
+    },
+    "credentialModes[0].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "233-245",
+      "snippet": "class BaseOAuth2Credentials(...): grant_type: ClassVar[str] = \"refresh_token\"  /  class RotatingOAuth2Credentials(BaseOAuth2Credentials, ...)"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "estuary-cdk/estuary_cdk/capture/base_capture_connector.py",
+      "lines": "339-372",
+      "snippet": "if access_token_expiration < now + timedelta(minutes=5): ... credentials.refresh_token = token_exchange_response.refresh_token ... log.event.config_update(...)"
+    },
+    "execution.continuity.notes": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "296-304",
+      "snippet": "# RotatingOAuth2Credentials are refreshed _only_ at connector startup. Expired tokens cause a crash, triggering a restart and token exchange."
+    },
+    "streams[*].pull.*.paginator": {
+      "file": "source_outreach/api.py",
+      "lines": "35-43",
+      "snippet": "parsed_url = urlparse(links.next); params = parse_qs(parsed_url.query); cursor_list = params.get(NEXT_PAGE_QUERY_PARAMETER)"
+    },
+    "streams[*].pull.*.paginator.cursorParam": {
+      "file": "source_outreach/api.py",
+      "lines": "24",
+      "snippet": "NEXT_PAGE_QUERY_PARAMETER = \"page[after]\""
+    },
+    "streams[*].pull.*.paginator.pageSize": {
+      "file": "source_outreach/api.py",
+      "lines": "22, 96-98",
+      "snippet": "MAX_PAGE_SIZE = 1000 ... page_size = MAX_PAGE_SIZE; params[\"page[size]\"] = page_size"
+    },
+    "streams[*].pull.*.paginator.terminateOn": {
+      "file": "source_outreach/api.py",
+      "lines": "201-206",
+      "snippet": "next_page_cursor = _extract_page_cursor(response.links); if not next_page_cursor: break"
+    },
+    "streams[*].pull.*.params": {
+      "file": "source_outreach/api.py",
+      "lines": "65-72",
+      "snippet": "params = {\"sort\": cursor_field, \"newFilterSyntax\": \"true\", f\"filter[{cursor_field}][gte]\": _dt_to_str(start_dt)}"
+    },
+    "streams[*].pull.*.recordsPath": {
+      "file": "source_outreach/models.py",
+      "lines": "163-170",
+      "snippet": "class OutreachResponse(BaseModel, extra=\"allow\"): data: list[OutreachResource]; links: Links | None = None"
+    },
+    "streams[*].name / path / cursorField": {
+      "file": "source_outreach/models.py",
+      "lines": "179-196",
+      "snippet": "INCREMENTAL_RESOURCES: ... = [(\"accounts\", \"accounts\", {\"provideDataConnections\": \"true\"}, CursorField.UPDATED_AT), ...]"
+    },
+    "streams[*].primaryKey": {
+      "file": "source_outreach/resources.py",
+      "lines": "104-107",
+      "snippet": "common.Resource(name=name, key=[\"/id\"], model=OutreachResource,"
+    },
+    "streams[*].schedules": {
+      "file": "source_outreach/resources.py",
+      "lines": "116-118",
+      "snippet": "initial_config=ResourceConfig(name=name, interval=timedelta(minutes=5))"
+    },
+    "streams[*].pull.backfill": {
+      "file": "source_outreach/api.py",
+      "lines": "116-136",
+      "snippet": "async def backfill_resources(...): url = f\"{API}/{path}\"; params = _build_query_params(cursor_field, start_date, cutoff, extra_params)"
+    },
+    "unionMisfits[0]": {
+      "file": "source_outreach/resources.py",
+      "lines": "71-90",
+      "snippet": "fetch_changes={REALTIME: functools.partial(fetch_resources, http, path, params, cursor_field, None, ...), LOOKBACK: functools.partial(fetch_resources, ..., LOOKBACK_LAG, ...)}"
+    },
+    "unionMisfits[1]": {
+      "file": "source_outreach/api.py",
+      "lines": "104-109",
+      "snippet": "if err.code == 502 and \"Bad Gateway\" in err.message: ... page_size = page_size // 2"
+    },
+    "unionMisfits[2]": {
+      "file": "source_outreach/api.py",
+      "lines": "173-177",
+      "snippet": "max_upper_bound = log_cursor + window_size; upper_bound = min(max_upper_bound, horizon_cutoff)"
+    },
+    "configFields[advanced.window_size]": {
+      "file": "source_outreach/models.py",
+      "lines": "140-146",
+      "snippet": "window_size: Annotated[timedelta, Field(..., default=timedelta(days=1), ge=timedelta(seconds=5), le=timedelta(days=365))]"
+    },
+    "streamMode": {
+      "file": "source_outreach/models.py",
+      "lines": "179-196",
+      "snippet": "INCREMENTAL_RESOURCES: list[tuple[str, str, dict[str, str | int | bool] | None, CursorField]] = ["
+    }
+  },
+  "confidence": {
+    "transports": "high",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].pull.backfill.path": "high",
+    "streams[*].pull.incremental.path": "high",
+    "streams[*].pull.*.paginator": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[*].writeDisposition": "medium",
+    "streams[*].supportedSyncModes": "high",
+    "execution.mode": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "low",
+    "configFields": "high",
+    "category": "medium"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector-level static headers are set. The only request header is the CDK-injected `Authorization: Bearer <access_token>` (estuary_cdk/http.py:35-36 defaults); no Accept/Content-Type/User-Agent is added for data requests, so nothing to report as a default header set.",
+    "execution.continuity.resumeWindow": "The source never states how long an Outreach refresh token stays valid while idle, and there is no retention window in the code. The only in-code time constant near this is the 5-minute pre-expiry rotation trigger, which is not a resume window.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable \u2014 the connector creates no server-side artifacts to release, and the source says nothing about revoking tokens on shutdown.",
+    "streams[*].writeDisposition": "Not stated by the connector. Inferred from key=[\"/id\"] plus schema_inference=True and an updatedAt-driven incremental cursor, which is Flow's standard upsert-by-key shape. No delete/tombstone handling exists anywhere in the connector (the API is never asked for deleted records), so `snapshot_with_tombstone` is definitively excluded, but merge-vs-append is a materialization-side property this source does not fix.",
+    "discovery": "Not applicable: the stream list is the hardcoded INCREMENTAL_RESOURCES tuple; there is no discovery call against the customer's org.",
+    "streams[*].pull.snapshot": "No snapshot-only pull shape exists. Every binding is opened with both fetch_page (backfill) and fetch_changes (incremental).",
+    "transports[0].spec.apiVersionPinning (rate limits)": "Outreach's documented rate limits and any Retry-After handling are not represented in the connector; the only status-specific handling is the 502 page-size halving. Nothing to record.",
+    "streams (coverage vs scopes)": "The OAuth scope list requests read access to ~50 object types (sequences, snippets, personas, webhooks, ...) but only 16 are actually captured. The extra scopes are requested speculatively and must not be read as additional streams."
+  }
+}

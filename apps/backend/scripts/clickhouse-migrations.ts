@@ -33,6 +33,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: REFRESH_TOKENS_TABLE_BASE_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
+    client.command({ query: IMPORTED_ROWS_TABLE_SQL }),
   ]);
 
   await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
@@ -59,6 +60,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_VIEW_SQL }),
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
+    client.command({ query: IMPORTED_ROWS_VIEW_SQL }),
   ]);
 
   // Data migrations (mutations)
@@ -83,6 +85,13 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
+    // Data Sources: ONE table for every connector of every project. Per-project
+    // or per-stream tables would cap the tenant count (ClickHouse recommends
+    // <=5000 tables / <=1000 databases), and global per-connector views leak
+    // across tenants twice over: SHOW TABLES is not row-filtered, so every
+    // project would see a `stripe_customers` it never connected, and DESCRIBE on
+    // a shared JSON column returns the UNION of all tenants' field names.
+    "imported_rows",
   ];
   await Promise.all(tables.map(table =>
     client.command({
@@ -967,4 +976,54 @@ SELECT
     toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
 FROM analytics_internal.events
 WHERE event_type = '$click';
+`;
+
+// Data Sources storage — the entire DDL for imported data.
+//
+// One table, no per-connector or per-project tables/views. `source_id` and
+// `stream` are ordinary columns, so the SAME row policy that scopes every other
+// analytics table scopes this one, and the AI agent discovers what is connected
+// with `SELECT DISTINCT source_id, stream FROM imported_rows` rather than from a
+// schema registry that would have to be maintained and would drift.
+//
+// `data` stays JSON rather than being flattened into typed columns: real JSON
+// rows tell an LLM more than a column table would (types, formats, enum values,
+// and the join paths into Hexclave's own tables), and per-project schemas differ
+// for free without any per-tenant DDL.
+const IMPORTED_ROWS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.imported_rows (
+    project_id       String,
+    branch_id        String,
+    source_id        String,
+    stream           String,
+    pk               String,
+    extracted_at     DateTime64(3, 'UTC'),
+    data             JSON,
+    sync_sequence_id Int64,
+    sync_is_deleted  UInt8,
+    sync_created_at  DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(extracted_at)
+ORDER BY (project_id, branch_id, source_id, stream, pk);
+`;
+
+// FINAL + `sync_is_deleted = 0` is the same read convention every other synced
+// table uses, so a query against imported_rows behaves like a query against
+// users or teams: last write wins, deletes disappear.
+const IMPORTED_ROWS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.imported_rows
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  source_id,
+  stream,
+  pk,
+  extracted_at,
+  data
+FROM analytics_internal.imported_rows
+FINAL
+WHERE sync_is_deleted = 0;
 `;

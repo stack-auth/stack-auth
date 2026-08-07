@@ -1,0 +1,3029 @@
+{
+  "id": "jira-native",
+  "estuaryDir": "source-jira-native",
+  "displayName": "Jira",
+  "description": "Imports issues, their comments/changelogs/worklogs/transitions, and Jira's configuration and agile objects (projects, boards, sprints, epics, fields, screens, workflows, service desks) from a Jira Cloud site.",
+  "category": "engineering",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{domain}/rest/{apiPrefix}",
+          "placeholders": {
+            "domain": "user-supplied `domain` endpoint config field, e.g. estuary.atlassian.net or jira.your-domain.com; validated against ^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}(:\\d{1,5})?$ so an optional :port is allowed",
+            "apiPrefix": "chosen per stream from the JiraAPI enum: 'api/3' (Platform), 'agile/1.0' (Software), 'servicedeskapi' (Service Management)"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: /rest/api/3 for the Platform API and /rest/agile/1.0 for the Software API; the Service Management API is unversioned (/rest/servicedeskapi). The request_types stream additionally sends the X-ExperimentalApi: opt-in header to enable an endpoint Jira marks experimental."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Email & API Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.username",
+        "passwordField": "credentials.password"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "domain",
+      "displayName": "Domain",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Domain of the Jira site, e.g. estuary.atlassian.net, estuary.jira.com, jira.your-domain.com. Regex-validated; an optional :port is permitted."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC RFC3339 timestamp; data older than this is not replicated. Defaults to 30 days before the present and must be >= 1970-01-01T00:00:00Z."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator, const 'Email & API Token'. Only one credential variant exists."
+    },
+    {
+      "name": "credentials.username",
+      "displayName": "Email",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Atlassian account email; becomes the username half of HTTP Basic."
+    },
+    {
+      "name": "credentials.password",
+      "displayName": "API Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Atlassian API token; becomes the password half of HTTP Basic."
+    },
+    {
+      "name": "advanced.projects",
+      "displayName": "Projects",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Comma-separated project ids/keys to restrict issue replication to. Blank means all projects. Validated at connect time against project/search and rejected with a per-project error if unknown."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Binding name; also the resource path pointer (/name)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this binding. Connector defaults: PT1H for the full-refresh snapshot bindings, PT5M for issues and the four issue-child bindings."
+    },
+    {
+      "name": "schedule",
+      "displayName": "Schedule",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Optional cron expression to automatically re-backfill this binding. Defaults to empty (never)."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "application_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "applicationrole",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_navigator_settings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "settings/columns",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_priorities",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "priority",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "issuetype",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "projectCategory",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/type",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "role",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_status_categories",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "statuscategory",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_statuses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "status",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "users/search",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "dashboards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "dashboard",
+          "httpMethod": "GET",
+          "recordsPath": "dashboards",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_field_configurations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "fieldconfiguration",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_resolutions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "resolution/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_type_screen_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "issuetypescreenscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_type_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "issuetypescheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "filters",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "filter/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screens",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "screens",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_tabs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "screens/tabs",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "screenscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "group/bulk",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflow_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "workflowscheme",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "workflows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "workflows/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "orderBy": "created"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "status": "live,archived,deleted",
+            "expand": "description,lead,projectKeys,url,issueTypes"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "boards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "board",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "includePrivate": "true",
+            "orderBy": "name"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "service_desks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "servicedesk",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "start",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "request_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "requesttype",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "start",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_security_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "issuesecurityschemes",
+          "httpMethod": "GET",
+          "recordsPath": "issueSecuritySchemes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_link_types",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "issueLinkType",
+          "httpMethod": "GET",
+          "recordsPath": "issueLinkTypes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "permission_schemes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "permissionscheme",
+          "httpMethod": "GET",
+          "recordsPath": "permissionSchemes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "system_avatars",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "avatar/{avatarType}/system",
+          "httpMethod": "GET",
+          "recordsPath": "system",
+          "params": null,
+          "pathPlaceholders": {
+            "avatarType": "iterated over the connector-hardcoded list project, user, issuetype, priority"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "permissions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "permissions",
+          "httpMethod": "GET",
+          "recordsPath": "permissions",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "labels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "label",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 1000,
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "filter_sharing",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "filter/{filterId}/permission",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "filterId": "id of every filter from the paginated filter/search sweep; 404 'dead link' responses are skipped"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "field",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_custom_field_contexts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "field/{issueFieldId}/context",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "issueFieldId": "every id containing 'customfield_' from the issue_fields two-endpoint sweep; 404 'The custom field was not found.' is skipped"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issue_custom_field_options",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "field/{issueFieldId}/context/{fieldContextId}/option",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "issueFieldId": "custom field ids restricted to fields whose schema is option/select/radio/checkbox",
+            "fieldContextId": "context id from the field/{issueFieldId}/context sweep"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "screen_tab_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "screens/{screenId}/tabs/{tabId}/fields",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "screenId": "screenId from the paginated screens/tabs sweep",
+            "tabId": "tabId from the same screens/tabs sweep; 400 'does not exist' is skipped"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_avatars",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/{projectId}/avatars",
+          "httpMethod": "GET",
+          "recordsPath": "system + custom (both arrays are emitted)",
+          "params": null,
+          "pathPlaceholders": {
+            "projectId": "ids from project/search with status=live and expand=permissions"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_components",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/{projectId}/component",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "projectId": "ids from project/search with status=live and expand=permissions"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_versions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/{projectId}/version",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "projectId": "ids from project/search with status=live and expand=permissions"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "project_emails",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "project/{projectId}/email",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "projectId": "ids from project/search with status=live and expand=permissions, skipping projects whose permissions.canEdit is false"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "statuses",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "statuses/search",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": {
+            "projectId": "<per-project, on the second pass only>"
+          },
+          "pathPlaceholders": {
+            "projectId": "first pass sends no projectId (global statuses); second pass iterates ids from project/search with status=live,archived, skipping classic-style projects"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sprints",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "board/{boardId}/sprint",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "boardId": "ids from the paginated agile board sweep, excluding boards with isPrivate=true; 400 'The board does not support sprints' and 422 'This board has no columns with a mapped status' are skipped"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "epics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "board/{boardId}/epic",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "boardId": "ids from the paginated agile board sweep, excluding isPrivate boards"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sprint_issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "snapshot refresh interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "sprint/{sprintId}/issue",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "fields": "id",
+            "jql": "ORDER BY id"
+          },
+          "pathPlaceholders": {
+            "sprintId": "every sprint id from the board/{boardId}/sprint sweep, sorted ascending"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "issues",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "fields.updated",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "search/jql",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "jql": "[project in (\"<k1>\",\"<k2>\") AND] [<stream additional_jql>] AND updated >= '<YYYY-MM-DD HH:MM>' AND updated <= '<YYYY-MM-DD HH:MM>' ORDER BY updated asc",
+            "fields": "*all",
+            "expand": "renderedFields,transitions,operations,changelog",
+            "maxResults": 250
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "nextPageToken",
+            "cursorPath": "nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxResults",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "search/jql",
+          "httpMethod": "GET",
+          "recordsPath": "issues",
+          "params": {
+            "jql": "[project in (\"<k1>\",\"<k2>\") AND] [<stream additional_jql>] AND updated >= '<YYYY-MM-DD HH:MM>' AND updated <= '<YYYY-MM-DD HH:MM>' ORDER BY updated asc",
+            "fields": "*all",
+            "expand": "renderedFields,transitions,operations,changelog",
+            "maxResults": 250
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "nextPageToken",
+            "cursorPath": "nextPageToken",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "maxResults",
+            "pageSize": 250
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id",
+        "/issueId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "fields.updated (of the PARENT issue, not of the child record)",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "issue/{issueId}/comment",
+          "httpMethod": "GET",
+          "recordsPath": "comments",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='comment', expand='', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "issue/{issueId}/comment",
+          "httpMethod": "GET",
+          "recordsPath": "comments",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='comment', expand='', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_changelogs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id",
+        "/issueId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "fields.updated (of the PARENT issue, not of the child record)",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "issue/{issueId}/changelog",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='', expand='changelog', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "issue/{issueId}/changelog",
+          "httpMethod": "GET",
+          "recordsPath": "values",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='', expand='changelog', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_transitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id",
+        "/issueId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "fields.updated (of the PARENT issue, not of the child record)",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": null
+      }
+    },
+    {
+      "name": "issue_worklogs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/id",
+        "/issueId"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "fields.updated (of the PARENT issue, not of the child record)",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep interval (binding default)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        },
+        {
+          "role": "optional user-supplied re-backfill cron (ResourceConfigWithSchedule.schedule, default empty)",
+          "schedule": {
+            "kind": "cron",
+            "expr": ""
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "issue/{issueId}/worklog",
+          "httpMethod": "GET",
+          "recordsPath": "worklogs",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='worklog', expand='', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "issue/{issueId}/worklog",
+          "httpMethod": "GET",
+          "recordsPath": "worklogs",
+          "params": null,
+          "pathPlaceholders": {
+            "issueId": "driven by the same GET /rest/api/3/search/jql window sweep as the issues stream (fields='worklog', expand='', nextPageToken cursor); the child records are read straight out of the parent issue when maxResults >= total, so this request is only issued for issues that have more children than the parent response carried"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "maxResults",
+            "offsetParam": "startAt",
+            "pageSize": 100,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The connector offers exactly one credential mode and its ConnectorSpec sets oauth2=None, so there is no OAuth path at all and no hosted control plane involvement. The user pastes their Atlassian account email plus a self-serve API token created from Atlassian account settings; the CDK base64-encodes 'email:token' into an Authorization: Basic header. No app registration and no refresh token, so T1_SIMPLE.",
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.snapshot.paginator (the envelope-paginated family)",
+      "description": "The shared paginator has THREE OR'd stop conditions, not one: (a) an empty `values` array, (b) the envelope flag `isLast` (aliased `isLastPage` on the Service Management API), and (c) a running count of yielded records reaching `total`. `terminateOn` is a single enum so only one could be recorded; `explicit_total` was chosen because `total` is the condition present on the most responses, but any of the three can fire first, and Jira legitimately omits both `total` and `isLast` on some endpoints (both are Optional in the response model), in which case only the empty-page check terminates the loop.",
+      "proposedShape": {
+        "terminateOn": [
+          "explicit_total",
+          "envelope_flag",
+          "short_page"
+        ],
+        "terminateSemantics": "any"
+      }
+    },
+    {
+      "where": "streams[*].pull.snapshot.paginator.offsetParam semantics",
+      "description": "The offset sent back is NOT pageIndex*pageSize and NOT the previous offset plus the requested limit. It is a client-side running count of records actually yielded so far. Jira treats maxResults as advisory and routinely returns fewer rows than asked, so the connector's next offset tracks what it consumed rather than what it requested. An `offset` paginator implemented as offset += pageSize would silently skip rows against this API.",
+      "proposedShape": {
+        "type": "offset",
+        "offsetAdvance": "count_of_records_received"
+      }
+    },
+    {
+      "where": "streams[issues,issue_*].pull.*",
+      "description": "The issue window sweep is a JQL query carried as a query parameter on an addressable REST path (GET /rest/api/3/search/jql). PullSpec kind 'query' would capture the JQL but discard the path and the nextPageToken paginator; kind 'http' keeps both but hides that the incremental bound is expressed inside a query language rather than as an incrementalParam. It was recorded as 'http' with the JQL shape in params, and incrementalParam left null.",
+      "proposedShape": {
+        "kind": "http",
+        "path": "search/jql",
+        "query": {
+          "language": "jql",
+          "querySketch": "... AND updated >= '<lower>' AND updated <= '<upper>' ORDER BY updated asc"
+        }
+      }
+    },
+    {
+      "where": "streams[issues,issue_*].schedules / pull.incremental",
+      "description": "Each incremental binding runs TWO independent cursors over the same endpoint concurrently, not one: a REALTIME subtask at the head and a LOOKBACK subtask permanently trailing 12 hours behind it, because Jira's issue search is eventually consistent and the head pass misses records. Both start at (now - 12h); LOOKBACK starts a further 12h back. The schema has one incremental PullSpec per binding, so the duplicated-with-lag leg is not representable.",
+      "proposedShape": {
+        "incremental": [
+          {
+            "role": "realtime",
+            "lagBehindNow": "0"
+          },
+          {
+            "role": "lookback",
+            "lagBehindNow": "PT12H"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[epics].pull.snapshot",
+      "description": "epics is a three-stage union, not one path. Stage 1 paginates board/{boardId}/epic for every non-private board. Stage 2 runs the issue JQL sweep from EPOCH with additional_jql \"issueType='Epic'\" and fields=id,key,updated to find epics attached to no board. Stage 3 fetches each id found only in stage 2 individually at GET /rest/agile/1.0/epic/{id}, skipping 400 'The request contains a next-gen issue'. Only stage 1 is recorded in `path`.",
+      "proposedShape": {
+        "stages": [
+          "board/{boardId}/epic",
+          "api/3/search/jql?jql=issueType='Epic'",
+          "agile/1.0/epic/{id}"
+        ]
+      }
+    },
+    {
+      "where": "streams[issue_fields].pull.snapshot",
+      "description": "issue_fields unions two different endpoints with two different pagination shapes and de-duplicates by id: GET field (bare array, unpaginated) then GET field/search (envelope-paginated, params orderBy=name & expand=key), because Jira returns different field sets from each. Only the first is recorded in `path`.",
+      "proposedShape": {
+        "stages": [
+          {
+            "path": "field",
+            "paginator": {
+              "type": "none"
+            }
+          },
+          {
+            "path": "field/search",
+            "params": {
+              "orderBy": "name",
+              "expand": "key"
+            },
+            "paginator": {
+              "type": "offset"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[statuses].pull.snapshot",
+      "description": "statuses makes the same paginated call twice with different scoping: once globally (no projectId) and once per live/archived non-classic project (projectId=<id>), de-duplicating by status id. `params.projectId` therefore applies to only the second pass.",
+      "proposedShape": {
+        "passes": [
+          {
+            "params": {}
+          },
+          {
+            "params": {
+              "projectId": "{projectId}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[issue_comments,issue_worklogs,issue_changelogs].pull.*",
+      "description": "These bindings usually make NO request to the recorded path. The parent issue response embeds the children along with maxResults/total; the child endpoint is called only when total exceeds what the parent carried. The PullSpec cannot express 'inlined in the parent unless truncated'.",
+      "proposedShape": {
+        "source": "inline_from_parent",
+        "fallbackPath": "issue/{issueId}/<child>",
+        "fallbackCondition": "parent.maxResults < parent.total"
+      }
+    },
+    {
+      "where": "streams[*].disable / permission gating",
+      "description": "Only 8 of the 49 bindings are enabled by default (issue_fields, issue_types, dashboards, projects, users, boards, sprints, issues); the rest ship disabled. Separately, discover() calls GET permissions then GET mypermissions and REMOVES about 20 bindings outright when the credential lacks ADMINISTER / EDIT_WORKFLOW / SYSTEM_ADMIN / USER_PICKER / SERVICEDESK_AGENT. So the stream list is static but the discovered subset is permission-dependent. Neither `disable` nor permission gating has a slot in the schema.",
+      "proposedShape": {
+        "defaultEnabled": "bool",
+        "requiresAnyPermission": [
+          "str"
+        ]
+      }
+    },
+    {
+      "where": "execution.continuity",
+      "description": "Recorded as null (poll mode, nothing server-side is left behind), but this connector does carry a real pause risk that continuity is shaped to describe on log-mode connectors: Jira issue search is eventually consistent, so the connector permanently trails a 12-hour horizon and keeps a second lagging cursor. If a binding is paused the cursor simply resumes from its stored timestamp with no retention limit on Jira's side, so nothing is actually lost."
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_jira_native/api.py",
+      "lines": "97-107",
+      "snippet": "common = f\"https://{domain}/rest\"\n    case JiraAPI.PLATFORM:\n            return f\"{common}/api/3\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_jira_native/api.py",
+      "lines": "100-105",
+      "snippet": "case JiraAPI.SOFTWARE:\n            return f\"{common}/agile/1.0\"\n        case JiraAPI.SERVICE_MANAGEMENT:"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_jira_native/models.py",
+      "lines": "26-40",
+      "snippet": "class ApiToken(BasicAuth):\n    credentials_title: Literal[\"Email & API Token\"]"
+    },
+    "credentialModes[0].tier": {
+      "file": "estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n            return (\n                \"Basic\","
+    },
+    "authTierOverall": {
+      "file": "source_jira_native/__init__.py",
+      "lines": "31-35",
+      "snippet": "configSchema=EndpointConfig.model_json_schema(),\n            oauth2=None,"
+    },
+    "execution.mode": {
+      "file": "source_jira_native/resources.py",
+      "lines": "391-393",
+      "snippet": "initial_config=ResourceConfigWithSchedule(\n            name=\"issues\", interval=timedelta(minutes=5)"
+    },
+    "configFields": {
+      "file": "source_jira_native/models.py",
+      "lines": "48-81",
+      "snippet": "class EndpointConfig(BaseModel):\n    domain: str = Field(\n        description=\"This is the domain for your Jira account."
+    },
+    "configFields[schedule]": {
+      "file": "estuary_cdk/capture/common.py",
+      "lines": "205-212",
+      "snippet": "class ResourceConfigWithSchedule(ResourceConfig):\n    schedule: str = Field(\n        default=\"\","
+    },
+    "streamMode": {
+      "file": "source_jira_native/models.py",
+      "lines": "607-661",
+      "snippet": "FULL_REFRESH_STREAMS: list[type[FullRefreshStream]] = [\n    ApplicationRoles,\n    Boards,"
+    },
+    "streams[*].name and streams[*].pull.*.path": {
+      "file": "source_jira_native/models.py",
+      "lines": "211-605",
+      "snippet": "class ApplicationRoles(FullRefreshArrayedStream):\n    name: ClassVar[str] = \"application_roles\"\n    path: ClassVar[str] = \"applicationrole\""
+    },
+    "streams[*].pull.snapshot.paginator (envelope family)": {
+      "file": "source_jira_native/api.py",
+      "lines": "247-273",
+      "snippet": "params: dict[str, str | int] = {\n        pagination_param: count,\n        response_size_param: 100,"
+    },
+    "streams[*].pull.snapshot.paginator (envelope family, terminate)": {
+      "file": "source_jira_native/api.py",
+      "lines": "269-273",
+      "snippet": "has_yielded_all_records = response.total is not None and count >= response.total\n        if response.isLast or has_yielded_all_records:\n            break"
+    },
+    "streams[service_desks,request_types].pull.snapshot.paginator": {
+      "file": "source_jira_native/api.py",
+      "lines": "236-242",
+      "snippet": "case JiraAPI.SERVICE_MANAGEMENT:\n            pagination_param = PaginationParameter.START\n            response_size_param = ResponseSizeParameter.LIMIT"
+    },
+    "streams[users].pull.snapshot.paginator": {
+      "file": "source_jira_native/api.py",
+      "lines": "200-219",
+      "snippet": "params: dict[str, str | int] = {\n        \"startAt\": count,\n        \"maxResults\": 100,"
+    },
+    "streams[labels].pull.snapshot.paginator": {
+      "file": "source_jira_native/api.py",
+      "lines": "305-325",
+      "snippet": "\"startAt\": count,\n        \"maxResults\": 1000,"
+    },
+    "streams[issues].pull.incremental.paginator": {
+      "file": "source_jira_native/api.py",
+      "lines": "1014-1019",
+      "snippet": "remainder = processor.get_remainder()\n        if remainder.nextPageToken:\n            params[\"nextPageToken\"] = remainder.nextPageToken"
+    },
+    "streams[issues].pull.incremental.paginator.cursorPath": {
+      "file": "source_jira_native/models.py",
+      "lines": "171-174",
+      "snippet": "class IssuesResponse(BaseModel, extra=\"allow\"):\n    issues: list[Issue]\n    nextPageToken: str | None = None"
+    },
+    "streams[issues].pull.incremental.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "956-978",
+      "snippet": "url = f\"{url_base(domain, JiraAPI.PLATFORM)}/search/jql\"\n    params: dict[str, str | int] = {\n        \"maxResults\": 250,"
+    },
+    "streams[issues].pull.incremental.params.jql": {
+      "file": "source_jira_native/api.py",
+      "lines": "926-933",
+      "snippet": "lower_bound_jql = f\"updated >= '{lower_bound}'\"\n    upper_bound_jql = f\"updated <= '{upper_bound}'\"\n    jql += \" ORDER BY updated asc\""
+    },
+    "streams[issues].cursorField": {
+      "file": "source_jira_native/api.py",
+      "lines": "1062-1068",
+      "snippet": "if issue.fields.updated > log_cursor:\n            count += 1\n        if issue.fields.updated > last_seen:"
+    },
+    "streams[issues].primaryKey": {
+      "file": "source_jira_native/resources.py",
+      "lines": "379-382",
+      "snippet": "return common.Resource(\n        name=\"issues\",\n        key=[\"/id\"],"
+    },
+    "streams[issue_*].primaryKey": {
+      "file": "source_jira_native/resources.py",
+      "lines": "448-451",
+      "snippet": "common.Resource(\n                name=stream.name,\n                key=[\"/id\", \"/issueId\"],"
+    },
+    "streams[*].primaryKey (full refresh)": {
+      "file": "source_jira_native/resources.py",
+      "lines": "318-322",
+      "snippet": "common.Resource(\n                name=stream.name,\n                key=[\"/_meta/row_id\"],"
+    },
+    "streams[*].writeDisposition (full refresh)": {
+      "file": "source_jira_native/resources.py",
+      "lines": "306-313",
+      "snippet": "fetch_snapshot=_get_partial_snapshot_fn(stream, http, config, timezone),\n            tombstone=FullRefreshResource(_meta=FullRefreshResource.Meta(op=\"d\"))"
+    },
+    "streams[*].schedules (full refresh)": {
+      "file": "source_jira_native/resources.py",
+      "lines": "324-327",
+      "snippet": "initial_config=ResourceConfigWithSchedule(\n                    name=stream.name, interval=timedelta(minutes=60)"
+    },
+    "streams[issue_comments].pull.incremental.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "1143-1152",
+      "snippet": "if nested_resources.maxResults >= nested_resources.total:\n    ...\n        path = f\"issue/{issue_id}/{stream.path}\""
+    },
+    "streams[issue_changelogs].pull.incremental.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "1180-1182",
+      "snippet": "else:\n        path = f\"issue/{issue_id}/changelog\""
+    },
+    "streams[epics].pull.snapshot": {
+      "file": "source_jira_native/api.py",
+      "lines": "787-812",
+      "snippet": "async for epic in snapshot_board_child_resources(http, domain, stream, log):\n    ...\n        url = f\"{base_url}/{stream.path}/{id}\""
+    },
+    "streams[sprint_issues].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "838-841",
+      "snippet": "for id in sorted(sprint_ids):\n        path = f\"{Sprints.path}/{id}/{stream.path}\""
+    },
+    "streams[screen_tab_fields].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "577-578",
+      "snippet": "for screen_id, tab_id in screen_and_tab_ids:\n        path = f\"screens/{screen_id}/tabs/{tab_id}/fields\""
+    },
+    "streams[issue_custom_field_options].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "554-556",
+      "snippet": "path = f\"{IssueFields.path}/{field_id}/{IssueCustomFieldContexts.path}/{context_id}/{stream.path}\""
+    },
+    "streams[filter_sharing].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "380-381",
+      "snippet": "for id in filter_ids:\n        path = f\"filter/{id}/{stream.path}\""
+    },
+    "streams[system_avatars].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "334-342",
+      "snippet": "SYSTEM_AVATAR_TYPES = [\n        \"project\",\n        url = f\"{url_base(domain, stream.api)}/avatar/{avatar_type}/system\""
+    },
+    "streams[project_*].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "638-647",
+      "snippet": "path = f\"project/{project.id}/{stream.path}\"\n    ...\n        extra_params = {\"projectId\": project.id}"
+    },
+    "streams[sprints,epics].pull.snapshot.path": {
+      "file": "source_jira_native/api.py",
+      "lines": "746-749",
+      "snippet": "for id in board_ids:\n        path = f\"{Boards.path}/{id}/{stream.path}\""
+    },
+    "transports[0].spec.apiVersionPinning (X-ExperimentalApi)": {
+      "file": "source_jira_native/models.py",
+      "lines": "597-604",
+      "snippet": "class RequestTypes(ServiceManagementFullRefreshPaginatedStream):\n    extra_headers: ClassVar[dict[str, str]] = {\n        \"X-ExperimentalApi\": \"opt-in\"\n    }"
+    },
+    "unionMisfits[3] (realtime/lookback)": {
+      "file": "source_jira_native/resources.py",
+      "lines": "357-362",
+      "snippet": "REALTIME: functools.partial(\n                    fetch_issues, http, config.domain, timezone, config.advanced.projects, None,\n                ),"
+    },
+    "unionMisfits[8] (permission gating)": {
+      "file": "source_jira_native/models.py",
+      "lines": "741-748",
+      "snippet": "PERMISSION_BLOCKED_STREAMS: list[tuple[list[StandardPermissions], list[type[Stream]]]] = ["
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "configFields": "high",
+    "streams[*].pull.snapshot.path (non-paginated arrayed family)": "high",
+    "streams[*].pull.snapshot.path (envelope-paginated family)": "high",
+    "streams[*].pull.snapshot.paginator (envelope-paginated family)": "high",
+    "streams[*].pull.snapshot.paginator.terminateOn": "low",
+    "streams[users].pull.snapshot.paginator": "high",
+    "streams[labels].pull.snapshot.paginator": "high",
+    "streams[issues].pull.incremental.paginator": "high",
+    "streams[issues].pull.incremental.path": "high",
+    "streams[issue_comments,issue_worklogs,issue_changelogs].pull.incremental.path": "medium",
+    "streams[epics].pull.snapshot.path": "medium",
+    "streams[issue_fields].pull.snapshot.path": "medium",
+    "streams[statuses].pull.snapshot.params": "medium",
+    "streams[*].recordsPath": "high",
+    "streams[*].schedules": "high",
+    "streams[*].writeDisposition": "high",
+    "execution.continuity": "high"
+  },
+  "abstained": {
+    "streams[issue_transitions].pull.backfill.path": "There is no transitions endpoint request anywhere in the connector. Transitions are read exclusively out of the parent issue's `transitions` array, populated by expand=transitions on GET /rest/api/3/search/jql. The stream's declared `path` value \"transitions\" is only used to build the expand string, never concatenated into a URL, so recording it as an endpoint path would be a fabrication.",
+    "streams[issue_transitions].pull.incremental.path": "Same as above; the binding issues no request of its own.",
+    "streams[*].pull.*.incrementalParam": "No stream sends a since/updated-after query parameter. The full-refresh bindings re-read everything with no time filter at all, and the issue bindings express both bounds inside the JQL string (updated >= '<lo>' AND updated <= '<hi>'), which is not a parameter in the incrementalParam sense. Recorded as null everywhere rather than inventing a param name.",
+    "streams[issue_fields].pull.snapshot.paginator": "Recorded as {type: none} because only the FIRST of the two unioned endpoints (GET field) is captured in `path`; the second (GET field/search) is envelope-paginated with startAt/maxResults. A single paginator field cannot describe both, so the recorded value is correct only for the recorded path. See unionMisfits.",
+    "streams[permissions].pull.snapshot.recordsPath": "Recorded as \"permissions\", but the value there is a JSON OBJECT keyed by permission name whose .values() are emitted, not an array. A recordsPath consumer expecting an array will break on this endpoint.",
+    "streams[project_avatars].pull.snapshot.recordsPath": "The response has two sibling arrays, `system` and `custom`, and the connector emits both concatenated. recordsPath holds only one pointer, so the value written is descriptive prose rather than a machine-usable pointer.",
+    "execution.defaultSchedule": "There is no connector-wide schedule. Every binding carries its own interval in its initial ResourceConfigWithSchedule (PT1H or PT5M) plus an optional user cron, so the connector-level default is genuinely absent.",
+    "streams[sprint_issues].pull.snapshot.paginator.terminateOn": "SprintIssuesResponse aliases `values` to `issues` and inherits the shared paginator, but it is not established from the source whether the Jira agile sprint-issue endpoint actually populates `total`/`isLast`; if it populates neither, only the empty-page check terminates the loop.",
+    "transports[0].spec.defaultHeaders": "No connector-wide default headers are set. Headers are per-stream (extra_headers), and only request_types defines any."
+  }
+}

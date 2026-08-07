@@ -1,0 +1,1383 @@
+{
+  "id": "sage-intacct",
+  "estuaryDir": "source-sage-intacct",
+  "displayName": "Sage Intacct",
+  "description": "Imports accounting and financial records (customers, vendors, employees, GL accounts and journals, items, projects, company preferences and more) from a Sage Intacct company via the Sage Intacct XML Web Services gateway.",
+  "category": "finance",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://api.intacct.com/ia/xml/xmlgw.phtml"
+        },
+        "defaultHeaders": {
+          "Content-Type": "application/xml"
+        },
+        "apiVersionPinning": "Request body element: <control><dtdversion>3.0</dtdversion></control>. Not a header, path segment, or query parameter."
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Web Services sender credentials + Sage Intacct company user login (session exchange)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "Five user-supplied fields, all sent inside the XML request body, never as headers or query parameters. Every request carries <control><senderid>{sender_id}</senderid><password>{sender_password}</password></control>. A login request additionally carries <authentication><login><userid>{user_id}</userid><companyid>{company_id}</companyid><password>{password}</password></login></authentication> wrapping a <getAPISession/> function; the response yields a sessionid (and an endpoint URL the connector ignores) plus a sessiontimeout. All subsequent requests replace the login block with <authentication><sessionid>{session_id}</sessionid></authentication>. The session is re-obtained by re-sending the same five static fields, so there is no refresh token and no OAuth app."
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "Sage Intacct API session id obtained via getAPISession (server-side, expires on its own sessiontimeout)"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Deletions are reconstructed by querying the AUDITHISTORY object filtered on ACCESSMODE = 'D' and ACCESSTIME greater than the cursor. If the pause exceeds Sage's audit-history retention for the tenant, deletes that occurred in the gap can no longer be observed. Creations and modifications are recovered fine, because their cursors are plain WHENMODIFIED/WHENCREATED timestamp filters against live rows.",
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Poll-mode connector: nothing is registered on the customer's side, no replication slot / change table / consumer group. The only server-side object is the API session, which the connector never explicitly logs out of but which Sage expires on its own timeout. Cursors are plain timestamps stored in Flow's connector state, so a pause of any length resumes correctly for creates and updates. AUDITHISTORY retention length is not stated in the connector source, so resumeWindow is left null."
+    }
+  },
+  "configFields": [
+    {
+      "name": "sender_id",
+      "displayName": "Sender ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Web Services Sender ID"
+    },
+    {
+      "name": "sender_password",
+      "displayName": "Sender Password",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Web Services Sender Password"
+    },
+    {
+      "name": "company_id",
+      "displayName": "Company ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Sage Intacct Company ID"
+    },
+    {
+      "name": "user_id",
+      "displayName": "User ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Sage Intacct User ID"
+    },
+    {
+      "name": "password",
+      "displayName": "Password",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Sage Intacct Password"
+    },
+    {
+      "name": "advanced.include_company_id_in_documents",
+      "displayName": "Include Company ID in Documents",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "Adds a COMPANY_ID field, equal to the configured Company ID, to every captured document. Defaults to false."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource; defaults to the Sage object name (e.g. CUSTOMER). From the shared CDK ResourceConfig."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Interval between updates for this resource; the connector seeds every binding with 5 minutes. From the shared CDK ResourceConfig."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": {
+    "method": "Static object list, filtered at connect time by a per-object permission probe; per-object FIELD lists (and therefore document schemas) are discovered from the API.",
+    "querySketch": "For every name in the shipped INCREMENTAL_OBJECTS + SNAPSHOT_OBJECTS sets, and for AUDITHISTORY, issue an XML <query> selecting RECORDNO with <pagesize>1</pagesize>. Objects whose probe returns Sage error PL04000005 (or, for AUDITHISTORY, a 'do not have permission to view audit history' description) are dropped with a warning instead of failing the capture; an AUDITHISTORY denial only disables the two deletion sub-tasks. For each surviving object, an XML <lookup><object>NAME</object></lookup> returns the field list (ID + DATATYPE), which is mapped to a JSON schema and used to build the <select> clause of every subsequent query. The lookup result is cached for 30 minutes.",
+    "excludes": [
+      "Objects whose pagesize=1 QUERY probe returns PL04000005 (role grant missing or object not exposed by the tenant's subscription)",
+      "PROJECT fields CFDA, FUNDEDNAME, AGENCY, PAYER, FUNDINGOTHERID, ASSISTANCETYPE, REVRESTRICTION, RESTRICTIONEXPIRY, RESTRICTIONEXPIRATIONDATE, TIMESATISFACTIONSCHEDULED are stripped from the select list as non-queryable",
+      "Fields of DATATYPE SEQUENCE are dropped from the sourced schema (unhandled placeholder type)",
+      "TAXSOLUTION is named in a source TODO as untested and is not in either shipped set",
+      "AUDITHISTORY is queried for deletions but is not itself exposed as a binding (source TODO)"
+    ],
+    "allowlist": "The two shipped sets are the allowlist; discovery is the intersection of those sets with what the probe says the authenticated user may QUERY."
+  },
+  "streams": [
+    {
+      "name": "APTERM",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object APTERM: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object APTERM (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'apterm' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "CLASS",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object CLASS: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object CLASS (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'class' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "COMPANYPREF",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "re-snapshot interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object COMPANYPREF: <select> every field from the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <returnformat>json</returnformat>, <pagesize>2000</pagesize>. The whole object is re-read each interval and a tombstone document is configured for rows that disappear.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination on RECORDNO written into the XML request body; loop ends when a page returns fewer than pagesize=2000 records."
+          }
+        }
+      }
+    },
+    {
+      "name": "CUSTOMER",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object CUSTOMER: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object CUSTOMER (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'customer' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "DEPARTMENT",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object DEPARTMENT: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object DEPARTMENT (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'department' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "EMPLOYEE",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object EMPLOYEE: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object EMPLOYEE (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'employee' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "GLACCOUNT",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object GLACCOUNT: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object GLACCOUNT (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'glaccount' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "GLJOURNAL",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object GLJOURNAL: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object GLJOURNAL (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'gljournal' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ITEM",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object ITEM: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object ITEM (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'item' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "LOCATION",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object LOCATION: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object LOCATION (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'location' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "PROJECT",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "re-snapshot interval",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object PROJECT: <select> every field from the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <returnformat>json</returnformat>, <pagesize>2000</pagesize>. The whole object is re-read each interval and a tombstone document is configured for rows that disappear.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination on RECORDNO written into the XML request body; loop ends when a page returns fewer than pagesize=2000 records."
+          }
+        }
+      }
+    },
+    {
+      "name": "TASK",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object TASK: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object TASK (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'task' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TAXDETAIL",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object TAXDETAIL: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object TAXDETAIL (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'taxdetail' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "TRXCURRENCIES",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object TRXCURRENCIES: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object TRXCURRENCIES (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'trxcurrencies' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "VENDOR",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/RECORDNO"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "WHENMODIFIED",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "polling interval for all sub-tasks of this binding",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 300
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "XML <query> over object VENDOR: <select> every field returned by the object's <lookup> definition, optional <filter><greaterthan><field>RECORDNO</field><value>{last RECORDNO}</value>, <orderby> RECORDNO ascending, <options><returnformat>json</returnformat>, <pagesize>2000</pagesize>. Documents whose cursor value is >= the backfill cutoff timestamp are dropped and left to the incremental sub-tasks.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.RECORDNO",
+            "recordField": "RECORDNO",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Keyset pagination: the RECORDNO of the last record on the page is written into the next request's XML <filter><greaterthan> element. There is no server-issued page token."
+          }
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "Six concurrent sub-tasks per binding, each an XML <query> over object VENDOR (or over AUDITHISTORY for deletions), all keyed on a timestamp cursor: (1) 'realtime' and (2) 'lookback' filter <greaterthan> WHENMODIFIED ordered by WHENMODIFIED ascending; (3) 'realtime_creations' and (4) 'lookback_creations' filter <and><isnull>WHENMODIFIED</isnull><greaterthan>WHENCREATED</greaterthan></and> ordered by WHENCREATED ascending; (5) 'realtime_deletions' and (6) 'lookback_deletions' query AUDITHISTORY selecting OBJECTKEY/ACCESSTIME/ID filtered on OBJECTTYPE = 'vendor' AND ACCESSMODE = 'D' AND ACCESSTIME greaterthan cursor, ordered by ACCESSTIME ascending. Only the timestamp for which all records are known to have been read is checkpointed; when a full page carries a single identical timestamp a cycle-breaking query is issued with <equalto> on that exact timestamp plus <greaterthan> on RECORDNO (ID for deletions), ordered by that identifier ascending. 'lookback' variants trail by a horizon (2h, 2h30m for deletions) and 'realtime' modifications trail by 2m; the connector treats the API as eventually consistent so lookback sub-tasks true the collection up. Deletion sub-tasks are only wired up when the AUDITHISTORY permission probe succeeds; deletion documents are emitted with _meta.op = 'd'.",
+          "paginator": {
+            "type": "record_cursor",
+            "param": "filter.greaterthan.WHENMODIFIED",
+            "recordField": "WHENMODIFIED",
+            "hasMorePath": null,
+            "tokenFrom": "last_record",
+            "tokenTo": "body_field",
+            "terminateOn": "short_page",
+            "pageSizeParam": "pagesize",
+            "pageSize": 2000,
+            "notes": "Two-level: the outer loop advances the timestamp filter (<greaterthan> WHENMODIFIED / WHENCREATED / ACCESSTIME) to the last fully-completed timestamp; the inner cycle-breaking loop pins <equalto> that timestamp and advances a <greaterthan> RECORDNO (ID for deletions) filter. Both are written into the XML request body. Termination is a page shorter than pagesize=2000; there is no server-side has-more flag."
+          }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Only one credential mode is offered and it is entirely static: the user pastes five values (Web Services sender id + password, company id, user id, password) that they already have from their Sage Intacct company and its Web Services subscription. There is no OAuth application to register, no client id/secret, and no refresh token to obtain out of band. The session id is machine-obtained by the connector at runtime from those five fields, so it is not user work. The multi-field, session-exchange shape makes it look heavier than a bearer token but the user-side effort is a single self-serve credential set, which is T1.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.kind and PullSpec union",
+      "description": "Sage Intacct's classic Web Services API is a single XML-over-HTTP endpoint: every operation (login, object definition lookup, record query, audit-history query) is a POST of an XML document to the same URL, with the operation expressed in the body. There is therefore no per-stream path, no method variation, no query/path parameters, and no records envelope path in the usual sense. `kind: \"http\"` cannot represent this because `path` would be identical for all fifteen streams and all six sub-tasks. `kind: \"query\"` with `language: \"other\"` is the least-bad fit, but it loses the fact that the transport is HTTP and that responses are streamed JSON (the request asks for <options><returnformat>json</returnformat> and the connector streams `item` elements out with an incremental JSON processor, falling back to parsing the body as XML when the response Content-Type is not application/json).",
+      "proposedShape": {
+        "kind": "rpc_body",
+        "transport": "http",
+        "endpoint": "https://api.intacct.com/ia/xml/xmlgw.phtml",
+        "httpMethod": "POST",
+        "requestFormat": "xml",
+        "responseFormat": "json|xml (negotiated per request; error responses come back as XML even when JSON was requested)",
+        "operationSelector": {
+          "in": "body",
+          "sketch": "<operation><content><function><query>...</query></function></content></operation>"
+        },
+        "objectSelector": {
+          "in": "body",
+          "field": "query.object"
+        },
+        "recordsPath": "streamed `item` elements of the JSON response",
+        "paginator": "<Paginator>"
+      }
+    },
+    {
+      "where": "Paginator union",
+      "description": "Pagination is keyset-in-the-request-body, not a token issued by the server. The connector orders results by a field it chooses (WHENMODIFIED, WHENCREATED, ACCESSTIME, or RECORDNO/ID) and constructs the next request by writing the last seen value of that field into an XML <filter><greaterthan> element, with a fixed <pagesize>2000</pagesize>. It never receives a cursor, next URL, total count, or has-more flag; the only termination signal is a page shorter than pagesize. `record_cursor` is the closest member (tokenFrom: last_record) but its `param`/`recordField` fields assume a flat query parameter, and the connector actually runs a TWO-LEVEL keyset: an outer timestamp filter plus, when a whole page shares one timestamp, an inner <equalto> that timestamp + <greaterthan> identifier cycle-breaker. The `param` values recorded in the emitted JSON are synthetic dotted names, not real parameter names.",
+      "proposedShape": {
+        "type": "keyset_body",
+        "orderFields": [
+          "<primary sort field>",
+          "<tiebreak field>"
+        ],
+        "comparator": "greaterthan",
+        "tiebreak": {
+          "pinField": "<primary sort field>",
+          "pinComparator": "equalto",
+          "advanceField": "<tiebreak field>"
+        },
+        "pageSizeIn": "body",
+        "pageSizeField": "pagesize",
+        "pageSize": 2000,
+        "terminateOn": "short_page"
+      }
+    },
+    {
+      "where": "credentialModes[].scheme",
+      "description": "The credential is neither a header, a query parameter, nor an OAuth flow: five static fields are embedded in the XML request body, split across two different body elements (<control> carries the sender pair, <authentication> carries the company login triple), and are exchanged for a body-carried session id that is then substituted into <authentication> on every later request. `type: \"other\"` swallows all of that structure, so the auth tier and the secret/non-secret split have to be read out of prose.",
+      "proposedShape": {
+        "type": "session_exchange",
+        "staticFields": [
+          {
+            "field": "sender_id",
+            "sentIn": "body",
+            "at": "request.control.senderid"
+          },
+          {
+            "field": "sender_password",
+            "sentIn": "body",
+            "at": "request.control.password",
+            "secret": true
+          },
+          {
+            "field": "user_id",
+            "sentIn": "body",
+            "at": "request.operation.authentication.login.userid"
+          },
+          {
+            "field": "company_id",
+            "sentIn": "body",
+            "at": "request.operation.authentication.login.companyid"
+          },
+          {
+            "field": "password",
+            "sentIn": "body",
+            "at": "request.operation.authentication.login.password",
+            "secret": true
+          }
+        ],
+        "exchange": {
+          "operation": "getAPISession",
+          "sameEndpoint": true,
+          "tokenPath": "api.sessionid",
+          "expiryPath": "operation.authentication.sessiontimeout"
+        },
+        "tokenSentIn": "body",
+        "tokenAt": "request.operation.authentication.sessionid",
+        "alwaysSentAlongsideToken": [
+          "sender_id",
+          "sender_password"
+        ]
+      }
+    },
+    {
+      "where": "streams[].pull.incremental (single PullSpec per leg)",
+      "description": "One incremental binding is not one pull: it fans out into up to six concurrently-running sub-tasks, each with its own independent checkpointed cursor in the same state object (realtime, lookback, realtime_creations, lookback_creations, realtime_deletions, lookback_deletions). They differ in cursor field (WHENMODIFIED vs WHENCREATED vs ACCESSTIME), in queried object (the stream's object vs AUDITHISTORY), in trailing horizon (none, 2m, 2h, 2h30m), and in emitted document shape (upsert vs delete tombstone). Two of the six are conditionally absent depending on a runtime permission probe. The schema gives me one PullSpec slot, so all six are compressed into one querySketch and the per-sub-task cursors and horizons are not machine-readable.",
+      "proposedShape": {
+        "incremental": [
+          {
+            "subtask": "realtime",
+            "cursorField": "WHENMODIFIED",
+            "object": "<stream object>",
+            "horizon": "2m",
+            "emits": "upsert"
+          },
+          {
+            "subtask": "lookback",
+            "cursorField": "WHENMODIFIED",
+            "object": "<stream object>",
+            "horizon": "2h",
+            "emits": "upsert"
+          },
+          {
+            "subtask": "realtime_creations",
+            "cursorField": "WHENCREATED",
+            "object": "<stream object>",
+            "horizon": null,
+            "emits": "upsert",
+            "extraFilter": "WHENMODIFIED is null"
+          },
+          {
+            "subtask": "lookback_creations",
+            "cursorField": "WHENCREATED",
+            "object": "<stream object>",
+            "horizon": "2h",
+            "emits": "upsert",
+            "extraFilter": "WHENMODIFIED is null"
+          },
+          {
+            "subtask": "realtime_deletions",
+            "cursorField": "ACCESSTIME",
+            "object": "AUDITHISTORY",
+            "horizon": null,
+            "emits": "delete",
+            "conditionalOn": "AUDITHISTORY query permission"
+          },
+          {
+            "subtask": "lookback_deletions",
+            "cursorField": "ACCESSTIME",
+            "object": "AUDITHISTORY",
+            "horizon": "2h30m",
+            "emits": "delete",
+            "conditionalOn": "AUDITHISTORY query permission"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streamMode / discovery",
+      "description": "streamMode is neither cleanly `static` nor `discovered`. The stream NAMES are a hard-coded list of fifteen Sage object names, but (a) the list is intersected at connect time with a per-object permission probe, so which of the fifteen actually appear varies per tenant, and (b) each stream's FIELD SET and JSON schema are fully discovered from the API's <lookup> object definition and cached for 30 minutes. So: static names, discovered schemas, tenant-filtered membership. I recorded `static` because every stream name is literal in the source, and put the probe and lookup into `discovery`, but a reader could reasonably expect `discovery` to be null for a static connector.",
+      "proposedShape": {
+        "streamMode": "static",
+        "nameSource": "shipped_list",
+        "membershipFilter": "runtime_permission_probe",
+        "schemaSource": "discovered_per_object"
+      }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "The getAPISession response carries an `endpoint` field alongside the sessionid, which is Sage's mechanism for redirecting a tenant to its own service instance. The connector parses that field into its response model but never uses it: every request, including all post-login ones, is posted to the hard-coded constant URL. So the constant baseUrl is factually what the code does, but the API's own shape is closer to `kind: \"resolved\"`. Recording only the constant hides the fact that a tenant pinned to a non-default instance is a latent failure mode.",
+      "proposedShape": {
+        "kind": "constant_with_unused_resolution",
+        "value": "https://api.intacct.com/ia/xml/xmlgw.phtml",
+        "resolutionAvailableAt": "getAPISession response .api.endpoint",
+        "usedByConnector": false
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "26",
+      "snippet": "endpoint_url = \"https://api.intacct.com/ia/xml/xmlgw.phtml\""
+    },
+    "transports[0].spec.defaultHeaders": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "392-398",
+      "snippet": "bs = await self.http.request(\n    self.log, endpoint_url, method=\"POST\", headers={\"Content-Type\": \"application/xml\"}, form=data,\n)"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "497-499",
+      "snippet": "<uniqueid>false</uniqueid>\n<dtdversion>3.0</dtdversion>\n<includewhitespace>false</includewhitespace>"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "509-521",
+      "snippet": "<login>\n  <userid>{cfg.user_id}</userid>\n  <companyid>{cfg.company_id}</companyid>"
+    },
+    "credentialModes[0].scheme.sessionExchange": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "443-448",
+      "snippet": "sess = await self._req_xml(\n    GenerateApiSessionResponse, api_session_request(self.config), skip_refresh=True,\n)\nself.session_id = sess.api.sessionid"
+    },
+    "credentialModes[0].scheme.sessionInSubsequentRequests": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "530-534",
+      "snippet": "<authentication>\n  <sessionid>{session_id}</sessionid>\n</authentication>"
+    },
+    "configFields": {
+      "file": "source_sage_intacct/models.py",
+      "lines": "26-62",
+      "snippet": "sender_id: str = Field(description=\"Web Services Sender ID\", title=\"Sender ID\")"
+    },
+    "configFields[5]": {
+      "file": "source_sage_intacct/models.py",
+      "lines": "51-55",
+      "snippet": "include_company_id_in_documents: bool = Field(\n    description=f\"Include the configured Sage Intacct Company ID in captured documents, with the field name '{COMPANY_ID_FIELD}'."
+    },
+    "configFields[6]": {
+      "file": "estuary-cdk/estuary_cdk/capture/common.py",
+      "lines": "159-164",
+      "snippet": "name: str = Field(description=\"Name of this resource\")\ninterval: timedelta = Field(default=timedelta(), description=\"Interval between updates for this resource\","
+    },
+    "execution.mode": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "187",
+      "snippet": "initial_config=ResourceConfig(name=obj, interval=timedelta(minutes=5)),"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "816-836",
+      "snippet": "<object>AUDITHISTORY</object>\n<equalto><field>ACCESSMODE</field><value>D</value></equalto>\n<greaterthan><field>ACCESSTIME</field><value>{since}</value></greaterthan>"
+    },
+    "streamMode": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "45-64",
+      "snippet": "INCREMENTAL_OBJECTS = {\n    \"CUSTOMER\", \"APTERM\", \"CLASS\", \"DEPARTMENT\", \"EMPLOYEE\","
+    },
+    "discovery.method": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "245-250",
+      "snippet": "object_names = sorted(INCREMENTAL_OBJECTS | SNAPSHOT_OBJECTS)\nprobes = await asyncio.gather(*(_probe(obj) for obj in object_names))\naccessible_objects = {obj for obj, denial in probes if denial is None}"
+    },
+    "discovery.querySketch": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "576-584",
+      "snippet": "<query>\n  <object>{object}</object>\n  <select><field>RECORDNO</field></select>\n  <pagesize>1</pagesize>"
+    },
+    "discovery.querySketch.lookup": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "590-596",
+      "snippet": "<lookup>\n  <object>{object}</object>\n</lookup>"
+    },
+    "discovery.excludes": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "46-59",
+      "snippet": "FORBIDDEN_FIELDS = {\n    \"PROJECT\": [\"CFDA\", \"FUNDEDNAME\", \"AGENCY\", \"PAYER\","
+    },
+    "streams[].primaryKey": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "171-175",
+      "snippet": "return common.Resource(\n    name=obj,\n    key=[\"/RECORDNO\"],"
+    },
+    "streams[].schedules": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "187",
+      "snippet": "initial_config=ResourceConfig(name=obj, interval=timedelta(minutes=5)),"
+    },
+    "streams[].pull.incremental": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "134-160",
+      "snippet": "subtasks = {\n    REALTIME: functools.partial(fetch_changes, obj, sage, REALTIME_LAG, PAGE_SIZE),\n    LOOKBACK: functools.partial(fetch_changes, obj, sage, LOOKBACK_LAG, PAGE_SIZE),"
+    },
+    "streams[].pull.incremental.horizons": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "32-34",
+      "snippet": "REALTIME_LAG = timedelta(minutes=2)\nLOOKBACK_LAG = timedelta(hours=2)\nLOOKBACK_LAG_DELETIONS = timedelta(hours=2, minutes=30)"
+    },
+    "streams[].pull.incremental.paginator": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "612-627",
+      "snippet": "<greaterthan><field>WHENMODIFIED</field><value>{since}</value></greaterthan>\n<orderby><order><field>WHENMODIFIED</field><ascending/></order></orderby>\n<pagesize>{PAGE_SIZE}</pagesize>"
+    },
+    "streams[].pull.incremental.paginator.cycleBreak": {
+      "file": "source_sage_intacct/api.py",
+      "lines": "98-107",
+      "snippet": "# This is a cycle: We got a full page of records with the exact same\n# WHENMODIFIED timestamp.\nasync for rec in fetch_at(object, last_record_ts, last_record_identifier):"
+    },
+    "streams[].pull.backfill.paginator": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "689-695",
+      "snippet": "<filter>\n    <greaterthan><field>RECORDNO</field><value>{after}</value></greaterthan>\n</filter>"
+    },
+    "streams[].pull.backfill.paginator.pageSize": {
+      "file": "source_sage_intacct/sage.py",
+      "lines": "24",
+      "snippet": "PAGE_SIZE = 2000"
+    },
+    "streams[].pull.backfill.terminateOn": {
+      "file": "source_sage_intacct/api.py",
+      "lines": "204-207",
+      "snippet": "if count < page_size:\n    return\nyield last"
+    },
+    "streams[].pull.snapshot": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "206-213",
+      "snippet": "common.open_binding(\n    binding, binding_index, state, task,\n    fetch_snapshot=functools.partial(snapshot, obj, sage, PAGE_SIZE),"
+    },
+    "streams[].writeDisposition.snapshot": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "212",
+      "snippet": "tombstone=SnapshotResource(_meta=SnapshotResource.Meta(op=\"d\")),"
+    },
+    "streams[].writeDisposition.incremental": {
+      "file": "source_sage_intacct/api.py",
+      "lines": "178-181",
+      "snippet": "if isinstance(item, DeletionRecord):\n    item.meta_ = item.Meta(op=\"d\")"
+    },
+    "streams[snapshot].primaryKey": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "215-219",
+      "snippet": "return common.Resource(\n    name=obj,\n    key=[\"/_meta/row_id\"],"
+    },
+    "streams[].cursorField": {
+      "file": "source_sage_intacct/models.py",
+      "lines": "213-217",
+      "snippet": "class IncrementalResource(Document):\n    WHENMODIFIED: AwareDatetime\n    def cursor_value(self) -> AwareDatetime: return self.WHENMODIFIED"
+    },
+    "category": {
+      "file": "source_sage_intacct/resources.py",
+      "lines": "45-64",
+      "snippet": "INCREMENTAL_OBJECTS = {... \"GLACCOUNT\", ... \"GLJOURNAL\", ...}\nSNAPSHOT_OBJECTS = {\"COMPANYPREF\", \"PROJECT\"}"
+    }
+  },
+  "confidence": {
+    "transports[0].spec": "high",
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.resumeWindow": "low",
+    "execution.continuity.releasedOnShutdown": "low",
+    "configFields": "high",
+    "streamMode": "medium",
+    "discovery": "high",
+    "streams[].name": "high",
+    "streams[].primaryKey": "high",
+    "streams[].cursorField": "medium",
+    "streams[].schedules": "high",
+    "streams[].writeDisposition": "medium",
+    "streams[].pull.backfill.paginator": "high",
+    "streams[].pull.incremental.paginator": "medium",
+    "streams[].pull.snapshot.paginator": "high",
+    "streams[].pull.*.kind": "low",
+    "category": "high"
+  },
+  "abstained": {
+    "transports[0].spec.recordsPath / streams[].pull.*.recordsPath": "There is no JSON pointer to a records array. The XML request asks for <returnformat>json</returnformat> and the connector streams the response with an incremental JSON processor keyed on the element name 'item', so the 'records path' is a streaming element selector rather than a path expression the schema can hold. Recorded in prose in the misfit instead of guessing a pointer.",
+    "transports[0].spec.baseUrl.kind=resolved": "The getAPISession response contains an `endpoint` field (the per-tenant service URL), and the connector's response model parses it, but no code path ever reads it back out \u2014 every request goes to the module-level constant. I recorded the constant because that is what executes, and filed the discrepancy as a misfit rather than inventing a resolution rule.",
+    "execution.continuity.resumeWindow": "Deletion recovery is bounded by Sage Intacct's AUDITHISTORY retention, which is a tenant/server-side property and is nowhere stated or configured in the connector source. Creates and updates have no resume window at all. Guessing a duration here would be a fabricated SLA.",
+    "execution.continuity.releasedOnShutdown": "The connector never issues a logout / session-teardown call, so the API session is presumably left to expire on its own sessiontimeout, but the absence of a teardown call is not proof that Sage does not release it. Neither true nor false is supported by the source.",
+    "streams[].supportedSyncModes for snapshot bindings": "COMPANYPREF and PROJECT are wired with fetch_snapshot plus a tombstone document and have no incremental sub-task, so only full_refresh is offered. Recorded as such, but note the schema has no way to say 'snapshot with tombstone is the ONLY mode', which is stronger than plain full_refresh.",
+    "streams[].pull.incremental.paginator.param/recordField": "The values I recorded are synthetic dotted labels describing where in the XML body the keyset value is written, because there is no named parameter at all \u2014 the filter is a nested XML element. Treat them as documentation, not as wire-level names; the honest shape is in unionMisfits[1].",
+    "AUDITHISTORY as a stream": "The connector queries AUDITHISTORY to derive deletions but does not expose it as a binding \u2014 the source carries an explicit TODO to add one once the author has access to the object type. Not listed as a stream because it produces no collection today.",
+    "TAXSOLUTION": "Named in a source TODO as an object the author could not test and does not know how to capture. Not in either shipped set, so not a stream.",
+    "streams[].cursorField for the creations and deletions sub-tasks": "The stream-level cursorField is recorded as WHENMODIFIED because that is the primary incremental key, but three different cursor fields are in play across the six sub-tasks (WHENMODIFIED, WHENCREATED, ACCESSTIME on AUDITHISTORY). The single-valued schema field cannot express that; see unionMisfits[3].",
+    "per-tenant stream membership": "Which of the fifteen shipped objects actually become bindings depends on a runtime pagesize=1 permission probe per object, so the stream list I emitted is the maximum set, not a guaranteed set. Any given customer may see fewer."
+  }
+}

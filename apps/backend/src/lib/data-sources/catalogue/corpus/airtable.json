@@ -1,0 +1,359 @@
+{
+  "id": "airtable",
+  "estuaryDir": "source-airtable",
+  "displayName": "Airtable",
+  "description": "Imports the records of every table in every Airtable base the credential can see, with each table's field schema discovered from the Airtable metadata API.",
+  "category": "other",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.airtable.com/v0/" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `v0` baked into the base URL"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Personal Access Token (PAT)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.api_key" }
+    },
+    {
+      "name": "OAuth 2.0 (single-use refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://airtable.com/oauth2/v1/authorize",
+        "tokenUrl": "https://airtable.com/oauth2/v1/token",
+        "scopes": ["data.records:read", "data.recordComments:read", "schema.bases:read"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.auth_method", "displayName": "Auth method", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; const `api_key` in the shipped schema, but auth.py also branches on the value `oauth2.0`." },
+    { "name": "credentials.api_key", "displayName": "Personal Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Airtable Personal Access Token." },
+    { "name": "credentials.client_id", "displayName": "OAuth client id", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Written by the OAuth flow (advanced_auth complete_oauth_server_output_specification); not present in connectionSpecification." },
+    { "name": "credentials.client_secret", "displayName": "OAuth client secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Written by the OAuth flow; not present in connectionSpecification." },
+    { "name": "credentials.access_token", "displayName": "OAuth access token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Written by the OAuth flow." },
+    { "name": "credentials.refresh_token", "displayName": "OAuth refresh token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Written by the OAuth flow; rotated on every refresh (single-use)." },
+    { "name": "credentials.token_expiry_date", "displayName": "Token expiry date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "Written by the OAuth flow as now + expires_in." },
+    { "name": "api_key", "displayName": "API key (legacy)", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Undocumented legacy top-level path still honoured by auth.py before `credentials` is consulted." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "`<base_name>/<table_name>/<table_id>` recommended name." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh | incremental (shim-provided; this connector only ever advertises full_refresh)." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Shim-provided; unused by this connector." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Shim-provided; unused by this connector." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Airtable metadata REST API: list bases, then list tables per base; a JSON Schema is synthesised per table",
+    "querySketch": "GET meta/bases (paginate) -> for each base id: GET meta/bases/{base_id}/tables -> emit one stream named `{base_name}/{table_name}/{table_id}` with path `{base_id}/{table_id}`",
+    "excludes": ["bases whose permissionLevel is \"none\" are skipped with a warning"],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "bases",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [],
+      "primaryKeyKind": "none",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "meta/bases",
+          "httpMethod": "GET",
+          "recordsPath": "bases",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tables",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [],
+      "primaryKeyKind": "none",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "meta/bases/{base_id}/tables",
+          "httpMethod": "GET",
+          "recordsPath": "tables",
+          "params": null,
+          "pathPlaceholders": { "base_id": "`id` of each base returned by the `bases` stream" },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "<base_name>/<table_name>/<table_id>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_airtable_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "{base_id}/{table_id}",
+          "httpMethod": "GET",
+          "recordsPath": "records",
+          "params": null,
+          "pathPlaceholders": {
+            "base_id": "base id from `meta/bases`",
+            "table_id": "table id from `meta/bases/{base_id}/tables`"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only mode the shipped connectionSpecification advertises is a single self-serve Airtable Personal Access Token sent as a bearer token (`credentials.api_key`), which is T1_SIMPLE. The OAuth mode is T3_BYO_REFRESH standalone: `SingleUseRefreshTokenOauth2Authenticator` reads client_id, client_secret and a rotating refresh_token out of the config, and none of those appear in the user-facing config schema — they are populated by Estuary's hosted control plane, which registers the Airtable OAuth app on the user's behalf via the `oauth2` block in __main__.py. Standalone (no control plane) the user would have to register their own Airtable OAuth app and supply the refresh token themselves.",
+
+  "unionMisfits": [
+    {
+      "where": "credentialModes vs configFields",
+      "description": "The connector has two live auth branches in code but only one in its published schema. spec.json's connectionSpecification declares `credentials.auth_method` as `const: \"api_key\"`, yet auth.py branches on `auth_method == \"oauth2.0\"` and the OAuth-only fields (client_id/client_secret/access_token/refresh_token/token_expiry_date) exist only in `advanced_auth.oauth_config_specification` path_in_connector_config entries. A pure schema-driven reader would never discover the OAuth mode.",
+      "proposedShape": { "credentialModes[].declaredInConfigSchema": "bool", "credentialModes[].injectedBy": "control_plane|user" }
+    },
+    {
+      "where": "configFields",
+      "description": "auth.py accepts a third, wholly undeclared shape: a top-level `api_key` (no `credentials` wrapper), checked before `credentials` and used to build a TokenAuthenticator. It is a legacy compatibility path with no schema entry at all.",
+      "proposedShape": { "configFields[].undeclaredLegacyAlias": "bool" }
+    },
+    {
+      "where": "streams[0..1]",
+      "description": "`bases` and `tables` are real HTTP streams with real paths but are never offered as bindings — they exist solely to drive discovery. The schema has no way to mark a stream as internal/discovery-only, so they are listed here with `origin: static` and their paths intact; do not read them as capturable collections.",
+      "proposedShape": { "streams[].role": "binding|discovery_only" }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "Set to snapshot_with_tombstone with only medium confidence. Every stream is full_refresh (schema_helpers hard-codes supported_sync_modes=[full_refresh]), and the estuary-cdk shim gives full-refresh bindings the standard delete-annotated document schema (the `if _meta.op == \"d\"` clause in the discover snapshot). But records here carry a real source-defined key (/_airtable_id) rather than the synthetic /_meta/row_id, so the effective behaviour is closer to a keyed re-upsert of the whole table each run than to a true tombstoned snapshot.",
+      "proposedShape": { "writeDisposition": "add member `keyed_full_reread`" }
+    },
+    {
+      "where": "category",
+      "description": "Airtable is a hosted spreadsheet-database reached over REST. `database` in the category enum implies a SQL transport, so `other` was chosen; neither is a clean fit.",
+      "proposedShape": { "category": "add member `nocode_database`" }
+    },
+    {
+      "where": "connector implementation (vs source-airtable-native)",
+      "description": "This legacy connector is an Airbyte-CDK source (airbyte_cdk.HttpStream, ^0.52) run through estuary_cdk.shim_airbyte_cdk.CaptureShim, NOT a native estuary-cdk HTTPMixin connector. Consequences vs the separately-mined source-airtable-native: auth is resolved by airbyte_cdk's TokenAuthenticator / SingleUseRefreshTokenOauth2Authenticator rather than estuary_cdk TokenSource; there is no per-binding schedule concept at all; every stream is full_refresh only; and the per-table JSON Schema is degenerate (only _airtable_id/_airtable_created_time/_airtable_table_name are declared, with real columns left to Flow's schema inference). If the two connectors disagree on paginator or field typing, this one is the older mechanism.",
+      "proposedShape": { "implementationFramework": "airbyte_cdk_shim|estuary_cdk_native|go" }
+    },
+    {
+      "where": "streams[2].primaryKey",
+      "description": "Internal inconsistency in the source, not a schema misfit, but worth recording: AirtableStream sets the airbyte class attribute `primary_key = \"id\"` while the emitted documents contain no `id` field (the record id is renamed to `_airtable_id`), and schema_helpers separately declares source_defined_primary_key=[[\"_airtable_id\"]]. The shim uses the source-defined key, so /_airtable_id is what actually lands; the `id` attribute is dead and misleading.",
+      "proposedShape": {}
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_airtable/streams.py",
+      "lines": "18",
+      "snippet": "URL_BASE: str = \"https://api.airtable.com/v0/\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_airtable/auth.py",
+      "lines": "61-68",
+      "snippet": "if \"api_key\" in config:\n            return TokenAuthenticator(token=(config or {}).get(\"api_key\"))"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_airtable/auth.py",
+      "lines": "17-19, 65-66",
+      "snippet": "class AirtableOAuth(SingleUseRefreshTokenOauth2Authenticator):\n        if credentials[\"auth_method\"] == \"oauth2.0\":\n            return AirtableOAuth(config, \"https://airtable.com/oauth2/v1/token\")"
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source_airtable/__main__.py",
+      "lines": "12",
+      "snippet": "authUrlTemplate=\"https://airtable.com/oauth2/v1/authorize?...&scope=data.records:read%20data.recordComments:read%20schema.bases:read&code_challenge=...\""
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "source_airtable/auth.py",
+      "lines": "31-38",
+      "snippet": "return {\n            \"grant_type\": self.get_grant_type(),\n            \"refresh_token\": self.get_refresh_token(),\n        }"
+    },
+    "configFields": {
+      "file": "source_airtable/spec.json",
+      "lines": "9-29",
+      "snippet": "\"credentials\": {\n        \"title\": \"Personal Access Token\",\n        \"required\": [\"api_key\"],"
+    },
+    "configFields[8..11]": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "36-77",
+      "snippet": "\"resourceConfigSchema\": { ... \"stream\", \"syncMode\", \"namespace\", \"cursorField\" ... \"required\": [\"stream\",\"syncMode\"]"
+    },
+    "streamMode": {
+      "file": "source_airtable/source.py",
+      "lines": "94-98",
+      "snippet": "self._auth = AirtableAuth(config)\n        if not self.streams_catalog:\n            self.discover(None, config)"
+    },
+    "discovery.querySketch": {
+      "file": "source_airtable/source.py",
+      "lines": "84-89",
+      "snippet": "\"stream_path\": f\"{base_id}/{table.get('id')}\",\n\"stream\": SchemaHelpers.get_airbyte_stream(f\"{base_name}/{SchemaHelpers.clean_name(table.get('name'))}/{table.get('id')}\","
+    },
+    "discovery.excludes": {
+      "file": "source_airtable/streams.py",
+      "lines": "88, 93-95",
+      "snippet": "if base.get(\"permissionLevel\") == \"none\":\n                self.logger.warning(f\"Skipping base `{base.get('name')}` with id `{base.get('id')}`: Not enough permissions...\")"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_airtable/streams.py",
+      "lines": "30-34",
+      "snippet": "def path(self, **kwargs) -> str:\n        return \"meta/bases\""
+    },
+    "streams[0].pull.snapshot.recordsPath": {
+      "file": "source_airtable/streams.py",
+      "lines": "86",
+      "snippet": "records = response.json().get(self.name)"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_airtable/streams.py",
+      "lines": "65, 70-74",
+      "snippet": "next_page = response.json().get(\"offset\")\n        if next_page:\n            params[\"offset\"] = next_page_token"
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_airtable/streams.py",
+      "lines": "107-111",
+      "snippet": "def path(self, **kwargs) -> str:\n        return f\"{super().path()}/{self.base_id}/tables\""
+    },
+    "streams[1].pull.snapshot.recordsPath": {
+      "file": "source_airtable/streams.py",
+      "lines": "86, 105",
+      "snippet": "name = \"tables\"\n        records = response.json().get(self.name)"
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_airtable/streams.py",
+      "lines": "191-192",
+      "snippet": "def path(self, **kwargs) -> str:\n        return self.stream_path"
+    },
+    "streams[2].pull.snapshot.recordsPath": {
+      "file": "source_airtable/streams.py",
+      "lines": "188",
+      "snippet": "records = response.json().get(\"records\", [])"
+    },
+    "streams[2].pull.snapshot.paginator": {
+      "file": "source_airtable/streams.py",
+      "lines": "152, 161-164",
+      "snippet": "next_page = response.json().get(\"offset\")\n        params = {}\n        if next_page_token:\n            params[\"offset\"] = next_page_token"
+    },
+    "streams[2].primaryKey": {
+      "file": "source_airtable/schema_helpers.py",
+      "lines": "113",
+      "snippet": "source_defined_primary_key=[[\"_airtable_id\"]]"
+    },
+    "streams[2].supportedSyncModes": {
+      "file": "source_airtable/schema_helpers.py",
+      "lines": "111",
+      "snippet": "supported_sync_modes=[SyncMode.full_refresh],"
+    },
+    "execution.mode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "414-416",
+      "snippet": "for message in self.delegate.read(\n            task.log, config, airbyte_catalog, airbyte_states\n        ):"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "medium",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "high",
+    "streams[0].pull.snapshot.path": "high",
+    "streams[1].pull.snapshot.path": "high",
+    "streams[2].pull.snapshot.path": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2].pull.snapshot.paginator": "high",
+    "streams[2].primaryKey": "high",
+    "streams[].writeDisposition": "medium",
+    "streamMode": "high",
+    "discovery": "high",
+    "execution.mode": "high",
+    "authTierOverall": "high",
+    "category": "low"
+  },
+
+  "abstained": {
+    "credentialModes[0].scheme.prefix": "The bearer prefix is not written in this repository. `TokenAuthenticator(token=...)` comes from airbyte_cdk.sources.streams.http.requests_native_auth, which is a PyPI dependency (airbyte-cdk ^0.52) and is not vendored here, so the exact header name and `Bearer ` prefix could not be confirmed from source in scope. Recorded as `bearer` on the strength of the constructor name only.",
+    "transports[0].spec.defaultHeaders": "No default headers are set anywhere in the connector; only the authenticator's Authorization header is added.",
+    "execution.defaultSchedule": "Neither the connector nor shim_airbyte_cdk defines any interval, cron, or delay. Cadence is entirely a Flow task property outside this code.",
+    "streams[].schedules": "Same as above — the Airbyte shim has no per-binding scheduling concept.",
+    "streams[].cursorField": "schema_helpers advertises only full_refresh and never sets default_cursor_field, and no stream sends a since/modified filter parameter. There is no incremental leg to have a cursor.",
+    "streams[*].pull.snapshot.paginator.pageSize": "No page-size parameter is ever sent (request_params returns only `offset`). The effective page size is whatever the Airtable API defaults to; it is not encoded here.",
+    "streams[*].pull.snapshot.params": "request_params is empty apart from the pagination token — no filterByFormula, view, fields, or cellFormat is set.",
+    "streams[2].name": "Discovered source: the literal stream list depends on the customer's bases and tables. The entry is an archetype using the recommendedName template `<clean(base_name)>/<clean(table_name)>/<table_id>`.",
+    "execution.continuity": "mode is poll over a stateless REST API; no server-side artifact is created and nothing accrues or expires on either side."
+  }
+}

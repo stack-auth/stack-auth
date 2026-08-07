@@ -1,0 +1,360 @@
+{
+  "id": "zoho",
+  "estuaryDir": "source-zoho",
+  "displayName": "Zoho CRM",
+  "description": "Imports records from every API-supported Zoho CRM module (Leads, Contacts, Accounts, Deals, custom modules, ...) using the Bulk Read API for backfills and COQL queries for incremental updates.",
+  "category": "crm",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Zoho CRM REST API v8: module/field metadata discovery, COQL incremental queries, Bulk Read job submission and result download.",
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "`credentials.api_domain`, a required endpoint-config field that the OAuth flow auto-populates from the `/api_domain` field of the Zoho token response (accessTokenResponseMap maps `/api_domain` into the config). This is how the connector becomes data-center-scoped: a US tenant yields https://www.zohoapis.com, EU https://www.zohoapisl.eu, etc. The connector never derives the domain itself."
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `v8` — `/crm/v8/...` for metadata and COQL, `/crm/bulk/v8/read` for Bulk Read"
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "Zoho OAuth2 accounts host — authorization redirect and access-token issuance/refresh. NOTE: unlike the API host this is a hardcoded constant pinned to the .com data center; it is NOT parameterised per data center (.eu/.in/.com.au/.jp accounts hosts are not reachable through this spec).",
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://accounts.zoho.com" },
+        "defaultHeaders": { "content-type": "application/x-www-form-urlencoded" },
+        "apiVersionPinning": "path segment `v2` — `/oauth/v2/auth`, `/oauth/v2/token`"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Zoho OAuth2 (authorization code, then refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://accounts.zoho.com/oauth/v2/auth",
+        "tokenUrl": "https://accounts.zoho.com/oauth/v2/token",
+        "scopes": [
+          "ZohoCRM.bulk.READ",
+          "ZohoCRM.coql.READ",
+          "ZohoCRM.modules.READ",
+          "ZohoCRM.settings.modules.READ",
+          "ZohoCRM.settings.fields.READ"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "Zoho Bulk Read job (server-side job created per backfill page via POST /crm/bulk/v8/read; identified by a job id and polled to COMPLETED)",
+        "Bulk Read result file (zipped CSV) hosted by Zoho at the job's download_url",
+        "Bulk Read `next_page_token` held in the connector's per-binding backfill state"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Bulk Read page tokens expire after 24 hours (documented in the connector's own docstring). If a backfill is paused or crash-looping longer than that, the checkpointed page token is dead and the backfill must be manually re-issued from the start. Incremental has no equivalent loss: its cursor is a plain `Modified_Time` timestamp bounded below by `start_date`, so a long pause only means more rows on resumption.",
+      "resumeWindow": "24 hours for an in-flight backfill (page-token TTL); unbounded for incremental",
+      "releasedOnShutdown": null,
+      "notes": "Nothing accrues on the customer's Zoho tenant if we stop — there is no log, slot, or change table; both legs are stateless timestamp/keyset queries against live data. The only durable server-side object is a completed Bulk Read job and its result file, whose lifecycle Zoho owns; the connector never deletes them. Zoho's per-org daily Bulk Read job quota is not referenced anywhere in the code."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client id of the Zoho application." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth client secret of the Zoho application." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Long-lived Zoho refresh token; exchanged for an access token on every run." },
+    { "name": "credentials.api_domain", "displayName": "API Domain", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Data-center-scoped Zoho API host. Declared as 'Automatically detected from OAuth response', but it is a required config field, so a user assembling credentials outside the hosted OAuth flow must supply it themselves." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date-time; lower bound of the backfill. Defaults to 30 days before the present. Must be >= the Unix epoch." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the resource; set to the Zoho module api_name." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between incremental sweeps. CDK default PT0S; this connector seeds every discovered binding with PT5M." },
+    { "name": "schedule", "displayName": "Formula Field Refresh Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Cron expression that triggers a connector-initiated re-backfill limited to formula fields. Seeded to '55 23 * * *' on every discovered binding." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Zoho CRM REST metadata: list modules, then list each module's fields",
+    "querySketch": "GET {api_domain}/crm/v8/settings/modules -> stream `modules[]` as ModuleListing{module_name, api_name, api_supported, generated_type}; keep only api_supported == true. Then for each kept module GET {api_domain}/crm/v8/settings/fields?module={api_name}&type=all -> stream `fields[]` as ModuleFieldListing{api_name, data_type, json_type}. A module whose field listing returns 204/no content or yields zero fields is skipped. Each surviving module becomes a dynamically-constructed subclass of ZohoModule (name = api_name, key = /id, cursor = Modified_Time) with the field listing attached as field_metadata.",
+    "excludes": [
+      "modules with api_supported == false",
+      "modules whose generated_type is 'linking'",
+      "Notes, Attachments, Emails (no Bulk API support)",
+      "CTI_Entry (listed as available but returns INVALID_MODULE)",
+      "Email_Analytics, Email_Template_Analytics, Functions__s (listed as available but return INVALID_QUERY)",
+      "Email_Sentiment, Locking_Information__s (required OAuth scopes undocumented)",
+      "modules whose field listing returns 204 / no fields",
+      "fields of data_type 'fileupload' or 'multiselectlookup'",
+      "per-module field denylist: Calls.CTI_Entry, Cases.Comments, Events.Participants, Price_Books.Pricing_Details, Solutions.Comments, and the *_Items fields of Invoices/Purchase_Orders/Quotes/Sales_Orders (those are captured as their own module streams)"
+    ],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<module api_name>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "Modified_Time",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "incremental COQL sweep", "schedule": { "kind": "interval", "seconds": 300 } },
+        { "role": "connector-initiated formula-field re-backfill (only for modules that actually have formula fields)", "schedule": { "kind": "cron", "expr": "55 23 * * *" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/crm/bulk/v8/read",
+          "httpMethod": "POST",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "query.page_token",
+            "cursorPath": "/data/0/result/next_page_token",
+            "hasMorePath": "/data/0/result/more_records",
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "envelope_flag"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "POST {api_domain}/crm/v8/coql with JSON body {\"select_query\": \"SELECT <field batch> FROM <module> WHERE Modified_Time >= '<cursor_ts>' AND Modified_Time < '<now>' [AND (Modified_Time > '<cursor_ts>' OR id > <cursor_id>)] ORDER BY Modified_Time ASC, id ASC LIMIT <page_size>\"}. Records stream from `data[]`. COQL caps a SELECT at 500 fields, so a wide module is split into several field-batch queries per page and the partial documents are merged in memory by id; documents missing any expected field (i.e. mutated mid-query) are dropped from that page and picked up on a later one. Timestamps are ISO-8601 at second precision."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "Exactly one credential mode is offered and its config schema requires client_id, client_secret AND refresh_token (all three marked secret and listed in `required`), plus api_domain. There is no API-key or password alternative. Standalone, a user must register their own Zoho OAuth app for the five ZohoCRM.* read scopes, run the authorization-code flow themselves, and paste the resulting refresh token — T3. Estuary's hosted control plane hides this: the spec ships an `oauth2` block (provider 'zoho', x-oauth2-provider on the credentials schema) so the platform performs the authorization-code exchange with its own registered app and writes refresh_token and api_domain into the config for the user. That hosted convenience does not lower the standalone tier.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].pull.backfill",
+      "description": "The backfill is not one HTTP request but a three-call asynchronous job protocol that PullSpec kind 'http' cannot express: (1) POST /crm/bulk/v8/read to submit a job carrying either a Modified_Time range criterion or a page_token; (2) poll GET /crm/bulk/v8/read/{job_id} with exponential backoff (0.2s doubling, capped at 300s) until state == COMPLETED; (3) GET {api_domain}{result.download_url} and stream-unzip a CSV. `path`/`httpMethod` above describe only step 1, and `recordsPath` is null because records never appear in a JSON envelope at all — they arrive as rows of a zipped CSV from a different URL. The pagination token, in contrast, is read from the step-2 status envelope.",
+      "proposedShape": {
+        "kind": "async_job",
+        "submit": { "path": "/crm/bulk/v8/read", "method": "POST", "bodySketch": "{query: {module: {api_name}, fields: [...], criteria: {group_operator: 'and', group: [Modified_Time greater_equal start, Modified_Time less_than end]}}} | {query: {page_token}}" },
+        "poll": { "path": "/crm/bulk/v8/read/{job_id}", "method": "GET", "statePath": "/data/0/state", "terminalState": "COMPLETED", "backoff": "0.2s doubling, capped at 300s, unbounded attempts" },
+        "fetch": { "urlFrom": "baseUrl + /data/0/result/download_url", "format": "csv", "compression": "zip", "streaming": true },
+        "paginator": { "type": "body_cursor", "cursorBodyKey": "query.page_token", "cursorPath": "/data/0/result/next_page_token", "hasMorePath": "/data/0/result/more_records" },
+        "tokenTtl": "24h"
+      }
+    },
+    {
+      "where": "streams[0].pull.incremental.paginator",
+      "description": "The incremental leg paginates by keyset, but the keyset lives INSIDE the COQL query text rather than in any parameter, so none of the Paginator members fit. Successive pages are produced by rewriting the WHERE clause from the last emitted record's (Modified_Time, id) tuple — a composite record cursor with an explicit tie-breaker — and the page size is an inline `LIMIT` that ramps 200 -> 1000 -> 2000-forever across pages. Termination is a short page (raw row count < page_size), not a flag or absent token. Closest schema fit would be record_cursor with tokenFrom=last_record, tokenTo=body_field, terminateOn=short_page, but `param` and `recordField` are both wrong: there is no param, and the cursor is two fields, not one. Left unmodelled rather than mis-modelled.",
+      "proposedShape": {
+        "type": "keyset_in_query",
+        "cursorFields": ["Modified_Time", "id"],
+        "tieBreaker": "id",
+        "order": "Modified_Time ASC, id ASC",
+        "tokenFrom": "last_record",
+        "tokenTo": "query_text",
+        "pageSizeMode": "inline LIMIT, ramping",
+        "pageSizes": [200, 1000, 2000],
+        "terminateOn": "short_page"
+      }
+    },
+    {
+      "where": "credentialModes[0].scheme.grant",
+      "description": "`grant` is a single value but this mode uses two grants in sequence: `authorization_code` once to obtain the refresh token (accessTokenBody sets grant_type=authorization_code), then `refresh_token` on every connector run (BaseOAuth2Credentials.grant_type = 'refresh_token'). Recorded as refresh_token because that is the runtime grant; the initial leg is lost.",
+      "proposedShape": { "initialGrant": "authorization_code", "runtimeGrant": "refresh_token", "accessType": "offline" }
+    },
+    {
+      "where": "transports",
+      "description": "The two transports are not independent services — the sidecar's token response is what RESOLVES the primary's baseUrl (accessTokenResponseMap maps /api_domain into the endpoint config). The schema has no way to express a dependency edge between transports, and the asymmetry it hides is load-bearing: the primary host is data-center-scoped and runtime-resolved while the accounts host is a hardcoded .com constant, so a non-US Zoho tenant's authorization would have to go through a host this spec never names.",
+      "proposedShape": { "sidecarResolvesPrimaryBaseUrl": true, "resolvedField": "api_domain", "responsePointer": "/api_domain" }
+    },
+    {
+      "where": "streams[0].schedules",
+      "description": "The cron schedule does not drive a normal re-backfill. It triggers a connector-initiated backfill that runs with a REDUCED FIELD SET — only formula fields plus id and Modified_Time — because formula values are recomputed by Zoho without bumping Modified_Time and so are invisible to the incremental cursor. Modules with no formula fields exit immediately when the cron fires. `schedules[].role` is free text, so the semantics of a partial-column refresh are not machine-readable.",
+      "proposedShape": { "role": "partial_column_refresh", "columns": "fields where data_type == 'formula', plus id and Modified_Time", "skipWhenNoMatchingColumns": true }
+    },
+    {
+      "where": "streams",
+      "description": "Every discovered stream is the same archetype, so a single entry is honest — but the archetype hides that the document schema differs per module (field_metadata is built per module at discovery time and drives per-field type normalization) and that the field list is only a SUBSET of what is actually queryable (the code notes undocumented queryable fields exist and are deliberately not collected). A reader cannot tell from `streams` that schema breadth varies per tenant.",
+      "proposedShape": { "kind": "archetype", "perInstanceSchema": true, "schemaSource": "GET /crm/v8/settings/fields?module={api_name}&type=all" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_zoho/models.py",
+      "lines": "94-97",
+      "snippet": "accessTokenResponseMap={\n        \"refresh_token\": \"/refresh_token\",\n        \"api_domain\": \"/api_domain\","
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_zoho/api.py",
+      "lines": "52",
+      "snippet": "url = f\"{base_url}/crm/v8/settings/modules\""
+    },
+    "transports[1].spec.baseUrl": {
+      "file": "source_zoho/models.py",
+      "lines": "85-86",
+      "snippet": "accessTokenUrlTemplate=\"https://accounts.zoho.com/oauth/v2/token\",\n    accessTokenHeaders={\"content-type\": \"application/x-www-form-urlencoded\"},"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_zoho/models.py",
+      "lines": "73-85",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"zoho\",\n    authUrlTemplate=(\n        \"https://accounts.zoho.com/oauth/v2/auth?\""
+    },
+    "credentialModes[0].scheme.scopes": {
+      "file": "source_zoho/models.py",
+      "lines": "41-47",
+      "snippet": "REQUIRED_SCOPES = [\n    \"ZohoCRM.bulk.READ\",  # For Bulk Read API (backfills)\n    \"ZohoCRM.coql.READ\",  # For COQL queries (incremental)"
+    },
+    "credentialModes[0].tier": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "configSchema.$defs.ZohoOAuth2Credentials.required",
+      "snippet": "\"required\": [ \"client_id\", \"client_secret\", \"refresh_token\", \"api_domain\" ]"
+    },
+    "configFields": {
+      "file": "source_zoho/models.py",
+      "lines": "124-139",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: OAuth2Credentials = Field(\n        title=\"Authentication\","
+    },
+    "configFields[7]": {
+      "file": "source_zoho/models.py",
+      "lines": "114-121",
+      "snippet": "class ZohoResourceConfigWithSchedule(ResourceConfigWithSchedule):\n    schedule: str = Field(\n        default=\"\","
+    },
+    "discovery.method": {
+      "file": "source_zoho/api.py",
+      "lines": "48-59",
+      "snippet": "async def fetch_available_modules(\n    base_url: str, log: Logger, http: HTTPSession\n) -> AsyncGenerator[ModuleListing, None]:"
+    },
+    "discovery.querySketch": {
+      "file": "source_zoho/api.py",
+      "lines": "69-71",
+      "snippet": "url = f\"{base_url}/crm/v8/settings/fields?module={module_api_name}&type=all\"\n\n    _, body = await http.request_stream(log, url)"
+    },
+    "discovery.excludes": {
+      "file": "source_zoho/models.py",
+      "lines": "50-68",
+      "snippet": "UNSUPPORTED_MODULES = {\n    # Modules that don't support Bulk API (per Zoho docs)\n    \"Notes\","
+    },
+    "streamMode": {
+      "file": "source_zoho/resources.py",
+      "lines": "129-137",
+      "snippet": "module = type(\n            listing.api_name,\n            (ZohoModule,),"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_zoho/resources.py",
+      "lines": "93-95",
+      "snippet": "return Resource(\n            name=module.api_name,\n            key=[\"/id\"],"
+    },
+    "streams[0].cursorField": {
+      "file": "source_zoho/api.py",
+      "lines": "191-193",
+      "snippet": "+ f\" WHERE Modified_Time >= '{cursor_ts}'\"\n            + f\" AND Modified_Time < '{end_date_ts}'\""
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_zoho/resources.py",
+      "lines": "107-108",
+      "snippet": "schema_inference=True,\n            reduction_strategy=ReductionStrategy.MERGE,"
+    },
+    "streams[0].schedules": {
+      "file": "source_zoho/resources.py",
+      "lines": "102-106",
+      "snippet": "initial_config=ZohoResourceConfigWithSchedule(\n                name=module.api_name,\n                interval=timedelta(minutes=5),\n                schedule=\"55 23 * * *\",  # Formula refresh at 23:55 UTC daily"
+    },
+    "streams[0].pull.backfill.path": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "65",
+      "snippet": "self.bulk_url = self.base_url + \"/crm/bulk/v8/read\""
+    },
+    "streams[0].pull.backfill.paginator": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "96-97",
+      "snippet": "case str(page_token):\n                body = {\"query\": {\"page_token\": page_token}}"
+    },
+    "streams[0].pull.backfill.paginator.hasMorePath": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "223-231",
+      "snippet": "if not job_details.result.more_records:\n            return\n\n        next_page_token = job_details.result.next_page_token"
+    },
+    "streams[0].pull.incremental.querySketch": {
+      "file": "source_zoho/api.py",
+      "lines": "188-195",
+      "snippet": "f\"SELECT {', '.join(fb)} FROM {module.api_name}\"\n            + f\" WHERE Modified_Time >= '{cursor_ts}'\""
+    },
+    "streams[0].pull.incremental.path": {
+      "file": "source_zoho/api.py",
+      "lines": "128-134",
+      "snippet": "f\"{base_url}/crm/v8/coql\",\n            method=\"POST\",\n            json={\"select_query\": query},"
+    },
+    "unionMisfits[1].proposedShape": {
+      "file": "source_zoho/api.py",
+      "lines": "146-149, 224-230",
+      "snippet": "def page_sizes_gen() -> Generator[int]:\n    yield 200\n    yield 1000\n    yield from repeat(2000)"
+    },
+    "unionMisfits[4].proposedShape": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "255-261",
+      "snippet": "if is_initiated_by_connector and not module.has_formula_fields():\n        # Formula refresh only applies to modules with formula fields\n        return"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "249-251",
+      "snippet": "It is important to note that page tokens expire after 24 hours. In the event of a crash loop\n    or prolonged downtime, manually issuing a new backfill may be necessary."
+    },
+    "execution.continuity.artifacts": {
+      "file": "source_zoho/bulk_api.py",
+      "lines": "182-194",
+      "snippet": "for attempt, sleep_delay in enumerate(_sleep_time_gen(), start=1):\n            job_details = await self._check_status(job_id)\n\n            if job_details.state == BulkJobState.COMPLETED:"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[1]": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.releasedOnShutdown": "low",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.excludes": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].cursorField": "high",
+    "streams[0].writeDisposition": "high",
+    "streams[0].schedules": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.backfill.recordsPath": "high",
+    "streams[0].pull.incremental.querySketch": "high",
+    "streams[0].supportedSyncModes": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No session-wide default headers are configured. Only the COQL call sets a header (Accept: application/json) and only per-request; the Authorization header is injected by the CDK HTTPMixin, not by connector config.",
+    "credentialModes[0].scheme.prefix": "The oauth2 scheme member has no prefix field, but the fact is worth recording and does not fit anywhere: the connector never overrides TokenSource.authorization_token_type, so the CDK sends `Authorization: Bearer <token>`. Zoho's published contract is `Authorization: Zoho-oauthtoken <token>`. Cannot resolve from source alone which Zoho actually accepts on v8 — see FLAG.",
+    "execution.continuity.releasedOnShutdown": "The connector never deletes or cancels a Bulk Read job; whether Zoho reaps completed jobs and their result files on its own is not observable from this source.",
+    "streams[].name": "Real stream names cannot be enumerated: the list is whatever modules the tenant's /crm/v8/settings/modules returns. The committed discover snapshot happens to contain Accounts, Calls, Campaigns, Contacts, DealHistory, Deals, Events, Leads, Tasks (9 of the 10 entries) but those are one test tenant's modules, not a shipped list.",
+    "streams[0].pull.incremental.paginator": "Deliberately null. Pagination is keyset-in-SQL-text over a composite (Modified_Time, id) with a ramping inline LIMIT and short-page termination; no Paginator union member represents this without asserting a param name or single cursor field that does not exist. Mis-stating it would silently truncate. See unionMisfits[1].",
+    "streams[0].pull.incremental.incrementalParam": "Not applicable, and notably NOT an If-Modified-Since header either: the incremental bound is a literal `Modified_Time >= '<ts>'` predicate inside the COQL SELECT body. No request header or query param carries the cursor anywhere in this connector.",
+    "streams[0].pull.backfill.params": "The Bulk Read submit call carries no query parameters; all criteria travel in the JSON body.",
+    "execution.defaultSchedule": "Scheduling is purely per-binding here (interval PT5M + cron on ResourceConfig); the connector declares no connector-wide default.",
+    "transports[0].spec.baseUrl.template": "Recorded as `resolved` rather than `template` on purpose: the connector does not build the host from a data-center placeholder it knows about. It stores whatever host Zoho returned as an opaque required config string. The set of valid values (.com/.eu/.in/.com.au/.jp/.ca) appears nowhere in the source."
+  }
+}

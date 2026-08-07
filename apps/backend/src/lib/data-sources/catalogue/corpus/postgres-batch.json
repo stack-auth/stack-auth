@@ -1,0 +1,309 @@
+{
+  "id": "postgres-batch",
+  "estuaryDir": "source-postgres-batch",
+  "displayName": "PostgreSQL (Batch)",
+  "description": "Imports rows from tables and (optionally) views in a customer PostgreSQL database by periodically re-executing bounded SELECT queries, without using logical replication.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "postgres",
+        "defaultPort": 5432,
+        "sslPolicy": "No sslmode is sent unless the user picks one. The optional advanced 'sslmode' field is appended as a DSN query parameter and is constrained to disable|allow|prefer|require|verify-ca|verify-full, so the effective default is libpq/pgx's own default (prefer). The connection is a postgres:// DSN opened with the pgx v5 stdlib driver; tcp_keepalives_idle=120, tcp_keepalives_interval=30, tcp_keepalives_count=6 are always appended, and advanced.statement_timeout is passed as an 'options=-c statement_timeout=<ms>' parameter.",
+        "tunnelSupport": "Optional SSH bastion via the shared go/network-tunnel package. When networkTunnel.sshForwarding.sshEndpoint is non-empty the connector starts a local SSH forward to the configured address's host:port and then dials localhost:5432 instead of the configured address."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Database username + password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "dsn", "fields": ["address", "user", "password", "database"] }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "schedule": { "kind": "interval", "seconds": 300 },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Only the XID watermark, and only for bindings in the default 'Incremental (XMIN)' mode. That mode persists BaseXID/NextXID and compares a row's xmin against them with emulated wrapping 32-bit arithmetic, which is only correct while fewer than 2^31 XIDs have been consumed since the last completed sweep; past that the circular comparison mis-orders and rows can be silently skipped. Separately, rows frozen by VACUUM (xmin rewritten to the FrozenXID sentinel 2) are excluded by the 'xmin::text::bigint >= 3' predicate, so an update that gets frozen before a sweep observes it is never emitted. Deletes are never observed in incremental mode at all; only a keyless full-refresh binding whose collection key is /_meta/row_id infers deletions, by emitting op='d' documents when a refresh returns fewer rows than the previous one.",
+      "resumeWindow": "No time-based retention window exists on the server. The bound is XID consumption: resumption stays correct until the server burns roughly 2^31 transaction IDs past the persisted BaseXID, or until autovacuum freezes rows that changed while we were stopped.",
+      "releasedOnShutdown": null,
+      "notes": "Nothing accrues customer-side: the connector creates no replication slot, no publication, no change table and no scratch object, and Apply() is an explicit no-op. Its entire server-side footprint is read-only SELECTs plus three pg_catalog discovery queries (re-run at most every 5 minutes to emit SourcedSchema messages) and, per incremental sweep, one pg_class/pg_inherits statistics query and one txid_snapshot_xmin(txid_current_snapshot()) call. The real recurring cost is load, not accrual: every incremental sweep walks the ENTIRE heap in CTID page-range chunks regardless of how few rows changed, and every full-refresh (view / cursorless) binding re-reads the whole relation on every poll. Concurrency is capped at 5 in-flight polling queries across all bindings. Statement-timeout cancellations and recovery conflicts are swallowed and retried on the next cycle rather than failing the task, so a repeatedly-timing-out sweep can make no forward progress while still looking healthy. releasedOnShutdown is null because there is nothing to release."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "type": "string", "description": "Host or host:port at which the database can be reached; ':5432' is appended when the value contains no colon." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "type": "string", "description": "Database user to authenticate as. Schema default is flow_capture. No jsonschema title is set, so the UI falls back to the property name." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "type": "string", "description": "Password for the specified database user." },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "type": "string", "description": "Logical database name to capture from; becomes the DSN path when non-empty. Listed in the generated schema's required array, though Config.Validate() itself only enforces address/user/password. Schema default is postgres." },
+    { "name": "advanced.discover_views", "displayName": "Discover Views", "required": false, "secret": false, "type": "boolean", "description": "When set, views are also discovered as resources; otherwise generateResource rejects them and only base tables are discovered." },
+    { "name": "advanced.poll", "displayName": "Default Polling Schedule", "required": false, "secret": false, "type": "string", "description": "Connector-wide polling schedule. Either a Go duration string (e.g. '5m', '6h') or the absolute daily form 'daily at HH:MMZ' (UTC). Defaults to '5m'. Overridable per binding by the resource-level 'poll' field." },
+    { "name": "advanced.discover_schemas", "displayName": "Discovery Schema Selection", "required": false, "secret": false, "type": "string", "description": "ARRAY of schema names (typed string here only because the schema's type union has no array member). When non-empty all three discovery queries are restricted to those schemas via 'nspname = ANY($1)'; when empty a fixed system-schema exclusion list is used instead." },
+    { "name": "advanced.sslmode", "displayName": "SSL Mode", "required": false, "secret": false, "type": "string", "description": "Enum of disable|allow|prefer|require|verify-ca|verify-full, passed through as the DSN 'sslmode' parameter. Unset means the parameter is omitted entirely." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "type": "string", "description": "Copied into each emitted document's /_meta/source/tag." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "type": "string", "description": "Estuary-internal comma-style flag string layered over defaults keyless_row_id=true and emit_sourced_schemas=true. keyless_row_id selects /_meta/row_id (rather than the legacy /_meta/polled + /_meta/index pair) as the fallback collection key; emit_sourced_schemas controls whether discovery is re-run at runtime to emit SourcedSchema messages." },
+    { "name": "advanced.statement_timeout", "displayName": "Statement Timeout", "required": false, "secret": false, "type": "string", "description": "Enum of ''|30s|1m|5m|30m. Parsed as a Go duration and applied as 'options=-c statement_timeout=<milliseconds>' on the DSN. Cancellations caused by it are logged and retried on the next poll rather than failing the capture." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "type": "string", "description": "Remote SSH bastion endpoint in the form ssh://user@hostname[:port]. Required if the sshForwarding object is present at all; its presence is what switches the driver to dialing localhost:5432." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "type": "string", "description": "Multiline private key used to authenticate to the SSH bastion. Required if the sshForwarding object is present." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "three pg_catalog queries at connect time (relations, columns, primary keys), joined in-process by schema.table",
+    "querySketch": "Relations: select namespace name, relation name, and a CASE over relkind mapped to 'LOCAL TEMPORARY' (namespace = pg_my_temp_schema()), 'BASE TABLE' (r,p), 'VIEW' (v), 'FOREIGN' (f), from pg_class joined to pg_namespace, where the namespace is not one of the fixed system schemas, relkind is in (r,p,v,f), and the relation is not a partition child; optionally intersected with 'nspname = ANY($1)' when advanced.discover_schemas is non-empty. Columns: select schema, table, attname, attnum, a computed nullability (NOT (attnotnull OR domain-notnull)), the domain-unwrapped type name, typtype, and atttypmod-4 as a char max length, from pg_attribute joined to pg_type/pg_class/pg_namespace with a LEFT JOIN to unwrap domain base types, where attnum > 0, the attribute is not dropped, and relkind is in (r,p,v,f), with the same schema filter or system-schema exclusion, ordered by schema, table, attnum. Primary keys: a subselect over pg_class/pg_attribute/pg_namespace/pg_index/pg_type where indisprimary, expanding indkey via information_schema._pg_expandarray, with the outer query keeping rows whose attnum matches the expanded key position and ordering by table, index name, key sequence; the connector errors if key columns arrive out of ordinal order. The same discoverTables call is re-run during capture (rate-limited to at most once per 5 minutes) to emit SourcedSchema messages for bindings that name a schema+table and have no template override.",
+    "excludes": [
+      "schemas pg_catalog, pg_internal, information_schema, catalog_history, cron",
+      "relkinds other than r, p, v, f (so no indexes, sequences, materialized views, composite types)",
+      "partition children (relispartition), which are captured through their parent instead",
+      "dropped attributes and system columns (attnum <= 0)",
+      "VIEW and FOREIGN relations, unless advanced.discover_views is set — generateResource returns 'unsupported entity type' and the binding is skipped with a warning",
+      "LOCAL TEMPORARY relations (also rejected as an unsupported entity type)"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<discovered BASE TABLE with a primary key>",
+      "origin": "discovered",
+      "primaryKey": [],
+      "primaryKeyKind": "columns",
+      "cursorField": "txid",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": null,
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": ["txid"],
+          "querySketch": "First sweep only. Per chunk: SELECT ctid, xmin AS txid, * FROM <quoted schema.table> WHERE ctid > $1 AND ctid <= $2 — with NO XID predicate at all, because the persisted BaseXID is still zero. The connector then drops, in Go, any row whose xmin is at or after the snapshot watermark NextXID captured at sweep start via SELECT txid_snapshot_xmin(txid_current_snapshot()). The ctid column is stripped before emission; xmin is emitted as the synthetic column 'txid'.",
+          "chunking": "CTID page ranges. The sweep walks from the persisted ScanTID (initialised to '(0,0)') upward, issuing one query per block window [afterBlock, afterBlock + pagesPerChunk], until afterBlock reaches a maximum page id. pagesPerChunk = 200000/(100*partitionCount) + 1, targeting roughly 20k-200k rows; maxPageID and partitionCount come from a pg_class/pg_inherits statistics query taking the greatest of the relation's own size in blocks and the largest child partition's, inflated by 1.05. ScanTID and DocumentCount are checkpointed after every chunk, so an interrupted sweep resumes mid-heap rather than restarting."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": ["txid"],
+          "querySketch": "Every sweep after the first. Identical chunk walk, with the XID window added: SELECT ctid, xmin AS txid, * FROM <quoted schema.table> WHERE ctid > $1 AND ctid <= $2 AND (xmin::text::bigint >= 3 AND wrapSub(xmin, $3) >= 0 AND wrapSub($4, xmin) >= 0), where wrapSub(a,b) is the wraparound-safe difference (((a::bigint - b::bigint)<<32)>>32), $3 = BaseXID (the previous sweep's snapshot watermark) and $4 = NextXID (this sweep's txid_snapshot_xmin). Results are re-filtered in Go with a strict circular XID comparison. At end of sweep ScanTID resets to empty, BaseXID := NextXID, NextXID := 0. NOTE: the XID window narrows which rows are EMITTED, not which pages are READ — the entire heap is still scanned chunk by chunk on every sweep.",
+          "chunking": "Same CTID page-range chunking and per-chunk checkpointing as the backfill leg."
+        }
+      }
+    },
+    {
+      "name": "<discovered BASE TABLE with no primary key>",
+      "origin": "discovered",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": "txid",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedule": null,
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": ["txid"],
+          "querySketch": "Identical to the primary-key case; the only difference is downstream. With no discovered primary key the recommended collection key is the synthetic /_meta/row_id (or the legacy pair /_meta/polled + /_meta/index when the keyless_row_id feature flag is off), and because row ids strictly increase across an incremental sweep every document is stamped /_meta/op = 'c'.",
+          "chunking": "CTID page ranges, as above."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": ["txid"],
+          "querySketch": "Identical to the primary-key case's incremental leg. No deletions are inferred on this path — the delete-inference logic is gated on the binding being full-refresh.",
+          "chunking": "CTID page ranges, as above."
+        }
+      }
+    },
+    {
+      "name": "<discovered VIEW, only when advanced.discover_views is set>",
+      "origin": "discovered",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedule": null,
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "View bindings are generated with no cursor columns at all, which routes them to the Custom Query mode and renders the cursorless branch of the template: SELECT * FROM <quoted schema.table>; — no WHERE, no ORDER BY, no bind parameters, re-executed in full on every poll. Row ids restart at zero each poll, and because the collection key is /_meta/row_id the connector turns a shrinking result set into tombstones: after the query it emits (previousDocumentCount - thisRowCount) synthetic documents carrying only /_meta with op='d'. State checkpoints every 1000 rows.",
+          "chunking": null
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "<binding whose cursor columns the user changed away from the default 'txid'>",
+      "origin": "discovered",
+      "primaryKey": [],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": null,
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "Custom Query mode, first execution (no persisted cursor VALUES yet): SELECT * FROM <quoted schema.table> ORDER BY <cursor columns, in order>; with no WHERE clause and no bind parameters. Row ids start at zero.",
+          "chunking": "None at the SQL level — one unbounded statement per poll, streamed row by row. Bounding comes from partial-progress checkpoints: after 1000 rows the connector checkpoints only at a boundary where the cursor tuple changes, persisting the PREVIOUS row's tuple so that the resume predicate cannot skip rows sharing a cursor value."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "Custom Query mode, subsequent executions: SELECT * FROM <quoted schema.table> WHERE (c1 > $1) OR (c1 = $1 AND c2 > $2) OR (c1 = $1 AND c2 = $2 AND c3 > $3) ... ORDER BY c1, c2, c3; — a lexicographic tuple-greater-than over the persisted cursor tuple, expanded as an OR of AND-chains, one disjunct per cursor column. The persisted tuple is bound positionally as the query arguments.",
+          "chunking": "Same partial-progress checkpointing at distinct-cursor-value boundaries; at end of poll the cursor is advanced to the final emitted row."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The user supplies a host (optionally with port), a database name, and a single database username plus password, all of which go straight into a postgres:// DSN. There is no OAuth app to register and no refresh token. The only additional setup is optionally creating a least-privilege read user and, for networks without direct reachability, an SSH bastion whose endpoint and private key are supplied as extra (additive, not alternative) config.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull — mode selection",
+      "description": "backfill/incremental now models this connector's two LEGS correctly, but not its two MODES. Mode is chosen per binding at state-init time and is orthogonal to the backfill/incremental axis: 'Incremental (XMIN)' is selected only when the resource has no template override, exactly one cursor column named 'txid', and no persisted cursor values; otherwise 'Custom Query' is selected. So the same resource config can yield different pull shapes depending on persisted state — in particular a binding with cursor ['txid'] that already carries CursorValues (a pre-existing capture migrated forward) falls into Custom Query and renders a THIRD query shape not represented anywhere in streams[]: an xmin keyset query, SELECT xmin AS txid, * FROM <table> ORDER BY xmin::text::bigint on the first execution, and thereafter WHERE (((xmin::text::bigint - $1::bigint)<<32)>>32) > 0 AND xmin::text::bigint >= 3 with the same wraparound expression as the ORDER BY. Mode changes (or any change to the cursor column list) discard the stream state entirely and force a fresh backfill.",
+      "proposedShape": { "pull": { "mode": "str", "modeSelectedBy": "config|persisted_state", "resetsStateOnModeChange": "bool", "backfill": "<PullSpec>|null", "incremental": "<PullSpec>|null" } }
+    },
+    {
+      "where": "execution.schedule and streams[].schedule",
+      "description": "The schedule is not a property of the connector, it is a config value with a two-form union, and it is overridable per binding. advanced.poll accepts either a Go duration ('5m', '6h' — v2's {kind:'interval'}) or the absolute form 'daily at HH:MMZ' in UTC (v2's {kind:'cron', expr:'MM HH * * *'}), and each resource may override it with its own 'poll' field of the same union. The single schedule slot can hold the shipped default (interval 300s) or a user's choice, but not the fact that it is user-selectable between two kinds. Note also that the interval schedule is measured from the START of the previous poll (LastPolled), so a poll that runs longer than the interval simply chains.",
+      "proposedShape": { "schedule": { "source": "connector_default|config_field|per_binding_override", "configField": "str|null", "default": "<Schedule>", "allowedKinds": ["interval", "cron"] } }
+    },
+    {
+      "where": "configFields[].type",
+      "description": "advanced.discover_schemas is a JSON array of strings ('items: {type: string}, type: array' in the generated config schema), and the type union offers only string|date|number|boolean. It is typed 'string' here under protest. networkTunnel is likewise an optional nested OBJECT whose two subfields are jointly required-if-present — flattening it to dotted names loses that all-or-nothing grouping (both subfields show required:false, which is true of the object but false within it).",
+      "proposedShape": { "type": "string|date|number|boolean|array|object", "itemType": "str|null", "requiredWithinParent": "bool|null" }
+    },
+    {
+      "where": "streams[] / streamMode",
+      "description": "Every stream is discovered from the customer's own catalog, so the four entries above are ARCHETYPES, not names the connector ships. Their 'name' values are angle-bracketed placeholders and their schema/table/keyColumns are null or empty by necessity. The schema has no way to say 'here is the shape a discovered binding takes' distinctly from 'here is a stream that exists'.",
+      "proposedShape": { "streamArchetypes": [{ "matches": "str", "pull": "<PullShapes>", "writeDisposition": "str" }], "streams": [] }
+    },
+    {
+      "where": "credentialModes",
+      "description": "The SSH bastion private key is a secret the user supplies, but it is not an ALTERNATIVE to the database password — it is additive, gating network reachability rather than authentication. Listing it as a second credentialMode would misrepresent it as a choice; leaving it out of credentialModes entirely (as done here, with the fields recorded in configFields) hides a secret from anything reading only credentialModes.",
+      "proposedShape": { "credentialModes": [], "additionalSecrets": [{ "name": "str", "purpose": "network_reachability|signing|other", "fields": ["str"] }] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "source-postgres-batch/main.go", "lines": "112-116", "snippet": "var uri = url.URL{\n\t\tScheme: \"postgres\",\n\t\tHost:   address," },
+    "transports[0].spec.defaultPort": { "file": "source-postgres-batch/main.go", "lines": "97-99", "snippet": "if !strings.Contains(c.Address, \":\") {\n\t\tc.Address += \":5432\"\n\t}" },
+    "transports[0].spec.sslPolicy": { "file": "source-postgres-batch/main.go", "lines": "121-123", "snippet": "if c.Advanced.SSLMode != \"\" {\n\t\tparams.Set(\"sslmode\", c.Advanced.SSLMode)\n\t}" },
+    "transports[0].spec.tunnelSupport": { "file": "source-postgres-batch/main.go", "lines": "109-111", "snippet": "if c.NetworkTunnel.InUse() {\n\t\taddress = \"localhost:5432\"\n\t}" },
+    "credentialModes[0].scheme": { "file": "source-postgres-batch/main.go", "lines": "113-118", "snippet": "Host:   address,\n\t\tUser:   url.UserPassword(c.User, c.Password),\n\t}\n\tif c.Database != \"\" {" },
+    "execution.mode": { "file": "source-postgres-batch/driver.go", "lines": "489-491", "snippet": "if err := schedule.WaitForNext(ctx, pollSchedule, state.LastPolled); err != nil {\n\t\t\treturn err\n\t\t}" },
+    "execution.schedule": { "file": "source-postgres-batch/main.go", "lines": "101-103", "snippet": "if c.Advanced.PollSchedule == \"\" {\n\t\tc.Advanced.PollSchedule = \"5m\"\n\t}" },
+    "execution.continuity.artifacts": { "file": "source-postgres-batch/driver.go", "lines": "171-173", "snippet": "// Apply does nothing for batch SQL captures.\nfunc (BatchSQLDriver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) {\n\treturn &pc.Response_Applied{ActionDescription: \"\"}, nil" },
+    "execution.continuity.ourSideLoss": { "file": "source-postgres-batch/main.go", "lines": "185-191", "snippet": "// begin by assuming that there are fewer than 2^31 \"live\" XIDs greater than that cursor. The\n// issue is that with XID wraparound some of these values may be numerically smaller." },
+    "execution.continuity.notes": { "file": "source-postgres-batch/driver.go", "lines": "520-522", "snippet": "if statementTimeoutRegexp.MatchString(err.Error()) || recoveryConflictRegexp.MatchString(err.Error()) {\n\t\t\t\t\tlog.WithField(\"name\", res.Name).WithError(err).Warn(\"polling query interrupted by statement cancellation, will continue\")\n\t\t\t\t\tcontinue" },
+    "execution.continuity.notes.concurrency": { "file": "source-postgres-batch/driver.go", "lines": "52-53", "snippet": "// Maximum number of concurrent polling operations to run at once.\n\tmaxConcurrentQueries = 5" },
+    "configFields[3].required": { "file": "source-postgres-batch/.snapshots/TestSpec", "lines": "generated config_schema_json required array", "snippet": "\"required\": [\n      \"address\",\n      \"user\",\n      \"password\",\n      \"database\"\n    ]," },
+    "configFields[2].secret": { "file": "source-postgres-batch/main.go", "lines": "42", "snippet": "Password string `json:\"password\" jsonschema:\"description=Password for the specified database user.\" jsonschema_extras:\"secret=true,order=2\"`" },
+    "configFields[5]": { "file": "source-postgres-batch/main.go", "lines": "51", "snippet": "PollSchedule string `json:\"poll,omitempty\" jsonschema:\"title=Default Polling Schedule,...\" jsonschema_extras:\"pattern=^([-+]?([0-9]+([.][0-9]+)?(h|m|s|ms))+|daily at [0-9][0-9]?:[0-9]{2}Z)$,nonsensitive=true\"`" },
+    "configFields[9]": { "file": "source-postgres-batch/main.go", "lines": "28-35", "snippet": "var featureFlagDefaults = map[string]bool{\n\t\"keyless_row_id\": true,\n\t\"emit_sourced_schemas\": true," },
+    "configFields[10]": { "file": "source-postgres-batch/main.go", "lines": "124-127", "snippet": "if c.Advanced.StatementTimeout != \"\" {\n\t\tif timeout, err := time.ParseDuration(c.Advanced.StatementTimeout); err == nil {\n\t\t\tparams.Set(\"options\", fmt.Sprintf(\"-c statement_timeout=%d\", timeout.Milliseconds()))" },
+    "configFields[11]": { "file": "go/network-tunnel/interface.go", "lines": "10-11", "snippet": "SSHEndpoint string `json:\"sshEndpoint\" jsonschema:\"title=SSH Endpoint,...\" jsonschema_extras:\"pattern=^ssh://.+@.+$\"`" },
+    "configFields[12].secret": { "file": "go/network-tunnel/interface.go", "lines": "11", "snippet": "PrivateKey  string `json:\"privateKey\" jsonschema:\"title=SSH Private Key,description=Private key to connect to the remote SSH server.\" jsonschema_extras:\"secret=true,multiline=true\"`" },
+    "streamMode": { "file": "source-postgres-batch/discovery.go", "lines": "40-42", "snippet": "for tableID, table := range tableInfo {\n\t\tvar resourceName = recommendedResourceName(table.Schema, table.Name)\n\t\tvar res, err = drv.GenerateResource(&cfg, resourceName, table.Schema, table.Name, table.Type)" },
+    "discovery.querySketch": { "file": "source-postgres-batch/discovery.go", "lines": "239-242", "snippet": "fmt.Fprintf(query, \" FROM pg_catalog.pg_class c\")\n\tfmt.Fprintf(query, \" JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)\")" },
+    "discovery.excludes": { "file": "source-postgres-batch/discovery.go", "lines": "241-247", "snippet": "fmt.Fprintf(query, \" WHERE n.nspname NOT IN ('pg_catalog', 'pg_internal', 'information_schema', 'catalog_history', 'cron')\")\n\tfmt.Fprintf(query, \"  AND c.relkind IN ('r', 'p', 'v', 'f')\")\n\tfmt.Fprintf(query, \"  AND NOT c.relispartition;\")" },
+    "discovery.excludes.views": { "file": "source-postgres-batch/main.go", "lines": "251-258", "snippet": "if strings.EqualFold(tableType, \"VIEW\") && cfg.Advanced.DiscoverViews {\n\t\treturn &Resource{...}, nil\n\t}\n\treturn nil, fmt.Errorf(\"unsupported entity type %q\", tableType)" },
+    "discovery.method.runtimeRediscovery": { "file": "source-postgres-batch/driver.go", "lines": "424-427", "snippet": "if time.Since(c.shared.lastDiscoveryTime) < minDiscoveryInterval {\n\t\treturn nil\n\t}" },
+    "streams[0].cursorField": { "file": "source-postgres-batch/main.go", "lines": "243-249", "snippet": "if strings.EqualFold(tableType, \"BASE TABLE\") {\n\t\treturn &Resource{... Cursor: []string{\"txid\"},}, nil" },
+    "streams[0].primaryKeyKind": { "file": "source-postgres-batch/discovery.go", "lines": "194-203", "snippet": "if keyColumns != nil {\n\t\tfor _, colName := range keyColumns {\n\t\t\tcollectionKey = append(collectionKey, primaryKeyToCollectionKey(colName))" },
+    "streams[0].pull.backfill.querySketch": { "file": "source-postgres-batch/driver.go", "lines": "934-935", "snippet": "fmt.Fprintf(queryBuf, `SELECT ctid, xmin AS txid, * FROM %s WHERE ctid > $1 AND ctid <= $2`, quoteTableName(chunk.SchemaName, chunk.TableName))\n\targs = append(args, chunk.AfterCTID, chunk.UntilCTID)" },
+    "streams[0].pull.backfill.chunking": { "file": "source-postgres-batch/driver.go", "lines": "864-865", "snippet": "var maximumPageID = stats.MaxPageID\n\tvar pagesPerChunk = uint32(200000/(100*stats.PartitionCount)) + 1" },
+    "streams[0].pull.incremental.querySketch": { "file": "source-postgres-batch/driver.go", "lines": "936-941", "snippet": "const filterMinimumXID = \"((((xmin::text::bigint - $3::bigint)<<32)>>32) >= 0)\"\n\t\tconst filterMaximumXID = \"(((($4::bigint - xmin::text::bigint)<<32)>>32) >= 0)\"\n\t\targs = append(args, chunk.BaseXID, chunk.NextXID)" },
+    "streams[0].pull.incremental.xidWatermark": { "file": "source-postgres-batch/driver.go", "lines": "1099-1100", "snippet": "const queryXID = \"SELECT txid_snapshot_xmin(txid_current_snapshot())\"" },
+    "streams[0].pull.incremental.sweepRollover": { "file": "source-postgres-batch/driver.go", "lines": "903-906", "snippet": "state.ScanTID = \"\"\n\tstate.BaseXID = state.NextXID\n\tstate.NextXID = 0" },
+    "streams[1].primaryKey": { "file": "source-postgres-batch/discovery.go", "lines": "109-115", "snippet": "fallbackKey = []string{\"/_meta/row_id\"}\n\tfallbackKeyOld = []string{\"/_meta/polled\", \"/_meta/index\"}" },
+    "streams[2].pull.backfill.querySketch": { "file": "source-postgres-batch/main.go", "lines": "219-221", "snippet": "{{- else -}}\n  SELECT * FROM {{quoteTableName .SchemaName .TableName}};\n{{- end}}" },
+    "streams[2].writeDisposition": { "file": "source-postgres-batch/driver.go", "lines": "788-792", "snippet": "if isRowIDKey && isFullRefresh {\n\t\tfor i := int64(0); i < state.DocumentCount-nextRowID; i++ {\n\t\t\t\"op\":     \"d\"," },
+    "streams[3].pull.incremental.querySketch": { "file": "source-postgres-batch/main.go", "lines": "210-218", "snippet": "{{- if eq $i 0}} WHERE ({{else}}) OR ({{end -}}\n{{$k}} > ${{add $i 1}}\n{{- end}} ORDER BY {{range $i, $k := $.CursorFields}}..." },
+    "streams[3].pull.backfill.chunking": { "file": "source-postgres-batch/driver.go", "lines": "712-721", "snippet": "if documentsSinceLastCheckpoint >= documentsPerCheckpoint {\n\t\t\t\tif prevCursorValues != nil && !cursorValuesEqual(prevCursorValues, currentCursorValues) {\n\t\t\t\t\tstate.CursorValues = prevCursorValues" },
+    "unionMisfits[0]": { "file": "source-postgres-batch/driver.go", "lines": "306-309", "snippet": "var mode = CaptureModeCustom\n\t\tif res.Template == \"\" && len(res.Cursor) == 1 && res.Cursor[0] == \"txid\" && (state == nil || len(state.CursorValues) == 0) {\n\t\t\tmode = CaptureModeIncremental" },
+    "unionMisfits[0].legacyXminTemplate": { "file": "source-postgres-batch/main.go", "lines": "196-202", "snippet": "SELECT xmin AS txid, * FROM {{quoteTableName .SchemaName .TableName}}\n    WHERE (((xmin::text::bigint - $1::bigint)<<32)>>32) > 0 AND xmin::text::bigint >= 3" },
+    "unionMisfits[1]": { "file": "go/schedule/schedule.go", "lines": "28-36", "snippet": "if pollInterval, err := time.ParseDuration(desc); err == nil {\n\t\treturn NewPeriodicSchedule(pollInterval), nil\n\t}\n\tif strings.HasPrefix(desc, \"daily at \") {" },
+    "unionMisfits[1].perBindingOverride": { "file": "source-postgres-batch/driver.go", "lines": "466-469", "snippet": "var pollScheduleStr = c.Config.Advanced.PollSchedule\n\tif res.PollSchedule != \"\" {\n\t\tpollScheduleStr = res.PollSchedule\n\t}" },
+    "unionMisfits[2]": { "file": "source-postgres-batch/main.go", "lines": "52", "snippet": "DiscoverSchemas  []string `json:\"discover_schemas,omitempty\" jsonschema:\"title=Discovery Schema Selection,...\"`" },
+    "authTierOverall": { "file": "source-postgres-batch/main.go", "lines": "63-67", "snippet": "var requiredProperties = [][]string{\n\t\t{\"address\", c.Address},\n\t\t{\"user\", c.User},\n\t\t{\"password\", c.Password},\n\t}" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "transports[0].spec.defaultPort": "high",
+    "transports[0].spec.sslPolicy": "high",
+    "transports[0].spec.tunnelSupport": "high",
+    "credentialModes[0]": "high",
+    "execution.mode": "high",
+    "execution.schedule": "medium",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.resumeWindow": "medium",
+    "configFields": "high",
+    "configFields[3].required": "medium",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "streams": "medium",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[1].writeDisposition": "medium",
+    "streams[2].writeDisposition": "medium",
+    "streams[3]": "medium",
+    "authTierOverall": "high",
+    "unionMisfits[0]": "high",
+    "unionMisfits[1]": "high"
+  },
+
+  "abstained": {
+    "streams[].name": "Every binding comes from the customer's own catalog; the connector names no stream literally. Recommended resource name is the lowercased, sanitised table name when the schema is 'public' (or 'dbo'), else schema_table; the recommended catalog name is schema/table. The four entries emitted here are deliberately angle-bracketed archetypes, not real names — see unionMisfits[3].",
+    "streams[].primaryKey": "Per table, from pg_index where indisprimary, converted to RFC6901 JSON pointers. Cannot be enumerated without a customer database. Only the keyless fallback (/_meta/row_id, or legacy /_meta/polled + /_meta/index) is knowable in advance.",
+    "streams[].pull.*.schema / table / keyColumns": "Null/empty by necessity: they are filled per discovered relation at connect time. cursorColumns is knowable because the connector hardcodes the default ('txid' for base tables, none for views).",
+    "streams[].schedule": "Not fillable: each binding's schedule is whatever the user puts in its resource 'poll' field, falling back to advanced.poll (default '5m'). Both slots accept either a Go duration or 'daily at HH:MMZ'. Recording either kind here would invent a customer choice.",
+    "streams[3].primaryKey / cursorField": "The user-selected-cursor archetype exists only because a user edited a discovered binding; neither its key nor its cursor column names are determined by the connector. supportedSyncModes/writeDisposition assume the common case of a table with a primary key.",
+    "execution.continuity.releasedOnShutdown": "Neither true nor false is meaningful: the connector creates no server-side artifact to release. Apply() is a no-op and every statement it issues is a read.",
+    "transports[0].spec.sslPolicy default": "The connector omits the sslmode parameter entirely when advanced.sslmode is unset, so the effective default is whatever pgx/libpq defaults to rather than anything this connector decides. Stated as such rather than asserting 'prefer' as a connector fact.",
+    "configFields[1].displayName / configFields[2].displayName / configFields[3].displayName": "user, password and database carry no jsonschema title tag (confirmed against the generated TestSpec snapshot), so the rendered label is whatever the UI derives from the property name. The values given are the obvious humanisations, not source facts.",
+    "paginator": "Not applicable — there is no HTTP transport. Bounding is by CTID page range (incremental mode) or by nothing at all (custom-query mode, which issues one unbounded statement per poll and bounds only its checkpoints)."
+  }
+}

@@ -1,0 +1,513 @@
+{
+  "id": "intercom-native",
+  "estuaryDir": "source-intercom-native",
+  "displayName": "Intercom",
+  "description": "Imports Intercom customer-support data (contacts, companies, conversations and their parts, tickets, tags, teams, admins, segments and data attributes) from the Intercom REST API.",
+  "category": "support",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.intercom.io" },
+        "defaultHeaders": { "Intercom-Version": "2.11" },
+        "apiVersionPinning": "request header `Intercom-Version`, sent on every request; value comes from endpoint config `advanced.api_version` (default \"2.11\", pattern ^\\d+\\.\\d+$)"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Private App Credentials (access token)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    },
+    {
+      "name": "OAuth (long-lived client-credentials access token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://app.intercom.com/oauth",
+        "tokenUrl": "https://api.intercom.io/auth/eagle/token",
+        "scopes": [],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "interval", "seconds": 300 },
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting the auth variant: \"Private App Credentials\" or \"OAuth Credentials\"." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Intercom access token. Present in both credential variants." },
+    { "name": "credentials.client_id", "displayName": "Client Id", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth variant only." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth variant only." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date/time YYYY-MM-DDTHH:MM:SSZ; defaults to 30 days before now. Seeds the incremental cursor of every incremental binding." },
+    { "name": "advanced.window_size", "displayName": "Window Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Window size in days for date-windowed incremental streams (contacts). Default 5, must be > 0." },
+    { "name": "advanced.use_companies_list_endpoint", "displayName": "Use /companies/list endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Default false. When true, companies and company_segments enumerate companies via POST /companies/list (page-number pagination, ~10k cap); when false they use GET /companies/scroll." },
+    { "name": "advanced.search_page_size", "displayName": "Search Streams' Page Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "per_page for the search endpoints (contacts, tickets, conversations, conversation_parts). Default and maximum 150." },
+    { "name": "advanced.api_version", "displayName": "API Version", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value of the Intercom-Version header. Default \"2.11\"." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource (CDK ResourceConfig)." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; every binding ships with PT5M." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "admins",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/admins", "httpMethod": "GET", "recordsPath": "admins", "params": null, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/tags", "httpMethod": "GET", "recordsPath": "data", "params": null, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "teams",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/teams", "httpMethod": "GET", "recordsPath": "teams", "params": null, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "company_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/data_attributes", "httpMethod": "GET", "recordsPath": "data", "params": { "model": "company" }, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "contact_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/data_attributes", "httpMethod": "GET", "recordsPath": "data", "params": { "model": "contact" }, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "conversation_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/data_attributes", "httpMethod": "GET", "recordsPath": "data", "params": { "model": "conversation" }, "pathPlaceholders": null, "paginator": { "type": "none" }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/contacts/search",
+          "httpMethod": "POST",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "pagination.starting_after",
+            "cursorPath": "pages.next.starting_after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pagination.per_page",
+            "pageSize": 150
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tickets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/tickets/search",
+          "httpMethod": "POST",
+          "recordsPath": "tickets",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "pagination.starting_after",
+            "cursorPath": "pages.next.starting_after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pagination.per_page",
+            "pageSize": 150
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "conversations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/conversations/search",
+          "httpMethod": "POST",
+          "recordsPath": "conversations",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "pagination.starting_after",
+            "cursorPath": "pages.next.starting_after",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "pagination.per_page",
+            "pageSize": 150
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "conversation_parts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/conversations/{conversation_id}",
+          "httpMethod": "GET",
+          "recordsPath": "conversation_parts.conversation_parts",
+          "params": null,
+          "pathPlaceholders": {
+            "conversation_id": "id of each conversation returned by the parent POST /conversations/search traversal (same body_cursor paginator as the `conversations` stream); fetched with at most 15 concurrent requests, and a 404 is treated as a deleted conversation and skipped"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "segments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/segments",
+          "httpMethod": "GET",
+          "recordsPath": "segments",
+          "params": { "include_count": "true" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "companies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/companies/scroll",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "scroll_param",
+            "cursorPath": "scroll_param",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "short_page",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "company_segments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "/companies/{company_id}/segments",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": {
+            "company_id": "id of each company from the parent companies traversal (GET /companies/scroll by default, POST /companies/list when advanced.use_companies_list_endpoint is true); all ids are buffered before any segment request is issued, and a 404 is treated as a deleted company and skipped"
+          },
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The connector offers two mutually exclusive credential variants discriminated by `credentials_title`. The easiest is \"Private App Credentials\" (estuary_cdk AccessToken): the user pastes a single Intercom access token, which the CDK TokenSource sends verbatim as `Authorization: Bearer <access_token>` — one self-serve secret, T1_SIMPLE. The alternative is `LongLivedClientCredentialsOAuth2Credentials` for provider \"intercom\", which standalone requires the user to register their own Intercom OAuth app (client_id + client_secret) AND supply a long-lived access_token, so it is at least T2 and, because of the extra pre-obtained token, effectively T3. Estuary's hosted control plane performs the authorization_code exchange (authUrlTemplate https://app.intercom.com/oauth, accessTokenUrlTemplate https://api.intercom.io/auth/eagle/token, token read from response pointer /token) on the user's behalf, but the standalone tier is what is recorded. Overall = the easiest mode = T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[companies].pull.incremental.paginator, streams[company_segments].pull.incremental.paginator",
+      "description": "companies and company_segments have TWO mutually exclusive parent-traversal shapes selected at runtime by the endpoint-config boolean advanced.use_companies_list_endpoint. Default (false): GET /companies/scroll with an opaque `scroll_param` query cursor echoed from the response envelope field `scroll_param`, terminating when `data` is empty, guarded by a process-global asyncio lock because Intercom permits only one scroll per workspace (a concurrent scroll yields HTTP 400 'scroll already exists for this workspace'). When true: POST /companies/list with page-number pagination (query params per_page=60, page=1..pages.total_pages), which Intercom hard-caps at ~10,000 companies and then returns HTTP 400 'page limit reached, please use scroll API' — the connector swallows that error and simply stops, silently truncating. The Paginator union has no way to express a config-conditional choice between two paginators, nor the single-flight constraint. Only the default (scroll) mode is emitted above.",
+      "proposedShape": {
+        "type": "conditional",
+        "selector": { "configField": "advanced.use_companies_list_endpoint" },
+        "cases": [
+          {
+            "when": false,
+            "path": "/companies/scroll",
+            "httpMethod": "GET",
+            "paginator": { "type": "cursor", "cursorParam": "scroll_param", "cursorPath": "scroll_param", "tokenFrom": "body", "tokenTo": "query_param", "terminateOn": "short_page" },
+            "concurrency": "single-flight per workspace (global mutex)"
+          },
+          {
+            "when": true,
+            "path": "/companies/list",
+            "httpMethod": "POST",
+            "paginator": { "type": "page", "limitParam": "per_page", "pageParam": "page", "pageSize": 60, "startPage": 1, "terminateOn": "explicit_total" },
+            "hardCap": "~10000 records, then HTTP 400 'page limit reached, please use scroll API' is caught and pagination stops"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[contacts|tickets|conversations].pull.incremental.incrementalParam",
+      "description": "Incremental filtering for the three search streams is not a query parameter and does not fit `incrementalParam`. It is a nested boolean query tree in the JSON POST body over the `updated_at` field with unix-second values, plus a `sort` block. contacts uses `(updated_at > lower AND updated_at < upper) OR (updated_at = lower OR updated_at = upper)` sorted DESC (Intercom filters contacts by date, not exact timestamp) and stops paginating early once a record older than the window start is seen; tickets/conversations use `updated_at > lower AND updated_at <= upper` sorted ascending. contacts additionally windows the request range into `advanced.window_size`-day chunks. segments, companies and company_segments send no server-side time filter at all and filter `updated_at` purely client-side.",
+      "proposedShape": {
+        "incrementalFilter": {
+          "kind": "body_query",
+          "field": "updated_at",
+          "format": "unix_seconds",
+          "bodyPath": "query",
+          "sortPath": "sort",
+          "windowing": { "configField": "advanced.window_size", "unit": "days", "appliesTo": ["contacts"] },
+          "clientSideOnly": ["segments", "companies", "company_segments"]
+        }
+      }
+    },
+    {
+      "where": "streams[conversation_parts].pull, streams[company_segments].pull",
+      "description": "Both are child streams: the records they emit come from an unpaginated per-parent sub-request, while all pagination happens on the parent traversal. The PullSpec has no field for 'parent stream' — the parent paginator is only representable by prose inside pathPlaceholders. conversation_parts additionally derives its incremental cursor entirely from the parent conversations sweep (it re-uses fetch_conversations and forwards its checkpoints).",
+      "proposedShape": {
+        "parent": { "stream": "conversations | companies", "paginator": "<the parent stream's paginator>" },
+        "child": { "path": "/conversations/{id} | /companies/{id}/segments", "paginator": { "type": "none" }, "notFoundPolicy": "skip on 404 (parent deleted between listing and fetch)" }
+      }
+    },
+    {
+      "where": "streams[segments].pull.incremental.paginator",
+      "description": "Recorded as {\"type\":\"none\"} because the response model forbids extra fields and has no pagination object, but the connector author notes in a code comment that Intercom's docs say the /segments response MAY contain a pagination object that they never observed. If it does appear on a large workspace the connector will hard-fail on validation rather than silently truncate — so 'none' is safe here, but it is an unverified assumption, not a documented API guarantee.",
+      "proposedShape": { "type": "none", "unverified": true, "failureMode": "strict model validation error rather than silent truncation" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_intercom_native/api.py", "lines": "29-30", "snippet": "API = \"https://api.intercom.io\"\nAPI_VERSION_HEADER = \"Intercom-Version\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_intercom_native/models.py", "lines": "94-100", "snippet": "api_version: str = Field(\n            description=f\"The Intercom API version used for requests. Defaults to '{DEFAULT_API_VERSION}'.\"," },
+    "transports[0].spec.defaultHeaders": { "file": "source_intercom_native/models.py", "lines": "55-56", "snippet": "MAX_SEARCH_PAGE_SIZE = 150\nDEFAULT_API_VERSION = \"2.11\"" },
+    "credentialModes[0].scheme": { "file": "estuary_cdk/http.py", "lines": "35-36, 305", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\n            return (self.authorization_token_type, self.credentials.access_token)" },
+    "credentialModes[0].tier": { "file": "estuary_cdk/flow.py", "lines": "115-122", "snippet": "class AccessToken(BaseModel):\n    credentials_title: Literal[\"Private App Credentials\"]\n    access_token: str = Field(title=\"Access Token\", json_schema_extra={\"secret\": True})" },
+    "credentialModes[1].scheme": { "file": "source_intercom_native/models.py", "lines": "30-47", "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"intercom\",\n    accessTokenUrlTemplate=\"https://api.intercom.io/auth/eagle/token\"," },
+    "credentialModes[1].tier": { "file": "estuary_cdk/flow.py", "lines": "224-231", "snippet": "class LongLivedClientCredentialsOAuth2Credentials(\n    _BaseOAuth2CredentialsData, metaclass=abc.ABCMeta\n):\n    access_token: str = Field(title=\"Access Token\", ...)" },
+    "credentialModes": { "file": "source_intercom_native/models.py", "lines": "65-68", "snippet": "credentials: OAuth2Credentials | AccessToken = Field(\n        discriminator=\"credentials_title\",\n        title=\"Authentication\",\n    )" },
+    "execution.mode": { "file": "source_intercom_native/resources.py", "lines": "321-332", "snippet": "async def all_resources(\n    log: Logger, http: HTTPMixin, config: EndpointConfig\n) -> list[common.Resource]:" },
+    "execution.defaultSchedule": { "file": "source_intercom_native/resources.py", "lines": "129-131", "snippet": "initial_config=ResourceConfig(\n                name=name, interval=timedelta(minutes=5)\n            )," },
+    "streamMode": { "file": "source_intercom_native/resources.py", "lines": "37-44", "snippet": "FULL_REFRESH_RESOURCES: list[tuple[str, str, str, str | None]] = [\n    (\"admins\", \"admins\", \"admins\", None),\n    (\"tags\", \"tags\", \"data\", None)," },
+    "streams[0].pull.snapshot": { "file": "source_intercom_native/api.py", "lines": "56-63", "snippet": "url = f\"{API}/{path}\"\n    params = None if query_param is None else {\"model\": query_param}\n    resources = TypeAdapter(list[IntercomResource]).validate_python(response[f'{response_field}'])" },
+    "streams[0].primaryKey": { "file": "estuary_cdk/capture/common.py", "lines": "470-482", "snippet": "class SnapshotResource(Resource[...]):\n    key: list[str] = field(default_factory=lambda: [\"/_meta/row_id\"])" },
+    "streams[3].pull.snapshot.params": { "file": "source_intercom_native/resources.py", "lines": "41-43", "snippet": "(\"company_attributes\", \"data_attributes\", \"data\", \"company\"),\n    (\"contact_attributes\", \"data_attributes\", \"data\", \"contact\"),\n    (\"conversation_attributes\", \"data_attributes\", \"data\", \"conversation\")," },
+    "streams[6].pull.incremental.path": { "file": "source_intercom_native/api.py", "lines": "239-246", "snippet": "url = f\"{API}/contacts/search\"\n    body = _generate_contacts_search_body(start, end, page_size)\n                await http.request(log, url, \"POST\", json=body, headers=...)" },
+    "streams[6].pull.incremental.paginator": { "file": "source_intercom_native/api.py", "lines": "121-127, 279-282", "snippet": "pagination: dict[str, str | int] = {\"per_page\": page_size}\n    if next_page_cursor:\n        pagination[\"starting_after\"] = next_page_cursor" },
+    "streams[6].pull.incremental.paginator.terminateOn": { "file": "source_intercom_native/api.py", "lines": "279-282", "snippet": "if pagination_ended_early or response.pages.next is None:\n            break\n        body = _generate_contacts_search_body(start, end, page_size, response.pages.next.starting_after)" },
+    "streams[6].pull.incremental.paginator.cursorPath": { "file": "source_intercom_native/models.py", "lines": "132-136", "snippet": "class Next(BaseModel, extra=\"forbid\"):\n            page: int\n            starting_after: str\n        next: Optional[Next] = None # If next is not present, this is the last page." },
+    "streams[7].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "305-310, 338-342", "snippet": "url = f\"{API}/tickets/search\"\n        response = TicketsSearchResponse.model_validate_json(await http.request(log, url, \"POST\", json=body, ...))" },
+    "streams[7].pull.incremental.recordsPath": { "file": "source_intercom_native/models.py", "lines": "179-180", "snippet": "class TicketsSearchResponse(SearchResponse):\n    tickets: list[TimestampedResource]" },
+    "streams[8].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "359-366, 395-399", "snippet": "url = f\"{API}/conversations/search\"\n        response = ConversationsSearchResponse.model_validate_json(await http.request(log, url, \"POST\", json=body, ...))" },
+    "streams[8].pull.incremental.recordsPath": { "file": "source_intercom_native/models.py", "lines": "183-184", "snippet": "class ConversationsSearchResponse(SearchResponse):\n    conversations: list[TimestampedResource]" },
+    "streams[9].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "437-441, 459-463", "snippet": "url = f\"{API}/conversations/{conversation_id}\"\n        for part in response.conversation_parts.conversation_parts:\n            part.conversation_id = conversation_id" },
+    "streams[9].pull.incremental.pathPlaceholders": { "file": "source_intercom_native/api.py", "lines": "37, 411-419", "snippet": "parts_semaphore = asyncio.Semaphore(15)\n    async for conversation_or_dt in fetch_conversations(http, page_size, api_version, log, log_cursor):\n                    _fetch_parts(http, conversation_id, api_version, log)" },
+    "streams[10].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "477-482", "snippet": "url = f\"{API}/segments\"\n    params={\"include_count\": 'true'}\n    response = SegmentsResponse.model_validate_json(await http.request(log, url, params=params, ...))" },
+    "streams[10].pull.incremental.recordsPath": { "file": "source_intercom_native/models.py", "lines": "205-206", "snippet": "type: str\n    data: list[TimestampedResource] = Field(..., alias=\"segments\")" },
+    "streams[11].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "543-552, 563-569", "snippet": "url = f\"{API}/companies/scroll\"\n            if len(response.data) == 0:\n                break\n            params['scroll_param'] = response.scroll_param" },
+    "streams[11].pull.incremental.paginator.tokenFrom": { "file": "source_intercom_native/models.py", "lines": "228-230", "snippet": "class CompanyScrollResponse(BaseModel, extra=\"allow\"):\n    data: list[TimestampedResource]\n    scroll_param: str" },
+    "streams[12].pull.incremental": { "file": "source_intercom_native/api.py", "lines": "612-624", "snippet": "companies_func = _list_companies if use_list_endpoint else _scroll_companies\n        segments_url = f\"{API}/companies/{id}/segments\"" },
+    "streams[6].cursorField": { "file": "source_intercom_native/models.py", "lines": "117-119", "snippet": "class TimestampedResource(IntercomResource):\n    id: str\n    updated_at: int" },
+    "streams[6].primaryKey": { "file": "source_intercom_native/resources.py", "lines": "166-169", "snippet": "common.Resource(\n            name=name,\n            key=[\"/id\"]," },
+    "configFields": { "file": "source_intercom_native/models.py", "lines": "64-107", "snippet": "class EndpointConfig(BaseModel):\n    credentials: OAuth2Credentials | AccessToken = Field(...)\n    start_date: AwareDatetime = Field(...)" },
+    "unionMisfits[0]": { "file": "source_intercom_native/api.py", "lines": "31-36, 501-506, 517-518", "snippet": "COMPANIES_LIST_LIMIT_REACHED_REGEX = r\"page limit reached, please use scroll API\"\n    params = {\"per_page\": 60, \"page\": current_page}\n            if err.code == 400 and bool(re.search(COMPANIES_LIST_LIMIT_REACHED_REGEX, err.message, re.DOTALL)): break" },
+    "unionMisfits[1]": { "file": "source_intercom_native/api.py", "lines": "83-99, 148-162", "snippet": "query = {\"operator\": \"OR\", \"value\": [ ... {\"field\": \"updated_at\", \"operator\": \">\", \"value\": lower_bound}" },
+    "unionMisfits[3]": { "file": "source_intercom_native/models.py", "lines": "199-204", "snippet": "class SegmentsResponse(BaseModel, extra=\"forbid\"):\n    # The API docs state this response may contain a pagination object, but I haven't\n    # observed that when checking actual API responses." }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "transports[0].spec.defaultHeaders": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot": "high",
+    "streams[0].primaryKey": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[6].pull.incremental.paginator": "high",
+    "streams[7].pull.incremental": "high",
+    "streams[8].pull.incremental": "high",
+    "streams[9].pull.incremental": "high",
+    "streams[10].pull.incremental": "medium",
+    "streams[11].pull.incremental": "medium",
+    "streams[12].pull.incremental": "medium",
+    "configFields": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[6].pull.backfill": "There is no separate backfill leg. Every incremental binding is opened with fetch_changes only (no fetch_page), seeded from config.start_date; the historical sweep and the ongoing sweep are the same code path. Recorded under `incremental` rather than invented as a distinct backfill PullSpec.",
+    "streams[*].pull.incremental.incrementalParam": "Null for every stream. No stream sends a time filter as a query parameter. contacts/tickets/conversations express it as a nested boolean query object in the POST body (see unionMisfits[1]); segments/companies/company_segments do no server-side filtering at all. Forcing a {param, format} value here would be wrong.",
+    "streams[11].pull.incremental.paginator (companies, list mode)": "Only the DEFAULT mode (GET /companies/scroll, advanced.use_companies_list_endpoint=false) is emitted. When the flag is true the connector instead uses POST /companies/list with page-number pagination (per_page=60, page from 1 until page >= pages.total_pages). A single Paginator value cannot express both; the alternate is recorded in unionMisfits[0] rather than guessed into the stream. Note the repo's own config.yaml test fixture sets use_companies_list_endpoint: true, i.e. the tested mode is NOT the default mode.",
+    "streams[12].pull.incremental.paginator (company_segments)": "Emitted as {type: none} because the per-company GET /companies/{id}/segments request is genuinely unpaginated; the dual-mode pagination described in unionMisfits[0] belongs to the parent company traversal, which the PullSpec shape cannot carry.",
+    "streams[10].pull.incremental.paginator (segments)": "Emitted as {type: none} on the strength of the observed response model, but the connector author explicitly records that Intercom's docs claim a pagination object may exist and they could not reproduce it. See unionMisfits[3]. Failure mode if it exists is a hard validation error, not silent truncation.",
+    "execution.continuity": "Null. mode is poll over a third-party HTTP API; no server-side artifacts are created on the customer's side and nothing accrues between polls. The single exception is the /companies/scroll cursor, which Intercom scopes one-per-workspace and expires after roughly one minute — but it is created and consumed entirely inside one fetch call and is not held across cron ticks, so it is not a continuity artifact. (The connector's own comment at api.py:614-615 says it buffers company ids specifically to avoid holding the scroll open longer than necessary.)",
+    "streams[*].writeDisposition": "Full-refresh bindings are marked snapshot_with_tombstone because the CDK's SnapshotResource docstring states the /_meta/row_id key exists for deletion inference; the actual tombstone emission lives in CDK snapshot-subtask code that was not read line by line. Incremental bindings are `merge` on the strength of key=[\"/id\"] plus an updated_at cursor; no delete detection exists for them.",
+    "discovery": "Null: streamMode is static. The 13 bindings are hard-coded in five module-level lists in resources.py; nothing is read from the customer's account to build the stream list. Field-level schemas are inferred at runtime (schema_inference=True), but that is schema inference, not stream discovery."
+  }
+}

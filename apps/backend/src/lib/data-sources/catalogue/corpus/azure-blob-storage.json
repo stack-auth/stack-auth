@@ -1,0 +1,219 @@
+{
+  "id": "azure-blob-storage",
+  "estuaryDir": "source-azure-blob-storage",
+  "displayName": "Azure Blob Storage",
+  "description": "Captures files (CSV/JSON/Avro/Parquet/etc.) from a container in an Azure Blob Storage account, parsing each object into records.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "objectStore",
+        "store": "azure_blob"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Connection String (embeds storage account key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "A single Azure Storage connection string passed to azblob.NewClientFromConnectionString. The string embeds AccountName + AccountKey (shared key) and optionally BlobEndpoint, so it is one self-serve secret copied from the portal. Requires `storageAccountName` alongside it, though the client is built entirely from the connection string. Fields: credentials.connectionString, credentials.storageAccountName."
+      }
+    },
+    {
+      "name": "Azure AD / Microsoft Entra application (service principal client secret)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": null,
+        "tokenUrl": null,
+        "scopes": [],
+        "grant": "client_credentials"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Objects deleted from the container, or whose content is overwritten in place, between sweeps are never captured — there is no change log, only a modification-time window over the live listing. With advanced.ascendingKeys enabled the connector additionally never advances MinBound and relies on the last-processed key path, so any object written out of lexicographic order while paused is permanently skipped.",
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Nothing is created on the customer's Azure account: the connector only issues List Blobs and Download Blob calls. No lease, no snapshot, no scratch container. Pausing costs the customer nothing and leaves nothing behind. Each Pull invocation performs exactly one sweep per binding and then returns (filesource.Pull -> grp.Wait), so cadence is set by the runtime restarting the task, not by the connector."
+    }
+  },
+
+  "configFields": [
+    { "name": "containerName", "displayName": "Container Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The Azure Blob Storage container to read from. Also used as the DiscoverRoot and RecommendedName." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go RE2 regular expression (JSON schema format: regex) matched against the absolute object path (container/key). Non-matching objects are skipped." },
+    { "name": "credentials.storageAccountName", "displayName": "Storage Account Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Required in both credential branches. Used to build https://<account>.blob.core.windows.net/ for the Entra branch." },
+    { "name": "credentials.azureClientID", "displayName": "Azure Client ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when not using a connection string. Application (client) ID of a user-registered Entra app." },
+    { "name": "credentials.azureClientSecret", "displayName": "Azure Client Secret", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Required when not using a connection string." },
+    { "name": "credentials.azureTenantID", "displayName": "Azure Tenant ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Required when not using a connection string." },
+    { "name": "credentials.azureSubscriptionID", "displayName": "Azure Subscription ID", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Required by Validate() and by the JSON schema when not using a connection string, but never referenced when constructing the client or credential. See unionMisfits." },
+    { "name": "credentials.connectionString", "displayName": "Connection String", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Alternative to the Entra branch. Marked secret as of the 2026-08-05 changelog entry; previously stored in plaintext even though it contains the account key." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Declares that objects are written in ascending lexicographic key order so key order matches modification-time order. Switches the state machine from a modification-time cursor to a key-path cursor (MinBound is never advanced; Path carries across sweeps). Default false." },
+    { "name": "parser.compression", "displayName": "Compression", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "zip | gzip | zstd | none; auto-detected when unset. Schema is embedded verbatim from the Flow parser spec at order 4." },
+    { "name": "parser.format.type", "displayName": "Format", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "auto | csv | json | avro | protobuf | w3cExtendedLog (docs list); the connector also recognizes parquet explicitly. Auto-detected from Content-Type / file extension when unset." },
+    { "name": "stream", "displayName": "Stream to capture from", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Absolute path prefix to sweep, of the form container or container/prefix. Discovery pre-fills it with containerName. Multiple bindings are supported to capture several containers/prefixes in one task." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Trivial: no store call. Discover() returns exactly one binding whose stream is config.DiscoverRoot() == containerName, with RecommendedName == containerName and a minimal x-infer-schema document schema. The container is validated separately by a 1-result List Blobs Flat call.",
+    "querySketch": "NewListBlobsFlatPager(containerName, {MaxResults: 1}) -> NextPage, mapping AccountIsDisabled / AuthorizationFailure / ContainerNotFound / InvalidResourceName / AuthorizationPermissionMismatch / AuthorizationSourceIPMismatch to friendly errors",
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<containerName>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<container>[/<prefix>] taken from the binding's `stream`; split by filesource.PathToParts so the first path segment is the container and the remainder is the blob-name prefix",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "auto-detected; zip | gzip | zstd | none selectable via parser.compression",
+          "listing": "azblob NewListBlobsFlatPager over the container, Prefix set from the query, Include={Snapshots:true,Versions:true}, no MaxResults (server default page size). Pagination is the Azure SDK pager's own opaque continuation marker held only in memory inside azureBlobListing (fields pager/page/index/currentPageLength); it is NEVER written to the connector checkpoint. Empty pages are explicitly skipped because Azure sometimes returns them. On the first sweep state.Path is empty so the listing starts at the beginning of the prefix.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "same as backfill",
+          "matchExpr": "<config.matchKeys>",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": "same as backfill",
+          "listing": "IDENTICAL listing call to backfill — the listing itself is not resumable across process restarts. filesource passes Query.StartAt = state.Path, but this connector's List() ignores StartAt entirely (unlike source-s3 StartAfter, source-gcs StartOffset, source-sftp and source-google-drive). So every sweep and every restart re-enumerates the whole prefix from the beginning; already-handled objects are discarded client-side by State.shouldSkip (state.Path > obj.Path, or state.Path == obj.Path && Complete). Within one sweep the SDK continuation marker drives paging; across a restart that marker is lost and paging starts over.",
+          "objectChunking": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The Connection String branch is a single self-serve secret the user copies out of the storage account's Access keys blade — one field, no app registration, no refresh token: T1_SIMPLE. The alternative branch is materially harder and is judged separately as T2_BYO_APP: the documented setup requires the user to create their own Microsoft Entra app registration (New registration -> Certificates & secrets -> New client secret) and then supply four values (client id, client secret, tenant id, subscription id). It is a client_credentials service principal, so no refresh token is ever handed to us and it does not reach T3. There is no hosted control plane doing the app registration on the user's behalf: filesource.Source.Oauth2 is left nil by this connector, so despite the schema branch being titled 'OAuth2 Credentials' there is no OAuth redirect flow in the product at all. authTierOverall is the easier of the two: T1_SIMPLE.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].pull.*.listing vs. Paginator union",
+      "description": "Object-store listing pagination has no representation in the Paginator union and correctly lives in `listing` as prose, but it has two independent layers that a single string flattens: (a) an intra-sweep, in-memory, opaque Azure SDK continuation marker that is never checkpointed, and (b) an inter-sweep resumption key (the last processed object path) that IS checkpointed but which this connector's List() then ignores. A reader cannot tell from one string that layer (b) is present in state yet inert at the transport. Suggest splitting.",
+      "proposedShape": {
+        "listing": {
+          "pagination": { "kind": "opaque_continuation", "carrier": "sdk_pager", "checkpointed": false, "pageSize": null },
+          "resumeKey": { "kind": "lexicographic_key", "storedAt": "state.path", "honoredByTransport": false, "note": "framework supplies Query.StartAt; driver drops it" }
+        }
+      }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "There is no schedule anywhere in this connector. filesource.Pull performs exactly one sweep per binding and returns; cadence is entirely a property of how the Flow runtime restarts the task. `null` is the honest answer but is indistinguishable from 'we could not find it'.",
+      "proposedShape": { "defaultSchedule": { "kind": "external", "description": "connector exits after one bounded sweep; the host decides when to run it again" } }
+    },
+    {
+      "where": "credentialModes[1].scheme",
+      "description": "The Entra service-principal branch is modelled as oauth2/client_credentials, but it is really azidentity.NewClientSecretCredential: token acquisition, caching and refresh happen inside the Azure SDK and no authUrl/tokenUrl/scopes are ever named in the connector. Emitting oauth2 with three nulls overstates what was found. A 'vendorSdkCredential' member would be more truthful.",
+      "proposedShape": { "type": "vendorSdkCredential", "sdk": "azidentity.ClientSecretCredential", "fields": ["azureTenantID", "azureClientID", "azureClientSecret"], "grantEquivalent": "client_credentials" }
+    },
+    {
+      "where": "streams[0].writeDisposition",
+      "description": "Neither merge nor append is exactly right. Records are emitted append-style with no deletes, but the collection key is (/_meta/file, /_meta/offset), so a re-read of the same object reduces onto the same keys — idempotent replacement rather than duplication. Deleted blobs are never tombstoned. 'merge' is the closest of the three offered.",
+      "proposedShape": { "writeDisposition": "append_keyed_by_source_offset", "emitsDeletes": false }
+    },
+    {
+      "where": "streams[0] / discovery",
+      "description": "streamMode 'discovered' is a poor fit: discovery makes no call to the store and simply echoes the containerName config field back as one binding. It is neither a shipped static list nor a real enumeration of the customer's namespace. Recorded the single stream as an archetype since its literal name is whatever the user typed.",
+      "proposedShape": { "streamMode": "config_echo", "discovery": { "method": "echoes an endpoint config field as the sole binding" } }
+    },
+    {
+      "where": "streams[0].pull.*.objectChunking",
+      "description": "objectChunking is null (whole objects are streamed via DownloadStream + a RetryReader that transparently re-issues ranged GETs on transport errors), but resumability within a large object is not absent — it is record-oriented: state.records counts emitted records and state.skip re-reads the object from byte 0 and discards that many parsed records after a crash. Null loses that fact.",
+      "proposedShape": { "objectChunking": null, "intraObjectResume": { "kind": "record_count", "storedAt": "state.records", "mechanism": "re-download from offset 0, discard N already-emitted records" } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "source-azure-blob-storage/main.go", "lines": "88", "snippet": "blobUrl := fmt.Sprintf(\"https://%s.blob.core.windows.net/\", cfg.Credentials.StorageAccountName)" },
+    "credentialModes[0].scheme": { "file": "source-azure-blob-storage/main.go", "lines": "92-93", "snippet": "if cfg.Credentials.ConnectionString != \"\" {\n\t\tclient, err = azblob.NewClientFromConnectionString(cfg.Credentials.ConnectionString, nil)" },
+    "credentialModes[1].scheme": { "file": "source-azure-blob-storage/main.go", "lines": "98-103", "snippet": "credential, err := azidentity.NewClientSecretCredential(cfg.Credentials.AzureTenantID, cfg.Credentials.AzureClientID, cfg.Credentials.AzureClientSecret, nil)\n\t\tclient, err = azblob.NewClient(blobUrl, credential, nil)" },
+    "credentialModes[1].tier": { "file": "docs/reference/Connectors/capture-connectors/azure-blob-storage.md", "lines": "29-33", "snippet": "1. Go to Azure Active Directory, then select App registrations.\n2. Click New registration, fill out the required fields like Name and Supported account types." },
+    "configFields": { "file": "source-azure-blob-storage/main.go", "lines": "21-39", "snippet": "type config struct {\n\tCredentials   credentials    `json:\"credentials\"`\n\tMatchKeys     string         `json:\"matchKeys,omitempty\"`" },
+    "configFields[8]": { "file": "source-azure-blob-storage/main.go", "lines": "386", "snippet": "\"description\": \"Improve sync speeds by listing files from the end of the last sync, rather than listing the entire bucket prefix. This requires that you write objects in ascending lexicographic order...\"" },
+    "configFields[7].secret": { "file": "source-azure-blob-storage/CHANGELOG.md", "lines": "5-9", "snippet": "- The `Connection String` credential field is now marked as secret, so the\n  dashboard masks its value and encrypts it when the configuration is saved." },
+    "discovery.method": { "file": "filesource/filesource.go", "lines": "224-235", "snippet": "var root = conn.config.DiscoverRoot()\n\tresourceJSON, err := json.Marshal(resource{Stream: root})" },
+    "discovery.querySketch": { "file": "source-azure-blob-storage/main.go", "lines": "129-136", "snippet": "maxResults := int32(1)\n\tlistingOptions := azblob.ListBlobsFlatOptions{MaxResults: &maxResults}\n\tpager := az.client.NewListBlobsFlatPager(az.cfg.ContainerName, &listingOptions)" },
+    "streams[0].primaryKey": { "file": "filesource/filesource.go", "lines": "234", "snippet": "Key:                []string{\"/_meta/file\", \"/_meta/offset\"}," },
+    "streams[0].pull.backfill.listing": { "file": "source-azure-blob-storage/main.go", "lines": "162-171", "snippet": "listOptions := &azblob.ListBlobsFlatOptions{\n\t\tInclude: azblob.ListBlobsInclude{Snapshots: true, Versions: true},\n\t}" },
+    "streams[0].pull.backfill.listing.emptyPages": { "file": "source-azure-blob-storage/main.go", "lines": "234-237", "snippet": "if len(page.Segment.BlobItems) == 0 {\n\t\t\tlog.Debug(\"No files in page, skipping to the next page\")\n\t\t\tcontinue" },
+    "streams[0].pull.incremental.listing": { "file": "filesource/filesource.go", "lines": "340-344", "snippet": "var listing, err = r.store.List(ctx, Query{\n\t\tPrefix:    r.prefix,\n\t\tStartAt:   r.state.Path,\n\t\tRecursive: true,\n\t})" },
+    "streams[0].pull.incremental.listing.startAtIgnored": { "file": "source-azure-blob-storage/main.go", "lines": "160-169", "snippet": "var container, prefix = filesource.PathToParts(query.Prefix)\n\tif prefix != \"\" {\n\t\tlistOptions.Prefix = &prefix\n\t}" },
+    "streams[0].pull.incremental.cursor": { "file": "filesource/state.go", "lines": "29-37", "snippet": "MinBound time.Time `json:\"minBound\"`\n\tMaxBound *time.Time `json:\"maxBound\"`\n\tMaxMod *time.Time `json:\"maxMod\"`" },
+    "streams[0].pull.incremental.cursorAdvance": { "file": "filesource/state.go", "lines": "112-114", "snippet": "minBound = *p.MaxMod" },
+    "streams[0].pull.incremental.cursorAscendingKeys": { "file": "filesource/state.go", "lines": "126-132", "snippet": "*p = State{\n\t\t\tMinBound: p.MinBound, // Never increment MinBound.\n\t\t\tPath:     p.Path,   // Track path which the next sweep begins from." },
+    "streams[0].pull.incremental.cursorSkip": { "file": "filesource/state.go", "lines": "139-151", "snippet": "if p.Path > path {\n\t\treturn true, \"state.Path > obj.Path\"\n\t}" },
+    "streams[0].pull.*.matchExprKind": { "file": "source-azure-blob-storage/main.go", "lines": "300-304", "snippet": "\"matchKeys\": map[string]any{\n\t\t\t\t\t\"format\":      \"regex\",\n\t\t\t\t\t\"description\": \"Filter applied to all object keys under the prefix. If provided, only objects whose absolute path matches this regex will be read.\"" },
+    "streams[0].pull.*.objectChunking": { "file": "source-azure-blob-storage/main.go", "lines": "190-194", "snippet": "resp, err := s.client.DownloadStream(ctx, container, key, nil)\n\tretryReader := resp.NewRetryReader(ctx, &azblob.RetryReaderOptions{})" },
+    "streams[0].pull.*.format": { "file": "docs/reference/Connectors/capture-connectors/azure-blob-storage.md", "lines": "119-126", "snippet": "- **Format**: Specify the data format, which determines how it will be parsed.\nOptions are:\n    - **Auto**: If no format is specified, the connector will try to determine it automatically." },
+    "streams[0].pull.*.compression": { "file": "docs/reference/Connectors/capture-connectors/azure-blob-storage.md", "lines": "112-118", "snippet": "- **Compression**: Specify how the bucket contents are compressed.\n    - **zip**\n    - **gzip**" },
+    "execution.mode": { "file": "filesource/filesource.go", "lines": "304-312", "snippet": "grp.Go(func() error {\n\t\t\tif err := r.sweep(ctx); err != nil {\n\t\t\t\treturn fmt.Errorf(\"prefix %s: %w\", prefix, err)\n\t\t\t}" },
+    "execution.continuity.notes": { "file": "source-azure-blob-storage/main.go", "lines": "420-422", "snippet": "// Set the delta to 30 seconds in the past, to guard against new files appearing with a\n\t\t// timestamp that's equal to the `MinBound` in the state.\n\t\tTimeHorizonDelta: time.Second * -30," }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "credentialModes[1].tier": "high",
+    "authTierOverall": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].pull.backfill.listing": "high",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.cursor": "high",
+    "streams[0].pull.*.matchExprKind": "high",
+    "streams[0].pull.*.objectChunking": "high",
+    "streams[0].pull.*.compression": "medium",
+    "streams[0].pull.*.format": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "medium",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "medium",
+    "execution.continuity": "medium"
+  },
+
+  "abstained": {
+    "streams[0].cursorField": "There is no per-record cursor field. The cursor is object modification time held in connector state (minBound/maxBound/maxMod), never a field of the captured document, so any value here would be misleading.",
+    "streams[0].schedules": "The connector defines no schedule of any kind. Pull runs one sweep per binding and returns; nothing in this repo says how often the runtime re-invokes it.",
+    "execution.defaultSchedule": "Same reason — cadence is set outside the connector.",
+    "execution.continuity.resumeWindow": "No bound is expressed anywhere. How long the connector may pause before data is lost depends entirely on the customer's own blob lifecycle/retention policy and overwrite behaviour, which the connector neither reads nor constrains.",
+    "execution.continuity.releasedOnShutdown": "Vacuous — the connector creates no server-side artifacts to release.",
+    "credentialModes[1].scheme.tokenUrl": "azidentity.NewClientSecretCredential resolves the Entra token endpoint internally from the tenant id; no URL appears in connector source.",
+    "credentialModes[1].scheme.scopes": "Scopes are chosen by the azblob SDK's bearer-token policy, not by connector code.",
+    "streams[0].pull.*.format enumeration": "The format list comes from the connector's docs page, not from code: the parser JSON schema is fetched at runtime from github.com/estuary/flow/go/parser (parser.GetSpec) and that package is not present in this checkout. Note the docs list omits parquet, yet filesource has explicit parquet handling — the docs list is likely incomplete.",
+    "SAS token credential mode": "No SAS / shared-access-signature credential path exists in this connector. Only the connection string and the Entra client-secret branches are implemented. A SAS URL would only work if smuggled inside the connection string, which is neither documented nor validated.",
+    "shared key as a standalone mode": "There is no separate account-key field; the shared key is only reachable embedded in the connection string, so it is not a distinct credentialMode."
+  }
+}

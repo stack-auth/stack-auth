@@ -1,0 +1,305 @@
+{
+  "id": "snowflake",
+  "estuaryDir": "source-snowflake",
+  "displayName": "Snowflake",
+  "description": "Captures inserts, updates and deletes from tables (and incremental-refresh dynamic tables) in a Snowflake database using Snowflake STREAM change-tracking objects staged through connector-managed transient staging tables.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "snowflake",
+        "defaultPort": 443,
+        "sslPolicy": "TLS is implicit in the gosnowflake driver; the connector hard-appends ':443' to the configured host and rejects any host containing a protocol prefix or not ending in .snowflakecomputing.com.",
+        "tunnelSupport": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Key-pair (JWT) private key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "auth_type='jwt'. User supplies a Snowflake login name plus a PEM PKCS#8 private key (multiline, secret). The connector parses the key, re-marshals it to PKCS#8 DER, base64url-encodes it into the DSN 'privateKey' query param and sets 'authenticator=snowflake_jwt'. The matching public key must already be registered on the Snowflake user by the customer. No third-party app registration is involved."
+      }
+    },
+    {
+      "name": "User & password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.user",
+        "passwordField": "credentials.password"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [
+        "A transient schema in the customer's account, created with CREATE TRANSIENT SCHEMA IF NOT EXISTS (default name ESTUARY_STAGING, in advanced.flowDatabase which defaults to the capture database).",
+        "One Snowflake STREAM object per enabled binding, named flow_stream_<uniqueID>, created with CREATE STREAM IF NOT EXISTS ... ON TABLE <src> (or ON DYNAMIC TABLE <src> for incremental dynamic tables).",
+        "One or more transient staging tables per binding, named flow_staging_<012d seq>_<uniqueID>. Sequence 0 is the initial snapshot, created as a zero-copy CLONE of the source table (or a full CTAS copy when advanced.fullCopySnapshots is set); sequence N>0 is CREATE TRANSIENT TABLE IF NOT EXISTS ... AS SELECT * FROM <stream>, which is what actually advances the stream offset."
+      ],
+      "customerSideAccrual": "Yes, on both storage axes. (1) The STREAM object is an offset into the source table's change-tracking history; while it exists and is not consumed, Snowflake must retain the source table's historical micro-partitions past the table's normal DATA_RETENTION_TIME_IN_DAYS in order to keep the stream's offset readable, so the customer pays extended time-travel storage on the SOURCE table that grows with the volume of DML applied since our last consumption. This retention extension is a Snowflake-side behavior; the connector never sets DATA_RETENTION_TIME_IN_DAYS or MAX_DATA_EXTENSION_TIME_IN_DAYS, so it is governed entirely by the customer's account/table defaults. (2) Un-drained transient staging tables persist in the ESTUARY_STAGING schema and are only dropped once their sequence number is strictly below the checkpointed sequence number, so any staging table we created but did not finish reading keeps occupying storage. Compute also accrues per invocation on the customer's virtual warehouse, but only while the connector is actually running.",
+      "ourSideLoss": "If the stream is not consumed for longer than the source table's effective retention window, Snowflake marks the stream STALE and it can no longer be read. The connector has no stale-stream detection or recovery path in this source: the CTAS from the stream would simply error, and recovery requires dropping the stream and staging tables and re-doing the initial clone snapshot (i.e. a full re-backfill of that binding). Partial progress within a staging table is not lost — the (seq, off) checkpoint survives — because the staging table is a materialized copy that no longer depends on the stream.",
+      "resumeWindow": null,
+      "releasedOnShutdown": false,
+      "notes": "Artifacts are deliberately NOT released when the connector process exits — the connector runs one pass over every binding and then exits (see capture.go 'polled all bindings, shutting down'), leaving the stream and any un-consumed staging tables in place so the next invocation resumes. Artifacts are released only on binding lifecycle events: pruneDeletedStreams drops flow_stream_* whose uniqueID belongs to a binding marked Disabled, and pruneStagingTables drops flow_staging_* for disabled bindings or for sequence numbers already fully captured. Checkpoint state for disabled streams is intentionally never pruned (the comment on captureState says runtime-driven pruning would interfere with this cleanup), so a binding removed while the capture is not running can leave its stream and staging tables orphaned in the customer's account with nothing left to identify them. Because deletion is keyed off a binding transitioning to Disabled, deleting the whole capture task removes nothing at all on the Snowflake side."
+    }
+  },
+
+  "configFields": [
+    { "name": "host", "displayName": "Host URL", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Snowflake host including the account identifier, ending in .snowflakecomputing.com, without a protocol prefix." },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The database name to capture from." },
+    { "name": "warehouse", "displayName": "Warehouse", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Virtual warehouse used to execute queries; the Snowflake user's default warehouse is used if blank." },
+    { "name": "role", "displayName": "Role", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "The user role used to perform actions." },
+    { "name": "credentials.auth_type", "displayName": "Authentication", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator selecting the credential variant: 'jwt' (default) or 'user_password'." },
+    { "name": "credentials.user", "displayName": "User", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "The Snowflake user login name. Listed as required only in the user_password variant of the schema, but used to build the DSN in both variants." },
+    { "name": "credentials.password", "displayName": "Password", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the provided user. Required when auth_type is user_password." },
+    { "name": "credentials.private_key", "displayName": "Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Multiline PEM private key used to sign the JWT. Required when auth_type is jwt." },
+    { "name": "advanced.flowSchema", "displayName": "Flow Schema", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Schema in which the connector creates and manages its streams and staging tables. Defaults to ESTUARY_STAGING." },
+    { "name": "advanced.flowDatabase", "displayName": "Flow Database", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Database in which the connector creates and manages its streams and staging tables. Defaults to the capture database." },
+    { "name": "advanced.fullCopySnapshots", "displayName": "Full Copy Snapshots", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "If set, the initial snapshot is a full CTAS copy rather than a zero-copy clone. Defaults to false." },
+    { "name": "schema", "displayName": "Schema", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "The schema in which the source table resides." },
+    { "name": "table", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "The name of the table to be captured." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Mixed Snowflake SHOW commands and information_schema queries, run against the connection's configured database",
+    "querySketch": "SHOW TABLES; plus SHOW DYNAMIC TABLES IN ACCOUNT; plus SELECT * FROM information_schema.columns; plus SHOW PRIMARY KEYS IN DATABASE <quoted database>. The code notes SHOW COLUMNS lacks needed detail and that no information_schema view exposes primary-key columns, forcing the mix. Primary-key rows are stably re-sorted by key_sequence before assembly.",
+    "excludes": [
+      "Any object whose schema equals advanced.flowSchema (so the connector's own staging tables and streams are never rediscovered).",
+      "Any object whose SHOW TABLES 'kind' is not case-insensitively 'TABLE' (views and other entities are skipped).",
+      "Dynamic tables whose refresh_mode is not case-insensitively 'INCREMENTAL' — Snowflake refuses to create a stream on a FULL-refresh dynamic table, so those are removed from the discovered set."
+    ],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "table_with_declared_primary_key",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<pk column 1>", "/<pk column 2>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": ["<declared primary key columns>"],
+          "cursorColumns": [],
+          "querySketch": "One-time: CREATE TRANSIENT TABLE IF NOT EXISTS <flowDB>.<flowSchema>.flow_staging_000000000000_<uid> CLONE <db>.<schema>.<table> (zero-copy clone; becomes CREATE TRANSIENT TABLE ... AS SELECT * FROM <src> when advanced.fullCopySnapshots is set). Then drained with SELECT * FROM <staging> ORDER BY <collection key columns> LIMIT NULL OFFSET <checkpointed offset>.",
+          "chunking": "Not chunked server-side: the whole staging table is read in one cursor. Resumability comes from OFFSET N against a stable ORDER BY on the collection-key columns, with a checkpoint emitted roughly every 10000 documents but only at a boundary where the key hash changes, so duplicate key values cannot straddle a checkpoint."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Two-level. Server-side the offset lives in the Snowflake STREAM object flow_stream_<uid> and is advanced only by the CTAS that materializes the stream into flow_staging_<seq>_<uid>. Client-side the checkpoint is {uid, seq, off}: the staging-table sequence number plus the row offset already emitted from it."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "table_without_primary_key",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/seq", "/_meta/source/off"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "Same clone-then-drain shape as the keyed archetype, but the discovered collection key is the fallback pair /_meta/source/seq and /_meta/source/off, which points into _meta and therefore yields no usable ORDER BY columns: the drain is SELECT * FROM <staging> LIMIT NULL OFFSET <offset> with no ORDER BY.",
+          "chunking": "Unordered OFFSET paging. With no ORDER BY the connector falls back to emitting an unconditional partial-progress checkpoint every 10000 documents; correctness of resumption then rests on Snowflake returning the staging table's rows in a stable order across queries."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Same {uid, seq, off} checkpoint over the flow_stream_<uid> STREAM object; documents are keyed by the synthetic (seq, off) pair, which is unique within the collection."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "incremental_refresh_dynamic_table",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<pk column>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": ["<declared primary key columns, if any>"],
+          "cursorColumns": [],
+          "querySketch": "CREATE TRANSIENT DYNAMIC TABLE IF NOT EXISTS <staging seq 0> CLONE <src> (the dynamic-table clone variant), then the same ORDER BY / OFFSET drain. When advanced.fullCopySnapshots is set the plain CTAS form is used instead.",
+          "chunking": "Identical to the keyed table archetype."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Same {uid, seq, off} checkpoint; the stream is created with CREATE STREAM ... ON DYNAMIC TABLE rather than ON TABLE. Only REFRESH_MODE=INCREMENTAL dynamic tables reach this path."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Both offered credential modes are single-secret and self-serve against the customer's own Snowflake account: either a login name plus password, or a login name plus a PEM private key whose public half the customer registers on their own Snowflake user with ALTER USER. Neither requires registering an OAuth application, and no client id / client secret / refresh token appears anywhere in the config schema or the DSN builder. Snowflake external OAuth is not implemented by this connector at all.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.mode",
+      "description": "The mode axis conflates the change-capture mechanism with the process lifecycle. At the source this is genuinely log-mode — a server-side Snowflake STREAM object with a durable offset and real retention consequences — but the connector process itself is a one-shot batch job that sweeps every binding once and exits, with no interval, cron or duration anywhere in its config. Whoever restarts it decides the cadence, and that decision lives outside the connector. Marking it 'log' hides that there is no continuous consumer; marking it 'poll' hides the retention liability.",
+      "proposedShape": {
+        "execution": {
+          "changeMechanism": "server_side_log|snapshot_diff|cursor_poll",
+          "processLifecycle": "long_running|one_shot_exit",
+          "cadenceOwner": "connector|runtime|external"
+        }
+      }
+    },
+    {
+      "where": "streams[].pull",
+      "description": "Neither the `table` nor the `changes` PullSpec can express the connector's actual two-phase shape: phase one is a server-side materialization (CTAS from the stream, or a zero-copy CLONE of the source) that both advances the log offset and creates a durable intermediate object; phase two is an ordinary offset-paged SELECT drained from that intermediate object. The backfill and incremental legs differ only in how the staging table was produced — after that, both are drained by exactly the same code path against the same object. Forcing them into two different union members duplicates the drain description and loses the fact that the intermediate table is where resumability actually lives.",
+      "proposedShape": {
+        "pull": {
+          "materialize": { "into": "transient staging table", "from": "stream|clone|ctas", "advancesSourceOffset": true },
+          "drain": { "kind": "table", "orderBy": ["<key columns>"], "resume": "OFFSET" }
+        }
+      }
+    },
+    {
+      "where": "execution.continuity.releasedOnShutdown",
+      "description": "A single boolean cannot express this connector's release policy. Artifacts are never released on process shutdown (that is the design — they are how the next invocation resumes), but they ARE released on a binding being disabled or removed, which is a completely different event. A reader taking releasedOnShutdown:false at face value would wrongly conclude the connector never cleans up.",
+      "proposedShape": { "releasedOn": ["binding_disabled", "binding_removed"], "releasedOnProcessExit": false, "orphanRisk": "binding removed while the capture is not running leaves stream + staging tables with no state entry to identify them" }
+    },
+    {
+      "where": "execution.continuity.resumeWindow",
+      "description": "The resume window is real and consequential but is not a property of the connector — it is the source table's DATA_RETENTION_TIME_IN_DAYS as extended by MAX_DATA_EXTENSION_TIME_IN_DAYS, both account/table settings the connector neither reads nor sets. The schema offers only a free-text string, with no way to say 'externally governed, value unknown to us, here is the setting that governs it'.",
+      "proposedShape": { "resumeWindow": { "governedBy": "external_setting", "settingNames": ["DATA_RETENTION_TIME_IN_DAYS", "MAX_DATA_EXTENSION_TIME_IN_DAYS"], "connectorControls": false, "value": null } }
+    },
+    {
+      "where": "streams[].primaryKeyKind",
+      "description": "The no-primary-key fallback key is simultaneously synthetic (the values are connector-invented sequence and offset counters) and expressed as JSON pointers into _meta. 'synthetic' and 'json_pointers' are not mutually exclusive here, and the distinction matters downstream because the code specifically checks whether key pointers are top-level non-_meta properties to decide whether an ORDER BY is possible at all.",
+      "proposedShape": { "primaryKeyKind": { "origin": "declared|synthetic", "expression": "columns|json_pointers", "usableAsSortKey": false } }
+    }
+  ],
+
+  "evidence": {
+    "displayName": { "file": "source-snowflake/main.go", "lines": "167", "snippet": "var endpointSchema, err = schemagen.GenerateSchema(\"Snowflake Connection\", &config{}).MarshalJSON()" },
+    "description": { "file": "source-snowflake/README.md", "lines": "1-8", "snippet": "This is a connector which captures changes to Snowflake tables.\nIt does this using [streams](https://docs.snowflake.com/en/user-guide/streams-intro)," },
+    "transports[0].spec": { "file": "source-snowflake/main.go", "lines": "89-91", "snippet": "var uri = url.URL{\n\t\tHost: c.Host + \":443\",\n\t}" },
+    "transports[0].spec.sslPolicy": { "file": "source-snowflake/main.go", "lines": "64-69", "snippet": "if hasProtocol && missingDomain {\n\t\treturn fmt.Errorf(\"invalid host %q (must end in snowflakecomputing.com and not include a protocol)\", c.Host)" },
+    "credentialModes[0].scheme": { "file": "source-snowflake/main.go", "lines": "136-138", "snippet": "privateKeyString := base64.URLEncoding.EncodeToString(privateKey)\n\t\t\tqueryParams.Add(\"privateKey\", privateKeyString)\n\t\t\tqueryParams.Add(\"authenticator\", strings.ToLower(sf.AuthTypeJwt.String()))" },
+    "credentialModes[1].scheme": { "file": "source-snowflake/main.go", "lines": "126-127", "snippet": "if c.Credentials.AuthType == snowflake_auth.UserPass {\n\t\tuser = url.QueryEscape(c.Credentials.User) + \":\" + url.QueryEscape(c.Credentials.Password)" },
+    "credentialModes": { "file": "source-snowflake/.snapshots/TestSpec", "lines": "credentials.oneOf", "snippet": "\"title\": \"Private Key (JWT)\"\n... \"title\": \"User Password\"" },
+    "execution.mode": { "file": "source-snowflake/database.go", "lines": "109-113", "snippet": "var createStreamQuery = fmt.Sprintf(\n\t\t`CREATE STREAM IF NOT EXISTS %s ON TABLE %s;`," },
+    "execution.continuity.artifacts": { "file": "source-snowflake/database.go", "lines": "175-190", "snippet": "Name:   fmt.Sprintf(\"flow_stream_%s\", uniqueID),\n... Name:   fmt.Sprintf(\"flow_staging_%012d_%s\", seqno, uniqueID)," },
+    "execution.continuity.artifacts[0]": { "file": "source-snowflake/prerequisites.go", "lines": "88-91", "snippet": "`CREATE TRANSIENT SCHEMA IF NOT EXISTS %s COMMENT = 'Schema containing Flow streams and staging tables';`," },
+    "execution.continuity.customerSideAccrual": { "file": "source-snowflake/database.go", "lines": "96-100", "snippet": "`CREATE TRANSIENT TABLE IF NOT EXISTS %s AS SELECT * FROM %s;`,\n\t\tstagingTable.QuotedName(),\n\t\tchangeStream.QuotedName()," },
+    "execution.continuity.releasedOnShutdown": { "file": "source-snowflake/capture.go", "lines": "210-215", "snippet": "// This connector always exits after polling each binding once and is then\n\t// restarted, but it's helpful to distinguish \"no bindings\" from \"all done\"." },
+    "execution.continuity.notes": { "file": "source-snowflake/capture.go", "lines": "131-137", "snippet": "// allowing the runtime to automatically prune deleted streams would interfere with\n\t// the connector cleaning up streams and staging tables from disabled bindings." },
+    "execution.defaultSchedule": { "file": "source-snowflake/.snapshots/TestSpec", "lines": "config_schema_json.properties", "snippet": "\"required\": [ \"host\", \"database\", \"credentials\" ]" },
+    "configFields": { "file": "source-snowflake/main.go", "lines": "27-40", "snippet": "type config struct {\n\tHost        string ... Database ... Warehouse ... Role ... Credentials ... Advanced advancedConfig" },
+    "configFields[9]": { "file": "source-snowflake/main.go", "lines": "79-84", "snippet": "if c.Advanced.FlowSchema == \"\" {\n\t\tc.Advanced.FlowSchema = \"ESTUARY_STAGING\"\n\t}" },
+    "configFields[11]": { "file": "source-snowflake/main.go", "lines": "150-152", "snippet": "type resource struct {\n\tSchema string ... Table  string" },
+    "discovery.method": { "file": "source-snowflake/discovery.go", "lines": "109-122", "snippet": "xdb.Select(&tables, \"SHOW TABLES;\")\n... xdb.Select(&columns, \"SELECT * FROM information_schema.columns;\")\n... \"SHOW PRIMARY KEYS IN DATABASE %s;\"" },
+    "discovery.method.dynamicTables": { "file": "source-snowflake/database.go", "lines": "161", "snippet": "if err := xdb.SelectContext(ctx, &tables, \"SHOW DYNAMIC TABLES IN ACCOUNT;\"); err != nil {" },
+    "discovery.excludes[0]": { "file": "source-snowflake/discovery.go", "lines": "161-163", "snippet": "if discoveredTable.Schema == cfg.Advanced.FlowSchema {\n\t\t\t// Ignore objects in the 'Flow' schema so we don't accidentally discover staging tables.\n\t\t\tcontinue" },
+    "discovery.excludes[1]": { "file": "source-snowflake/discovery.go", "lines": "166-168", "snippet": "if !strings.EqualFold(discoveredTable.Kind, \"TABLE\") {" },
+    "discovery.excludes[2]": { "file": "source-snowflake/discovery.go", "lines": "180-182", "snippet": "if !strings.EqualFold(dynamicTable.RefreshMode, \"INCREMENTAL\") {\n\t\t\tdelete(streams, tableID)\n\t\t}" },
+    "streamMode": { "file": "source-snowflake/discovery.go", "lines": "244-250", "snippet": "bindings = append(bindings, &pc.Response_Discovered_Binding{\n\t\t\tRecommendedName:    recommendedName," },
+    "streams[0].primaryKey": { "file": "source-snowflake/discovery.go", "lines": "222-225", "snippet": "if len(info.PrimaryKey) > 0 {\n\t\t\t\tfor _, column := range info.PrimaryKey {\n\t\t\t\t\tprimaryKey = append(primaryKey, primaryKeyToCollectionKey(column))" },
+    "streams[1].primaryKey": { "file": "source-snowflake/discovery.go", "lines": "22-24", "snippet": "fallbackKey = []string{\"/_meta/source/seq\", \"/_meta/source/off\"}" },
+    "streams[0].writeDisposition": { "file": "source-snowflake/discovery.go", "lines": "360-367", "snippet": "Then: &jsonschema.Schema{ ... \"reduce\": map[string]interface{}{\n\t\t\t\t\t\t\"strategy\": \"merge\",\n\t\t\t\t\t\t\"delete\":   true," },
+    "streams[0].pull.backfill.querySketch": { "file": "source-snowflake/database.go", "lines": "136-142", "snippet": "case cfg.Advanced.FullCopySnapshots:\n\t\tqueryTemplate = `CREATE TRANSIENT TABLE IF NOT EXISTS %s AS SELECT * FROM %s;`\n\tdefault:\n\t\tqueryTemplate = `CREATE TRANSIENT TABLE IF NOT EXISTS %s CLONE %s;`" },
+    "streams[0].pull.backfill.chunking": { "file": "source-snowflake/capture.go", "lines": "455-459", "snippet": "fmt.Fprintf(queryBuf, \"SELECT * FROM %s\", stagingName.QuotedName())\n\t... \" ORDER BY %s\" ... \" LIMIT NULL OFFSET %d\", streamState.TableOffset)" },
+    "streams[0].pull.incremental.emitsDeletes": { "file": "source-snowflake/capture.go", "lines": "536-544", "snippet": "case \"DELETE\":\n\t\t\t\toperation = sqlcapture.DeleteOp\n\t\t\t\tbefore = fields" },
+    "streams[0].pull.incremental.resumeTokenKind": { "file": "source-snowflake/capture.go", "lines": "147-150", "snippet": "UniqueID       string `json:\"uid\"`\n\tSequenceNumber int    `json:\"seq\"`\n\tTableOffset    int    `json:\"off\"`" },
+    "streams[1].pull.backfill.chunking": { "file": "source-snowflake/capture.go", "lines": "598-605", "snippet": "if len(orderColumns) == 0 {\n\t\t\t\t// ... just unconditionally emit\n\t\t\t\tif documentsSinceLastCheckpoint >= partialProgressCheckpointSpacing {" },
+    "streams[1].primaryKeyKind": { "file": "source-snowflake/capture.go", "lines": "78-82", "snippet": "if strings.Contains(keyElem, \"/\") || keyElem == metadataProperty {\n\t\t\t\torderColumns = nil\n\t\t\t\tbreak" },
+    "streams[2].pull.incremental.resumeTokenKind": { "file": "source-snowflake/database.go", "lines": "114-119", "snippet": "if isDynamic {\n\t\tcreateStreamQuery = fmt.Sprintf(\n\t\t\t`CREATE STREAM IF NOT EXISTS %s ON DYNAMIC TABLE %s;`," },
+    "streams[2].pull.backfill.querySketch": { "file": "source-snowflake/database.go", "lines": "138-139", "snippet": "case isDynamic:\n\t\tqueryTemplate = `CREATE TRANSIENT DYNAMIC TABLE IF NOT EXISTS %s CLONE %s;`" },
+    "authTierOverall": { "file": "source-snowflake/.snapshots/TestSpec", "lines": "credentials.oneOf[0].required", "snippet": "\"required\": [ \"auth_type\", \"private_key\" ], \"title\": \"Private Key (JWT)\"" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "transports[0].spec.tunnelSupport": "high",
+    "credentialModes[0]": "medium",
+    "credentialModes[1]": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "medium",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.resumeWindow": "low",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0]": "high",
+    "streams[1]": "high",
+    "streams[2]": "medium",
+    "streams[].supportedSyncModes": "medium",
+    "streams[].writeDisposition": "high",
+    "streams[].schedules": "high",
+    "streams[].cursorField": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.defaultSchedule": "No schedule of any kind exists in this connector. There is no interval, cron, duration or poll-frequency field in the endpoint or resource config schema, and capture.go explicitly returns after sweeping every binding once ('polled all bindings, shutting down'). The cadence is therefore imposed by whatever restarts the connector, which is outside this directory.",
+    "streams[].schedules": "Same reason as execution.defaultSchedule — per-binding scheduling does not exist here. Emitted as an empty list rather than a guessed interval.",
+    "streams[].cursorField": "There is no cursor column. Incremental progress is not expressed as a monotonic value read out of a source column; it is the Snowflake STREAM object's server-side offset plus a connector-side (sequence number, row offset) pair. Naming any column here would be wrong.",
+    "execution.continuity.resumeWindow": "The window is set by Snowflake's DATA_RETENTION_TIME_IN_DAYS on the source table, extended for stream consumers up to MAX_DATA_EXTENSION_TIME_IN_DAYS. This connector reads neither setting and sets neither, so no concrete duration can be derived from the source. Recording a number here (e.g. Snowflake's documented 14-day default) would be an assumption about the customer's account, not a fact about this code.",
+    "transports[0].spec.tunnelSupport": "No networkTunnel / SSH forwarding configuration appears anywhere in the config struct or the generated spec snapshot, unlike other Estuary SQL sources. Recorded as null meaning 'not offered', not 'unknown'.",
+    "streams[].supportedSyncModes": "Marked full_refresh+incremental by inference rather than by an explicit declaration: the connector always performs the clone snapshot on binding initialization and then always follows the stream, and there is no user-facing mode selector. There is no code that names sync modes.",
+    "streams[].primaryKey": "The three entries are ARCHETYPES, not real streams. The stream list is entirely derived from the customer's own catalog at connect time, so the primaryKey values shown are placeholders describing the shape produced by each discovery path.",
+    "credentialModes[0].tier": "Rated T1_SIMPLE on the basis that a key pair is a single self-serve secret, but note the user must run ALTER USER ... SET RSA_PUBLIC_KEY on their Snowflake account for the key to work. That registration step is not visible in this connector's code and is a judgement call about user effort, not an extracted fact."
+  }
+}

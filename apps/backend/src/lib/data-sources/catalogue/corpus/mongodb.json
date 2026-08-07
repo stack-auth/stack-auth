@@ -1,0 +1,462 @@
+{
+  "id": "mongodb",
+  "estuaryDir": "source-mongodb",
+  "displayName": "MongoDB",
+  "description": "Captures documents and change events from MongoDB collections, views and time series collections, via a resumable _id-sorted collection scan followed by per-database change streams (or scheduled batch re-polling where change streams are unavailable).",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "mongodb",
+        "defaultPort": null,
+        "sslPolicy": "TLS is governed by the user-supplied connection URI and is not otherwise touched. The one exception: for hosts ending in .docdb.amazonaws.com (Amazon DocumentDB) the connector force-enables TLS with an embedded Amazon RDS global CA bundle (global-bundle.pem) unless the URI carries tls=false, and also forces directConnection. Reads use majority read concern and snappy wire compression, both set by the connector and overriding the URI.",
+        "tunnelSupport": "Optional SSH bastion forwarding (networkTunnel.sshForwarding). When configured the connector opens a local forward on port 27017 to the URI's host:port and rewrites the driver URI host to localhost:27017. An SSH tunnel is MANDATORY for Amazon DocumentDB addresses — connecting to a *.docdb.amazonaws.com host without one is rejected."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Database user and password (embedded into the connection URI)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "schedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "one MongoDB change-stream cursor per DATABASE with at least one enabled Change Stream Incremental binding (client-side cursor, closed on shutdown)",
+        "one find cursor per in-flight backfill (at most 10 concurrently)",
+        "a resume token per database held in OUR connector state (captureState.databaseResumeTokens) — not a server-side object"
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "The per-database change-stream resume token becomes unresumable once the oplog entry it names has been overwritten. MongoDB then refuses to reopen the stream with startAfter/resumeAfter; recovery requires clearing the token and re-backfilling the affected collections, and any change that fell out of the oplog in the interim is lost — deletes especially, since a re-backfill only observes surviving documents.",
+      "resumeWindow": "The source deployment's oplog retention window (the replica-set oplog is a fixed-size capped collection). The connector never reads oplog size or minimum retention hours, so the concrete duration is a property of the customer's deployment, not of this code.",
+      "releasedOnShutdown": true,
+      "notes": "Symmetric answer: nothing accumulates on the customer's infrastructure while we are not consuming (unlike a Postgres replication slot), and the connector leaves no persistent server-side object — change-stream cursors are closed on exit. The entire risk is on our side and is EXPIRY, and the connector is architected on the assumption of continuous operation: it emits a post-batch-resume-token (PBRT) checkpoint at most once per minute even when completely idle purely to keep the stored token advancing; during the backfill phase it alternates 5-minute backfill rounds with change-stream catch-up rounds; and once steady-state it periodically pauses batch-collection polling until all change streams are caught up, explicitly 'to stay within the oplog retention window'. Servers that open a change stream but produce no PBRT (notably Amazon DocumentDB) are demoted to batch mode entirely, because the token cannot be kept fresh while idle. Consequence for cron-tick operation: safe for the customer, but tick interval plus run duration must stay comfortably inside the source's oplog retention or the capture silently degrades into a mandatory full resync."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Address", "required": true, "secret": false, "type": "string", "description": "The connection URI for the database without the username and password, e.g. mongodb://my-mongo.test?authSource=admin. mongodb+srv:// addresses must not specify a port. Atlas Online Archive and Atlas SQL URLs are rejected." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "type": "string", "description": "Database user to connect as." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "type": "string", "description": "Password for the specified database user." },
+    { "name": "database", "displayName": "Database", "required": false, "secret": false, "type": "string", "description": "Optional comma-separated list of databases to discover. If empty, all non-system databases in the deployment are discovered." },
+    { "name": "batchAndChangeStream", "displayName": "Capture Batch Collections in Addition to Change Stream Collections", "required": false, "secret": false, "type": "boolean", "description": "Also discover collections that can only be batch captured (views, time series) when the deployment supports change streams. All collections are batch captured regardless of this setting when the server does not support change streams." },
+    { "name": "pollSchedule", "displayName": "Default Batch Collection Polling Schedule", "required": false, "secret": false, "type": "string", "description": "Go duration string ('5m', '6h') or 'daily at HH:MMZ' controlling how often batch collections are polled. Defaults to 24h." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "type": "string", "description": "Endpoint of an SSH bastion, ssh://user@hostname[:port]. Required for Amazon DocumentDB. When set, the driver is redirected to localhost:27017 through the tunnel." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "type": "string", "description": "Private key used to connect to the SSH bastion." },
+    { "name": "advanced.maxAwaitTime", "displayName": "Max Await Time", "required": false, "secret": false, "type": "string", "description": "Maximum time to wait for new change stream events before returning an empty batch; Go duration string, defaults to 1 second. Must parse and be greater than zero." },
+    { "name": "advanced.disablePreImages", "displayName": "Disable Pre-Images", "required": false, "secret": false, "type": "boolean", "description": "Do not request change-event pre-images even if the deployment supports them." },
+    { "name": "advanced.exclusiveCollectionFilter", "displayName": "Change Stream Exclusive Collection Filter", "required": false, "secret": false, "type": "boolean", "description": "Add a $match stage to database change streams so only namespaces with enabled bindings are matched. Mutually exclusive with advanced.excludeCollections." },
+    { "name": "advanced.excludeCollections", "displayName": "Exclude Collections", "required": false, "secret": false, "type": "string", "description": "Comma-separated 'database:collection' entries excluded from database change streams via a $match / $nin stage. Mutually exclusive with advanced.exclusiveCollectionFilter." },
+    { "name": "<resource>.database", "displayName": "Database name", "required": true, "secret": false, "type": "string", "description": "Per-binding resource config: source database. Set by discovery." },
+    { "name": "<resource>.collection", "displayName": "Collection name", "required": true, "secret": false, "type": "string", "description": "Per-binding resource config: source collection. Set by discovery." },
+    { "name": "<resource>.captureMode", "displayName": "Capture Mode", "required": false, "secret": false, "type": "string", "description": "Per-binding enum: 'Change Stream Incremental' (default) | 'Batch Snapshot' | 'Batch Incremental'. Cannot be changed without also incrementing the binding's backfill counter." },
+    { "name": "<resource>.cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "type": "string", "description": "Per-binding cursor field; required for both batch modes. For 'Batch Incremental' the field must always be present and strictly increasing. Cannot be changed without resetting the binding." },
+    { "name": "<resource>.pollSchedule", "displayName": "Polling Schedule", "required": false, "secret": false, "type": "string", "description": "Per-binding override of the endpoint pollSchedule; same Go-duration / 'daily at HH:MMZ' grammar." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "ListDatabaseNames + per-database ListCollectionSpecifications (MongoDB Go driver), plus capability probes (buildInfo, opening a throwaway change stream to test resume-token/startAfter/pre-image support)",
+    "querySketch": "list database names (or split the user's comma-separated `database` config); for each database list collection specifications, reading each spec's `type` (collection | view | timeseries) and, for time series, options.timeseries.timeField; emit one binding per surviving collection with RecommendedName '<database>/<collection>' and Key ['/_id']. Capture mode is chosen at discovery: ordinary collections on a change-stream-capable server get 'Change Stream Incremental'; views, and everything on a server without change streams, get 'Batch Snapshot' with cursor _id; time series collections get 'Batch Incremental' with cursor = the timeseries timeField and pollSchedule '5m'.",
+    "excludes": [
+      "system databases admin, config, local (only when discovering all databases; an explicit `database` list is honoured verbatim)",
+      "any collection whose name starts with 'system.'",
+      "views and time series collections when the server supports change streams and batchAndChangeStream is false",
+      "collection types other than collection/view/timeseries are rejected outright as unsupported"
+    ],
+    "allowlist": null,
+    "notes": "This connector does NOT sample documents or infer a per-collection schema. Discovery attaches the same fixed maximally-permissive 'minimalSchema' to every binding: an object requiring only `_id` (typed string in the stub) plus a `_meta` envelope (op: c|u|d, before, source{db,collection,snapshot}), carrying the marker `x-infer-schema: true` which delegates real schema inference to the Flow runtime as documents flow through. The stub also carries a conditional reduction annotation: when _meta.op == 'd', reduce strategy is merge with delete:true, i.e. deletes arrive as tombstone documents that remove the row rather than as separate delete records. Any consumer that is not Flow must do its own schema inference."
+  },
+
+  "streams": [
+    {
+      "name": "<database>/<collection>  [captureMode = 'Change Stream Incremental' — discovery default for ordinary collections on change-stream-capable servers]",
+      "origin": "discovered",
+      "primaryKey": ["_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "continuous" },
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<database>",
+          "table": "<collection>",
+          "keyColumns": ["_id"],
+          "cursorColumns": ["_id"],
+          "querySketch": "find(resumeFilter) sorted ascending by _id, hinting the _id index so the scan is served directly by that index (an explicit sort is required for correctness, not speed: the checkpoint is a single monotonic high-water mark; sharded collections and non-_id cursors always get a plain explicit sort). resumeFilter is empty on the first run; otherwise it is `{_id: {$gt: lastValue}}` unioned via $or with `{_id: {$gte: <bracketMin>}}` for every BSON type bracket sorting after lastValue's bracket — a deliberate workaround for MongoDB's type-bracketed comparison operators so a mixed-_id-type collection is not silently truncated.",
+          "chunking": "One cursor batch at a time; a checkpoint carrying `last_id` (backfillState.LastCursorValue) plus a document count is emitted every 50000 documents or 4 MiB, whichever comes first. At most 10 collections backfill concurrently, in shuffled order, in 5-minute rounds interleaved with change-stream catch-up, and gated by a coordinator so a backfill never emits concurrently with its collection's change stream (backfilled documents must not clobber newer change events)."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "database",
+          "schema": "<database>",
+          "table": "<collection>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "MongoDB change-stream resume token (opaque bson.Raw), stored per DATABASE in captureState.databaseResumeTokens; reopened with SetStartAfter when the server supports it, else SetResumeAfter. Advanced even while idle via the post-batch resume token (PBRT), checkpointed at most once per minute."
+        }
+      }
+    },
+    {
+      "name": "<database>/<collection>  [captureMode = 'Batch Snapshot' — discovery default for views, and for every collection when the server does not support change streams]",
+      "origin": "discovered",
+      "primaryKey": ["_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "_id",
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 86400 },
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<database>",
+          "table": "<collection>",
+          "keyColumns": ["_id"],
+          "cursorColumns": ["_id"],
+          "querySketch": "the same sorted, resumable collection scan as the change-stream backfill leg (same buildResumeFilter high-water-mark logic), but on completion the binding's cursor value and document count are reset to nil/0 so the entire collection is re-scanned from scratch on the next scheduled poll. The cursor is therefore a within-poll resumption device only, not a cross-poll incremental cursor.",
+          "chunking": "Same 50000-document / 4 MiB checkpointing and 10-way concurrency limit as the change-stream backfill leg. Cadence comes from the binding's pollSchedule, else the endpoint pollSchedule, else 24h."
+        },
+        "incremental": null
+      }
+    },
+    {
+      "name": "<database>/<collection>  [captureMode = 'Batch Incremental' — discovery default for time series collections]",
+      "origin": "discovered",
+      "primaryKey": ["_id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "<options.timeseries.timeField of the collection>",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": { "kind": "interval", "seconds": 300 },
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "table",
+          "schema": "<database>",
+          "table": "<collection>",
+          "keyColumns": ["_id"],
+          "cursorColumns": ["<timeseries timeField>"],
+          "querySketch": "find(resumeFilter on the configured cursor field) sorted ascending by that field. The same code path serves the first poll (empty resume filter, i.e. an unbounded initial scan) and every later poll; unlike Batch Snapshot the high-water mark is NOT reset on completion, so each subsequent poll picks up only documents sorting after the last one emitted. Correctness requires the cursor field to be always present and strictly increasing; it cannot be changed without resetting the binding.",
+          "chunking": "Same 50000-document / 4 MiB checkpointing and 10-way concurrency limit. Discovery sets pollSchedule '5m' for time series collections; a per-binding or endpoint override wins, else 24h."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "A single database username and password, embedded by the connector into the user-supplied connection URI. No OAuth application registration and no refresh token. The optional SSH bastion private key is additional network plumbing the user may already have (and is mandatory only for Amazon DocumentDB), not an identity-provider enrollment step.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.incremental (changes) — cursor scope vs binding scope",
+      "description": "v2's `scope: \"database\"` now records that the change stream is opened per database, but the mismatch that remains is that the RESUME TOKEN is also per database while the schema still models one pull per binding. One cursor per database is multiplexed to all enabled collection bindings of that database, events for untracked namespaces are discarded client-side, and the checkpoint lives at captureState.databaseResumeTokens[db]. Consequence: disabling the last change-stream binding of a database makes the connector deliberately DROP that database's resume token, so re-enabling any binding there is a cold start. There is also no slot for the optional server-side $match namespace filters built from exclusiveCollectionFilter (include-list) or excludeCollections (exclude-list).",
+      "proposedShape": { "kind": "changes", "scope": "database", "cursorScope": "database", "cursorSharedAcrossBindings": true, "cursorDroppedWhenScopeEmpty": true, "namespaceFilter": { "mode": "include|exclude", "collections": ["str"] }, "emitsDeletes": true }
+    },
+    {
+      "where": "streams[].pull (backfill→incremental handoff)",
+      "description": "v2's backfill/incremental pair fits, but the HANDOFF is not merely sequential and the schema has no place to say so. Until every change-stream binding's backfill is done, the connector loops: (re)open all database change streams, catch them up, then backfill for a 5-minute round, repeat. A coordinator forbids a collection's backfill and its change stream from emitting concurrently. In steady state, batch-mode backfills are also periodically paused until all change streams are caught up. So the two legs are concurrent-but-mutually-excluded, not backfill-then-stream.",
+      "proposedShape": { "handoff": "interleaved_rounds", "roundSeconds": 300, "mutualExclusion": "per_binding", "steadyStateBackpressure": "batch_backfills_pause_until_streams_caught_up" }
+    },
+    {
+      "where": "streams[].schedule / execution.schedule",
+      "description": "The poll schedule grammar is neither `interval` nor `cron`: it is a Go duration string ('5m', '6h') OR the literal form 'daily at HH:MMZ'. The seconds values recorded above are the duration forms only; a 'daily at 12:34Z' configuration cannot be represented by `{kind:'interval'}` and is not a cron expression either. Additionally a single connector instance mixes schedules: change-stream bindings are continuous while batch bindings are scheduled, so `execution.schedule` alone is never the whole truth.",
+      "proposedShape": { "kind": "duration_or_daily_at", "duration": "str|null", "dailyAtUtc": "HH:MM|null" }
+    },
+    {
+      "where": "streams[].pull (per-binding capture mode)",
+      "description": "Capture mode is a per-binding user-selectable, immutable enum ('Change Stream Incremental' | 'Batch Snapshot' | 'Batch Incremental'), not a property of the connector. Discovery only picks a default. Changing the mode, or changing the cursor field of a batch binding, is rejected at Validate unless the binding's backfill counter is also incremented. Both batch modes require an explicit cursor field. The schema models the three modes as three separate stream shapes, which loses the fact that they are three settings of one binding type.",
+      "proposedShape": { "captureMode": "enum", "chosenBy": "discovery_default_then_user", "immutableWithoutReset": true, "requiresCursorField": ["Batch Snapshot", "Batch Incremental"] }
+    },
+    {
+      "where": "streams[].(document schema)",
+      "description": "Recorded under discovery.notes, but there is still no typed field for it: nothing in the schema records HOW a schema is obtained from schemaless documents. This connector defers inference entirely (fixed `_id`-only stub + `x-infer-schema: true` + a `_meta` envelope + a conditional merge/delete reduction annotation). A consumer that is not the Flow runtime gets no column types at all from this connector.",
+      "proposedShape": { "schemaStrategy": "deferred_inference", "stubKey": ["/_id"], "metaEnvelope": { "opField": "_meta/op", "ops": ["c", "u", "d"], "beforeImageField": "_meta/before", "sourceField": "_meta/source" }, "deleteSemantics": "tombstone_merge_delete" }
+    },
+    {
+      "where": "configFields",
+      "description": "Dotted names now fit, but two things still do not. (1) Cross-field constraints: advanced.excludeCollections and advanced.exclusiveCollectionFilter are mutually exclusive; mongodb+srv:// addresses must not carry a port; cursorField is conditionally required on captureMode. (2) configFields conflates two different config documents — the ENDPOINT config and the per-binding RESOURCE config. The `<resource>.*` entries above are a notational hack, not real dotted paths in the endpoint config.",
+      "proposedShape": { "endpointConfig": ["field"], "resourceConfig": ["field"], "constraints": [ { "kind": "mutuallyExclusive|requiredIf|patternRestriction", "fields": ["str"], "note": "str" } ] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-mongodb/main.go",
+      "lines": "199-221",
+      "snippet": "// ToURI converts the Config to a DSN string.\nfunc (c *config) ToURI() *url.URL {\n\tvar address = c.Address"
+    },
+    "transports[0].spec.sslPolicy": {
+      "file": "source-mongodb/main.go",
+      "lines": "308-325",
+      "snippet": "if uri.Query().Get(\"tls\") != \"false\" {\n\t\t\ttlsConfig, err := documentDBTLSConfig()"
+    },
+    "transports[0].spec.tunnelSupport": {
+      "file": "source-mongodb/main.go",
+      "lines": "262-276",
+      "snippet": "\t\t\tLocalPort:   \"27017\",\n\t\t}\n\t} else if isDocDB {\n\t\treturn nil, fmt.Errorf(\"the provided address %q appears to be for Amazon DocumentDB, which requires an SSH tunnel configuration\", cfg.Address)"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-mongodb/main.go",
+      "lines": "211",
+      "snippet": "uri.User = url.UserPassword(c.User, c.Password)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source-mongodb/main.go",
+      "lines": "157-161",
+      "snippet": "var requiredProperties = [][]string{\n\t\t{\"address\", c.Address},\n\t\t{\"user\", c.User},"
+    },
+    "execution.mode": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "132-135",
+      "snippet": "ms, err := c.client.Database(db).Watch(ctx, pl, opts)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"initializing change stream on database %q: %w\", db, err)"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "123-130",
+      "snippet": "if t, ok := c.state.DatabaseResumeTokens[db]; ok {\n\t\t\tif useStartAfter {\n\t\t\t\topts = opts.SetStartAfter(t)"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "204-206",
+      "snippet": "group.Go(func() error {\n\t\t\tdefer s.ms.Close(groupCtx)"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-mongodb/coordinator.go",
+      "lines": "32-36",
+      "snippet": "//     It is important for the change streams to remain reasonably caught up to stay\n//     within the oplog retention window, so occasionally any on-going batch backfills\n//     will be paused until all change streams are fully caught up"
+    },
+    "execution.continuity.notes.pbrt": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "22-25",
+      "snippet": "// documents are throttled slightly, to minimize spamming checkpoints constantly\n\t// even for change streams with no new data.\n\tpbrtCheckpointInterval = 1 * time.Minute"
+    },
+    "execution.continuity.notes.noPbrtDemotion": {
+      "file": "source-mongodb/pull.go",
+      "lines": "485-491",
+      "snippet": "if !support.producesResumeToken {\n\t\t\t// Without a post-batch resume token the connector cannot advance its\n\t\t\t// resume token while idle, so it can't checkpoint reliably."
+    },
+    "execution.continuity.notes.docdb": {
+      "file": "source-mongodb/pull.go",
+      "lines": "456-462",
+      "snippet": "// that they don't currently produce a post-batch resume token, so\n\t\t// there's really no way for us to make sure that the most recently\n\t\t// obtained token doesn't expire before new events are added"
+    },
+    "configFields": {
+      "file": "source-mongodb/main.go",
+      "lines": "117-134",
+      "snippet": "Address              string `json:\"address\" jsonschema:\"title=Address\"`\n\tUser                 string `json:\"user\"`\n\tPassword             string `json:\"password\" jsonschema_extras:\"secret=true,order=2\"`"
+    },
+    "configFields.required": {
+      "file": "source-mongodb/.snapshots/TestSpec",
+      "lines": "114-118",
+      "snippet": "\"required\": [\n      \"address\",\n      \"user\",\n      \"password\"\n    ],"
+    },
+    "configFields.networkTunnel": {
+      "file": "source-mongodb/main.go",
+      "lines": "108-115",
+      "snippet": "SSHEndpoint string `json:\"sshEndpoint\" jsonschema:\"title=SSH Endpoint,...\"`\n\tPrivateKey  string `json:\"privateKey\" jsonschema_extras:\"secret=true,multiline=true\"`"
+    },
+    "configFields.<resource>": {
+      "file": "source-mongodb/main.go",
+      "lines": "58-64",
+      "snippet": "type resource struct {\n\tDatabase     string `json:\"database\"`\n\tCollection   string `json:\"collection\"`"
+    },
+    "streamMode": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "176-182",
+      "snippet": "for _, dbName := range databaseNames {\n\t\tvar db = client.Database(dbName)\n\t\tcollections, err := db.ListCollectionSpecifications(ctx, bson.D{})"
+    },
+    "discovery.excludes": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "142-194",
+      "snippet": "var systemDatabases = []string{\"admin\", \"config\", \"local\"}\n... else if strings.HasPrefix(collection.Name, \"system.\") {\n\t\t\t\tcontinue"
+    },
+    "discovery.querySketch": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "196-212",
+      "snippet": "if collectionType == mongoCollectionTypeTimeseries {\n\t\t\t\ttfRaw, err := collection.Options.LookupErr(\"timeseries\", \"timeField\")\n\t\t\t\tcursor = tfRaw.StringValue()"
+    },
+    "discovery.notes": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "40-43",
+      "snippet": "// minimalSchema is the maximally-permissive schema which just specifies the\n// _id key. The schema of collections is minimalSchema as we\n// rely on Flow's schema inference to infer the collection schema"
+    },
+    "discovery.notes.xInferSchema": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "80-88",
+      "snippet": "Extras: map[string]interface{}{\n\t\t\t\"properties\": map[string]*jsonschema.Schema{\n\t\t\t\t...\n\t\t\t\"x-infer-schema\": true,"
+    },
+    "streams[0].primaryKey": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "225-230",
+      "snippet": "bindings = append(bindings, &pc.Response_Discovered_Binding{\n\t\t\t\tDocumentSchemaJson: minimalSchema,\n\t\t\t\tKey:                []string{\"/\" + idProperty},"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "106-113",
+      "snippet": "Then: &jsonschema.Schema{\n\t\t\t\"reduce\": map[string]interface{}{\n\t\t\t\t\t\"strategy\": \"merge\", \"delete\": true,"
+    },
+    "streams[0].pull.backfill.querySketch": {
+      "file": "source-mongodb/backfill.go",
+      "lines": "320-334",
+      "snippet": "opts = options.Find().SetHint(bson.M{idProperty: 1}).SetSort(bson.D{{Key: idProperty, Value: 1}})\n\t} else {\n\t\topts = options.Find().SetSort(bson.D{{Key: cursorField, Value: 1}})"
+    },
+    "streams[0].pull.backfill.querySketch.resumeFilter": {
+      "file": "source-mongodb/backfill.go",
+      "lines": "247-257",
+      "snippet": "gt := bson.D{{Key: cursorField, Value: bson.D{{Key: \"$gt\", Value: v}}}}\n\tfor _, b := range later {\n\t\tclauses = append(clauses, bson.D{{Key: cursorField, Value: bson.D{{Key: \"$gte\", Value: b.min}}}})"
+    },
+    "streams[0].pull.backfill.chunking": {
+      "file": "source-mongodb/pull.go",
+      "lines": "26-38",
+      "snippet": "concurrentBackfillLimit = 10\n\tbackfillFor = 5 * time.Minute\n\tbackfillCheckpointSize = 50000"
+    },
+    "streams[0].pull.backfill.chunking.checkpoint": {
+      "file": "source-mongodb/pull.go",
+      "lines": "414-418",
+      "snippet": "LastCursorValue *bson.RawValue `json:\"last_id,omitempty\"`"
+    },
+    "streams[0].pull.incremental.emitsDeletes": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "54-56",
+      "snippet": "Op     string `jsonschema:\"description=Change operation type: 'c' Create/Insert 'u' Update 'd' Delete.,enum=c,enum=u,enum=d\"`"
+    },
+    "streams[0].pull.incremental.emitsDeletes.observed": {
+      "file": "source-mongodb/.snapshots/TestCapture",
+      "lines": "20",
+      "snippet": "{\"_id\":\"pk val 0\",\"_meta\":{\"op\":\"d\",\"source\":{\"collection\":\"collectionOne\",\"db\":\"testDb1\"}}}"
+    },
+    "streams[0].pull.incremental.resumeTokenKind": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "123-129",
+      "snippet": "if t, ok := c.state.DatabaseResumeTokens[db]; ok {\n\t\t\tif useStartAfter {\n\t\t\t\topts = opts.SetStartAfter(t)\n\t\t\t} else {\n\t\t\t\topts = opts.SetResumeAfter(t)"
+    },
+    "streams[1].schedule": {
+      "file": "source-mongodb/pull.go",
+      "lines": "46-47",
+      "snippet": "// The default polling schedule if none is supplied by the user.\n\tdefualtBatchPollingSchedule = \"24h\""
+    },
+    "streams[1].pull.backfill.querySketch": {
+      "file": "source-mongodb/backfill.go",
+      "lines": "277-281",
+      "snippet": "if backfillState.done() && binding.resource.getMode() == captureModeSnapshot {\n\t\t// Starting the snapshot backfill over.\n\t\tlastCursorValue = nil"
+    },
+    "streams[2].schedule": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "204-212",
+      "snippet": "cursor = tfRaw.StringValue()\n\t\t\t\tmode = captureModeIncremental\n\t\t\t\tpollSchedule = \"5m\""
+    },
+    "streams[2].cursorField": {
+      "file": "source-mongodb/main.go",
+      "lines": "84-88",
+      "snippet": "if r.Mode == captureModeIncremental || r.Mode == captureModeSnapshot {\n\t\t\tif r.Cursor == \"\" {\n\t\t\t\treturn fmt.Errorf(\"cursor field is required for '%s.%s' with mode '%s'\", ...)"
+    },
+    "streams[*].schedule.wait": {
+      "file": "source-mongodb/backfill.go",
+      "lines": "117-127",
+      "snippet": "next := binding.schedule.Next(*backfillState.LastPollStart)\n\t\t\t\t\tif time.Until(next) > 0 {\n\t\t\t\t\t\t... schedule.WaitForNext(groupCtx, binding.schedule, *backfillState.LastPollStart)"
+    },
+    "unionMisfits[0]": {
+      "file": "source-mongodb/pull.go",
+      "lines": "381-392",
+      "snippet": "// Reset the database resume tokens if there are no active change stream\n\t// bindings for a given database.\n\tfor db, tok := range prevState.DatabaseResumeTokens {"
+    },
+    "unionMisfits[0].namespaceFilter": {
+      "file": "source-mongodb/change_stream.go",
+      "lines": "100-108",
+      "snippet": "pl = append(pl, bson.D{{Key: \"$match\", Value: bson.D{{Key: \"$or\", Value: collectionFilters}}}})\n\t\t} else if exclude := excludeCollections[db]; len(exclude) > 0 {"
+    },
+    "unionMisfits[1]": {
+      "file": "source-mongodb/pull.go",
+      "lines": "250-268",
+      "snippet": "for !prevState.isChangeStreamBackfillComplete(changeStreamBindings) {\n\t\t\t} else if err := c.streamChanges(ctx, coordinator, streams, true); err != nil {\n\t\t\t} else if err := c.backfillChangeStreamCollections(ctx, coordinator, changeStreamBindings, backfillFor); err != nil {"
+    },
+    "unionMisfits[2]": {
+      "file": "source-mongodb/main.go",
+      "lines": "63",
+      "snippet": "PollSchedule string `json:\"pollSchedule,omitempty\" jsonschema:\"...pattern=^([-+]?([0-9]+([.][0-9]+)?(h|m|s|ms))+|daily at [0-9][0-9]?:[0-9]{2}Z)$\"`"
+    },
+    "unionMisfits[3]": {
+      "file": "source-mongodb/main.go",
+      "lines": "460-467",
+      "snippet": "if lastResource.getMode() != res.getMode() && binding.Backfill == lastBackfillCounters[idx] {\n\t\t\t\t\treturn nil, fmt.Errorf(\"cannot change mode from %s to %s for binding %q without backfilling the binding\", ...)"
+    },
+    "unionMisfits[4]": {
+      "file": "source-mongodb/discovery.go",
+      "lines": "40-45",
+      "snippet": "// minimalSchema is the maximally-permissive schema which just specifies the\n// _id key. The schema of collections is minimalSchema as we\n// rely on Flow's schema inference to infer the collection schema"
+    },
+    "unionMisfits[5]": {
+      "file": "source-mongodb/main.go",
+      "lines": "170-182",
+      "snippet": "if err == nil && uri.Scheme == \"mongodb+srv\" && uri.Port() != \"\" {\n...\n\tif c.Advanced.ExcludeCollections != \"\" && c.Advanced.ExclusiveCollectionFilter {\n\t\treturn fmt.Errorf(\"cannot set both excludeCollections and exclusiveCollectionFilter\")"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec.kind": "high",
+    "transports[0].spec.engine": "high",
+    "transports[0].spec.sslPolicy": "medium",
+    "transports[0].spec.tunnelSupport": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "execution.mode": "high",
+    "execution.schedule": "medium",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.resumeWindow": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "discovery.notes": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[1].schedule": "high",
+    "streams[1].pull.backfill.querySketch": "high",
+    "streams[1].supportedSyncModes": "medium",
+    "streams[2].schedule": "high",
+    "streams[2].cursorField": "high",
+    "streams[2].pull.incremental": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultPort": "The connector never encodes a default MongoDB port for the customer's address; it relies entirely on the user-supplied URI (and mongodb+srv:// forbids a port outright). The only literal 27017 in the source is the LOCAL port of the SSH tunnel and the localhost address the driver is redirected to when tunnelling (main.go:214-218, 267), which is not the source's port. Recording 27017 as a default would be an inference, not a fact from this code.",
+    "transports[0].spec.sslPolicy.nonDocDB": "For non-DocumentDB hosts the connector sets no TLS config at all, so whether TLS is used depends on tls=/ssl= parameters in the user's URI and on driver defaults (mongodb+srv implies TLS in the driver). That default is a driver behaviour, not something this repository states.",
+    "streams[*].name": "Stream names are not static. Discovery emits one binding per discovered collection with RecommendedName '<database>/<collection>', so the real names depend entirely on the customer's deployment. The three entries listed are the representative shapes the code constructs, not literal stream names.",
+    "streams[0].cursorField": "The change-stream leg has no document-field cursor. Its position is an opaque MongoDB resume token held per database in connector state, not a field of the captured documents, so no cursorField value would be truthful. (The backfill leg's cursor is _id and is recorded in pull.backfill.cursorColumns.)",
+    "streams[*].supportedSyncModes": "Flow's binding model does not use the full_refresh/incremental vocabulary at all; these were mapped from the connector's capture modes (Change Stream Incremental and Batch Incremental keep a persistent cursor; Batch Snapshot re-scans the whole collection each poll and resets its cursor). The mapping is interpretation rather than a value read from the source.",
+    "streams[*].writeDisposition": "Recorded as 'merge' because the emitted stub schema carries a Flow reduce annotation of merge with delete:true keyed on /_id — a reduction annotation, not a warehouse write disposition. Treat the mapping as approximate: deletes arrive as tombstone documents ({_id, _meta.op:'d'}) that a merge target must translate into a row removal; an append-only target would retain deleted rows.",
+    "streams[2].pull.backfill": "Left null deliberately. Batch Incremental has no distinct backfill leg in the code — the same scheduled scan serves the first poll (empty resume filter, effectively a full scan) and every subsequent one. Splitting it into a synthetic backfill entry would assert a phase the connector does not have.",
+    "execution.schedule": "Recorded as 'continuous' because Pull is a long-lived RPC that streams changes indefinitely, but this is only true when at least one Change Stream Incremental binding exists. A capture consisting solely of batch bindings is purely schedule-driven, and one containing both runs continuously AND on schedules. The top-level field cannot express the mixture; see unionMisfits.",
+    "execution.continuity.resumeWindow.concrete": "The concrete oplog retention duration appears nowhere in this connector. It never reads oplog size, minimum retention hours, or the oldest available oplog entry, and does not pre-flight whether a stored token is still resumable. The specific error surfaced when a token has aged out is also not named here; the code bubbles up the driver's change-stream error verbatim (change_stream.go:337-343). The claim that expiry forces a re-backfill follows from MongoDB semantics and from the connector's own stated reason for keeping tokens fresh, not from an explicit recovery path in this code.",
+    "streams[*].pull.incremental.publication": "MongoDB has no publication concept. The nearest analogue is the optional client-supplied $match namespace filter built from exclusiveCollectionFilter or excludeCollections, which is a pipeline stage rather than a persistent server object, so leaving it null is more accurate than naming it.",
+    "streams[0].pull.incremental.preImages": "Pre-images (_meta.before) are requested only when the server supports them and the user has not disabled them, and per-collection availability additionally depends on changeStreamPreAndPostImages being enabled on the customer's collections. Whether any given binding will actually carry before-images is therefore not determinable from this code.",
+    "transcoding": "BSON-to-JSON conversion, document sanitisation, split-large-event reassembly and construction of the _meta envelope are performed by a separate Rust subprocess driven over a length-prefixed binary protocol (transcoder.go). The subprocess source is not present in this directory, so the exact JSON encoding rules for BSON types (ObjectID, Decimal128, Binary, dates) could not be verified."
+  }
+}

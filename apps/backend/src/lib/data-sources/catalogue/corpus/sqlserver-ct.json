@@ -1,0 +1,342 @@
+{
+  "id": "sqlserver-ct",
+  "estuaryDir": "source-sqlserver-ct",
+  "displayName": "Microsoft SQL Server (Change Tracking)",
+  "description": "Captures rows and ongoing row-level changes from Microsoft SQL Server tables using SQL Server's built-in Change Tracking feature.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "sqlserver",
+        "defaultPort": 1433,
+        "sslPolicy": "DSN always sets encrypt=true and TrustServerCertificate=true; the connector logs the negotiated encrypt_option from sys.dm_exec_connections but never fails on it",
+        "tunnelSupport": "Optional SSH forwarding (networkTunnel.sshForwarding) via flow-network-tunnel; a custom HostDialer redirects TCP dials to the local tunnel listener while keeping the real hostname in TLS SNI and the TDS LOGIN7 ServerName"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "SQL Server username/password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "dsn", "fields": ["address", "user", "password", "database"] }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval — Go duration string, minimum 100ms, must not exceed sqlcapture.StreamingFenceInterval. Polls run continuously inside each StreamToFence cycle." },
+    "continuity": {
+      "artifacts": [
+        "Database-level Change Tracking: ALTER DATABASE <db> SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 2 DAYS, AUTO_CLEANUP = ON) — issued by the connector when CT is not already enabled",
+        "Per-table Change Tracking: ALTER TABLE <schema>.<table> ENABLE CHANGE_TRACKING — issued by the connector for each bound table that does not already have it",
+        "SQL Server's internal change-tracking side tables backing sys.change_tracking_tables / CHANGETABLE() for each enabled table"
+      ],
+      "customerSideAccrual": "The internal CT side table for each enabled table accumulates one row per changed row. Growth is bounded by the database's CHANGE_RETENTION setting and SQL Server's own AUTO_CLEANUP task, which prunes on a time basis regardless of whether we are consuming — so unlike a Postgres replication slot or an unread binlog, nothing grows without bound because we stopped reading. Enabling CT does add synchronous per-DML write overhead to the customer's transactions for as long as it stays enabled.",
+      "ourSideLoss": "Our resume position is a per-table SYS_CHANGE_VERSION integer. On every poll the connector reads sys.change_tracking_tables.min_valid_version for each table; if our stored version is below it, the changes in between have been auto-cleaned and are unrecoverable. The connector does not error out: it logs 'change tracking data expired for table', emits a sqlcapture.TableDropEvent with that cause, deactivates the table and drops its entry from the cursor — which forces a fresh backfill of that table. The same path fires if CT is turned off for a table (the table disappears from sys.change_tracking_tables). Data changed during the gap is therefore lost as change events and only recovered as of the re-backfill's current state.",
+      "resumeWindow": "The database's CHANGE_RETENTION setting — 2 days when the connector enables Change Tracking itself; whatever value the DBA chose when CT was already on. Idle tables are protected beyond that: the connector fast-forwards their cursors to the current version on every poll (via a batched EXISTS probe) specifically so idle tables don't fall behind min_valid_version.",
+      "releasedOnShutdown": false,
+      "notes": "The connector enables Change Tracking itself when the configured user has permission (both at the database level and per table), and only errors ('Change Tracking is not enabled ... and user X cannot enable it') when it cannot — so the DBA is a fallback, not a precondition. Nothing is torn down on shutdown: Close() on the replication stream and on the DB handle only closes the connection; CT stays enabled on the database and all tables, and there is no ALTER ... DISABLE CHANGE_TRACKING anywhere in the connector. Acknowledge() is a no-op — there is no consumption-driven server-side trim to fall behind on. Prerequisites additionally refuse to run against a read-only/secondary database because CT metadata is incoherent there."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port; port defaults to 1433" },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as; defaults to flow_capture" },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the specified database user" },
+    { "name": "database", "displayName": "Database", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Logical database name to capture from" },
+    { "name": "timezone", "displayName": "Time Zone", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "IANA timezone used to interpret DATETIME columns; defaults to UTC" },
+    { "name": "historyMode", "displayName": "History Mode", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Capture change events without reducing them to a final state" },
+    { "name": "discoveryFilters.include_schemas", "displayName": "Include Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Restrict discovery to these schemas; pushed down into the table-listing query" },
+    { "name": "discoveryFilters.exclude_schemas", "displayName": "Exclude Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Schemas excluded from discovery" },
+    { "name": "discoveryFilters.table_patterns", "displayName": "Table Patterns", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Glob patterns; a pattern with a '.' matches schema.table, one without matches the bare table name in any schema" },
+    { "name": "discoveryFilters.discover_tables_without_ct", "displayName": "Discover Tables Without Change Tracking", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Union'd with the identically-named Advanced option" },
+    { "name": "advanced.discover_tables_without_ct", "displayName": "Discover Tables Without Change Tracking", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "By default only CT-enabled tables are discovered" },
+    { "name": "advanced.skip_backfills", "displayName": "Skip Backfills", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated fully-qualified table names to not backfill; '*.*' skips all backfills" },
+    { "name": "advanced.backfill_chunk_size", "displayName": "Backfill Chunk Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Rows per backfill query; default 50000" },
+    { "name": "advanced.polling_interval", "displayName": "Change Tracking Polling Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string, default 500ms, minimum 100ms" },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value emitted as _meta.source.tag on every document" },
+    { "name": "advanced.rediscovery_interval", "displayName": "Rediscovery Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "How often discovery re-runs while the capture is live, to notice schema changes and new tables; default 15m, jittered" },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal; also carries the undocumented initial_backfill_cursor= and force_reset_cursor= pseudo-flags which override starting CT versions" },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ssh://user@hostname[:port] bastion" },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Private key for the SSH bastion" },
+    { "name": "namespace", "displayName": "Schema", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Schema (namespace) the table lives in; readOnly" },
+    { "name": "stream", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Table to capture; readOnly" },
+    { "name": "priority", "displayName": "Backfill Priority", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Higher-priority bindings are backfilled to completion before lower ones; default 0" }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "SQL Server system catalog + INFORMATION_SCHEMA queries, re-run periodically while the capture is live (rediscovery_interval, default 15m, jittered)",
+    "querySketch": "Table list: by default SELECT DISTINCT schema/table by joining sys.change_tracking_tables -> sys.tables -> sys.schemas -> INFORMATION_SCHEMA.TABLES, so only CT-ENABLED tables are listed; with discover_tables_without_ct set it degrades to a plain INFORMATION_SCHEMA.TABLES scan. Per-table details are then fetched in chunks of 100 tables against INFORMATION_SCHEMA.TABLES / .COLUMNS / .KEY_COLUMN_USAGE+.TABLE_CONSTRAINTS / sys.columns(is_computed=1), the chunk predicate being a disjunction of (schema=@p AND table=@p) equalities with a padded trailing chunk so one cached plan serves every chunk.",
+    "excludes": [
+      "schemas INFORMATION_SCHEMA, PERFORMANCE_SCHEMA, SYS",
+      "table SYSTRANSCHEMAS",
+      "schemas listed in discoveryFilters.exclude_schemas",
+      "tables not matching discoveryFilters.table_patterns when that list is non-empty",
+      "tables with no primary key — retained in the discovery map but marked OmitBinding, because Change Tracking requires a primary key"
+    ],
+    "allowlist": "discoveryFilters.include_schemas is intersected in-query; the default CT-only table list is itself an implicit allowlist"
+  },
+
+  "streams": [
+    {
+      "name": "<schema>.<table> (CT-enabled, primary-keyed)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<table primary key columns, in ordinal order>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "SYS_CHANGE_VERSION",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change polling inside each streaming fence", "schedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval; each StreamToFence cycle loops polling until the fence deadline, then does one final catch-up poll to the fence version" } },
+        { "role": "mid-capture rediscovery for schema/table changes", "schedule": { "kind": "other", "literal": "15m", "description": "advanced.rediscovery_interval, jittered so simultaneously-started captures don't hit the catalog in lockstep" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "keyColumns": ["<primary key columns>"],
+          "cursorColumns": ["<primary key columns>"],
+          "querySketch": "Keyed chunked scan of the BASE TABLE (not CHANGETABLE), built by the shared sqlserver backfill helper: SELECT all columns FROM <schema>.<table> ordered by the primary key, with a resume predicate comparing the key tuple against the last emitted row key. Datetime-typed key columns are bound as typed datetime parameters (not formatted strings) so the resume predicate can index-seek. Rows are emitted with _meta.op = 'c' and source.snapshot = true, and carry no CT version.",
+          "chunking": "advanced.backfill_chunk_size rows per query (default 50000); the chunk is the last chunk when it returns fewer rows than that. A 2-hour watchdog, reset on every row, cancels a query that stops making progress. A keyless-backfill mode exists in the shared code and synthesizes 'B%019d' offset row keys, but CT bindings always have a primary key."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Per-table int64 SYS_CHANGE_VERSION, checkpointed as a JSON object keyed by 'schema.table' (a removed binding is written back as null to delete its entry). Validated each poll against sys.change_tracking_tables.min_valid_version."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> listed in advanced.skip_backfills (or all tables when skip_backfills = '*.*')",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<table primary key columns, in ordinal order>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "SYS_CHANGE_VERSION",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "change polling inside each streaming fence", "schedule": { "kind": "other", "literal": "500ms", "description": "advanced.polling_interval" } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "changes",
+          "scope": "table",
+          "schema": "<discovered schema>",
+          "table": "<discovered table>",
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Per-table int64 SYS_CHANGE_VERSION starting at CHANGE_TRACKING_CURRENT_VERSION() as of table activation, so only changes made after the capture was configured are ever seen."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a SQL Server host/port, username, password and database name — a single self-serve connection string with no OAuth app registration and no refresh token, so T1_SIMPLE. The real setup cost is privilege, not credential complexity: the user needs VIEW CHANGE TRACKING and SELECT on the captured tables, and enough privilege for ALTER DATABASE ... SET CHANGE_TRACKING = ON and ALTER TABLE ... ENABLE CHANGE_TRACKING if Change Tracking is not already on, otherwise a DBA must run those first. That is a permissions prerequisite, not a higher auth tier.",
+
+  "unionMisfits": [
+    {
+      "where": "execution.mode",
+      "description": "The poll/log dichotomy does not fit. This connector polls (every 500ms by default, via repeated CHANGETABLE queries) but consumes a durable, retention-bounded, server-side change record with a monotonic resume cursor and real expiry semantics — which is why continuity matters at all. Recorded as 'log' because the continuity questions the schema cares about (retention expiry, resume window, server-side artifacts) all apply, but the transport mechanic is polling.",
+      "proposedShape": { "mode": "log", "transportMechanic": "polled", "pollInterval": "500ms" }
+    },
+    {
+      "where": "streams[].pull.incremental (kind: changes)",
+      "description": "The `changes` PullSpec has no way to express that the change feed is KEY-ONLY and must be re-joined to the live base table to get values. That is the single most consequential fact about Change Tracking versus CDC and it is currently only representable in prose. It implies (a) update/insert values are the row's state AT QUERY TIME, not at the change version — several rapid updates collapse to one read of the current row, and (b) a row deleted between the change and the poll yields NULLs from the outer join.",
+      "proposedShape": { "kind": "changes", "valueSource": "rejoin_base_table", "valueFidelity": "current_state_at_read_time", "beforeImage": false, "deletePayload": "key_only", "changeQuerySketch": "SELECT CT.SYS_CHANGE_VERSION, CT.SYS_CHANGE_OPERATION, CT.<pk cols>, T.<other cols> FROM CHANGETABLE(CHANGES <table>, @from) AS CT LEFT OUTER JOIN <table> AS T ON CT.<pk> = T.<pk> WHERE CT.SYS_CHANGE_VERSION > @from AND <= @to ORDER BY CT.SYS_CHANGE_VERSION" }
+    },
+    {
+      "where": "streams[].pull.incremental.resumeTokenKind",
+      "description": "The cursor is not per-stream; it is one shared JSON map of stream ID -> version checkpointed by the connector as a whole, and entries are added on table activation and written back as null on removal. The schema models resume state as a per-stream scalar.",
+      "proposedShape": { "resumeState": { "scope": "connector", "shape": "map<streamId, int64>", "tombstone": "null value deletes the entry" } }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "The disposition is endpoint-configurable, not fixed per stream: the top-level `historyMode` flag switches the whole capture from reduced final-state documents (merge, with deletes reducing to a delete) to unreduced change events (append).",
+      "proposedShape": { "writeDisposition": "merge", "overriddenBy": { "configField": "historyMode", "whenTrue": "append" } }
+    },
+    {
+      "where": "execution.continuity.artifacts",
+      "description": "Artifacts here are not objects the connector created and owns, they are a MODE toggled on customer objects (a database option and a per-table option). 'releasedOnShutdown: false' is accurate but understates it — there is no release path at all, and disabling CT is a customer action with its own consequences for any other CT consumer.",
+      "proposedShape": { "artifactKind": "mode_toggle_on_customer_object", "createdByConnector": true, "reversibleByConnector": false, "sharedWithOtherConsumers": true }
+    },
+    {
+      "where": "streams[].pull.incremental — table-drop on expiry",
+      "description": "There is a third outcome besides 'sync' and 'fail' that the schema cannot express: on retention expiry or CT being disabled, the connector emits a TableDropEvent, silently deactivates just that binding and continues capturing the rest. The affected collection stops receiving data (pending re-backfill) while the capture reports healthy.",
+      "proposedShape": { "onResumeWindowExceeded": "drop_and_deactivate_binding", "scope": "per_table", "capturedTaskContinues": true, "recoveryRequires": "re-backfill" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "155-167",
+      "snippet": "params.Add(\"encrypt\", \"true\")\n\tparams.Add(\"TrustServerCertificate\", \"true\")\n\tvar connectURL = &url.URL{Scheme: \"sqlserver\", User: url.UserPassword(c.User, c.Password), Host: c.Address, ...}"
+    },
+    "transports[0].spec.defaultPort": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "40",
+      "snippet": "const defaultPort = \"1433\""
+    },
+    "transports[0].spec.tunnelSupport": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "183-191",
+      "snippet": "// HostName marks this as a mssqldb.HostDialer so the driver dials the configured host through\n// this dialer instead of resolving it locally, which keeps the real hostname in the LOGIN7\n// ServerName and TLS SNI."
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "84-89",
+      "snippet": "var requiredProperties = [][]string{\n\t\t{\"address\", c.Address}, {\"user\", c.User}, {\"password\", c.Password}, {\"database\", c.Database},"
+    },
+    "execution.defaultSchedule": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "67",
+      "snippet": "PollingInterval string `json:\"polling_interval,omitempty\" jsonschema:\"title=Change Tracking Polling Interval,default=500ms,...\"`"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-sqlserver-ct/prerequisites.go",
+      "lines": "64-66",
+      "snippet": "logEntry.Info(\"Change Tracking not enabled, attempting to enable it\")\n\tvar query = fmt.Sprintf(`ALTER DATABASE %s SET CHANGE_TRACKING = ON (CHANGE_RETENTION = 2 DAYS, AUTO_CLEANUP = ON);`, backfill.QuoteIdentifier(db.config.Database))"
+    },
+    "execution.continuity.notes": {
+      "file": "source-sqlserver-ct/prerequisites.go",
+      "lines": "166-176",
+      "snippet": "var query = fmt.Sprintf(`ALTER TABLE %s ENABLE CHANGE_TRACKING;`, backfill.QuoteTableName(schema, table))\n\tif _, err := db.conn.ExecContext(ctx, query); err == nil {\n\t\tlogEntry.Info(\"successfully enabled Change Tracking for table\")"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "266-279",
+      "snippet": "} else if fromVersion < minValid {\n\t\t\tinvalidCause = fmt.Errorf(\"change tracking data expired for table %q (version %d < min valid %d)\", streamID, fromVersion, minValid)"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "318-325",
+      "snippet": "// Emit updated version checkpoints for all skippable tables. It's necessary to keep\n\t\t// cursors updated for idle tables so they don't run afoul of the min_valid_version\n\t\t// sanity checking."
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "238-241",
+      "snippet": "func (rs *sqlserverCTReplicationStream) Close(ctx context.Context) error {\n\tlog.Debug(\"replication stream close requested\")\n\treturn nil\n}"
+    },
+    "discovery.querySketch": {
+      "file": "source-sqlserver-ct/discovery.go",
+      "lines": "305-313",
+      "snippet": "SELECT DISTINCT IST.TABLE_SCHEMA, IST.TABLE_NAME\n  FROM sys.change_tracking_tables ctt\n  JOIN sys.tables tbl ON ctt.object_id = tbl.object_id"
+    },
+    "discovery.excludes": {
+      "file": "source-sqlserver-ct/discovery.go",
+      "lines": "184-189",
+      "snippet": "// Change Tracking requires primary keys. Mark tables without a primary key as omitted.\n\tfor streamID, info := range tableMap {\n\t\tif len(info.PrimaryKey) == 0 { ... info.OmitBinding = true"
+    },
+    "streams[0].pull.incremental": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "382-392",
+      "snippet": "SELECT %s\n\t\tFROM CHANGETABLE(CHANGES %s, @p1) AS CT\n\t\tLEFT OUTER JOIN %s AS T ON %s"
+    },
+    "streams[0].pull.incremental.emitsDeletes": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "467-474",
+      "snippet": "case \"I\": operation = sqlcapture.InsertOp\n\t\tcase \"U\": operation = sqlcapture.UpdateOp\n\t\tcase \"D\": operation = sqlcapture.DeleteOp"
+    },
+    "streams[0].pull.incremental.resumeTokenKind": {
+      "file": "source-sqlserver-ct/change.go",
+      "lines": "12-16",
+      "snippet": "type sqlserverCommitEventCT struct {\n\tVersions  map[sqlcapture.StreamID]int64\n\tDeletions []sqlcapture.StreamID // Tables to remove from the cursor (emitted as null)"
+    },
+    "streams[0].primaryKey": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "102-104",
+      "snippet": "if !slices.Equal(discovery.PrimaryKey, keyColumns) {\n\t\treturn fmt.Errorf(\"configured primary key %q does not match the table's current primary key %q; Change Tracking requires matching keys\", keyColumns, discovery.PrimaryKey)"
+    },
+    "streams[0].pull.backfill.chunking": {
+      "file": "source-sqlserver-ct/backfill.go",
+      "lines": "184",
+      "snippet": "var backfillComplete = resultRows < db.config.Advanced.BackfillChunkSize"
+    },
+    "streams[1].pull.backfill": {
+      "file": "source-sqlserver-ct/backfill.go",
+      "lines": "37-46",
+      "snippet": "// Allow the setting \"*.*\" to skip backfilling any tables.\n\tif db.config.Advanced.SkipBackfills == \"*.*\" { return false }"
+    },
+    "unionMisfits[1].proposedShape.valueFidelity": {
+      "file": "source-sqlserver-ct/README.md",
+      "lines": "15-21",
+      "snippet": "2. Only tracks that a row changed (insert/update/delete) and provides the primary key\n3. Does not store the actual changed values, those must be fetched by joining with the source table"
+    },
+    "unionMisfits[1].proposedShape.deletePayload": {
+      "file": "source-sqlserver-ct/.snapshots/TestBasics-ReplicationDeletes",
+      "lines": "71-85",
+      "snippet": "\"op\": \"d\",\n      \"source\": {\"schema\": \"dbo\", \"table\": \"Basics_ReplicationDeletes_509304\", \"version\": \"REDACTED\"},\n    \"id\": 1"
+    },
+    "unionMisfits[5].proposedShape": {
+      "file": "source-sqlserver-ct/replication.go",
+      "lines": "273-279",
+      "snippet": "log.WithError(invalidCause).Warn(\"change tracking unavailable for table\")\n\t\t\tif err := callback(&sqlcapture.TableDropEvent{StreamID: streamID, Cause: invalidCause.Error()}); err != nil {"
+    },
+    "configFields": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "49-71",
+      "snippet": "Address     string `json:\"address\" jsonschema:\"title=Server Address,...\"`\n\tUser        string `json:\"user\" jsonschema:\"default=flow_capture,...\"`\n\tPassword    string `json:\"password\" jsonschema:\"...\" jsonschema_extras:\"secret=true,order=2\"`"
+    },
+    "configFields[19]": {
+      "file": "source-sqlserver-ct/main.go",
+      "lines": "204-208",
+      "snippet": "type CTResource struct {\n\tNamespace string `json:\"namespace\" jsonschema:\"title=Schema,...,readOnly=true\"`\n\tStream    string `json:\"stream\" jsonschema:\"title=Table Name,...,readOnly=true\"`"
+    },
+    "streams[0].pull.backfill.querySketch": {
+      "file": "source-sqlserver-ct/backfill.go",
+      "lines": "66",
+      "snippet": "query, args, err := backfill.BuildBackfillQuery(state, schema, table, columnTypes, db.config.Advanced.BackfillChunkSize)"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "execution.mode": "medium",
+    "execution.defaultSchedule": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "medium",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "high",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].pull.backfill.querySketch": "medium",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].schedules": "high",
+    "streams[1]": "high"
+  },
+
+  "abstained": {
+    "streams[].name": "The stream list is entirely a function of the customer's own catalog — discovery lists CT-enabled tables from sys.change_tracking_tables. No stream name is hardcoded anywhere in the connector, so both entries are archetypes, not real streams.",
+    "streams[0].pull.backfill.querySketch (exact text)": "The backfill SQL is built by the shared helper go/capture/sqlserver/backfill.BuildBackfillQuery, which was not part of the mined directory. Chunk size, key ordering, the datetime-parameter binding fix and the resume-key semantics are all evidenced from this connector and its CHANGELOG, but the literal query text and the exact resume predicate are not.",
+    "execution.continuity.customerSideAccrual (magnitude)": "SQL Server's CT auto-cleanup is a background task the connector neither drives nor observes beyond reading min_valid_version, so the actual on-disk growth rate of the internal side tables (and the synchronous per-DML write cost of enabling CT) cannot be quantified from this source.",
+    "transports[0].spec.sslPolicy (enforcement)": "TrustServerCertificate=true is hardcoded, so the TLS certificate is never verified; whether the platform layers any additional verification on top is outside this directory. prerequisiteConnectionEncryption only logs the negotiated encrypt_option and always returns nil.",
+    "streams[].pull.backfill handoff ordering": "ActivateTable records CHANGE_TRACKING_CURRENT_VERSION() for a newly-added table and backfill scans the base table thereafter, so the handoff is 'note the version, then scan, then replay changes above that version'. The precise interleaving of backfill chunks with StreamToFence cycles is orchestrated by the shared sqlcapture driver, which was not mined.",
+    "streams[].primaryKeyKind for keyless tables": "Keyless tables are marked OmitBinding during discovery and the connector's FallbackCollectionKey() returns an empty slice with the comment that CT requires primary keys, so no keyless stream archetype is emitted. A TestBackfillWithoutKey and a TestKeylessDiscovery snapshot exist but their contents were not read."
+  }
+}

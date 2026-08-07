@@ -1,0 +1,260 @@
+{
+  "id": "bigquery-batch",
+  "estuaryDir": "source-bigquery-batch",
+  "displayName": "BigQuery",
+  "description": "Periodically executes SELECT queries against tables and views in a BigQuery dataset and emits the resulting rows as documents.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "bigquery",
+        "defaultPort": null,
+        "sslPolicy": null,
+        "tunnelSupport": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Service account JSON key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["project_id", "credentials.credentials_json"]
+      }
+    },
+    {
+      "name": "GCP IAM / Workload Identity Federation (impersonated service account)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": [
+          "project_id",
+          "credentials.gcp_service_account_to_impersonate",
+          "credentials.gcp_workload_identity_pool_audience"
+        ]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "other", "literal": "24h", "description": "Connector-wide default when advanced.poll is unset; a Go duration string parsed with time.ParseDuration, so 'Next = last + period'." },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": true,
+      "notes": "Pure query-and-poll: the connector creates no server-side objects in BigQuery (no slots, no scratch tables, no change streams). Nothing accrues on the customer side if polling stops, and no retention window can expire on ours — resume state is entirely in the Flow checkpoint (last cursor tuple + document count). The only customer-side cost is BigQuery bytes-scanned billing per poll, and each poll of a cursorless binding rescans the whole table. Correctness caveat rather than continuity: cursor-incremental bindings only ever see rows whose cursor advanced, so updates/deletes below the persisted cursor are never observed regardless of how long we pause."
+    }
+  },
+
+  "configFields": [
+    { "name": "project_id", "displayName": "Project ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Google Cloud Project ID that owns the BigQuery dataset(s)." },
+    { "name": "dataset", "displayName": "Dataset", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "BigQuery dataset to discover tables within." },
+    { "name": "credentials.auth_type", "displayName": "Authentication type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator: 'CredentialsJSON' (default) or 'GCPIAM'." },
+    { "name": "credentials.credentials_json", "displayName": "Service Account JSON", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "JSON credentials of the service account, required when auth_type is CredentialsJSON." },
+    { "name": "credentials.gcp_service_account_to_impersonate", "displayName": "Service Account", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "GCP service account email to impersonate; required when auth_type is GCPIAM." },
+    { "name": "credentials.gcp_workload_identity_pool_audience", "displayName": "Workload Identity Pool Audience", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "//iam.googleapis.com/projects/.../workloadIdentityPools/.../providers/...; required when auth_type is GCPIAM." },
+    { "name": "credentials_json", "displayName": "Service Account JSON (legacy top-level)", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Legacy top-level field, hidden from the generated schema (jsonschema:\"-\"); used only when the `credentials` object is absent." },
+    { "name": "advanced.discover_views", "displayName": "Discover Views", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When set, views are discovered as resources in addition to base tables." },
+    { "name": "advanced.poll", "displayName": "Default Polling Schedule", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string ('5m', '6h') or 'daily at HH:MMZ'. Defaults to '24h'." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value copied into /_meta/source/tag of every document." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal flags; defaults keyless_row_id=true, emit_sourced_schemas=true." },
+
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Unique name of this binding; the resource path pointer is /name." },
+    { "name": "schema", "displayName": "Schema Name", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Dataset/schema of the captured table; required unless a template override is given." },
+    { "name": "table", "displayName": "Table Name", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Table to capture; required unless a template override is given." },
+    { "name": "cursor", "displayName": "Cursor Columns", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Ordered list of column names persisted between query executions as the resume cursor. Empty means every poll is a full refresh." },
+    { "name": "poll", "displayName": "Polling Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding override of advanced.poll; same grammar." },
+    { "name": "template", "displayName": "Query Template Override", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Go text/template rendered into the fetch query, with quoteTableName/quoteIdentifier helpers and .IsFirstQuery/.CursorFields/.SchemaName/.TableName bindings." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "BigQuery INFORMATION_SCHEMA queries (three: TABLES, COLUMNS, KEY_COLUMN_USAGE joined to TABLE_CONSTRAINTS), joined in-process by schema.table",
+    "querySketch": "SELECT table_schema, table_name, table_type FROM `<dataset>`.INFORMATION_SCHEMA.TABLES;  ||  SELECT table_schema, table_name, column_name, ordinal_position, is_nullable, data_type FROM `<dataset>`.INFORMATION_SCHEMA.COLUMNS ORDER BY schema, table, ordinal_position;  ||  SELECT kcu.table_schema, kcu.table_name, kcu.column_name, kcu.ordinal_position FROM `<dataset>`.INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN `<dataset>`.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tcs ON <6-tuple of {constraint,table}_{catalog,schema,name}> WHERE tcs.constraint_type = 'PRIMARY KEY' ORDER BY schema, table, ordinal_position;",
+    "excludes": [
+      "tables whose table_schema is in ExcludedSystemSchemas — only 'information_schema' for this connector",
+      "table_type = 'VIEW' unless advanced.discover_views is set",
+      "any table_type that is neither 'BASE TABLE' nor 'VIEW' (e.g. external/snapshot/materialized entity types) — GenerateResource returns 'unsupported entity type' and the table is logged and skipped",
+      "anything outside the single configured `dataset` (discovery is scoped to one dataset per capture)"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<dataset>.<table> — cursor-incremental table binding",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<primary key column>"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query execution", "schedule": { "kind": "other", "literal": "resource.poll, else advanced.poll, else '24h'", "description": "Go duration string (periodic: next = lastPolled + period) or 'daily at HH:MMZ' (UTC time-of-day)." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": [],
+          "cursorColumns": ["<resource.cursor[*]>"],
+          "querySketch": "SELECT * FROM `schema`.`table` ORDER BY `c0`, `c1`, ...;",
+          "chunking": "Unbounded within a poll — there is no LIMIT/OFFSET and no row cap; one poll streams the entire ordered result set. Bounding is across polls only, via the persisted cursor tuple. Progress is checkpointed every 1000 documents, and for cursor bindings only at a boundary where the cursor tuple changes, persisting the PREVIOUS row's tuple so a mid-query restart cannot skip ties."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": [],
+          "cursorColumns": ["<resource.cursor[*]>"],
+          "querySketch": "SELECT * FROM `schema`.`table` WHERE (`c0` > @p0) OR (`c0` = @p0 AND `c1` > @p1) OR (`c0` = @p0 AND `c1` = @p1 AND `c2` > @p2) ORDER BY `c0`, `c1`, `c2`;",
+          "chunking": "Same as backfill: no in-poll bound; the WHERE clause is the lexicographic 'strictly greater than the last emitted cursor tuple' predicate, with the tuple passed as BigQuery named query parameters @p0..@pN taken from checkpoint state.CursorValues. The template branches on .IsFirstQuery (true when CursorValues is empty) to drop the WHERE clause entirely."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<dataset>.<table> — keyless / cursorless full-refresh table binding",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "fetch query execution", "schedule": { "kind": "other", "literal": "resource.poll, else advanced.poll, else '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "table",
+          "schema": "<resource.schema>",
+          "table": "<resource.table>",
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM `schema`.`table`;",
+          "chunking": "None — the whole table is re-read every poll; checkpoints every 1000 documents purely for transaction sizing, and row_id restarts at zero each poll. When the collection key is /_meta/row_id, a refresh returning fewer rows than the previous one emits tombstone documents ({_meta: {op: 'd', row_id: N}}) for the missing trailing row IDs."
+        }
+      }
+    },
+    {
+      "name": "custom query-template binding (resource.template override)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": [],
+      "primaryKeyKind": "none",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query execution", "schedule": { "kind": "other", "literal": "resource.poll, else advanced.poll, else '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "User-supplied Go text/template rendered per poll with {IsFirstQuery, CursorFields (quoted), SchemaName, TableName} and the quoteTableName/quoteIdentifier helpers; cursor values are still bound as @p0..@pN. Such bindings are skipped by SourcedSchema emission because their output shape cannot be inferred from discovery."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The default and easiest mode is pasting a single GCP service-account JSON key into `credentials.credentials_json` (auth_type CredentialsJSON, the schema's default) alongside project_id and dataset — one self-serve secret, no OAuth app registration and no refresh token, so T1. The alternative GCPIAM mode requires the user to stand up a Workload Identity Pool + provider and a service account for the connector to impersonate, which is real per-user identity-infrastructure setup rather than copying a key; that mode is graded T2. No hosted OAuth control plane is involved either way.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.<mode>.chunking",
+      "description": "The schema's PullSpec assumes a bounded chunk per unit of work. This connector's unit of work is an entire unbounded result set per poll — resumability comes from checkpointing mid-stream while the query is still open, not from issuing bounded queries. The interesting fact (checkpoint every N documents, but for incremental bindings only at cursor-value boundaries, persisting the previous row's tuple to avoid skipping ties) has no field of its own.",
+      "proposedShape": { "chunking": { "kind": "streaming_checkpoint", "checkpointEveryRows": 1000, "checkpointBoundary": "distinct_cursor_value", "persists": "previous_row_cursor_tuple", "inQueryLimit": null } }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules[].schedule",
+      "description": "The schedule grammar is a two-alternative regex-validated string: a Go duration ('5m', '6h', '24h') parsed by time.ParseDuration, OR the literal form 'daily at HH:MMZ' (UTC only). Neither is cron, and the duration form is 'last poll finish + period', not a wall-clock-aligned interval, so mapping it to kind 'interval' would misstate the semantics. Both fall into kind 'other'.",
+      "proposedShape": { "kind": "goDuration|dailyAtUTC", "literal": "24h", "anchoring": "relative_to_last_poll" }
+    },
+    {
+      "where": "credentialModes[].scheme",
+      "description": "`cloudIam` is the only fit for both GCP modes, but the two are materially different in user effort (paste a JSON key vs. configure Workload Identity Federation). The union has no way to express that they are alternatives under one discriminated `auth_type` oneOf.",
+      "proposedShape": { "discriminator": "credentials.auth_type", "variants": { "CredentialsJSON": ["credentials_json"], "GCPIAM": ["gcp_service_account_to_impersonate", "gcp_workload_identity_pool_audience"] } }
+    },
+    {
+      "where": "streams[].primaryKey",
+      "description": "The collection key is chosen at discovery time by a three-way branch (INFORMATION_SCHEMA primary key columns -> ['/_meta/row_id'] under the keyless_row_id flag -> the legacy ['/_meta/polled','/_meta/index'] when that flag is off). A single primaryKey/primaryKeyKind pair cannot express a feature-flag-conditional fallback.",
+      "proposedShape": { "primaryKeySelection": [{ "when": "table has PK", "key": "PK columns as RFC6901 pointers" }, { "when": "keyless && keyless_row_id", "key": ["/_meta/row_id"] }, { "when": "keyless && !keyless_row_id", "key": ["/_meta/polled", "/_meta/index"] }] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "source-bigquery-batch/main.go", "lines": "93-99", "snippet": "func connectBigQuery(ctx context.Context, cfg *Config) (*bigquery.Client, error) {\n\treturn bqclient.Connect(ctx, cfg.ProjectID, credOption)" },
+    "credentialModes[0].scheme": { "file": "go/capture/bigquery/client/credentials.go", "lines": "22-24", "snippet": "type CredentialsJSONConfig struct {\n\tCredentialsJSON string `json:\"credentials_json\" jsonschema:\"title=Service Account JSON,...\" jsonschema_extras:\"secret=true,multiline=true,order=0\"`" },
+    "credentialModes[1].scheme": { "file": "source-bigquery-batch/.snapshots/TestSpec", "lines": "55-64", "snippet": "\"gcp_service_account_to_impersonate\": {\n  \"title\": \"Service Account\",\n\"gcp_workload_identity_pool_audience\": {" },
+    "execution.mode": { "file": "source-bigquery-batch/driver.go", "lines": "396-401", "snippet": "// Wait for next scheduled polling cycle.\n\t\tif err := schedule.WaitForNext(ctx, pollSchedule, state.LastPolled); err != nil {" },
+    "execution.defaultSchedule": { "file": "source-bigquery-batch/main.go", "lines": "87-91", "snippet": "func (c *Config) SetDefaults() {\n\tif c.Advanced.PollSchedule == \"\" {\n\t\tc.Advanced.PollSchedule = \"24h\"" },
+    "execution.continuity": { "file": "source-bigquery-batch/driver.go", "lines": "154-156", "snippet": "// Apply does nothing for batch SQL captures.\nfunc (BatchSQLDriver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) {\n\treturn &pc.Response_Applied{ActionDescription: \"\"}, nil" },
+    "configFields": { "file": "source-bigquery-batch/main.go", "lines": "31-44", "snippet": "ProjectID       string `json:\"project_id\" ...`\n\tCredentialsJSON string `json:\"credentials_json\" jsonschema:\"-\" ...`\n\tDataset         string `json:\"dataset\" ...`" },
+    "discovery.querySketch": { "file": "source-bigquery-batch/discovery.go", "lines": "223", "snippet": "const queryDiscoverTables = `SELECT table_schema, table_name, table_type FROM %[1]s.INFORMATION_SCHEMA.TABLES;`" },
+    "discovery.excludes": { "file": "source-bigquery-batch/main.go", "lines": "161-163", "snippet": "ExcludedSystemSchemas: []string{\n\t\t\"information_schema\",\n\t}," },
+    "streams[0].pull.incremental.querySketch": { "file": "source-bigquery-batch/.snapshots/TestQueryTemplate-SubsequentTwoCursor", "lines": "1-2", "snippet": "SELECT * FROM `testdata`.`foobar` WHERE (`ka` > @p0) OR (`ka` = @p0 AND `kb` > @p1)\n  ORDER BY `ka`, `kb`;" },
+    "streams[0].pull.backfill.querySketch": { "file": "source-bigquery-batch/.snapshots/TestQueryTemplate-FirstTwoCursor", "lines": "1-2", "snippet": "SELECT * FROM `testdata`.`foobar`\n  ORDER BY `ka`, `kb`;" },
+    "streams[0].pull.incremental.chunking": { "file": "source-bigquery-batch/driver.go", "lines": "514-521", "snippet": "for idx, val := range cursorValues {\n\t\tparams = append(params, bigquery.QueryParameter{Name: fmt.Sprintf(\"p%d\", idx), Value: val})" },
+    "streams[1].pull.snapshot.querySketch": { "file": "source-bigquery-batch/.snapshots/TestQueryTemplate-FirstNoCursor", "lines": "1", "snippet": "SELECT * FROM `testdata`.`foobar`;" },
+    "streams[1].writeDisposition": { "file": "source-bigquery-batch/driver.go", "lines": "675-678", "snippet": "if isRowIDKey && isFullRefresh {\n\t\tfor i := int64(0); i < state.DocumentCount-nextRowID; i++ {\n\t\t\tvar doc = map[string]any{\"_meta\": &documentMetadata{Op: \"d\"," },
+    "streams[1].primaryKey": { "file": "source-bigquery-batch/discovery.go", "lines": "115-121", "snippet": "// The fallback key of discovered collections when the source table has no primary key.\n\tfallbackKey = []string{\"/_meta/row_id\"}" },
+    "streams[0].primaryKey": { "file": "source-bigquery-batch/discovery.go", "lines": "200-204", "snippet": "if keyColumns != nil {\n\t\tfor _, colName := range keyColumns {\n\t\t\tcollectionKey = append(collectionKey, primaryKeyToCollectionKey(colName))" },
+    "streams[2].pull.snapshot": { "file": "source-bigquery-batch/main.go", "lines": "108-113", "snippet": "func selectQueryTemplate(res *Resource) (string, error) {\n\tif res.Template != \"\" {\n\t\treturn res.Template, nil" },
+    "streams[0].schedules[0]": { "file": "source-bigquery-batch/driver.go", "lines": "377-381", "snippet": "var pollScheduleStr = c.Config.Advanced.PollSchedule\n\tif res.PollSchedule != \"\" {\n\t\tpollScheduleStr = res.PollSchedule" },
+    "unionMisfits[1]": { "file": "go/schedule/schedule.go", "lines": "28-34", "snippet": "if pollInterval, err := time.ParseDuration(desc); err == nil {\n\t\treturn NewPeriodicSchedule(pollInterval), nil\n\t}\n\tif strings.HasPrefix(desc, \"daily at \") {" },
+    "unionMisfits[0]": { "file": "source-bigquery-batch/driver.go", "lines": "601-609", "snippet": "if documentsSinceLastCheckpoint >= documentsPerCheckpoint {\n\t\t\t} else if prevCursorValues != nil && !cursorValuesEqual(prevCursorValues, currentCursorValues) {\n\t\t\t\tstate.CursorValues = prevCursorValues" },
+    "streamMode": { "file": "source-bigquery-batch/discovery.go", "lines": "22-24", "snippet": "// Discover enumerates tables and views from `information_schema.tables` and generates\n// placeholder capture queries for those tables." }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "streamMode": "high",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[1].pull.snapshot": "high",
+    "streams[1].writeDisposition": "high",
+    "streams[2].pull.snapshot": "medium",
+    "streams[0].writeDisposition": "medium",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[].cursorField": "There is no connector-chosen cursor. `resource.cursor` is an ordered LIST of arbitrary user-supplied column names (any comparable columns), and discovery emits it empty — the generated resource spec sets only name/schema/table. A single cursorField string would misrepresent both the multiplicity and the fact that the connector never picks one. The real cursor columns are recorded in pull.*.cursorColumns.",
+    "transports[0].spec.defaultPort": "BigQuery is reached through the cloud.google.com/go/bigquery client over Google's HTTPS API endpoints; no host/port is configured or configurable.",
+    "transports[0].spec.sslPolicy": "Not configurable — TLS is handled entirely inside the Google client library, and no SSL mode field exists in the config.",
+    "transports[0].spec.tunnelSupport": "No networkTunnel / SSH forwarding config exists in this connector's Config struct or generated schema.",
+    "streams[2].primaryKey": "A template-override binding's key is whatever the operator sets on the target collection; the connector explicitly cannot infer it (SourcedSchema emission skips bindings with a Template) so no key can be stated.",
+    "streams[0].writeDisposition": "Inferred as 'merge' from the collection key being the source table's primary key (Flow reduces by key); the connector itself never sets a write disposition and, for cursor-incremental bindings, never emits delete tombstones — it only sets /_meta/op when the key is /_meta/row_id."
+  }
+}

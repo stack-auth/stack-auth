@@ -1,0 +1,477 @@
+{
+  "id": "mysql",
+  "estuaryDir": "source-mysql",
+  "displayName": "MySQL",
+  "description": "Captures rows and ongoing row-level change events (inserts, updates, deletes) from a MySQL or MariaDB server by backfilling tables and then tailing the binary log.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Backfill queries, discovery against information_schema, and prerequisite/version checks over the normal MySQL client protocol.",
+      "spec": {
+        "kind": "sql",
+        "engine": "mysql",
+        "defaultPort": 3306,
+        "sslPolicy": "Opportunistic TLS: the connector first attempts client.Connect with a TLS config using InsecureSkipVerify:true (no certificate or hostname verification), and on failure retries in plaintext. An ER_ACCESS_DENIED_ERROR short-circuits to a credentials error; error 3159 (secure transport required) reports the TLS-side error. There is no user-facing SSL mode setting.",
+        "tunnelSupport": "Optional SSH bastion forwarding via networkTunnel.sshForwarding (sshEndpoint + privateKey). When configured the connector starts a local forwarder and connects to localhost:3306 instead of the configured address."
+      }
+    },
+    {
+      "role": "sidecar",
+      "purpose": "A second, separate connection: the binlog replication (COM_BINLOG_DUMP) stream, opened by go-mysql's BinlogSyncer with its own ServerID, heartbeat period and read timeout. It is the same host/port and the same username/password, but a distinct protocol role from the query connection.",
+      "spec": {
+        "kind": "sql",
+        "engine": "mysql",
+        "defaultPort": 3306,
+        "sslPolicy": "Same opportunistic pattern: StartSync is attempted with tls.Config{InsecureSkipVerify:true}, and on error the syncer is recreated with TLSConfig nil and retried in plaintext.",
+        "tunnelSupport": "Uses the same SSH tunnel; when a tunnel is configured the syncer targets localhost:3306."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "MySQL username and password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password", "advanced.dbname"]
+      }
+    },
+    {
+      "name": "SSH bastion private key (additive, only when networkTunnel is configured)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "PEM private key plus an ssh://user@host[:port] endpoint, used only to open the forwarding tunnel. This is NOT an alternative to the username/password credential; it is required in addition to it when tunneling."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "A binlog dump client connection registered against the server with a 32-bit ServerID / node ID (advanced.node_id; when unset it is derived deterministically from a SHA-256 hash of the capture task name with the MSB cleared). This must be unique within the replication topology.",
+        "Two live TCP sessions (query connection + binlog syncer), each announcing program_name='Estuary source-mysql' in its connection attributes.",
+        "NO replication slot, NO publication, NO change-tracking table, and NO watermark/scratch table. The connector formerly required a `flow.watermarks` table but no longer writes any watermark; the advanced.watermarks_table setting is explicitly documented as deprecated and its only remaining effect is to exclude a leftover table from discovery.",
+        "Session-level settings applied to the connector's own connection only (SET NAMES utf8mb4, SET SESSION time_zone='+00:00', SET SESSION max_execution_time / max_statement_time). These are per-session and leave nothing behind."
+      ],
+      "customerSideAccrual": null,
+      "ourSideLoss": "The binlog file+offset resume cursor. MySQL purges binlog segments on a purely time-based schedule with no notion of consumer progress, so if we stay disconnected past the retention window the file our cursor names is deleted. Resumption then fails with MySQL error 1236 'Could not find first log file name', which the connector surfaces as a user error instructing the operator to trigger a backfill of all bindings — i.e. we lose the ability to resume incrementally and must re-backfill every table, and any changes that occurred inside the gap are only recovered as final state (intermediate versions and deletes in the gap are lost).",
+      "resumeWindow": "The server's binlog retention period. At startup the connector reads it, preferring (1) mysql.rds_configuration name='binlog retention hours' on Amazon RDS, then (2) binlog_expire_logs_seconds if nonzero, then (3) expire_logs_days if nonzero, and treats 'both zero' (never auto-purge) as one year. It hard-fails validation if the resolved value is under 7 days (168h) and the error text states 30 days is preferred. The check can be bypassed with advanced.skip_binlog_retention_check.",
+      "releasedOnShutdown": true,
+      "notes": "This is the important asymmetry versus Postgres logical replication: MySQL's binlog is written for all writes regardless of whether anyone is consuming it, and the server keeps no per-consumer position. Acknowledge() is an explicit no-op with a comment saying no acknowledgements are necessary or possible because the binlog is just logfiles erased on a time-based retention policy. Consequently pausing between cron ticks accrues NOTHING on the customer's server -- no disk growth, no retained WAL, no undropped object -- and the risk is entirely a one-sided LOSS window on our side: pause longer than retention and the resume point evaporates. Close() cancels the replication worker and tears down both connections, so nothing is left registered on the server. One edge case worth naming: if the customer has set both binlog_expire_logs_seconds and expire_logs_days to zero, the server never purges binlogs at all -- the connector charitably scores that as a one-year window, and in that configuration the customer's disk does grow, but from their own retention policy rather than from anything this connector holds."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port at which the database can be reached; port defaults to 3306 when omitted." },
+    { "name": "user", "displayName": "Login Username", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as; defaults to flow_capture in the UI." },
+    { "name": "password", "displayName": "Login Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the login user. Validation rejects passwords longer than 32 characters because of an internal MySQL replication limitation." },
+    { "name": "timezone", "displayName": "Timezone", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "IANA zone name or +HH:MM offset used to interpret DATETIME columns. Takes precedence over the server's time_zone variable; required only when time_zone reads as SYSTEM and DATETIME columns are captured." },
+    { "name": "historyMode", "displayName": "History Mode", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Capture change events without reducing them to a final state. Flips the collection schema/reduction so every change is retained rather than merged." },
+    { "name": "discoveryFilters.include_schemas", "displayName": "Include Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "If set, only these schemas are discovered. Pushed down into the information_schema.tables listing query, and unioned with advanced.discover_schemas." },
+    { "name": "discoveryFilters.exclude_schemas", "displayName": "Exclude Schemas", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Schemas whose tables are dropped from discovery results client-side." },
+    { "name": "discoveryFilters.table_patterns", "displayName": "Table Patterns", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Glob patterns ('*' and '?'); a pattern containing a '.' matches qualified schema.table, otherwise it matches the unqualified table name in any schema. Applied client-side after listing." },
+    { "name": "advanced.dbname", "displayName": "Database Name", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Database to connect to, default 'mysql'. Mostly irrelevant since the connector can discover and capture across all authorized databases." },
+    { "name": "advanced.skip_binlog_retention_check", "displayName": "Skip Binlog Retention Sanity Check", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Bypasses the 'dangerously short binlog retention' startup check." },
+    { "name": "advanced.node_id", "displayName": "Node ID", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Unique 32-bit replication node/server ID. Defaults to a hash of the task name." },
+    { "name": "advanced.skip_backfills", "displayName": "Skip Backfills", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated fully-qualified schema.table names never to backfill. The single literal value '*.*' means backfill nothing at all." },
+    { "name": "advanced.backfill_chunk_size", "displayName": "Backfill Chunk Size", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "Rows fetched per backfill query; default 50000." },
+    { "name": "advanced.discover_schemas", "displayName": "Discovery Schema Selection", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "Legacy sibling of discoveryFilters.include_schemas; the two lists are concatenated and deduplicated." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value emitted as the 'tag' property of each document's source metadata." },
+    { "name": "advanced.rediscovery_interval", "displayName": "Rediscovery Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string (default 15m) controlling how often a running capture re-runs discovery to notice schema changes and newly added tables." },
+    { "name": "advanced.statement_timeout", "displayName": "Statement Timeout", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Enum of '', 30s, 1m, 5m, 30m. Applied as max_execution_time (MySQL, ms) or max_statement_time (MariaDB, seconds). Empty/zero disables statement timeouts entirely, overriding any server default." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal comma-separated flags (e.g. tinyint1_as_bool, case_sensitive_table_names, skip_prerequisites, date_schema_format, use_schema_inference, emit_sourced_schemas, and value-carrying initial_backfill_cursor=/force_reset_cursor=)." },
+    { "name": "advanced.watermarks_table", "displayName": "Watermarks Table Name", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "DEPRECATED. Default flow.watermarks. No longer written to; the sole remaining effect is excluding a leftover table of that name from discovered bindings." },
+    { "name": "advanced.heartbeat_interval", "displayName": "Heartbeat Interval", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "DEPRECATED. Documented as having no effect." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ssh://user@hostname[:port] bastion endpoint." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Multiline private key used to authenticate to the bastion." },
+    { "name": "mode", "displayName": "Backfill Mode", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding enum: '' (automatic), Normal, Precise, Only Changes, Without Primary Key. Selects which backfill strategy (and whether any backfill runs at all) for this table." },
+    { "name": "namespace", "displayName": "Schema", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Schema (database) in which the table resides; read-only, filled by discovery." },
+    { "name": "stream", "displayName": "Table Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the table to capture; read-only, filled by discovery." },
+    { "name": "priority", "displayName": "Backfill Priority", "required": false, "secret": false, "scope": "resource", "type": "number", "description": "Integer priority; highest-priority bindings are backfilled to completion before others. Negative values allowed." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "information_schema queries over the primary SQL connection, run once at startup and re-run periodically (advanced.rediscovery_interval, default 15m) while the capture is live",
+    "querySketch": "Listing: SELECT table_schema, table_name FROM information_schema.tables, restricted either by `table_schema IN (?, ...)` when include-schemas are configured, or otherwise by `table_schema NOT IN ('information_schema','performance_schema','mysql','sys')`. Detail: for each chunk of up to 100 tables sharing a schema, four further queries with a `table_schema = ? AND table_name IN (?, ...)` predicate -- against information_schema.tables (table_type, engine, table_collation), information_schema.columns (ordinal_position, column_name, is_nullable, data_type, column_type, character_set_name, character_maximum_length, ordered by ordinal_position), and information_schema.statistics twice (primary key, then secondary indexes as fallback keys). Row-count estimates come from a separate `SELECT table_rows FROM information_schema.tables WHERE table_schema = ? AND table_name = ?`.",
+    "excludes": [
+      "information_schema (only when no explicit include-schema list is given)",
+      "performance_schema (same caveat)",
+      "mysql (same caveat)",
+      "sys (same caveat)",
+      "the configured advanced.watermarks_table and the hard-coded 'flow.watermarks', which are discovered but flagged OmitBinding so no binding is proposed",
+      "any schema listed in discoveryFilters.exclude_schemas",
+      "any table not matching at least one discoveryFilters.table_patterns glob, when patterns are configured"
+    ],
+    "allowlist": "discoveryFilters.include_schemas unioned with advanced.discover_schemas; when non-empty this list replaces the system-schema exclusion in the listing query, so naming a system schema explicitly does surface it."
+  },
+
+  "streams": [
+    {
+      "name": "<schema>.<table> with a discovered primary key",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<primary key columns from information_schema.statistics>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binlog streaming", "schedule": { "kind": "continuous" } },
+        { "role": "rediscovery for schema changes and newly added tables", "schedule": { "kind": "other", "literal": "15m", "description": "advanced.rediscovery_interval, a Go duration string; default 15m" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": ["<discovered primary key columns>"],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM `schema`.`table` [WHERE a lexicographic tuple-greater-than predicate expanded as an OR of (k0 = ? AND ... AND ki > ?) clauses over the resume key] ORDER BY <key columns> LIMIT <backfill_chunk_size>. In Precise mode, char/varchar/text key columns are wrapped in BINARY on both the predicate and the ORDER BY so that the database's ordering matches the connector's bytewise row-key serialization.",
+          "chunking": "advanced.backfill_chunk_size rows per query (default 50000). Resume state is the FDB-encoded key tuple of the last row emitted. The chunk is the last one when it returns fewer rows than the chunk size. A statement timeout that fires after at least one row was returned is treated as partial progress rather than an error."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "cluster",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Binlog file name and byte offset serialized as '<logfile>:<offset>' (e.g. 'mysql-bin.000003:1234'), obtained initially from SHOW MASTER STATUS / SHOW BINARY LOG STATUS and thereafter advanced from binlog event LogPos. Offsets above 4GiB in a single binlog file are not resumable, so the connector detects the 32-bit overflow and suppresses checkpoint emission past that point."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> with no primary key (Without Primary Key / keyless backfill)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/source/cursor"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "append",
+      "schedules": [
+        { "role": "binlog streaming", "schedule": { "kind": "continuous" } },
+        { "role": "rediscovery for schema changes and newly added tables", "schedule": { "kind": "other", "literal": "15m", "description": "advanced.rediscovery_interval, a Go duration string; default 15m" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": null,
+          "table": null,
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM `schema`.`table` LIMIT <backfill_chunk_size> OFFSET ?",
+          "chunking": "Row-count offset only. The resume state is the count of rows already backfilled and each emitted row is given a synthetic row key of the form 'B' followed by a 19-digit zero-padded decimal offset. This mode does not deduplicate against concurrent replication events."
+        },
+        "incremental": {
+          "kind": "changes",
+          "scope": "cluster",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "Same '<logfile>:<offset>' binlog position as the keyed archetype; the stream cursor is per-capture, not per-table."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<schema>.<table> configured with resource mode 'Only Changes'",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<primary key columns, when the table has one>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "binlog streaming", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "changes",
+          "scope": "cluster",
+          "schema": null,
+          "table": null,
+          "publication": null,
+          "emitsDeletes": true,
+          "resumeTokenKind": "'<logfile>:<offset>' binlog position. The table goes straight to the Active state with no historical sweep, so only changes occurring after activation are ever captured. advanced.skip_backfills (including the '*.*' catch-all) produces the same shape."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential is a MySQL username and password plus a host:port address -- a connection string the customer can self-serve. There is no OAuth application to register and no refresh token. The real onboarding cost is server-side privileges and settings rather than credential plumbing: the user needs REPLICATION CLIENT (the connector probes for it by attempting SHOW MASTER STATUS / SHOW BINARY LOG STATUS), REPLICATION SLAVE, SELECT on the captured tables, and information_schema read access for discovery; and the server must have log_bin=ON, binlog_format=ROW, and binlog retention of at least 7 days. A password longer than 32 characters is rejected outright because of a MySQL replication-protocol limitation, which is a real (and surprising) provisioning constraint. If SSH tunneling is used a private key is additionally required, but that is additive to the password rather than an alternative credential mode.",
+
+  "unionMisfits": [
+    {
+      "where": "transports",
+      "description": "The connector opens two functionally distinct sessions to the SAME endpoint: a normal client connection used for discovery/backfill/prerequisites, and a binlog dump session created by go-mysql's BinlogSyncer with its own ServerID, 30s heartbeat and 5m read timeout. The schema's role enum ('primary'/'sidecar') was designed for two different SERVICES (Kafka + schema registry), not two protocol roles against one service. Modeling the replication session as a 'sidecar' is the least-bad fit but reads misleadingly, and there is nowhere to record the ServerID/heartbeat/read-timeout parameters that make it a distinct connection.",
+      "proposedShape": { "transports[].role": "primary|sidecar|replication", "transports[].spec.replication": { "clientIdField": "advanced.node_id", "heartbeat": "30s", "readTimeout": "5m", "maxReconnectAttempts": 10 } }
+    },
+    {
+      "where": "credentialModes",
+      "description": "credentialModes is documented as a set of ALTERNATIVES ('API key OR OAuth'), but the SSH bastion private key is ADDITIVE -- it is required in addition to the username/password when networkTunnel is configured, never instead of it. Listing it as a second mode makes authTierOverall ('the easiest mode offered') read as if tunneling were an alternative way to authenticate.",
+      "proposedShape": { "credentialModes[].composition": "alternative|additive", "credentialModes[].requires": ["<name of the mode this one supplements>"] }
+    },
+    {
+      "where": "streams[].pull",
+      "description": "There is no slot for the backfill-to-streaming HANDOFF, which is the single most correctness-critical mechanism in a CDC connector. Here it is a fence protocol rather than a watermark table: the capture opens the binlog stream FIRST, streams to a fence (a binlog position read live from SHOW MASTER STATUS) to catch up, then alternates backfill chunks with streamToFence cycles until every binding is Active. In Precise mode, replication events for rows beyond the scanned key range are filtered out so they are not double-emitted; in Normal (unfiltered) mode they are not. This filtering distinction lives nowhere in the schema, and it is exactly what determines whether a customer sees duplicate or missing rows.",
+      "proposedShape": { "streams[].handoff": { "kind": "fence|watermark_table|snapshot_lsn|none", "fenceSource": "SHOW MASTER STATUS binlog position", "overlapPolicy": "filter_beyond_scanned_key|emit_all|dedupe_by_key" } }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "writeDisposition is a per-stream field but the endpoint-level `historyMode` boolean flips it for EVERY binding at once: when true, change events are retained without being reduced to a final state (append) rather than merged. The mined per-stream values therefore describe historyMode=false only.",
+      "proposedShape": { "endpointOverrides": [{ "field": "historyMode", "affects": "streams[].writeDisposition", "whenTrue": "append" }] }
+    },
+    {
+      "where": "streams[].pull.backfill",
+      "description": "A single discovered table has FOUR possible backfill shapes selected by the per-binding `mode` resource field (automatic/Normal/Precise/Only Changes/Without Primary Key), and 'automatic' resolves at runtime by asking whether the discovered key columns have predictable bytewise ordering. The schema allows only one backfill PullSpec per stream, so the archetypes above have to be split into separate pseudo-streams that are really the same table under different settings.",
+      "proposedShape": { "streams[].pull.backfillVariants": [{ "selector": "resource.mode == 'Precise'", "spec": "<PullSpec>" }] }
+    },
+    {
+      "where": "execution.continuity",
+      "description": "customerSideAccrual is null in the normal case, but that is conditional on the customer's own retention settings rather than unconditional: if both binlog_expire_logs_seconds and expire_logs_days are zero, MySQL never purges binlogs and disk does grow without bound. The connector's getBinlogExpiry charitably scores that configuration as a one-year window so the sanity check passes. There is no way to express 'no accrual under the expected configuration, unbounded accrual under a configuration the connector tolerates'.",
+      "proposedShape": { "continuity.customerSideAccrual": { "default": null, "conditional": [{ "when": "binlog_expire_logs_seconds = 0 AND expire_logs_days = 0", "accrual": "binlog files are never auto-purged" }] } }
+    },
+    {
+      "where": "connector family",
+      "description": "source-mysql-batch is a separate connector mined separately and is materially different in kind, not degree: it is a poll-mode connector that issues user-supplied or template SQL queries on a schedule with a cursor column, requires no binlog, no REPLICATION CLIENT privilege and no ROW binlog_format, cannot observe deletes at all, and has no continuity artifacts or resume window. Nothing in this record carries over to it. This same source-mysql code is additionally rebuilt as five variants (source-mariadb, source-amazon-rds-mysql, source-amazon-aurora-mysql, source-amazon-rds-mariadb, source-google-cloud-sql-mysql) which share this configuration surface; the MariaDB variants additionally select the MariaDB binlog flavor and a lower minimum version (10.3 vs 8.0).",
+      "proposedShape": { "variantOf": "source-mysql", "variants": ["source-mariadb", "source-amazon-rds-mysql", "source-amazon-aurora-mysql", "source-amazon-rds-mariadb", "source-google-cloud-sql-mysql"] }
+    },
+    {
+      "where": "prerequisites",
+      "description": "There is no schema slot for server-side PREREQUISITES the connector actively checks and fails on, which for a database CDC connector are the dominant onboarding blocker. This connector checks, in order: server version (MySQL >= 8.0 / MariaDB >= 10.3, currently downgraded to a warning), log_bin = ON, @@GLOBAL.binlog_format = ROW, binlog retention >= 7 days, and REPLICATION CLIENT privilege (probed via SHOW MASTER STATUS). Per-table it checks SELECT access via `SELECT * FROM t LIMIT 0` and, when the database timezone is unknown, that the table has no DATETIME columns. All of these are bypassable with the internal skip_prerequisites / skip_table_prerequisites feature flags.",
+      "proposedShape": { "prerequisites": [{ "check": "@@GLOBAL.binlog_format", "requiredValue": "ROW", "severity": "fatal", "bypass": "feature flag skip_prerequisites" }] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source-mysql/main.go",
+      "lines": "244-246",
+      "snippet": "if !strings.Contains(c.Address, \":\") {\n\t\tc.Address += \":3306\"\n\t}"
+    },
+    "transports[0].spec.sslPolicy": {
+      "file": "source-mysql/main.go",
+      "lines": "285-306",
+      "snippet": "c.SetTLSConfig(&tls.Config{InsecureSkipVerify: true})\n...\n} else if connWithoutTLS, errWithoutTLS := client.Connect(address, db.config.User, db.config.Password, db.config.Advanced.DBName, withAttrs); errWithoutTLS == nil {"
+    },
+    "transports[0].spec.tunnelSupport": {
+      "file": "source-mysql/main.go",
+      "lines": "96-102",
+      "snippet": "var sshConfig = &networkTunnel.SshConfig{\n\t\t\tSshEndpoint: config.NetworkTunnel.SSHForwarding.SSHEndpoint,\n\t\t\tLocalPort:   \"3306\","
+    },
+    "transports[1].spec": {
+      "file": "source-mysql/replication.go",
+      "lines": "122-142",
+      "snippet": "var syncConfig = replication.BinlogSyncerConfig{\n\t\tServerID: uint32(db.config.Advanced.NodeID),\n\t\tHeartbeatPeriod: 30 * time.Second,"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source-mysql/main.go",
+      "lines": "181-192",
+      "snippet": "var requiredProperties = [][]string{\n\t\t{\"address\", c.Address}, {\"user\", c.User}, {\"password\", c.Password},\n\t}"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source-mysql/main.go",
+      "lines": "61-64",
+      "snippet": "type sshForwarding struct {\n\tSSHEndpoint string `json:\"sshEndpoint\" ...`\n\tPrivateKey  string `json:\"privateKey\" ... secret=true,multiline=true`"
+    },
+    "execution.mode": {
+      "file": "source-mysql/main.go",
+      "lines": "498-500",
+      "snippet": "func (db *mysqlDatabase) ReplicationPollingInterval() time.Duration {\n\treturn 0 // Binlog replication events arrive continuously rather than being polled for.\n}"
+    },
+    "execution.continuity.artifacts": {
+      "file": "source-mysql/main.go",
+      "lines": "228-236",
+      "snippet": "// The only constraint on the node/server ID is that it needs to be unique\n\t\t// within a particular replication topology.\n\t\tvar nameHash = sha256.Sum256([]byte(name))"
+    },
+    "execution.continuity.artifacts[2]": {
+      "file": "source-mysql/discovery.go",
+      "lines": "173-183",
+      "snippet": "// The connector used to require a watermarks table as part of its operation ...\n\t\t// Now the connector no longer uses watermarks\n\t\tif streamID.String() == db.config.Advanced.WatermarksTable || streamID.String() == \"flow.watermarks\" {"
+    },
+    "execution.continuity.customerSideAccrual": {
+      "file": "source-mysql/replication.go",
+      "lines": "1575-1582",
+      "snippet": "// No acknowledgements are necessary or possible in MySQL. The binlog is just\n\t// a series of logfiles on disk which get erased after log rotation according\n\t// to a time-based retention policy, without any server-side ... tracking."
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source-mysql/replication.go",
+      "lines": "215-216",
+      "snippet": "case strings.Contains(msg, \"Could not find first log file name\"):\n\t\t\treturn cerrors.NewUserError(err, \"the MySQL binary logs that this capture was tracking have been purged and replication cannot resume ... To recover, trigger a backfill of all capture bindings.\")"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source-mysql/prerequisites.go",
+      "lines": "113-115",
+      "snippet": "if expiryTime < minimumExpiryTime {\n\t\treturn fmt.Errorf(\"binlog retention period is too short (go.estuary.dev/PoMlNf): server reports %s but at least %s is required (and 30 days is preferred wherever possible)\", ...)"
+    },
+    "execution.continuity.resumeWindow.resolution": {
+      "file": "source-mysql/prerequisites.go",
+      "lines": "183-207",
+      "snippet": "rdsRetentionHours, err := queryNumericVariable(conn, `SELECT name, value FROM mysql.rds_configuration WHERE name = 'binlog retention hours';`)\n...\nexpireLogsSeconds, err := queryNumericVariable(conn, `SHOW VARIABLES LIKE 'binlog_expire_logs_seconds';`)"
+    },
+    "execution.continuity.releasedOnShutdown": {
+      "file": "source-mysql/replication.go",
+      "lines": "1585-1588",
+      "snippet": "func (rs *mysqlReplicationStream) Close(ctx context.Context) error {\n\trs.cancel()\n\treturn <-rs.errCh"
+    },
+    "discovery.querySketch": {
+      "file": "source-mysql/discovery.go",
+      "lines": "395-404",
+      "snippet": "fmt.Fprintf(query, `SELECT table_schema, table_name`)\n\tfmt.Fprintf(query, `  FROM information_schema.tables`)"
+    },
+    "discovery.excludes": {
+      "file": "source-mysql/discovery.go",
+      "lines": "403",
+      "snippet": "fmt.Fprintf(query, `  WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')`)"
+    },
+    "discovery.allowlist": {
+      "file": "source-mysql/discovery.go",
+      "lines": "88-90",
+      "snippet": "var includeSchemas = slices.Concat(db.config.DiscoveryFilters.IncludeSchemas, db.config.Advanced.DiscoverSchemas)"
+    },
+    "discovery.method": {
+      "file": "source-mysql/discovery.go",
+      "lines": "24-27",
+      "snippet": "// discoveryChunkSize is the number of tables per chunk in DiscoverTableDetails.\n\t// Each chunk runs four queries against information_schema"
+    },
+    "streams[0].pull.backfill.querySketch": {
+      "file": "source-mysql/backfill.go",
+      "lines": "242-260",
+      "snippet": "fmt.Fprintf(query, \"SELECT * FROM `%s`.`%s`\", schemaName, tableName)\n\tfmt.Fprintf(query, \" ORDER BY %s\", strings.Join(pkey, \", \"))\n\tfmt.Fprintf(query, \" LIMIT %d;\", db.config.Advanced.BackfillChunkSize)"
+    },
+    "streams[0].pull.backfill.chunking": {
+      "file": "source-mysql/backfill.go",
+      "lines": "202-203",
+      "snippet": "var backfillComplete = resultRows < db.config.Advanced.BackfillChunkSize\n\treturn backfillComplete, nextRowKey, nil"
+    },
+    "streams[0].pull.incremental.emitsDeletes": {
+      "file": "source-mysql/replication.go",
+      "lines": "739-756",
+      "snippet": "case replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:\n...\n\t\t\tevent.Meta.Operation = sqlcapture.DeleteOp"
+    },
+    "streams[0].pull.incremental.resumeTokenKind": {
+      "file": "source-mysql/replication.go",
+      "lines": "190-201",
+      "snippet": "func parseCursor(cursor string) (mysql.Position, error) {\n\tseps := strings.Split(cursor, \":\")\n\t... return mysql.Position{Name: seps[0], Pos: uint32(offset)}"
+    },
+    "streams[0].pull.incremental.resumeTokenKind.origin": {
+      "file": "source-mysql/database.go",
+      "lines": "145-153",
+      "snippet": "// queryBinlogStatus fetches the current binary logging position and configuration using\n// the SHOW MASTER STATUS / SHOW BINARY LOG STATUS query (depending on the server version)."
+    },
+    "streams[1].primaryKey": {
+      "file": "source-mysql/main.go",
+      "lines": "490-492",
+      "snippet": "func (db *mysqlDatabase) FallbackCollectionKey() []string {\n\treturn []string{\"/_meta/source/cursor\"}\n}"
+    },
+    "streams[1].pull.backfill.querySketch": {
+      "file": "source-mysql/backfill.go",
+      "lines": "220-222",
+      "snippet": "fmt.Fprintf(query, \"SELECT * FROM `%s`.`%s`\", schemaName, tableName)\n\tfmt.Fprintf(query, \" LIMIT %d\", db.config.Advanced.BackfillChunkSize)\n\tfmt.Fprintf(query, \" OFFSET ?;\")"
+    },
+    "streams[1].pull.backfill.chunking": {
+      "file": "source-mysql/backfill.go",
+      "lines": "163-165",
+      "snippet": "if state.Mode == sqlcapture.TableStateKeylessBackfill {\n\t\t\trowKey = []byte(fmt.Sprintf(\"B%019d\", rowOffset))"
+    },
+    "streams[2].pull.backfill": {
+      "file": "source-mysql/main.go",
+      "lines": "511-513",
+      "snippet": "if db.config.Advanced.SkipBackfills == \"*.*\" {\n\t\t\treturn false\n\t\t}"
+    },
+    "streams[0].schedules[1]": {
+      "file": "source-mysql/main.go",
+      "lines": "170",
+      "snippet": "RediscoveryInterval string `json:\"rediscovery_interval,omitempty\" jsonschema:\"...,default=15m,description=How often the connector re-runs discovery while a capture is running...\"`"
+    },
+    "configFields": {
+      "file": "source-mysql/main.go",
+      "lines": "149-177",
+      "snippet": "type Config struct {\n\tAddress     string `json:\"address\" ...`\n\tAdvanced         advancedConfig   `json:\"advanced,omitempty\" ...`"
+    },
+    "configFields[24]": {
+      "file": "sqlcapture/main.go",
+      "lines": "22-28",
+      "snippet": "type Resource struct {\n\tMode BackfillMode `json:\"mode,omitempty\" jsonschema:\"...,enum=,enum=Normal,enum=Precise,enum=Only Changes,enum=Without Primary Key\"`"
+    },
+    "authTierRationale": {
+      "file": "source-mysql/prerequisites.go",
+      "lines": "119-126",
+      "snippet": "// The SHOW MASTER STATUS / SHOW BINARY LOG STATUS command requires REPLICATION CLIENT\n\t// or SUPER privileges ...\n\t\treturn fmt.Errorf(\"user %q needs the REPLICATION CLIENT permission\", db.config.User)"
+    },
+    "authTierRationale.passwordLimit": {
+      "file": "source-mysql/main.go",
+      "lines": "191-193",
+      "snippet": "if len(c.Password) > 32 {\n\t\treturn fmt.Errorf(\"passwords used as part of replication cannot exceed 32 characters in length due to an internal limitation in MySQL: ...\")"
+    },
+    "unionMisfits[3]": {
+      "file": "source-mysql/main.go",
+      "lines": "154",
+      "snippet": "HistoryMode bool `json:\"historyMode\" jsonschema:\"default=false,description=Capture change events without reducing them to a final state.\"`"
+    },
+    "unionMisfits[7]": {
+      "file": "source-mysql/prerequisites.go",
+      "lines": "29-38",
+      "snippet": "for _, prereq := range []func(ctx context.Context) error{\n\t\tdb.prerequisiteBinlogEnabled, db.prerequisiteBinlogFormat,\n\t\tdb.prerequisiteBinlogExpiry, db.prerequisiteUserPermissions,"
+    },
+    "unionMisfits[6]": {
+      "file": "source-mysql/VARIANTS",
+      "lines": "1-5",
+      "snippet": "source-mariadb\nsource-amazon-aurora-mysql\nsource-google-cloud-sql-mysql"
+    }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports[0]": "high",
+    "transports[1]": "medium",
+    "credentialModes[0]": "high",
+    "credentialModes[1]": "high",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "high",
+    "execution.continuity.releasedOnShutdown": "medium",
+    "discovery.method": "high",
+    "discovery.querySketch": "high",
+    "discovery.excludes": "high",
+    "discovery.allowlist": "high",
+    "streams[0].pull.backfill": "high",
+    "streams[0].pull.incremental": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[1].primaryKey": "medium",
+    "streams[1].writeDisposition": "low",
+    "streams[2]": "medium",
+    "configFields": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[].name": "The stream list is entirely discovered from the customer's schema; the connector names no literal streams. All three entries are archetypes, not real streams.",
+    "streams[].cursorField": "There is no per-row cursor COLUMN. The incremental cursor is a connector-global binlog file+offset held in capture state, and backfill resumption uses an FDB-encoded key tuple rather than a monotonic column. Recording either as a cursorField would be misleading.",
+    "streams[1].writeDisposition": "For keyless tables the capture falls back to a /_meta/source/cursor key, which makes every emitted document distinct and therefore effectively append-only, but the reduction annotation is produced by shared sqlcapture schema-generation code that was only skimmed here; 'append' is inferred from the synthetic key rather than read off an explicit setting.",
+    "streams[0].schedules": "Binlog streaming is genuinely continuous within a running task; whether the Flow control plane wakes the task on a schedule is decided outside this connector's code and is not visible here.",
+    "transports[0].spec.sslPolicy.verification": "TLS is attempted with InsecureSkipVerify:true and a TODO in the source notes that server-name checking is not implemented, so certificates are encrypted-but-unverified. Whether any deployment wrapper supplies stricter verification is not determinable from this directory.",
+    "execution.continuity.releasedOnShutdown": "Close() cancels the replication worker and the connection teardown follows, and MySQL registers no persistent object for a binlog consumer, so nothing should remain. Marked medium rather than high because the SSH tunnel child process has an explicit FIXME in the source noting that tunnel.Stop is never called anywhere, relying on process-exit cleanup.",
+    "streams[].pull.backfill.keyColumns": "Actual key columns are whatever information_schema.statistics reports as the primary key (with secondary unique indexes used as a fallback), or a user override via the undocumented resource-level primary_key field. No literal value can be given."
+  }
+}

@@ -1,0 +1,451 @@
+{
+  "id": "posthog",
+  "estuaryDir": "source-posthog",
+  "displayName": "PostHog",
+  "description": "Imports PostHog product-analytics data (organizations, projects, events, persons, cohorts, feature flags, annotations) for every project in one PostHog organization.",
+  "category": "product",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "resolved",
+          "resolution": "User-supplied endpoint config field `advanced.base_url`, defaulting to https://app.posthog.com. Docs point EU cloud users at https://eu.posthog.com; because PostHog is self-hostable any host may be given. All request URLs are built by urljoin()-ing 'api/...' segments onto this value."
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": null
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Personal API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": { "type": "bearer", "field": "credentials.access_token" }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": { "kind": "interval", "seconds": 300 },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure read-only HTTP polling: no replication slot, consumer group, scratch table, or other server-side object is created in PostHog. All resumption state is datetime cursors held in Flow connector state, so an arbitrarily long pause only means a larger catch-up query on the next tick. The only in-process state is estuary_cdk.emitted_changes_cache, used to suppress duplicate events between the realtime and 1h-lookback event streams; losing it on restart causes re-emission (idempotent on the /_meta/project_id + /uuid key), not data loss."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator, constant \"Private App Credentials\"" },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "PostHog Personal API Key (starts with phx_)" },
+    { "name": "organization_id", "displayName": "Organization ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "PostHog Organization UUID; the connector captures data from all projects in this organization" },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC YYYY-MM-DDTHH:MM:SSZ; defaults to 30 days before the present" },
+    { "name": "advanced.base_url", "displayName": "Base URL", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "PostHog API base URL; default https://app.posthog.com, https://eu.posthog.com for EU cloud" },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource" },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource; the connector proposes PT5M for every stream" }
+  ],
+
+  "streamMode": "static",
+  "discovery": {
+    "method": "Fixed 7-resource list, then filtered at discover/validate time by the scopes reported for the personal API key at GET api/personal_api_keys/@current",
+    "querySketch": "GET {base_url}/api/personal_api_keys/@current -> {scopes: [...]}; a resource is kept when its required scope is present, or when the key is scoped '*'",
+    "excludes": [],
+    "allowlist": "Cohorts requires cohort:read, FeatureFlags requires feature_flag:read, Annotations requires annotation:read, Events and Persons require query:read. Organizations and Projects have no scope requirement and are always offered."
+  },
+
+  "streams": [
+    {
+      "name": "Organizations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "api/organizations/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Projects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "api/organizations/{organization_id}/projects/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": null,
+          "pathPlaceholders": { "organization_id": "the `organization_id` endpoint config field" },
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Cohorts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "api/projects/{project_id}/cohorts/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "order": "-updated_at" },
+          "pathPlaceholders": { "project_id": "iterated over every project id returned by the Projects stream (GET api/organizations/{organization_id}/projects/)" },
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "Annotations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [ { "role": "snapshot sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "api/projects/{project_id}/annotations/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "order": "-updated_at" },
+          "pathPlaceholders": { "project_id": "iterated over every project id returned by the Projects stream" },
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "FeatureFlags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/project_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "api/projects/{project_id}/feature_flags/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "order": "-updated_at" },
+          "pathPlaceholders": { "project_id": "one backfill fetcher is registered per project id" },
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "api/projects/{project_id}/feature_flags/",
+          "httpMethod": "GET",
+          "recordsPath": "results",
+          "params": { "order": "-updated_at" },
+          "pathPlaceholders": { "project_id": "one incremental fetcher is registered per project id" },
+          "paginator": { "type": "next_url", "nextUrlPath": "next" },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/project_id", "/uuid"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "timestamp",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep (both the realtime and the 1h-lookback sub-streams)", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "POST api/projects/{project_id}/query with body {query: {kind: 'HogQLQuery', query: \"SELECT <columns discovered via a LIMIT 0 probe> FROM events WHERE COALESCE(timestamp) > toDateTime64(<cursor>,6,'UTC') AND COALESCE(timestamp) <= toDateTime64(<cutoff>,6,'UTC') ORDER BY COALESCE(timestamp) ASC LIMIT 50000\"}}; rows come back as positional arrays under results and are zipped with the columns list. Loops, advancing the cursor to the max timestamp seen, until a batch returns fewer than 50000 rows. A 5-minute wall-clock backfill timeout emits a PageCursor at the last fully-consumed timestamp."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "Same HogQL POST, lower bound = stored cursor. Two sub-streams per project: '{project_id}_realtime' with no upper bound, and '{project_id}_lookback' with upper bound now-1h to re-read events delayed by ClickHouse/Kafka. Duplicates between the two are suppressed via emitted_changes_cache keyed '{project_id}/{uuid}'."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "Persons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/project_id", "/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "COALESCE(last_seen_at, created_at)",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [ { "role": "incremental sweep", "schedule": { "kind": "interval", "seconds": 300 } } ],
+      "pull": {
+        "backfill": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "POST api/projects/{project_id}/query with a HogQLQuery: SELECT <probed columns> FROM persons WHERE COALESCE(last_seen_at,created_at) > toDateTime64(<cursor>,6,'UTC') AND COALESCE(...) <= toDateTime64(<cutoff>,6,'UTC') ORDER BY COALESCE(...) ASC LIMIT 50000, looping until a short batch; wrapped in the same 5-minute backfill timeout."
+        },
+        "incremental": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "Same HogQL POST with lower bound = stored cursor and NO upper bound; loops until a batch shorter than 50000 rows."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode. The user pastes a single self-serve PostHog Personal API Key (phx_...) which is sent as `Authorization: Bearer <token>` by the CDK's TokenSource for the CDK AccessToken credential type. `TokenSource(oauth_spec=None, ...)` is constructed with a null OAuth spec, so no OAuth app registration and no refresh token are involved. The only extra user-supplied values are the organization UUID and, for self-hosted/EU installs, the base URL.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[Events|Persons].pull.*.paginator",
+      "description": "The HogQL streams have no HTTP paginator at all: pagination is keyset pagination expressed inside the SQL text of the POST body. The page token is the max cursor-column value of the last row returned (record_cursor-like), it is sent embedded in a SQL WHERE clause inside a JSON request body (body_cursor-like), and the loop terminates when a batch returns fewer than the LIMIT of 50000 rows (short_page). None of the seven paginator types describes this, so the field is omitted rather than mis-typed and the mechanism is written into querySketch.",
+      "proposedShape": {
+        "type": "query_keyset",
+        "tokenFrom": "last_record",
+        "tokenTo": "body_query_text",
+        "recordField": "the stream's cursor column(s), COALESCE'd",
+        "pageSizeLiteral": 50000,
+        "terminateOn": "short_page"
+      }
+    },
+    {
+      "where": "streams[Events].pull.incremental",
+      "description": "One binding fans out into 2 x N concurrent sub-streams (N = number of projects in the org, discovered at runtime), and the two per-project sub-streams differ only in an upper time bound (realtime = unbounded, lookback = now minus 1h) to absorb PostHog's eventual consistency. The schema's single `incremental` PullSpec cannot express per-binding fan-out or two differently-lagged legs of the same leg-type.",
+      "proposedShape": {
+        "fanOut": { "over": "project_id", "resolvedBy": "GET api/organizations/{organization_id}/projects/" },
+        "legs": [ { "name": "realtime", "upperBound": null }, { "name": "lookback", "upperBound": "now - PT1H", "dedupeAgainst": "realtime" } ]
+      }
+    },
+    {
+      "where": "streams[*].pull.*.pathPlaceholders",
+      "description": "Every project-scoped stream is a runtime fan-out over project ids fetched from a parent endpoint, not a single path with a placeholder. pathPlaceholders can name the variable but cannot express that the connector iterates all values and interleaves the resulting documents into one collection distinguished by /_meta/project_id.",
+      "proposedShape": { "parentStream": "Projects", "parentKey": "id", "childPathParam": "project_id", "childrenMergedInto": "one collection keyed on /_meta/project_id" }
+    },
+    {
+      "where": "discovery",
+      "description": "streamMode is `static` (a hard-coded list of 7), yet the offered list is narrowed at runtime by the API key's scopes. That is neither pure static nor schema discovery; `discovery` is filled in here to record the scope filter even though `streamMode` is static.",
+      "proposedShape": { "streamMode": "static", "runtimeFilter": { "kind": "permission_scopes", "probe": "GET api/personal_api_keys/@current", "map": { "Cohorts": "cohort:read", "FeatureFlags": "feature_flag:read", "Annotations": "annotation:read", "Events": "query:read", "Persons": "query:read" } } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_posthog/models.py",
+      "lines": "102-106",
+      "snippet": "base_url: str = Field(\n    description=\"PostHog API base URL. Use https://eu.posthog.com for EU cloud.\",\n    default=\"https://app.posthog.com\",)"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_posthog/models.py",
+      "lines": "80-84",
+      "snippet": "credentials: AccessToken = Field(\n    title=\"Personal API Key\",\n    description=\"PostHog Personal API Key (starts with phx_). \","
+    },
+    "credentialModes[0].tier": {
+      "file": "source_posthog/resources.py",
+      "lines": "482",
+      "snippet": "http.token_source = TokenSource(oauth_spec=None, credentials=config.credentials)"
+    },
+    "authTierOverall": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "35-36, 305",
+      "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nDEFAULT_AUTHORIZATION_TOKEN_TYPE = \"Bearer\"\nreturn (self.authorization_token_type, self.credentials.access_token)"
+    },
+    "execution.defaultSchedule": {
+      "file": "source_posthog/resources.py",
+      "lines": "179-182",
+      "snippet": "initial_config=ResourceConfig(\n    name=model.resource_name,\n    interval=timedelta(minutes=5),)"
+    },
+    "streamMode": {
+      "file": "source_posthog/resources.py",
+      "lines": "489-494",
+      "snippet": "resources = [\n    *snapshot_resources(http, config),\n    await events(...), await feature_flags(...), await persons(...)]"
+    },
+    "discovery.allowlist": {
+      "file": "source_posthog/resources.py",
+      "lines": "55-61",
+      "snippet": "RESOURCE_REQUIRED_SCOPES: dict[str, str] = {\n    \"Cohorts\": \"cohort:read\", \"FeatureFlags\": \"feature_flag:read\",\n    \"Annotations\": \"annotation:read\", \"Events\": \"query:read\", \"Persons\": \"query:read\"}"
+    },
+    "discovery.method": {
+      "file": "source_posthog/api.py",
+      "lines": "63-66",
+      "snippet": "url = urljoin(config.advanced.base_url, \"api/personal_api_keys/@current\")\nresponse = await http.request(log, url)\napi_key_info = PersonalApiKeyInfo.model_validate_json(response)"
+    },
+    "streams[0].pull.snapshot.paginator": {
+      "file": "source_posthog/api.py",
+      "lines": "83-99",
+      "snippet": "while current_url is not None:\n    _, body = await http.request_stream(log, current_url)\n    ... current_url = remainder.next if remainder else None"
+    },
+    "streams[0].pull.snapshot.recordsPath": {
+      "file": "source_posthog/api.py",
+      "lines": "85-90",
+      "snippet": "IncrementalJsonProcessor(\n    body(), \"results.item\", model, remainder_cls=RestResponseMeta,)"
+    },
+    "streams[0].pull.snapshot.path": {
+      "file": "source_posthog/models.py",
+      "lines": "224, 231-233",
+      "snippet": "api_path: ClassVar[str] = \"organizations\"\nreturn functools.reduce(urljoin, [config.advanced.base_url, \"api/\", cls.api_path + \"/\"])"
+    },
+    "streams[1].pull.snapshot.path": {
+      "file": "source_posthog/models.py",
+      "lines": "250-259",
+      "snippet": "urljoin, [config.advanced.base_url, \"api/\", \"organizations/\",\n    f\"{config.organization_id}/\", f\"{cls.api_path}/\",]"
+    },
+    "streams[2].pull.snapshot.path": {
+      "file": "source_posthog/models.py",
+      "lines": "150-161, 270-271",
+      "snippet": "urljoin, [base_url, \"api/\", \"projects/\", f\"{project_id}/\", f\"{cls.api_path}/\", \"?order=-updated_at\"]\napi_path: ClassVar[str] = \"cohorts\""
+    },
+    "streams[3].pull.snapshot.path": {
+      "file": "source_posthog/models.py",
+      "lines": "289-290",
+      "snippet": "resource_name: ClassVar[str] = \"Annotations\"\napi_path: ClassVar[str] = \"annotations\""
+    },
+    "streams[4].cursorField": {
+      "file": "source_posthog/models.py",
+      "lines": "278-283",
+      "snippet": "api_path: ClassVar[str] = \"feature_flags\"\nupdated_at: AwareDatetime\ndef get_cursor(self) -> AwareDatetime: return self.updated_at"
+    },
+    "streams[4].pull.incremental": {
+      "file": "source_posthog/api.py",
+      "lines": "277, 283-289",
+      "snippet": "url = FeatureFlag.get_api_endpoint_url(base_url, project_id)\nasync for item in _fetch_from_url(url, FeatureFlag, http, log, validation_context=ctx):\n    if item_cursor <= cursor: break"
+    },
+    "streams[5].pull.backfill.querySketch": {
+      "file": "source_posthog/api.py",
+      "lines": "202-207",
+      "snippet": "\"query\": f\"SELECT {', '.join(column_names)} FROM {model.table_name} \"\n+ start_date_clause + end_date_clause\n+ f\"ORDER BY {coalesced_cursor_fields} ASC LIMIT {HOGQL_PAGE_SIZE}\""
+    },
+    "streams[5].pull.incremental.querySketch": {
+      "file": "source_posthog/resources.py",
+      "lines": "53, 297-298",
+      "snippet": "EVENTS_EVENTUAL_CONSISTENCY_HORIZON = timedelta(hours=1)\ncutoff = datetime.now(tz=UTC)\nlookback_cutoff = cutoff - EVENTS_EVENTUAL_CONSISTENCY_HORIZON"
+    },
+    "streams[5].primaryKey": {
+      "file": "source_posthog/resources.py",
+      "lines": "357-358",
+      "snippet": "name=Event.resource_name,\nkey=[\"/_meta/project_id\", \"/uuid\"],"
+    },
+    "streams[6].cursorField": {
+      "file": "source_posthog/models.py",
+      "lines": "317-318, 325",
+      "snippet": "table_name: ClassVar[str] = \"persons\"\ncursor_columns: ClassVar[list[str]] = [\"last_seen_at\", \"created_at\"]\nreturn self.last_seen_at or self.created_at"
+    },
+    "streams[6].pull.backfill": {
+      "file": "source_posthog/api.py",
+      "lines": "35, 180, 490-491",
+      "snippet": "HOGQL_PAGE_SIZE = 50_000\ncoalesced_cursor_fields = f'COALESCE({\",\".join(model.cursor_columns)})'\nif batch_count < HOGQL_PAGE_SIZE: break"
+    },
+    "streams[*].pull.snapshot.httpMethod": {
+      "file": "source_posthog/api.py",
+      "lines": "211-216",
+      "snippet": "_, body = await http.request_stream(log, url, method=\"POST\", json=payload,)"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_posthog/resources.py",
+      "lines": "45, 163-170",
+      "snippet": "TOMBSTONE = BaseDocument(_meta=BaseDocument.Meta(op=\"d\"))\nopen_binding(..., fetch_snapshot=snapshot_fetchers[resource_type], tombstone=TOMBSTONE,)"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__stdout.json",
+      "lines": "spec.configSchema",
+      "snippet": "\"required\": [\"credentials\", \"organization_id\"]"
+    },
+    "execution.mode": {
+      "file": "test.flow.yaml",
+      "lines": "bindings",
+      "snippet": "- resource:\n    name: Events\n    interval: PT5M"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0].pull.snapshot.paginator": "high",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2].pull.snapshot.paginator": "high",
+    "streams[3].pull.snapshot.paginator": "high",
+    "streams[4].pull.incremental.paginator": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[2].pull.snapshot.params": "medium",
+    "streams[4].cursorField": "high",
+    "streams[5].cursorField": "high",
+    "streams[6].cursorField": "medium",
+    "streams[5].pull.backfill.querySketch": "high",
+    "streams[6].pull.backfill.querySketch": "high",
+    "streams[*].writeDisposition": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "discovery.allowlist": "high",
+    "configFields": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "streams[5].pull.backfill.paginator": "The HogQL POST has no HTTP paginator; paging is a SQL keyset loop (LIMIT 50000, cursor advanced to the max value seen, stop on a short batch). Emitting any of the seven paginator types would misdescribe it, so it is recorded in unionMisfits and querySketch instead.",
+    "streams[5].pull.incremental.paginator": "Same as backfill: SQL keyset loop inside the request body, not an HTTP paginator.",
+    "streams[6].pull.backfill.paginator": "Same as Events.",
+    "streams[6].pull.incremental.paginator": "Same as Events.",
+    "streams[4].pull.incremental.incrementalParam": "No server-side time filter is sent. The connector relies solely on ?order=-updated_at and breaks out of the result stream client-side once it sees a record at or below the stored cursor; there is no since/updated_after query parameter in the code.",
+    "streams[*].pull.snapshot.params (order for Organizations/Projects)": "Organizations and Projects use their own URL builders which do NOT append ?order=-updated_at; only the ProjectEntity builder (Cohorts, Annotations, FeatureFlags) appends it.",
+    "transports[0].spec.apiVersionPinning": "No version header, path segment, or query parameter appears anywhere; the connector hits unversioned /api/ paths.",
+    "transports[0].spec.defaultHeaders": "Only the Authorization header injected by the CDK's HTTPSession is set; no connector-specific default headers were found.",
+    "streams[*].pull.*.pageSize (REST)": "No page-size or limit parameter is sent on any REST endpoint; PostHog's server-side default is accepted and the `next` URL is followed verbatim.",
+    "execution.continuity.resumeWindow": "Nothing in the connector bounds how long it may pause. PostHog's own event/ClickHouse retention could in principle age out data older than the stored cursor, but no retention assumption is encoded in the code, so no window is asserted."
+  }
+}

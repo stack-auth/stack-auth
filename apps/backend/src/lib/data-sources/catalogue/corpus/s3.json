@@ -1,0 +1,242 @@
+{
+  "id": "s3",
+  "estuaryDir": "source-s3",
+  "displayName": "Amazon S3",
+  "description": "Captures records from files stored under a key prefix in an S3 bucket (or an S3-compatible endpoint), streaming each object through an external parser into documents.",
+  "category": "files",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": { "kind": "objectStore", "store": "s3" }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "AWS access key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_access_key_id", "credentials.aws_secret_access_key"]
+      }
+    },
+    {
+      "name": "Anonymous (public bucket)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "auth_type=AWSAnonymous selects the AWS SDK's aws.AnonymousCredentials{} provider: requests are sent unsigned and no credential fields are collected at all. Only usable against publicly readable buckets/endpoints."
+      }
+    },
+    {
+      "name": "AWS IAM assumed role",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "aws",
+        "fields": ["credentials.aws_region", "credentials.aws_role_arn"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "schedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Only intermediate object versions. A sweep is bounded by object modification time, so objects created while we are stopped are still picked up on the next sweep; but an object overwritten in place several times during a pause yields only its final version, and an object whose modification time falls at or below the stored minBound is never revisited. With advanced.ascendingKeys=true, minBound is never advanced and listing resumes after the last key seen, so any object written at a lexicographically earlier key while stopped is skipped permanently - that is a property of the option, not of the pause length.",
+      "resumeWindow": "Unbounded. Resumption is driven entirely by connector state: minBound (exclusive lower bound on modification time, carried forward from the prior sweep's maxMod), maxBound (= wall clock + TimeHorizonDelta of -30s, exclusive upper bound), plus the last object path and the count of records already emitted from it. Nothing in the state expires and S3 keeps no server-side cursor, so an arbitrarily long pause resumes correctly.",
+      "releasedOnShutdown": true,
+      "notes": "The connector creates nothing on the customer's side. Its only writes to AWS are ListObjectsV2, GetObject, and a HeadObject existence probe at connect time; the documented permission set is s3:ListBucket + s3:GetObject. No slot, scratch object, subscription, or consumer group is left behind, so stopping between cron ticks costs the customer nothing. The -30s time horizon exists to guard against objects appearing with a modification time equal to or just behind the sweep's upper bound; it is a clock-drift margin, not a retention window."
+    }
+  },
+
+  "configFields": [
+    { "name": "region", "displayName": "AWS Region", "required": true, "secret": false, "type": "string", "description": "The name of the AWS region where the S3 bucket is located." },
+    { "name": "bucket", "displayName": "Bucket", "required": true, "secret": false, "type": "string", "description": "Name of the S3 bucket." },
+    { "name": "prefix", "displayName": "Prefix", "required": false, "secret": false, "type": "string", "description": "Prefix within the bucket to capture from. Joined with the bucket to form the single discovered binding's root path." },
+    { "name": "matchKeys", "displayName": "Match Keys", "required": false, "secret": false, "type": "string", "description": "Regular expression (JSON-schema format 'regex') matched against each object's absolute bucket/key path; non-matching objects are skipped. Compiled and rejected at Validate time if invalid." },
+    { "name": "credentials", "displayName": "Authentication", "required": true, "secret": false, "type": "string", "description": "Discriminated union on auth_type, defaulting to AWSAccessKey; one of AWSAccessKey, AWSAnonymous, AWSIAM. The whole object is required at the top level." },
+    { "name": "credentials.aws_access_key_id", "displayName": "AWS Access Key ID", "required": false, "secret": false, "type": "string", "description": "Required within the AWSAccessKey variant." },
+    { "name": "credentials.aws_secret_access_key", "displayName": "AWS Secret Access key", "required": false, "secret": true, "type": "string", "description": "Required within the AWSAccessKey variant; carries secret=true in the generated schema." },
+    { "name": "credentials.aws_region", "displayName": "AWS Region", "required": false, "secret": false, "type": "string", "description": "Required within the AWSIAM variant. AWS region of the resource the assumed role reaches. Distinct from the top-level 'region' field." },
+    { "name": "credentials.aws_role_arn", "displayName": "AWS Role ARN", "required": false, "secret": false, "type": "string", "description": "Required within the AWSIAM variant. Role with access to the bucket, assumed by Flow." },
+    { "name": "advanced.ascendingKeys", "displayName": "Ascending Keys", "required": false, "secret": false, "type": "boolean", "description": "Asserts that objects are written in ascending lexicographic key order matching modification-time order, so each sweep resumes listing after the previous sweep's last key instead of re-listing the whole prefix. Default false." },
+    { "name": "advanced.endpoint", "displayName": "AWS Endpoint", "required": false, "secret": false, "type": "string", "description": "Custom endpoint URI, for capturing from a non-AWS S3-compatible API. Installed as a hostname-immutable custom endpoint resolver." },
+    { "name": "parser", "displayName": "Parser Configuration", "required": false, "secret": false, "type": "string", "description": "Nested parser configuration object whose JSON schema is produced at spec time by the external Flow parser binary (parser.GetSpec()). Individual sub-fields are not defined in this repository." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Synthesized single binding rooted at bucket/prefix - no object enumeration happens during Discover. Bucket reachability is separately validated at connect time with ListObjectsV2 (MaxKeys=1) plus a HeadObject probe on a random UUID key, so that only s3:ListBucket and s3:GetObject are needed.",
+    "querySketch": "Discover -> exactly one Response_Discovered_Binding whose RecommendedName is bucket + \"/\" + prefix (trimmed of slashes), keyed on /_meta/file and /_meta/offset, with an x-infer-schema minimal document schema. Validate/Pull then list that prefix recursively.",
+    "excludes": [
+      "objects in the GLACIER storage class",
+      "objects in the DEEP_ARCHIVE storage class",
+      "objects of size 0 (treated as directory placeholders)",
+      "objects whose absolute path does not match the matchKeys regex",
+      "objects whose path hashes outside the connector shard's assigned key range",
+      "objects whose modification time is <= minBound or >= maxBound for the current sweep",
+      "objects already passed in this sweep (state.Path > obj.Path, or equal and marked Complete)",
+      "parquet objects larger than 8 GB (8_000_000_000 bytes), because the parser must stage them wholly to local disk"
+    ],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<bucket>/<prefix>",
+      "origin": "discovered",
+      "primaryKey": ["/_meta/file", "/_meta/offset"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedule": null,
+      "pull": {
+        "backfill": {
+          "kind": "objects",
+          "prefix": "<bucket>/<prefix>",
+          "matchExpr": "config field `matchKeys` (user-supplied; empty means match everything)",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "First sweep only in that state is empty: minBound is the zero time and state.Path is \"\", so ListObjectsV2 is issued with Bucket + Prefix and no StartAfter, and every object in the prefix whose modification time is below maxBound (= now - 30s) qualifies. Paging is identical to the incremental leg: ContinuationToken from the prior response's NextContinuationToken, terminating on IsTruncated=false.",
+          "objectChunking": null
+        },
+        "incremental": {
+          "kind": "objects",
+          "prefix": "<bucket>/<prefix>",
+          "matchExpr": "config field `matchKeys` (user-supplied; empty means match everything)",
+          "matchExprKind": "regex",
+          "format": "auto",
+          "compression": null,
+          "listing": "S3 ListObjectsV2. The first request of a sweep sends Bucket + Prefix, plus StartAfter derived from the last object path recorded in state (the stored path with its final character trimmed, mapping an inclusive StartAt into S3's exclusive StartAfter) when resuming, plus Delimiter '/' only for non-recursive queries (sweeps are always recursive). Every subsequent request clears StartAfter and sets ContinuationToken to the previous response's NextContinuationToken; the listing ends when IsTruncated is false. MaxKeys is set only in the connect-time validation probe (MaxKeys=1), never during a sweep. Each listed object is then filtered by the modification-time window (minBound, maxBound) before being read.",
+          "objectChunking": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Every offered mode is self-serve and needs no OAuth app or refresh token. The default is an AWS access key id + secret access key pair the user mints in their own AWS console. An anonymous mode requires no credentials whatsoever. The AWSIAM mode asks the user only for a region and a role ARN - Flow's control plane performs the AssumeRole out of band and injects aws_access_key_id / aws_secret_access_key / aws_session_token into the config, which the connector consumes as static session credentials; standalone, that mode would require the operator to have a trust relationship configured, so it is 'simple' only because a hosted control plane does the assume-role.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec (objectStore)",
+      "description": "The objectStore member carries only a `store` enum. Two facts that materially change what is reached have nowhere to go: the required top-level `region`, and `advanced.endpoint`, a hostname-immutable custom endpoint resolver that repoints the AWS SDK at any S3-compatible API (MinIO, R2, Wasabi). With an endpoint set, store:\"s3\" describes the protocol, not the vendor.",
+      "proposedShape": { "kind": "objectStore", "store": "s3", "region": { "kind": "config", "field": "region" }, "endpointOverride": { "kind": "config", "field": "advanced.endpoint", "semantics": "hostname-immutable custom resolver; S3-compatible non-AWS APIs" } }
+    },
+    {
+      "where": "streams[0].cursorField / PullSpec objects",
+      "description": "The incremental cursor is not a record field and not a listing token; it is per-binding connector state. It carries a modification-time window (minBound exclusive lower bound, maxBound = now - 30s exclusive upper bound, maxMod = greatest modification time observed this sweep) together with the last object path and a count of records already emitted from that object. On sweep completion with ascendingKeys=false, minBound advances to maxMod and the path resets; with ascendingKeys=true, minBound never advances and the path is retained so the next listing starts after it. The `objects` PullSpec has no slot for any of this.",
+      "proposedShape": { "cursor": { "type": "modtime_window_plus_key", "lowerBoundField": "minBound", "upperBoundField": "maxBound", "highWatermarkField": "maxMod", "resumeKeyField": "path", "intraObjectOffsetField": "records", "upperBoundLagSeconds": 30, "keyOrderedFastPathFlag": "advanced.ascendingKeys" } }
+    },
+    {
+      "where": "streams[0].pull.*.objectChunking",
+      "description": "objectChunking is correctly null - there is no byte-range reading - but nulling it also discards three facts about how a single object read is made safe. One GetObject per object with IfUnmodifiedSince set to the modification time seen during listing (so an object rewritten between listing and reading fails rather than tearing); the whole body is piped into an external parser subprocess; and resumability inside an object is by parsed-record count, with the state's `skip` counter discarding already-emitted lines after a crash. The 8 GB parquet skip exists precisely because that format cannot be streamed.",
+      "proposedShape": { "objectRead": { "mode": "whole_object_stream", "staleGuard": "IfUnmodifiedSince = modification time observed during listing", "intraObjectResume": "count of parsed records already emitted", "sizeGuards": [ { "format": "parquet", "maxBytes": 8000000000, "reason": "parser stages the whole file to local disk" } ] } }
+    },
+    {
+      "where": "streams[0].pull (backfill vs incremental)",
+      "description": "The two-leg pull shape does not fit: there is exactly one code path. A 'backfill' is simply the first sweep, in which minBound is the zero time and no path is stored, so every object qualifies. Filling both legs above duplicates one mechanism; filling only one would imply the other does not exist.",
+      "proposedShape": { "pull": { "unified": "<PullSpec>", "backfillIsFirstRunOf": "unified", "note": "no distinct initial-load strategy" } }
+    },
+    {
+      "where": "streams[0] (parallelism)",
+      "description": "Object-to-shard assignment has no representation. Every replica lists the entire prefix and then drops any object whose path's high-word hash falls outside the shard's assigned key range, so throughput scales by discarding rather than by partitioning the listing. This affects cost modelling (N shards issue N full listings) and is invisible in the current schema.",
+      "proposedShape": { "sharding": { "kind": "hash_filter_after_listing", "hashInput": "absolute object path", "assignment": "runtime-provided key range" } }
+    },
+    {
+      "where": "configFields[11] (parser)",
+      "description": "`parser` is not a field but an opaque sub-schema fetched at spec time from a binary outside this repository and spliced in with order=5. A flat list of typed fields cannot express 'an object whose shape is resolved by an external process at spec time'. Format and compression handling both live behind it.",
+      "proposedShape": { "name": "parser", "type": "external_subschema", "source": "github.com/estuary/flow/go/parser GetSpec()", "resolvedAt": "spec time" }
+    },
+    {
+      "where": "credentialModes",
+      "description": "Two mismatches. (a) The AWSIAM mode's `fields` list conflates what the user supplies (aws_region, aws_role_arn) with what the control plane injects into the same object (aws_access_key_id, aws_secret_access_key, aws_session_token) - the connector errors if the injected trio is absent, so those are real required inputs, just not user-facing. (b) A fourth, undocumented credential path survives for backwards compatibility: hidden top-level `awsAccessKeyId` / `awsSecretAccessKey` fields (jsonschema:\"-\", absent from the published schema) are used when the whole `credentials` object is omitted, falling through to anonymous when the secret is empty.",
+      "proposedShape": { "scheme": { "type": "cloudIam", "provider": "aws", "userFields": ["credentials.aws_region", "credentials.aws_role_arn"], "injectedFields": ["credentials.aws_access_key_id", "credentials.aws_secret_access_key", "credentials.aws_session_token"], "injectedBy": "Flow control plane AssumeRole" }, "legacyModes": [ { "name": "legacy hidden static keys", "hidden": true, "fields": ["awsAccessKeyId", "awsSecretAccessKey"], "activeWhen": "credentials object absent" } ] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "source-s3/main.go", "lines": "214-220", "snippet": "s3Client := s3.NewFromConfig(awsCfg)" },
+    "credentialModes": { "file": "source-s3/main.go", "lines": "46-56", "snippet": "subSchemas := []schemagen.OneOfSubSchemaT{\n\t\tschemagen.OneOfSubSchema(\"Access Key\", AccessKeyCredentials{}, string(AWSAccessKey)),\n\t}" },
+    "credentialModes[0].scheme": { "file": "source-s3/main.go", "lines": "174-176", "snippet": "case AWSAccessKey:\n\t\treturn credentials.NewStaticCredentialsProvider(\n\t\t\tc.Credentials.AWSAccessKeyID, c.Credentials.AWSSecretAccessKey, \"\"), nil" },
+    "credentialModes[1].scheme": { "file": "source-s3/main.go", "lines": "177-178", "snippet": "case AWSAnonymous:\n\t\treturn aws.AnonymousCredentials{}, nil" },
+    "credentialModes[2].scheme": { "file": "go/auth/iam/config.go", "lines": "20-23", "snippet": "type AWSConfig struct {\n\tAWSRegion string `json:\"aws_region\" ...`\n\tAWSRole   string `json:\"aws_role_arn\" ...`" },
+    "execution.mode": { "file": "filesource/filesource.go", "lines": "336-344", "snippet": "var listing, err = r.store.List(ctx, Query{\n\t\tPrefix:    r.prefix,\n\t\tStartAt:   r.state.Path," },
+    "execution.continuity.resumeWindow": { "file": "filesource/state.go", "lines": "28-37", "snippet": "// Exclusive lower bound modification time of files processed in this sweep.\n\tMinBound time.Time `json:\"minBound\"`" },
+    "execution.continuity.notes": { "file": "source-s3/main.go", "lines": "223-226", "snippet": "// validateBucket verifies that we can list objects in the bucket ... requires only s3:ListBucket and s3:GetObject permissions" },
+    "execution.continuity.ourSideLoss": { "file": "filesource/state.go", "lines": "125-133", "snippet": "*p = State{\n\t\t\tMinBound: p.MinBound, // Never increment MinBound.\n\t\t\tPath:     p.Path,   // Track path which the next sweep begins from." },
+    "configFields": { "file": "source-s3/.snapshots/TestConfigSchema", "lines": "141-151", "snippet": "\"required\": [\n    \"bucket\",\n    \"region\",\n    \"credentials\"\n  ]," },
+    "configFields[3]": { "file": "source-s3/main.go", "lines": "435-441", "snippet": "\"matchKeys\": map[string]any{\n\t\t\t\t\t\t\"format\":      \"regex\"," },
+    "configFields[6]": { "file": "source-s3/main.go", "lines": "103", "snippet": "AWSSecretAccessKey string `json:\"aws_secret_access_key\" ... jsonschema_extras:\"secret=true,order=2\"`" },
+    "configFields[9]": { "file": "source-s3/main.go", "lines": "446-451", "snippet": "\"ascendingKeys\": map[string]any{\n\t\t\t\t\t\t\t\t\"title\":       \"Ascending Keys\",\n\t\t\t\t\t\t\t\t\"default\":     false," },
+    "configFields[10]": { "file": "source-s3/main.go", "lines": "199-206", "snippet": "if cfg.Advanced.Endpoint != \"\" {\n\t\t\tcustomResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {" },
+    "configFields[11]": { "file": "filesource/filesource.go", "lines": "163-169", "snippet": "var parserSpec, err = parser.GetSpec()\n...\n\tvar endpointSchema = src.ConfigSchema(parserSpec)" },
+    "streamMode": { "file": "filesource/filesource.go", "lines": "230-235", "snippet": "return &pc.Response_Discovered{Bindings: []*pc.Response_Discovered_Binding{{\n\t\tRecommendedName:    conn.config.RecommendedName()," },
+    "discovery.method": { "file": "source-s3/main.go", "lines": "229-233", "snippet": "_, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{\n\t\tBucket:  aws.String(cfg.Bucket),\n\t\tMaxKeys: aws.Int32(1)," },
+    "discovery.excludes": { "file": "source-s3/main.go", "lines": "344-346", "snippet": "if obj.StorageClass == s3Types.ObjectStorageClassGlacier || obj.StorageClass == s3Types.ObjectStorageClassDeepArchive {\n\t\t\t\t\tcontinue" },
+    "streams[0].name": { "file": "source-s3/main.go", "lines": "139-145", "snippet": "func (c config) DiscoverRoot() string {\n\treturn filesource.PartsToPath(c.Bucket, c.Prefix)" },
+    "streams[0].primaryKey": { "file": "filesource/filesource.go", "lines": "234", "snippet": "Key:                []string{\"/_meta/file\", \"/_meta/offset\"}," },
+    "streams[0].pull.incremental.listing": { "file": "source-s3/main.go", "lines": "365-372", "snippet": "} else if !aws.ToBool(l.output.IsTruncated) {\n\t\treturn io.EOF\n\t} else {\n\t\tinput.StartAfter = nil\n\t\tinput.ContinuationToken = l.output.NextContinuationToken" },
+    "streams[0].pull.backfill.listing": { "file": "source-s3/main.go", "lines": "283-289", "snippet": "if query.StartAt == \"\" {\n\t\t// Pass.\n\t} else {\n\t\tinput.StartAfter = aws.String(startAt[:len(startAt)-1])" },
+    "streams[0].pull.incremental.matchExprKind": { "file": "filesource/filesource.go", "lines": "386-390", "snippet": "if r.pathRe != nil && !r.pathRe.MatchString(obj.Path) {\n\t\t\treturn true, \"regex not matched\"" },
+    "streams[0].pull.incremental.format": { "file": "filesource/filesource.go", "lines": "417-432", "snippet": "if t, _ := cfg.Format[\"type\"].(string); t != \"\" && t != \"auto\" {\n\t\t\treturn t == \"parquet\"" },
+    "streams[0].pull.incremental.objectChunking": { "file": "source-s3/main.go", "lines": "301-305", "snippet": "resp, err := s.s3.GetObject(ctx, &s3.GetObjectInput{\n\t\tKey:               aws.String(key),\n\t\tIfUnmodifiedSince: aws.Time(obj.ModTime)," },
+    "unionMisfits[1]": { "file": "filesource/state.go", "lines": "112-133", "snippet": "minBound = *p.MaxMod\n...\nMinBound: p.MinBound, // Never increment MinBound." },
+    "unionMisfits[2]": { "file": "filesource/filesource.go", "lines": "45-53", "snippet": "// maxParquetSize is the size in bytes above which parquet files are skipped\n// rather than captured.\nconst maxParquetSize = 8 * 1000 * 1000 * 1000 // 8 GB" },
+    "unionMisfits[4]": { "file": "filesource/filesource.go", "lines": "391-393", "snippet": "if !boilerplate.RangeIncludesHwHash(r.range_, []byte(obj.Path)) {\n\t\t\treturn true, \"path not in range\"" },
+    "unionMisfits[6]": { "file": "source-s3/main.go", "lines": "163-171", "snippet": "if c.Credentials == nil {\n\t\tif c.AWSSecretAccessKey != \"\" {\n\t\t\treturn credentials.NewStaticCredentialsProvider(" },
+    "authTierOverall": { "file": "go/auth/iam/config.go", "lines": "104-118", "snippet": "func (c IAMTokens) AWSCredentialsProvider() (aws.CredentialsProvider, error) {\n\tif c.AWSAccessKeyID == \"\" {\n\t\treturn nil, errors.New(\"missing iam session 'aws_access_key_id'\")" }
+  },
+
+  "confidence": {
+    "id": "high",
+    "displayName": "high",
+    "category": "high",
+    "transports": "high",
+    "credentialModes": "high",
+    "credentialModes[2].tier": "medium",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.resumeWindow": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.releasedOnShutdown": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery.method": "high",
+    "discovery.excludes": "high",
+    "streams[0].name": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].supportedSyncModes": "high",
+    "streams[0].writeDisposition": "low",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.backfill.listing": "medium",
+    "streams[0].pull.incremental.matchExpr": "high",
+    "streams[0].pull.incremental.format": "medium",
+    "streams[0].pull.incremental.objectChunking": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.schedule": "The connector schedules nothing. sweep() runs one pass over the prefix and returns, ending the Pull RPC; when and how often it is re-invoked is decided by the Flow runtime outside this repository. TimeHorizonDelta of -30s is a modification-time safety margin against clock drift, not a poll interval, and there is no sleep, ticker, or cron expression anywhere in source-s3 or filesource.",
+    "streams[0].cursorField": "The incremental cursor is connector state, not a field of the emitted document. It is a composite of a modification-time window (minBound/maxBound/maxMod), the last object path, and an intra-object record count, so no single record field can represent it. Full detail in unionMisfits[1].",
+    "streams[0].schedule": "Same as execution.schedule; there is exactly one binding and it has no independent cadence.",
+    "streams[0].writeDisposition": "Not stated by the connector. Documents declare a key of /_meta/file + /_meta/offset, which would deduplicate records re-emitted after a crash-resume, so 'merge' is inferred rather than observed. Reduction strategy is decided by the Flow runtime, which is outside this repository. Deletion of a source object produces no tombstone, so 'snapshot_with_tombstone' is definitively wrong; the real choice is merge vs append.",
+    "streams[0].pull.*.compression": "Decompression happens entirely inside the external Flow parser binary (github.com/estuary/flow/go/parser), absent from this repository. The connector only forwards the object's ContentType and ContentEncoding (read off the GetObject response) plus the filename. A comment in filesource notes that an extension chain such as 'data.parquet.gz' is resolved last-segment-first, implying compression suffixes are recognised by extension, but the supported codec list is not observable here.",
+    "streams[0].pull.*.format": "Recorded as 'auto' because resolution lives in the external parser. Observable here: an explicit parser Format 'type' other than 'auto' wins, otherwise the format is inferred from dot-delimited path extension segments scanned last-to-first; the extensions filesource mirrors for its parquet check are parquet, json, jsonl, csv, tsv, avro, xls, xlsx, xlsm, xml, ods. Whether the parser additionally sniffs content is not determinable from this source tree.",
+    "configFields[11] (parser sub-fields)": "The parser configuration object's field list is generated by parser.GetSpec() from the external Flow repository and embedded at spec time; the .snapshots/TestConfigSchema fixture records it as only {\"order\": 5}, so its individual fields cannot be enumerated from this repository.",
+    "credentialModes[2].tier": "Scored T1_SIMPLE because the user supplies only a region and a role ARN. But the AssumeRole itself is performed by the Flow control plane, which is not in this repository; standalone, the mode additionally requires a trust policy naming Estuary's principal. The true standalone tier is not determinable here."
+  }
+}

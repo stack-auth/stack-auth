@@ -1,0 +1,600 @@
+{
+  "id": "google-ads",
+  "estuaryDir": "source-google-ads",
+  "displayName": "Google Ads",
+  "description": "Imports Google Ads accounts, campaigns, ad groups, ads, labels and performance/geo/keyword/click reports for one or more customer IDs via GAQL.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "All data access goes through the vendor `google-ads` Python client library (gRPC), not through hand-rolled HTTP calls. See unionMisfits[0].",
+      "spec": {
+        "kind": "vendorSdk",
+        "library": "google-ads (google.ads.googleads.client.GoogleAdsClient), poetry constraint ^31.2.0",
+        "protocol": "gRPC",
+        "services": ["GoogleAdsService.search", "GoogleAdsFieldService.search_google_ads_fields"],
+        "baseUrl": null,
+        "defaultHeaders": null,
+        "apiVersionPinning": "Hard-coded API version constant `v25`, passed to GoogleAdsClient.load_from_dict(version=...) and used for the generated proto/type imports. Not a header/path/query the connector controls."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Google OAuth2 refresh token + Google Ads developer token",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://accounts.google.com/o/oauth2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "scopes": ["https://www.googleapis.com/auth/adwords"],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "`click_view` is capped by `days_of_data_storage = 90`: the slice generator clamps the start date to now-(90 - conversion_window) days, so any click_view day older than that window can never be fetched again. Other streams are re-queryable from `start_date` at any time.",
+      "resumeWindow": "~90 days minus conversion_window_days for click_view; effectively unbounded for every other stream. Separately, an individual in-flight page token expires after roughly 2 hours (the connector chunks slices to 15 days for exactly this reason) — but that only affects a single running sweep, not a pause between runs.",
+      "releasedOnShutdown": null,
+      "notes": "Read-only GAQL queries; the connector creates nothing server-side on the customer's Google Ads account. Cursor state is a per-customer-id `segments.date` date string held in Flow state, so a pause costs nothing except click_view retention."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client ID of the Google Ads developer OAuth application." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Client Secret of the Google Ads developer OAuth application." },
+    { "name": "credentials.refresh_token", "displayName": "Refresh Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Long-lived token used to mint access tokens." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Optional pre-minted access token." },
+    { "name": "credentials.developer_token", "displayName": "Developer Token", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Google Ads API developer token. Marked 'Injected by Flow' in the spec and populated from the OAuth server output specification, but the underlying google-ads client requires it; a standalone deployment must supply one obtained through Google's separate developer-token approval process." },
+    { "name": "customer_id", "displayName": "Customer ID(s)", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-separated list of 10-digit customer IDs (pattern ^[0-9]{10}(,[0-9]{10})*$). Each becomes a stream slice." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "YYYY-MM-DD floor for replication." },
+    { "name": "end_date", "displayName": "End Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "YYYY-MM-DD ceiling; min(today, end_date) is used." },
+    { "name": "custom_queries", "displayName": "Custom GAQL Queries", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "List of { query, table_name, primary_key }; each becomes an additional stream." },
+    { "name": "custom_queries[].query", "displayName": "Custom Query", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "GAQL text; parsed and validated by a regex GAQL parser. Must not contain segments.date when the stream is to be incremental — the connector injects that predicate itself." },
+    { "name": "custom_queries[].table_name", "displayName": "Destination Table Name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Becomes the stream name." },
+    { "name": "custom_queries[].primary_key", "displayName": "Destination Table Primary Key", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Comma-delimited field list; whether it contains segments.date decides incremental vs full refresh." },
+    { "name": "login_customer_id", "displayName": "Login Customer ID for Managed Accounts", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Manager (MCC) account ID; passed straight into the google-ads client credentials dict." },
+    { "name": "conversion_window_days", "displayName": "Conversion Window", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "0..1095, default 14. Cursor is rewound by this many days on every slice generation to catch late conversions." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the Airbyte stream to capture (from the estuary-cdk airbyte shim ResourceConfig)." },
+    { "name": "syncMode", "displayName": "Sync Mode", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "full_refresh | incremental (shim ResourceConfig)." },
+    { "name": "cursorField", "displayName": "Cursor Field", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Discovered bindings emit [\"segments.date\"] for incremental streams." },
+    { "name": "namespace", "displayName": "Namespace", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Unused by this connector; part of the shared shim ResourceConfig." }
+  ],
+
+  "streamMode": "mixed",
+  "discovery": {
+    "method": "Static class list in source.py `streams()`, filtered at runtime by an account probe, plus user-declared custom GAQL queries whose column types are resolved through GoogleAdsFieldService.",
+    "querySketch": "Account probe: the internal ServiceAccounts stream runs `SELECT <customer schema fields> FROM customer` once per configured customer_id to learn customer.id / customer.time_zone / customer.manager. Accounts with customer.manager = true are excluded from every metrics stream. For custom queries: `SELECT name, data_type, enum_values, is_repeated WHERE name IN (<fields>)` against GoogleAdsFieldService, and `SELECT name, selectable_with WHERE name = 'segments.date'` to decide whether the query's resource can be incremental at all.",
+    "excludes": [
+      "service_accounts (internal service class; documented as 'not exposed to a user' and never returned by streams())",
+      "campaigns, user_location_report, account_performance_report, display_topics_performance_report, display_keyword_performance_report, shopping_performance_report, ad_group_ad_report, geographic_report, keyword_report — all omitted entirely when every configured customer is a manager account",
+      "custom queries containing metrics.* fields when there are no non-manager accounts"
+    ],
+    "allowlist": "REPORT_MAPPING in google_ads.py is the fixed stream-name -> GAQL resource table; only names present there can be built from a shipped JSON schema."
+  },
+
+  "streams": [
+    {
+      "name": "accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["customer.id", "segments.date"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GAQL: SELECT <all properties of schemas/accounts.json> FROM customer WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC — issued once per customer_id per 15-day slice; slice start is rewound by conversion_window_days."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["campaign.id", "segments.date", "segments.hour"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GAQL: SELECT <schema fields> FROM campaign WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaign_labels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["campaign_label.resource_name"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GAQL: SELECT <schema fields> FROM campaign_label — no WHERE/ORDER BY clause is appended when there is no cursor field; re-read in full per customer_id each run."
+        }
+      }
+    },
+    {
+      "name": "ad_groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["ad_group.id", "segments.date"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "GAQL: SELECT <schema fields> FROM ad_group WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_group_labels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["ad_group_label.resource_name"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM ad_group_label." }
+      }
+    },
+    {
+      "name": "ad_group_ads",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["ad_group_ad.ad.id", "segments.date"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM ad_group_ad WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_group_ad_labels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["ad_group_ad_label.resource_name"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM ad_group_ad_label." }
+      }
+    },
+    {
+      "name": "account_performance_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.device", "segments.date", "customer.id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields incl. metrics.*> FROM customer WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ad_group_ad_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.date", "ad_group.id", "campaign.id", "customer.id", "ad_group_ad.ad.id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields incl. metrics.*> FROM ad_group_ad WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "display_keyword_performance_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.device", "segments.date", "ad_group.id", "customer.id", "campaign.id", "ad_group_criterion.criterion_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM display_keyword_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "display_topics_performance_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.device", "segments.date", "ad_group.id", "customer.id", "campaign.id", "ad_group_criterion.criterion_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM topic_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "shopping_performance_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.device", "segments.date", "ad_group.id", "customer.id", "campaign.id", "segments.product_item_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM shopping_performance_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "user_location_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.ad_network_type", "segments.date", "customer.id", "campaign.id", "user_location_view.resource_name"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM user_location_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "geographic_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.date", "ad_group.id", "geographic_view.country_criterion_id", "customer.descriptive_name"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM geographic_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "keyword_report",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["segments.date", "ad_group.id", "ad_group_criterion.criterion_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM keyword_view WHERE segments.date >= '{slice_start}' AND segments.date <= '{slice_end}' ORDER BY segments.date ASC. Non-manager customers only." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "click_view",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["click_view.gclid", "segments.date", "segments.ad_network_type"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM click_view WHERE segments.date >= '{slice_start}' AND segments.date < '{slice_end}' ORDER BY segments.date ASC. Unlike every other stream this one uses range_days = 1 (one day per slice) and days_of_data_storage = 90, which clamps the slice start to now-(90 - conversion_window_days)." },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "geo_target_constant",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["geo_target_constant.id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "query", "language": "other", "querySketch": "GAQL: SELECT <schema fields> FROM geo_target_constant." }
+      }
+    },
+    {
+      "name": "<custom_queries[].table_name> (incremental variant)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<comma-separated custom_queries[].primary_key, which must include segments.date>"],
+      "primaryKeyKind": "columns",
+      "cursorField": "segments.date",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "The user's own GAQL, re-parsed and rewritten: segments.date is appended to the SELECT list if absent, and `segments.date BETWEEN '{slice_start}' AND '{slice_end}'` is ANDed onto any existing WHERE clause. Chosen when the query's resource is selectable_with segments.date AND the declared primary_key contains segments.date."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<custom_queries[].table_name> (full-refresh variant)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["<comma-separated custom_queries[].primary_key>"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "other",
+          "querySketch": "The user's GAQL emitted verbatim (after regex normalisation), once per customer_id. Chosen when the query's resource is not selectable_with segments.date, or when the declared primary_key omits segments.date."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "The spec declares exactly one credential object and marks client_id, client_secret and refresh_token all as required — there is no API-key or service-account alternative anywhere in the code. The connector hands that dict straight to GoogleAdsClient.load_from_dict, which additionally needs a developer_token. Standalone, therefore, the user must (a) register their own Google Cloud OAuth client, (b) run the adwords-scoped consent flow themselves to obtain a refresh token, and (c) separately apply to Google for a Google Ads API developer token — an out-of-band human approval process that is not self-serve and can take days. Estuary's hosted control plane softens (a) and (c): the OAuth2Spec in __main__.py registers a Google provider flow, and the spec's complete_oauth_server_output_specification writes client_id, client_secret AND developer_token into the connector config (the developer_token field is literally described as 'Injected by Flow'), so a hosted user only clicks through Google consent. That hosted convenience does not change the standalone tier, which is T3.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec",
+      "description": "This connector speaks no HTTP that it controls. Every read goes through the vendor `google-ads` Python client over gRPC: GoogleAdsClient.load_from_dict(credentials, version='v25'), then client.get_service('GoogleAdsService').search(SearchGoogleAdsRequest). There is no base URL, no path, no header set and no query string in the connector source, so none of http/sql/objectStore/stream fits. I emitted a non-union `vendorSdk` spec rather than inventing endpoint paths.",
+      "proposedShape": {
+        "kind": "vendorSdk",
+        "library": "str",
+        "protocol": "grpc|http|other",
+        "services": ["str"],
+        "apiVersionPinning": "str|null",
+        "notes": "str|null"
+      }
+    },
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "Paginator has no honest value here. `ga_service.search()` returns a google.api_core SearchPager which walks next_page_token internally; the connector merely iterates it. The only pagination evidence in connector code is negative: a DEFAULT_PAGE_SIZE = 1000 class constant that is never referenced, and EXPIRED_PAGE_TOKEN error handling that retries a slice from the last-seen cursor value. Recording a paginator would be a guess about library internals.",
+      "proposedShape": { "type": "sdk_managed", "library": "str", "notes": "str" }
+    },
+    {
+      "where": "streams[*].pull.backfill vs .incremental",
+      "description": "There is no separate backfill leg. One code path (chunk_date_range + a per-customer segments.date cursor) produces both the historical sweep and the ongoing one: it walks 15-day windows from `start_date` (or the stored cursor) to now, and every run rewinds the cursor by conversion_window_days so recent windows are re-read forever. The schema's backfill/incremental split forces a choice; I put the single shape in `incremental` and left `backfill` null.",
+      "proposedShape": { "unified": "<PullSpec>", "windowDays": "int", "cursorRewindDays": "int" }
+    },
+    {
+      "where": "streams[*].schedules / execution.defaultSchedule",
+      "description": "No schedule of any kind exists in this connector or in the airbyte shim's ResourceConfig (which carries only stream / syncMode / namespace / cursorField). Cadence is entirely the Flow runtime's business. Empty lists here mean 'absent', not 'continuous'.",
+      "proposedShape": { "schedule": null, "scheduledBy": "runtime" }
+    },
+    {
+      "where": "streams[].origin for the custom-query archetypes",
+      "description": "The two custom-query archetypes are neither 'static' (they do not exist unless the user writes GAQL into custom_queries) nor 'discovered' in the schema's sense (they come from connector config, not from the customer's own schema). Their *column types*, however, genuinely are discovered at connect time via GoogleAdsFieldService. I marked them origin 'discovered' as the lesser distortion.",
+      "proposedShape": { "origin": "static|discovered|config_declared" }
+    },
+    {
+      "where": "streams[*].writeDisposition",
+      "description": "Full-refresh streams (campaign_labels, ad_group_labels, ad_group_ad_labels, geo_target_constant) re-read the entire resource every run and re-emit keyed documents. That upserts by key but never deletes: a label removed in Google Ads persists in the collection forever. It is not 'snapshot_with_tombstone' (no tombstones are emitted) and calling it 'merge' hides the staleness. Same applies to hard-deleted campaigns/ads on the incremental streams.",
+      "proposedShape": { "writeDisposition": "merge|append|snapshot_with_tombstone|full_reread_no_delete" }
+    },
+    {
+      "where": "streams[]",
+      "description": "`service_accounts` has a shipped JSON schema and a REPORT_MAPPING entry but is deliberately never exposed — its docstring says 'intended to be used as a service class, not exposed to a user' and streams() never returns it. It is used once per run to resolve customer time zones and manager flags. Omitted from the stream list; noting it so a reader who greps the schemas directory does not think a stream is missing.",
+      "proposedShape": { "internalStreams": ["str"] }
+    },
+    {
+      "where": "streams[] (conditional availability)",
+      "description": "Nine of the eighteen streams are constructed only when at least one configured customer is a non-manager account, and the customer list itself is split (manager-safe streams get all customers, metrics streams get non-managers only). The schema has no way to express 'this stream exists only under condition X on the customer's account topology'.",
+      "proposedShape": { "availabilityCondition": "str|null" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "59-60",
+      "snippet": "self.client = self.get_google_ads_client(credentials)\n        self.ga_service = self.client.get_service(\"GoogleAdsService\")"
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "46, 65",
+      "snippet": "API_VERSION = \"v25\"\n... return GoogleAdsClient.load_from_dict(credentials, version=API_VERSION)"
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_google_ads/__main__.py",
+      "lines": "38-45",
+      "snippet": "f\"scope=https://www.googleapis.com/auth/adwords&state={urlencode_field('state')}\"\n            accessTokenResponseMap={\"refresh_token\": \"/refresh_token\"},\n            accessTokenUrlTemplate=\"https://oauth2.googleapis.com/token\","
+    },
+    "credentialModes[0].tier": {
+      "file": "source_google_ads/spec.json",
+      "lines": "16-20",
+      "snippet": "\"required\": [\n          \"client_id\",\n          \"client_secret\",\n          \"refresh_token\"\n        ],"
+    },
+    "configFields[4]": {
+      "file": "source_google_ads/spec.json",
+      "lines": "50-56",
+      "snippet": "\"developer_token\": {\n            \"type\": \"string\",\n            \"description\": \"Injected by Flow\","
+    },
+    "authTierRationale": {
+      "file": "source_google_ads/spec.json",
+      "lines": "162-177",
+      "snippet": "\"complete_oauth_server_output_specification\": {\n ... \"developer_token\": { \"type\": \"string\", \"path_in_connector_config\": [\"credentials\", \"developer_token\"] }"
+    },
+    "streams[*].pull.incremental.querySketch": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "160-168",
+      "snippet": "query_template = f\"SELECT {fields} FROM {from_category} \"\n ... query_template += f\"WHERE {cursor_field} >= '{from_date}' AND {cursor_field} {end_date_inclusive} '{to_date}' ORDER BY {cursor_field} ASC\""
+    },
+    "streams[*].cursorField": {
+      "file": "source_google_ads/streams.py",
+      "lines": "226-232",
+      "snippet": "class IncrementalGoogleAdsStream(GoogleAdsStream, IncrementalMixin, ABC):\n    days_of_data_storage = None\n    cursor_field = \"segments.date\"\n    ... range_days = 15"
+    },
+    "discovery.querySketch": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "130-138",
+      "snippet": "request.query = \"SELECT name, selectable_with WHERE name = 'segments.date'\"\n        response = ga_field_service.search_google_ads_fields(request=request)"
+    },
+    "discovery.allowlist": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "26-45",
+      "snippet": "REPORT_MAPPING = {\n    \"accounts\": \"customer\",\n    \"ad_group_ads\": \"ad_group_ad\", ... }"
+    },
+    "discovery.excludes": {
+      "file": "source_google_ads/source.py",
+      "lines": "180-182, 199-201",
+      "snippet": "non_manager_accounts = [customer for customer in customers if not customer.is_manager_account]\n        # Metrics streams cannot be requested for a manager account.\n        if non_manager_accounts:"
+    },
+    "streams": {
+      "file": "source_google_ads/source.py",
+      "lines": "189-213",
+      "snippet": "streams = [ AdGroupAds(**incremental_config), AdGroupAdLabels(...), AdGroups(...), AdGroupLabels(...), Accounts(...), CampaignLabels(...), ClickView(...), GeoTargetConstant(...) ]"
+    },
+    "streams[16].pull.incremental": {
+      "file": "source_google_ads/streams.py",
+      "lines": "585-592",
+      "snippet": "class ClickView(IncrementalGoogleAdsStream):\n    primary_key = [\"click_view.gclid\", \"segments.date\", \"segments.ad_network_type\"]\n    days_of_data_storage = 90\n    range_days = 1"
+    },
+    "streams[17].pull.incremental.querySketch": {
+      "file": "source_google_ads/custom_query_stream.py",
+      "lines": "129-134",
+      "snippet": "if \"segments.date\" not in query.fields:\n            query = query.append_field(\"segments.date\")\n        condition = f\"segments.date BETWEEN '{start_date}' AND '{end_date}'\""
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_google_ads/streams.py",
+      "lines": "98-103",
+      "snippet": "# For some metrics we can only get data not older than N days, it is Google Ads policy\n    if days_of_data_storage:\n        start_date = max(start_date, pendulum.now().subtract(days=days_of_data_storage - conversion_window))"
+    },
+    "execution.continuity.resumeWindow": {
+      "file": "source_google_ads/streams.py",
+      "lines": "57-60",
+      "snippet": "If (end_date - start_date) is a big date range (>= 1 month), it can take more than 2 hours ... After 2 hours next page tokens will be expired"
+    },
+    "configFields[13]": {
+      "file": "source_google_ads/streams.py",
+      "lines": "110-111",
+      "snippet": "# applying conversion window\n    start_date = start_date.subtract(days=conversion_window)"
+    },
+    "configFields[14]": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "63-74",
+      "snippet": "class ResourceConfig(common.BaseResourceConfig, extra=\"forbid\"):\n    stream: Annotated[str, Field(description=\"Name of this stream\")]\n    sync_mode: Literal[\"full_refresh\", \"incremental\"]"
+    },
+    "unionMisfits[1]": {
+      "file": "source_google_ads/google_ads.py",
+      "lines": "96-97",
+      "snippet": "def do_request():\n            return [self.ga_service.search(search_request, timeout=GRPC_TIMEOUT)]"
+    },
+    "unionMisfits[6]": {
+      "file": "source_google_ads/streams.py",
+      "lines": "407-412",
+      "snippet": "class ServiceAccounts(GoogleAdsStream):\n    \"\"\"\n    This stream is intended to be used as a service class, not exposed to a user\n    \"\"\""
+    }
+  },
+
+  "confidence": {
+    "transports": "high",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "streamMode": "medium",
+    "discovery": "high",
+    "streams": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].pull": "high",
+    "streams[*].writeDisposition": "low",
+    "streams[17].primaryKey": "medium",
+    "streams[18].primaryKey": "medium",
+    "execution.mode": "high",
+    "execution.continuity": "medium",
+    "configFields": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.baseUrl": "The connector never names a host. GoogleAdsClient resolves the endpoint internally (and honours an endpoint override the connector does not set). Writing googleads.googleapis.com would be recall, not extraction.",
+    "transports[0].spec.defaultHeaders": "Headers (developer-token, login-customer-id, authorization) are assembled by the google-ads library from the credentials dict; the connector sets none itself. login_customer_id is merely copied into that dict.",
+    "streams[*].pull.*.paginator": "Pagination is entirely inside google.api_core's SearchPager. The one page-size constant in connector code (GoogleAds.DEFAULT_PAGE_SIZE = 1000) is dead — grep finds no reader. See unionMisfits[1].",
+    "streams[*].schedules": "No cadence is expressed anywhere in the connector or in the airbyte shim's ResourceConfig.",
+    "execution.defaultSchedule": "Same: scheduling belongs to the Flow runtime, not this connector.",
+    "execution.continuity.releasedOnShutdown": "Not applicable in a way the code decides — no server-side artifact is created, so there is nothing to release; recording `false` would imply artifacts exist.",
+    "streams[*].supportedSyncModes for full-refresh streams": "GoogleAdsStream subclasses have no cursor at all, so incremental is impossible for them; the discover snapshot confirms syncMode full_refresh. Recorded as fact, not abstained — noting here only that the *shipped* discover output, not a code branch, is the corroborating source.",
+    "streams[].name for custom queries": "Custom-query stream names are whatever the user types into custom_queries[].table_name (the test fixture uses 'my_custom_query'). Emitted as archetypes with placeholder names rather than inventing a concrete list."
+  }
+}

@@ -1,0 +1,2473 @@
+{
+  "id": "chargebee-native",
+  "estuaryDir": "source-chargebee-native",
+  "displayName": "Chargebee",
+  "description": "Imports subscription-billing data (customers, subscriptions, invoices, transactions, credit notes, plans/items, events and related objects) from a Chargebee site.",
+  "category": "payments",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{site}.chargebee.com/api/v2",
+          "placeholders": {
+            "site": "the `site` endpoint-config field \u2014 the customer's Chargebee site prefix"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2` baked into every request URL"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.api_key",
+        "passwordField": "credentials.password"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure read-only HTTP polling; nothing is created on the customer's Chargebee site. Incremental state is a unix-second cursor stored by the connector and windows are re-derived from it, so an arbitrarily long pause is safe: on resume the connector walks forward one day at a time from the stored cursor. A 5-minute lag is subtracted from `now` to absorb Chargebee's documented eventual-consistency delay, and windows shorter than 1 minute are skipped."
+    }
+  },
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator; only value is \"API Key\"."
+    },
+    {
+      "name": "credentials.api_key",
+      "displayName": "API Key",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Chargebee API key; sent as the HTTP Basic username."
+    },
+    {
+      "name": "credentials.password",
+      "displayName": "Password (Not Required)",
+      "required": false,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Always blank for Chargebee authentication; defaults to an empty string."
+    },
+    {
+      "name": "site",
+      "displayName": "Site",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "The site prefix of the Chargebee account; substituted into the base URL."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime; data older than this is not replicated. Defaults to 30 days before now; must not be in the future."
+    },
+    {
+      "name": "product_catalog",
+      "displayName": "Product Catalog",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "\"1.0\" or \"2.0\"; selects which stream set is offered. Cannot be changed after the capture is created."
+    },
+    {
+      "name": "advanced.limit",
+      "displayName": "Limit",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "number",
+      "description": "Page size sent as the `limit` query param. Default 100, must be >0 and <=100."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of the bound resource (CDK ResourceConfig)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource (CDK ResourceConfig)."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "site_migration_details",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/site_migration_details",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "quote_line_groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": true
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/quote_line_groups",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "gifts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/gifts",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "unbilled_charges",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/unbilled_charges",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "differential_prices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 3600
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/differential_prices",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/comment/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/comments",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "created_at",
+            "created_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/comments",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "created_at",
+            "created_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "coupons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/coupon/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/coupons",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "created_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/coupons",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "created_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "credit_notes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/credit_note/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/credit_notes",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "date",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/credit_notes",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "date",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/customer/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/customers",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/customers",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/event/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "occurred_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/events",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "occurred_at",
+            "occurred_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "occurred_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/events",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "occurred_at",
+            "occurred_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "occurred_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "hosted_pages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/hosted_page/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/hosted_pages",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/hosted_pages",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "invoices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/invoice/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/invoices",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/invoices",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/order/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/orders",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/orders",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "payment_sources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/payment_source/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/payment_sources",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/payment_sources",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "promotional_credits",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/promotional_credit/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/promotional_credits",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "created_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/promotional_credits",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "created_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "created_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "quotes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/quote/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": true
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/quotes",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "date",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/quotes",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "date",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "subscriptions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/subscription/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/subscriptions",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "transactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/transaction/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/transactions",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/transactions",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "virtual_bank_accounts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/virtual_bank_account/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/virtual_bank_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/virtual_bank_accounts",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "addons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/addon/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/addons",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/addons",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "plans",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/plan/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/plans",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/plans",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/item/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/items",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/items",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "item_prices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/item_price/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/item_prices",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/item_prices",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "sort_by[asc]": "updated_at",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "item_families",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/item_family/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/item_families",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/item_families",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/customers/{id}/contacts",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>"
+          },
+          "pathPlaceholders": {
+            "id": "customer id, from a prior unfiltered paginated snapshot of /customers, read at /customer/id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "subscriptions_with_scheduled_changes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/_meta/row_id"
+      ],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        {
+          "role": "full snapshot sweep",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "1.0",
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/subscriptions/{id}/retrieve_with_scheduled_changes",
+          "httpMethod": "GET",
+          "recordsPath": null,
+          "params": null,
+          "pathPlaceholders": {
+            "id": "subscription id, from a paginated snapshot of /subscriptions filtered with has_scheduled_changes[is]=true, read at /subscription/id"
+          },
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "attached_items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/attached_item/id"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "incremental sweep + backfill",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 120
+          }
+        }
+      ],
+      "availability": {
+        "productCatalogVersions": [
+          "2.0"
+        ],
+        "probedAtDiscovery": false
+      },
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/items/{id}/attached_items",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<start_date epoch>,<cutoff epoch>]"
+          },
+          "pathPlaceholders": {
+            "id": "item id, from a paginated snapshot of /items, read at /item/id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/items/{id}/attached_items",
+          "httpMethod": "GET",
+          "recordsPath": "list",
+          "params": {
+            "limit": "<advanced.limit, default 100>",
+            "updated_at[between]": "[<log_cursor epoch>,<min(log_cursor+1d, now-5m)> epoch]",
+            "include_deleted": "true"
+          },
+          "pathPlaceholders": {
+            "id": "item id, from a paginated snapshot of /items, read at /item/id"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "offset",
+            "cursorPath": "next_offset",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": "limit",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "updated_at[between]",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Chargebee API key, pasted into one field and sent as HTTP Basic auth with an empty password (the CDK base64-encodes `api_key:`). No OAuth app registration and no refresh token are involved \u2014 `TokenSource` is constructed with `oauth_spec=None`.",
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.incrementalParam",
+      "description": "The incremental filter is not a single lower-bound parameter but a closed RANGE encoded into one query param, `<cursor_field>[between]` whose value is the literal string `[<start_epoch>,<end_epoch>]`. Both ends move: the incremental leg walks a bounded window (cursor -> min(cursor+1 day, now-5min)) rather than sending an open-ended `since`. The schema's {param, format} shape cannot express the upper bound, the window size, or the consistency lag.",
+      "proposedShape": {
+        "kind": "range_window",
+        "param": "<cursor_field>[between]",
+        "valueEncoding": "[<start>,<end>] literal bracketed pair",
+        "format": "unix_seconds",
+        "windowSize": "1 day",
+        "consistencyLag": "5 minutes",
+        "minWindow": "1 minute"
+      }
+    },
+    {
+      "where": "streams[].availability",
+      "description": "Two gates decide whether a stream is offered at all, and neither has a home in the schema: (a) `product_catalog` (\"1.0\" vs \"2.0\") selects between two shipped stream lists \u2014 addons/plans exist only in 1.0, items/item_prices/item_families/attached_items/differential_prices only in 2.0; (b) RESTRICTED_RESOURCES (quotes, quote_line_groups) are probed at discovery with a limit=1 request and dropped on HTTP 404 because they need a Performance/Enterprise Chargebee plan. The list is static, but conditionally static. I added a non-schema `availability` object per stream to carry this rather than silently dropping it.",
+      "proposedShape": {
+        "streamMode": "static_conditional",
+        "conditions": [
+          {
+            "kind": "config_variant",
+            "field": "product_catalog",
+            "values": [
+              "1.0",
+              "2.0"
+            ]
+          },
+          {
+            "kind": "probe",
+            "method": "GET <path>?limit=1",
+            "dropOn": "HTTP 404",
+            "reason": "plan-gated feature"
+          }
+        ]
+      }
+    },
+    {
+      "where": "streams[].pull.*.params.sort_by[asc]",
+      "description": "Ordering is a per-stream property that is neither the cursor nor a paginator field: the sort key can differ from the cursor field (coupons cursor on updated_at but sort by created_at; credit_notes and quotes cursor on updated_at but sort by date), and six streams (hosted_pages, promotional_credits, virtual_bank_accounts, addons, plans, item_families, attached_items) disable sorting entirely because the Chargebee endpoint does not support it. There is no `sortKey`/`sortSupported` field in the schema.",
+      "proposedShape": {
+        "sortKey": "str|null",
+        "sortOrder": "asc|desc",
+        "sortSupported": "bool"
+      }
+    },
+    {
+      "where": "streams[].pull.*.pathPlaceholders",
+      "description": "The three associated streams require a full parent sweep before any child request: the connector paginates the entire parent collection (optionally filtered) into an in-memory id list, then issues one child request per parent id. `pathPlaceholders` names the placeholder but cannot express that a second, separately-paginated HTTP pull is a prerequisite of the first, nor that the parent listing is re-walked on every single incremental tick.",
+      "proposedShape": {
+        "parentPull": {
+          "path": "/customers",
+          "recordsPath": "list",
+          "idPath": "/customer/id",
+          "filterParams": {
+            "has_scheduled_changes[is]": "true"
+          },
+          "paginator": "<Paginator>",
+          "materialization": "full in-memory id list per invocation"
+        }
+      }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "Incremental streams are `merge` but also emit hard deletes: the incremental leg sets include_deleted=true and rewrites any record whose `deleted` field is true into a document with _meta.op=\"d\". That is merge-plus-tombstone, which the three-value enum does not distinguish from a plain merge.",
+      "proposedShape": {
+        "writeDisposition": "merge",
+        "emitsDeletes": true,
+        "deleteSignal": "record field `deleted` == true, requested via include_deleted=true"
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "54",
+      "snippet": "url = f\"https://{site}.chargebee.com/api/v2/{resource_name}\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "166",
+      "snippet": "url = f\"https://{config.site}.chargebee.com/api/v2/configurations\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_chargebee_native/models.py",
+      "lines": "25-40",
+      "snippet": "class ApiKey(BasicAuth):\n    username: str = Field(title=\"API Key\", json_schema_extra={\"secret\": True}, alias=\"api_key\")\n    password: str = Field(default=\"\", title=\"Password (Not Required)\", ...)"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "162-165",
+      "snippet": "http.token_source = TokenSource(\n    oauth_spec=None,\n    credentials=config.credentials,\n)"
+    },
+    "authTierOverall": {
+      "file": "estuary-cdk/estuary_cdk/http.py",
+      "lines": "306-312",
+      "snippet": "elif isinstance(self.credentials, BasicAuth):\n    return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode())"
+    },
+    "execution.mode": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "283-299",
+      "snippet": "fetch_page=functools.partial(fetch_resource_page, ...),\nfetch_changes=functools.partial(fetch_resource_changes, ...),"
+    },
+    "execution.continuity": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "19-25",
+      "snippet": "# Chargebee's API has eventual consistency delays documented to be up to 5 minutes.\nLAG = timedelta(minutes=5)\nMIN_INCREMENTAL_INTERVAL = timedelta(minutes=1)"
+    },
+    "configFields": {
+      "file": "source_chargebee_native/models.py",
+      "lines": "43-81",
+      "snippet": "class EndpointConfig(BaseModel):\n    credentials: ApiKey = Field(discriminator=\"credentials_title\", title=\"Authentication\")\n    site: str = Field(description=\"The site prefix of your Chargebee account.\", title=\"Site\")"
+    },
+    "streamMode": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "60-101",
+      "snippet": "FULL_REFRESH_RESOURCES: dict[Literal[\"1.0\", \"2.0\"], list[str]] = {\nINCREMENTAL_RESOURCES: dict[Literal[\"1.0\", \"2.0\"], list[tuple[str, type[IncrementalChargebeeResource]]]] = {"
+    },
+    "streams[].pull.snapshot.paginator": {
+      "file": "source_chargebee_native/models.py",
+      "lines": "100-104",
+      "snippet": "class APIResponse(BaseModel, Generic[ListItem], extra=\"allow\"):\n    next_offset: str | None = None\n    list: List[ListItem] | None = None"
+    },
+    "streams[].pull.incremental.paginator": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "64-68",
+      "snippet": "if returns_list:\n    params[\"limit\"] = limit\n    if offset is not None:\n        params[\"offset\"] = offset"
+    },
+    "streams[].pull.incremental.paginator.terminateOn": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "268-271",
+      "snippet": "if not next_offset:\n    break\n\noffset = next_offset"
+    },
+    "streams[].pull.incremental.incrementalParam": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "79-81",
+      "snippet": "params[f\"{cursor_field}[between]\"] = (\n    f\"[{int(start_date.timestamp())},{int(end_date.timestamp())}]\"\n)"
+    },
+    "streams[].pull.incremental.params.include_deleted": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "242-246",
+      "snippet": "offset=offset,\nlimit=limit,\ninclude_deleted=True,"
+    },
+    "streams[].cursorField": {
+      "file": "source_chargebee_native/models.py",
+      "lines": "120-128",
+      "snippet": "class IncrementalChargebeeResource(ChargebeeResource):\n    CURSOR_FIELD: ClassVar[str] = \"updated_at\"\n    SORT_KEY: ClassVar[str] = \"updated_at\""
+    },
+    "streams[].primaryKey": {
+      "file": "source_chargebee_native/models.py",
+      "lines": "135-137",
+      "snippet": "@classmethod\ndef get_resource_key_json_path(cls) -> str:\n    return f\"/{cls.RESOURCE_KEY}/id\""
+    },
+    "streams[].primaryKeyKind": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "252-253",
+      "snippet": "name=name,\nkey=[\"/_meta/row_id\"],"
+    },
+    "streams[].writeDisposition": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "240",
+      "snippet": "tombstone=ChargebeeResource(_meta=ChargebeeResource.Meta(op=\"d\")),"
+    },
+    "streams[].schedules": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "257",
+      "snippet": "initial_config=common.ResourceConfig(name=name, interval=timedelta(hours=1)),"
+    },
+    "streams[].schedules.incremental": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "321",
+      "snippet": "initial_config=common.ResourceConfig(name=name, interval=timedelta(minutes=2)),"
+    },
+    "streams[].availability": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "48-51,199-212",
+      "snippet": "RESTRICTED_RESOURCES = [\n    \"quotes\",  # Requires Performance or Enterprise Chargebee subscription plan\n    \"quote_line_groups\",  # Requires Performance or Enterprise Chargebee subscription plan"
+    },
+    "streams[contacts].pull.snapshot.path": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "104-110",
+      "snippet": "\"contacts\": AssociationConfig(\n    parent_resource=\"customers\",\n    endpoint_pattern=\"{parent}/{id}/contacts\","
+    },
+    "streams[subscriptions_with_scheduled_changes].pull.snapshot": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "111-120",
+      "snippet": "endpoint_pattern=\"{parent}/{id}/retrieve_with_scheduled_changes\",\nparent_filter_params={\"has_scheduled_changes[is]\": \"true\"},\nreturns_list=False,"
+    },
+    "streams[attached_items].pull": {
+      "file": "source_chargebee_native/resources.py",
+      "lines": "145-153",
+      "snippet": "\"attached_items\": (\n    AssociationConfig(parent_resource=\"items\", endpoint_pattern=\"{parent}/{id}/attached_items\", returns_list=True),\n    AttachedItem,"
+    },
+    "streams[].pull.backfill.params.sort_by[asc]": {
+      "file": "source_chargebee_native/api.py",
+      "lines": "89-90",
+      "snippet": "if sort_by is not None:\n    params[f\"sort_by[{sort_by_order}]\"] = sort_by"
+    }
+  },
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[].name": "high",
+    "streams[].pull.*.path": "high",
+    "streams[].pull.*.paginator": "high",
+    "streams[].pull.*.paginator.type": "medium",
+    "streams[].pull.*.paginator.pageSize": "high",
+    "streams[].cursorField": "high",
+    "streams[].primaryKey": "high",
+    "streams[].writeDisposition": "high",
+    "streams[].schedules": "high",
+    "streams[].pull.*.recordsPath": "high",
+    "streams[subscriptions_with_scheduled_changes].pull.snapshot.recordsPath": "medium",
+    "streams[].availability": "high",
+    "transports[0].spec.defaultHeaders": "high"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No headers are set by the connector beyond the CDK-injected `Authorization`; the CDK's shared HTTP session adds nothing connector-specific. Recorded as null rather than inventing a User-Agent.",
+    "discovery": "There is no runtime schema/catalog discovery. `discover` returns the shipped stream list (filtered by product_catalog and a 404 probe for plan-gated resources), so this is a static list, not discovery. The 404 probe is recorded in unionMisfits and per-stream `availability` instead of being dressed up as a discovery method.",
+    "execution.defaultSchedule": "Scheduling is entirely per-binding (`initial_config=ResourceConfig(interval=...)`); the connector declares no connector-wide default, so this is genuinely null rather than unknown.",
+    "streams[].pull.*.paginator.pageSize (per-stream)": "The literal 100 is the DEFAULT of `advanced.limit`, not a hard-coded page size \u2014 the user may lower it (bounded 0 < limit <= 100). Recorded as 100 with `limitParam: limit` so a reader knows it is configurable.",
+    "streams[subscriptions_with_scheduled_changes].pull.snapshot.recordsPath": "This endpoint is declared `returns_list=False`, so the response has no `list` envelope; the CDK model's `handle_single_object` validator wraps the bare object into a synthetic one-element list before parsing. There is no real records path in the wire response, so it is null.",
+    "streams[].pull.*.params (exact wire values)": "Query-param VALUES are computed at runtime from config and cursor state (site, limit, epoch window bounds). I recorded parameter NAMES verbatim and described the values in angle brackets rather than fabricating literals.",
+    "streams[quote_line_groups].pull / streams[differential_prices].pull": "These two names appear only as strings in the full-refresh lists; no model class or endpoint-shape code exists for them beyond the generic `/{name}` snapshot path, so the pull shape is asserted only to the extent the generic snapshot function guarantees it.",
+    "streams[].pull.backfill vs incremental for full-refresh streams": "Full-refresh and associated-full-refresh bindings are opened with `fetch_snapshot` only (no fetch_page/fetch_changes), so they are recorded under `snapshot` and both other legs are null, per schema rule v2.1."
+  }
+}

@@ -1,0 +1,626 @@
+{
+  "id": "klaviyo-native",
+  "estuaryDir": "source-klaviyo-native",
+  "displayName": "Klaviyo",
+  "description": "Imports Klaviyo marketing data — campaigns, flows, profiles, lists, segments, templates, forms, images, metrics, tags, coupons, push tokens and events — from the Klaviyo REST API.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://a.klaviyo.com/api" },
+        "defaultHeaders": { "REVISION": "2025-07-15" },
+        "apiVersionPinning": "Request header `REVISION`, pinned to the dated value \"2025-07-15\" (API_VERSION), sent on every request in REQUIRED_HEADERS."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key (private app key)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "Authorization",
+        "field": "credentials.access_token",
+        "prefix": "Klaviyo-API-Key "
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Only for the `events` binding: the Klaviyo Events API is eventually consistent, which the connector compensates for with a second `lookback` subtask running EVENTS_EVENTUAL_CONSISTENCY_HORIZON = 4 days behind the realtime subtask. Nothing else is time-limited — all other bindings re-bound by an absolute datetime filter, so an arbitrarily long pause is recoverable.",
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure stateless HTTP polling. No server-side object is created on the customer's Klaviyo account; state is entirely connector-side (a datetime LogCursor per binding/subtask, and a datetime-string PageCursor for backfills). Stopping between ticks accrues nothing on the customer side."
+    }
+  },
+
+  "configFields": [
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC date and time in the format YYYY-MM-DDTHH:MM:SSZ. Data generated before this date is not replicated. Defaults to 30 days before the present." },
+    { "name": "credentials.credentials_title", "displayName": "Authentication", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; the only value is \"API Key\"." },
+    { "name": "credentials.access_token", "displayName": "API Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Klaviyo private API key, sent as `Authorization: Klaviyo-API-Key <key>`." },
+    { "name": "advanced.window_size", "displayName": "Window size", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "ISO 8601 date-window size for the events backfill (default PT1H, min PT30S, max P365D). Only affects the `events` binding." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig binding name." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "CDK ResourceConfig poll interval; the connector ships PT5M for incremental bindings and PT1H for full-refresh bindings." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "coupons",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/coupons",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "coupon_codes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/coupon-codes",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "include": "coupon", "filter": "any(coupon.id,[<ids collected by first snapshotting /coupons>])" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/metrics",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/tags",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "include": "tag-group" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "tag_groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/tag-groups",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "push_tokens",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/push-tokens",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "include": "profile" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "templates",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/templates",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<start>),less-than(updated,<cutoff+1s>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/templates",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/lists",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<start>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/lists",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "profiles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<start>),less-than(updated,<cutoff+1s>)", "additional-fields[profile]": "subscriptions" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": "page[size]", "pageSize": 100 },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/profiles",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<log_cursor>)", "additional-fields[profile]": "subscriptions" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": "page[size]", "pageSize": 100 },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "segments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/segments",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<start>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/segments",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/forms",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<start>),less-than(updated_at,<cutoff+1s>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/forms",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "images",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/images",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<start>),less-than(updated_at,<cutoff+1s>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": "page[size]", "pageSize": 100 },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/images",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": "page[size]", "pageSize": 100 },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "campaigns",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<start>),less-than(updated_at,<cutoff+1s>),equals(messages.channel,'<email|sms|mobile_push>')[,equals(archived,true)]" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/campaigns",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated_at", "filter": "greater-than(updated_at,<log_cursor>),equals(messages.channel,'<email|sms|mobile_push>')[,equals(archived,true)]" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "flows",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.updated",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/flows",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<start>),less-than(updated,<cutoff+1s>)[,equals(archived,true)]" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/flows",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "updated", "filter": "greater-than(updated,<log_cursor>)[,equals(archived,true)]" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "attributes.datetime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [{ "role": "binding poll interval", "schedule": { "kind": "interval", "seconds": 300 } }],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "datetime", "filter": "greater-than(datetime,<chunk_start>),less-or-equal(datetime,<chunk_end>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/events",
+          "httpMethod": "GET",
+          "recordsPath": "data",
+          "params": { "sort": "datetime", "filter": "greater-than(datetime,<log_cursor>)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": "page[cursor]", "cursorPath": "links.next", "tokenFrom": "url_query", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode exists: an EndpointConfig.credentials discriminated union whose only member is ApiKey (an estuary_cdk AccessToken subclass) with a single secret field `access_token` titled \"API Key\". TokenSource is constructed with oauth_spec=None, so no OAuth flow, client registration, or refresh token is involved — the user pastes one self-serve Klaviyo private API key and the CDK sends `Authorization: Klaviyo-API-Key <key>`.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.paginator",
+      "description": "The paginator is neither plain next_url following nor a plain envelope-token cursor. `links.next` in the response body is a full absolute URL; the connector urlparse/parse_qs's it, extracts ONLY the `page[cursor]` query parameter, and re-sends that value as `page[cursor]` on the SAME original url with the original params dict retained (mutated in place). Encoding it as {type: cursor, tokenFrom: url_query} loses the intermediate 'read a URL from the body, then pull one query param out of it' step; encoding it as next_url would be wrong, because the URL is NOT followed verbatim.",
+      "proposedShape": {
+        "type": "cursor",
+        "tokenFrom": "url_query_of_body_field",
+        "tokenFromPath": "links.next",
+        "extractQueryParam": "page[cursor]",
+        "cursorParam": "page[cursor]",
+        "tokenTo": "query_param",
+        "requestUrl": "original_url_with_original_params",
+        "terminateOn": "absent_token"
+      }
+    },
+    {
+      "where": "streams[].pull.*.incrementalParam",
+      "description": "There is no dedicated since-parameter, so {param, format} has no truthful value. All temporal bounds plus per-variant static predicates are packed into ONE `filter` query param as comma-joined Klaviyo filter expressions (e.g. \"greater-than(updated,<lo>),less-than(updated,<hi>),equals(archived,true)\"), alongside a `sort` param set to the cursor field. The datetime is interpolated by Python f-string str() of an aware datetime, producing 'YYYY-MM-DD HH:MM:SS+00:00' — not iso8601/unix_seconds/date. Filled `params.filter` with a template string instead and set incrementalParam null on every stream.",
+      "proposedShape": {
+        "type": "filter_expression",
+        "param": "filter",
+        "sortParam": "sort",
+        "sortValue": "<cursorField>",
+        "lowerBoundTemplate": "greater-than(<cursorField>,<value>)",
+        "upperBoundTemplate": "less-than(<cursorField>,<value>) | less-or-equal(<cursorField>,<value>)",
+        "join": ",",
+        "datetimeFormat": "python_str_aware_datetime (YYYY-MM-DD HH:MM:SS+00:00)",
+        "staticPredicates": "per-variant, e.g. equals(messages.channel,'email'), equals(archived,true)"
+      }
+    },
+    {
+      "where": "streams[campaigns|flows|events]",
+      "description": "One binding fans out into multiple concurrent subtasks that each hit the SAME path with different filter predicates, and the schema has no place for that. `campaigns` opens 6 subtasks (email/sms/mobile_push × archived and not, because the API only allows one channel and one archived-state per request); `flows` opens 2 (active/archived); `events` opens 2 incremental subtasks — a `realtime` one and a `lookback` one lagging 4 days behind to catch eventually-consistent writes. Each subtask keeps its own independent LogCursor/PageCursor. The single `pull.incremental` slot flattens all of them.",
+      "proposedShape": {
+        "pull": { "incremental": [{ "subtask": "email", "params": { "filter": "...equals(messages.channel,'email')" } }, { "subtask": "archived_email", "params": { "filter": "...equals(messages.channel,'email'),equals(archived,true)" } }] }
+      }
+    },
+    {
+      "where": "streams[events].pull.backfill",
+      "description": "The events backfill is not a simple paginated sweep: it splits [start, start+window_size) into 50 initial date chunks, runs 5 concurrent workers over a queue, and dynamically subdivides any chunk that takes >30s into 5 more (floor: 1 second grain). The PageCursor is a datetime string ('%Y-%m-%dT%H:%M:%SZ'), not a page token. PullSpec.http has no field for adaptive date-window chunking.",
+      "proposedShape": { "chunking": { "kind": "adaptive_date_window", "windowSize": "config.advanced.window_size (default PT1H)", "initialChunks": 50, "workers": 5, "denseThresholdSeconds": 30, "minChunk": "PT1S", "pageCursorKind": "datetime_string" } }
+    },
+    {
+      "where": "streams[coupon_codes].pull.snapshot",
+      "description": "coupon_codes is parent-scoped, but not via a path placeholder. The connector first snapshots /coupons in full, collects every coupon id, then issues /coupon-codes with filter=any(coupon.id,[id1,id2,...]) (whitespace stripped). If zero coupons exist it emits nothing at all. `pathPlaceholders` cannot express a parent-id list injected into a filter param.",
+      "proposedShape": { "parentScope": { "parentStream": "coupons", "collect": "id", "injectAs": { "param": "filter", "template": "any(coupon.id,[<ids>])" }, "skipIfEmpty": true } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_klaviyo_native/api/common.py", "lines": "29", "snippet": "BASE_URL = \"https://a.klaviyo.com/api\"" },
+    "transports[0].spec.apiVersionPinning": { "file": "source_klaviyo_native/api/common.py", "lines": "30-33", "snippet": "API_VERSION = \"2025-07-15\"\nREQUIRED_HEADERS = {\n    \"REVISION\": API_VERSION" },
+    "transports[0].spec.defaultHeaders": { "file": "source_klaviyo_native/api/common.py", "lines": "98", "snippet": "_, body = await http.request_stream(log, url, params=params, headers=REQUIRED_HEADERS)" },
+    "credentialModes[0].scheme": { "file": "source_klaviyo_native/resources.py", "lines": "38-47", "snippet": "AUTHORIZATION_TOKEN_TYPE = \"Klaviyo-API-Key\"\nhttp.token_source = TokenSource(oauth_spec=None, credentials=config.credentials, authorization_token_type=AUTHORIZATION_TOKEN_TYPE)" },
+    "credentialModes[0].scheme.header": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "35, 526-534", "snippet": "DEFAULT_AUTHORIZATION_HEADER = \"Authorization\"\nheader_value = f\"{token_type} {token}\" if token_type else token\nheaders[self.token_source.authorization_header] = header_value" },
+    "credentialModes[0].tier": { "file": "source_klaviyo_native/models.py", "lines": "24-31", "snippet": "class ApiKey(AccessToken):\n    credentials_title: Literal[\"API Key\"] = Field(\n    access_token: str = Field(title=\"API Key\"," },
+    "streams[].pull.*.paginator": { "file": "source_klaviyo_native/api/common.py", "lines": "40-52, 109-115", "snippet": "cursor_values = query_params.get(PAGE_CURSOR_PARAMETER)\nnext_page_cursor = _extract_page_cursor(remainder.links.next)\nif next_page_cursor:\n    params[PAGE_CURSOR_PARAMETER] = next_page_cursor" },
+    "streams[].pull.*.paginator.cursorParam": { "file": "source_klaviyo_native/api/common.py", "lines": "34", "snippet": "PAGE_CURSOR_PARAMETER = \"page[cursor]\"" },
+    "streams[].pull.*.paginator.cursorPath": { "file": "source_klaviyo_native/models.py", "lines": "338-342", "snippet": "class BaseResponse(BaseModel):\n    class Links(BaseModel):\n        next: str | None = None" },
+    "streams[profiles].pull.*.paginator.pageSize": { "file": "source_klaviyo_native/models.py", "lines": "283-286", "snippet": "extra_params: ClassVar[dict[str, str | int]] = {\n    \"additional-fields[profile]\": \"subscriptions\",\n    \"page[size]\": 100,\n}" },
+    "streams[images].pull.*.paginator.pageSize": { "file": "source_klaviyo_native/models.py", "lines": "306-308", "snippet": "extra_params: ClassVar[dict[str, str | int]] = {\n    \"page[size]\": 100,\n}" },
+    "streams[].pull.*.recordsPath": { "file": "source_klaviyo_native/api/common.py", "lines": "99-104", "snippet": "processor = IncrementalJsonProcessor(\n    body(),\n    \"data.item\"," },
+    "streams[].pull.*.path": { "file": "source_klaviyo_native/models.py", "lines": "162-315", "snippet": "path: ClassVar[str] = \"coupon-codes\"\npath: ClassVar[str] = \"tag-groups\"\npath: ClassVar[str] = \"push-tokens\"" },
+    "streams[].cursorField": { "file": "source_klaviyo_native/models.py", "lines": "69-72, 156-158", "snippet": "class CursorField(StrEnum):\n    UPDATED_AT = \"updated_at\"\ncursor_str: str = getattr(self.attributes, self.cursor_field.value)" },
+    "streams[].pull.incremental.params.filter": { "file": "source_klaviyo_native/api/common.py", "lines": "72-82, 184-192", "snippet": "lower_bound_filter = f\"{lower_bound_operator}({cursor_field},{lower_bound})\"\nreturn \",\".join(filters)" },
+    "streams[].pull.backfill.params.filter": { "file": "source_klaviyo_native/api/common.py", "lines": "271-291", "snippet": "if model.supports_less_than_filter:\n    upper_bound_operator=UpperBoundOperator.LESS_THAN,\n    upper_bound=cutoff + SMALLEST_KLAVIYO_DATETIME_GRAIN," },
+    "streams[lists].pull.backfill.params.filter": { "file": "source_klaviyo_native/models.py", "lines": "272-293", "snippet": "class Lists(IncrementalStream):\n    supports_less_than_filter: ClassVar[bool] = False" },
+    "streams[].primaryKey": { "file": "source_klaviyo_native/resources.py", "lines": "97-99, 149-151", "snippet": "key=[\"/_meta/row_id\"],\nkey=[\"/id\"]," },
+    "streams[].writeDisposition": { "file": "source_klaviyo_native/resources.py", "lines": "86-93", "snippet": "fetch_snapshot=fetch_snapshot,\ntombstone=common.BaseDocument(_meta=common.BaseDocument.Meta(op=\"d\"))" },
+    "streams[].schedules": { "file": "source_klaviyo_native/resources.py", "lines": "103-105, 157-159", "snippet": "initial_config=ResourceConfig(name=model.name, interval=timedelta(minutes=60))\ninitial_config=ResourceConfig(name=model.name, interval=timedelta(minutes=5))" },
+    "streamMode": { "file": "source_klaviyo_native/models.py", "lines": "359-376", "snippet": "FULL_REFRESH_STREAMS: list[type[BaseStream]] = [\nINCREMENTAL_STREAMS: list[type[IncrementalStream]] = [" },
+    "streams[campaigns]": { "file": "source_klaviyo_native/resources.py", "lines": "184-208", "snippet": "\"email\": functools.partial(fetch_incremental_resources, http, EmailCampaigns, None,),\n\"archived_email\": functools.partial(fetch_incremental_resources, http, EmailCampaignsArchived, None,)," },
+    "streams[events].pull.backfill": { "file": "source_klaviyo_native/api/events.py", "lines": "34-50, 402", "snippet": "initial_chunks: int = 50\nnum_event_workers: int = 5\nend = min(start + window_size, cutoff)" },
+    "streams[coupon_codes].pull.snapshot.params": { "file": "source_klaviyo_native/api/common.py", "lines": "141-153", "snippet": "async for coupon in snapshot_resources(http, Coupons, log):\n    coupon_ids.append(coupon.id)\nparams[\"filter\"] = f\"any(coupon.id,{coupon_ids})\".replace(\" \", \"\")" },
+    "configFields": { "file": "source_klaviyo_native/models.py", "lines": "34-63", "snippet": "class EndpointConfig(BaseModel):\n    start_date: AwareDatetime = Field(\n    credentials: ApiKey = Field(discriminator=\"credentials_title\"," },
+    "execution.continuity.ourSideLoss": { "file": "source_klaviyo_native/resources.py", "lines": "41, 342-352", "snippet": "EVENTS_EVENTUAL_CONSISTENCY_HORIZON = timedelta(days=4)\n\"lookback\": functools.partial(fetch_incremental_resources, http, Events, EVENTS_EVENTUAL_CONSISTENCY_HORIZON,)," }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[].pull.*.path": "high",
+    "streams[].pull.*.paginator": "high",
+    "streams[].pull.*.paginator.pageSize": "high",
+    "streams[].cursorField": "medium",
+    "streams[].primaryKey": "high",
+    "streams[].writeDisposition": "high",
+    "streams[].schedules": "high",
+    "streams[].pull.*.params.filter": "medium",
+    "configFields": "high",
+    "execution.continuity": "medium"
+  },
+
+  "abstained": {
+    "streams[].pull.*.incrementalParam": "Set null on every stream. There is no since-style query parameter; bounds live inside a single comma-joined `filter` expression string built by _construct_filter_param (api/common.py:55-82) and neither `param` nor `format` from the required union has a truthful value. Shape recorded in unionMisfits[1].",
+    "streams[].pull.*.paginator.pageSize (streams other than profiles and images)": "No page size is sent; the API default is left implicit. EVENTS_PAGE_SIZE = 200 (api/events.py:24) is NOT a request parameter — it is only a modulo interval for the dense-date-window check (events.py:306-318) — so it must not be surfaced as a page size.",
+    "streams[].cursorField (exact JSON pointer)": "Recorded as `attributes.<field>` because get_cursor_value reads getattr(self.attributes, cursor_field) (models.py:156-158), i.e. the value is nested under the JSON:API `attributes` object. The connector's own `cursor_field` ClassVar is the bare name (\"updated\"/\"updated_at\"/\"datetime\") because that bare name is what the API's sort/filter params take; the two are not interchangeable.",
+    "execution.continuity.releasedOnShutdown": "Not applicable/undeterminable — the connector creates no server-side artifacts to release.",
+    "discovery": "Null: the stream list is a fixed set of Python model classes (FULL_REFRESH_STREAMS, INCREMENTAL_STREAMS, plus campaigns/flows/events wired individually in all_resources); there is no discovery call against the customer's account. Confirmed against tests/snapshots/snapshots__discover__capture.stdout.json, which lists exactly the 15 bindings emitted here.",
+    "streams[accounts]": "Deliberately not listed as a stream. The Accounts model (path \"accounts\") exists only to validate credentials in validate_credentials (resources.py:44-59) and is absent from FULL_REFRESH_STREAMS/INCREMENTAL_STREAMS and from the discover snapshot, so it is never a capture binding."
+  }
+}

@@ -1,0 +1,1013 @@
+{
+  "id": "google-analytics-data-api-native",
+  "estuaryDir": "source-google-analytics-data-api-native",
+  "displayName": "Google Analytics 4 (Data API)",
+  "description": "Imports Google Analytics GA4 property reports (users, devices, locations, pages, traffic sources, plus user-defined custom reports) as daily dimension/metric rows via the Analytics Data API runReport endpoint.",
+  "category": "analytics",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "constant",
+          "value": "https://analyticsdata.googleapis.com/v1beta/properties"
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment (`/v1beta/`) in the hardcoded base URL"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "Google OAuth 2.0 (client id + secret + refresh token)",
+      "appliesToTransport": "primary",
+      "tier": "T3_BYO_REFRESH",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://accounts.google.com/o/oauth2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "scopes": [
+          "https://www.googleapis.com/auth/analytics.readonly"
+        ],
+        "grant": "refresh_token"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "property_id",
+      "displayName": "Property ID",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "GA4 property identifier whose events are tracked; interpolated into the runReport path."
+    },
+    {
+      "name": "custom_reports",
+      "displayName": "Custom Reports",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "A JSON array (supplied as a string) of custom report definitions; each entry becomes an additional binding. Default empty."
+    },
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "UTC datetime; earliest data replicated. Defaults to 30 days ago; must be >= 2015-08-14T00:00:00Z and <= now."
+    },
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator; the only value is \"OAuth Credentials\"."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client Id",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": null
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": null
+    },
+    {
+      "name": "credentials.refresh_token",
+      "displayName": "Refresh Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": null
+    },
+    {
+      "name": "advanced.lookback_window_size",
+      "displayName": "Lookback Window Size",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "number",
+      "description": "Days to look back from the incremental cursor for late-arriving report updates. Default 30, min 0."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource (report name)."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this binding; discovery recommends PT12H."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "daily_active_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "weekly_active_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "four_weekly_active_users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "devices",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date",
+        "/deviceCategory",
+        "/operatingSystem",
+        "/browser"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "locations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/region",
+        "/country",
+        "/city",
+        "/date"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "pages",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date",
+        "/hostName",
+        "/pagePathPlusQueryString"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "traffic_sources",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date",
+        "/sessionSource",
+        "/sessionMedium"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "website_overview",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/date"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "<user-defined custom report>",
+      "origin": "static",
+      "kind": "archetype",
+      "primaryKey": [
+        "/property_id",
+        "/report_date",
+        "/<each configured dimension>"
+      ],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "report_date",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [
+        {
+          "role": "binding poll interval (default resource config)",
+          "schedule": {
+            "kind": "interval",
+            "seconds": 43200
+          }
+        }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "One calendar day per page cursor: body dateRanges[0].startDate == endDate == the cursor day; the page cursor is an ISO datetime string advanced by one day and stops at the backfill cutoff."
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "recordsPath": "rows",
+          "params": null,
+          "pathPlaceholders": {
+            "property_id": "endpoint config property_id"
+          },
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 250000,
+            "terminateOn": "explicit_total",
+            "tokenTo": "body_field",
+            "tokenFrom": "n/a",
+            "notes": "limit/offset are JSON request-body fields of the runReport POST, not query params. offset advances by 250000 each iteration; loop ends when the response body's rowCount is absent or offset >= rowCount."
+          },
+          "incrementalParam": null,
+          "notes": "Walks day by day from the log cursor (a datetime) to now in the property's timezone, then re-reads the previous lookback_window_size days; body dateRanges[0].startDate == endDate == the day being fetched. The date is body-expressed, not a query param, so incrementalParam is null."
+        },
+        "snapshot": null
+      },
+      "notes": "Archetype, not a real stream. Each object in the endpoint-config `custom_reports` JSON array becomes one additional binding with the same pull shape as the eight shipped reports. Fields: name, dimensions (1-9), metrics (1-10), optional dimensionFilter, metricFilter, metricAggregations (TOTAL|MINIMUM|MAXIMUM). Names colliding with a default report are rejected at validation."
+    }
+  ],
+  "authTierOverall": "T3_BYO_REFRESH",
+  "authTierRationale": "The endpoint config offers exactly one credentials variant: BaseOAuth2Credentials specialized for provider \"google\", requiring client_id, client_secret and refresh_token, all three marked required and secret in the spec snapshot. There is no API-key / access-token / service-account alternative in this connector, even though the shared CDK supports GoogleServiceAccount and AccessToken (the connector imports AccessToken but never uses it in EndpointConfig). Standalone, a user must register their own Google Cloud OAuth client AND complete the consent flow to obtain a refresh token, hence T3. Estuary's hosted control plane can hide this: the spec ships an oauth2 block (authUrlTemplate/accessTokenUrlTemplate/accessTokenResponseMap extracting /refresh_token) so the platform performs the authorization_code exchange with its own registered app and injects the three fields. That platform assistance does not change the standalone tier.",
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "Pagination is offset/limit by semantics but body-expressed by transport: `limit` and `offset` are JSON fields of the runReport POST body, not query parameters. The `offset` paginator variant has no place to say WHERE the values are sent (no tokenTo), while `body_cursor` implies an opaque token and cannot express a numeric offset plus a page size. Chose `offset` (semantics win, since the value is a plain integer row offset) and added a non-schema `tokenTo: body_field` plus a note.",
+      "proposedShape": {
+        "type": "offset",
+        "limitParam": "limit",
+        "offsetParam": "offset",
+        "pageSize": 250000,
+        "tokenTo": "query_param|body_field|header|path_segment",
+        "terminateOn": "explicit_total"
+      }
+    },
+    {
+      "where": "streams[*].pull.incremental.incrementalParam",
+      "description": "The incremental bound is not a request parameter at all: the connector sends dateRanges[{startDate, endDate}] in the POST body with both set to a single calendar day, and iterates one day per request. incrementalParam assumes a single named param carrying a timestamp, so it is null here even though the connector is very much incremental.",
+      "proposedShape": {
+        "incrementalBound": {
+          "kind": "body_date_window",
+          "bodyPath": "dateRanges[0]",
+          "startField": "startDate",
+          "endField": "endDate",
+          "format": "date",
+          "windowStep": "1 day"
+        }
+      }
+    },
+    {
+      "where": "streams[*].pull",
+      "description": "There is a third pull leg the union cannot hold: before paginating each day, the connector issues an extra runReport with limit=1, offset=0 purely to read dimensionHeaders/metricHeaders, which are then used to name the columns of every row. It is a per-day schema probe, neither backfill, incremental, nor snapshot.",
+      "proposedShape": {
+        "probe": {
+          "purpose": "header/schema discovery",
+          "path": "/{property_id}:runReport",
+          "httpMethod": "POST",
+          "params": {
+            "limit": 1,
+            "offset": 0
+          }
+        }
+      }
+    },
+    {
+      "where": "streams[*] (metric aggregate rows)",
+      "description": "After the last page of a day, the connector emits up to three extra documents built from the response's totals/minimums/maximums arrays, using the same document model and the same key as ordinary rows. These aggregate rows are a different record semantics sharing one stream; the schema has no way to mark a stream as emitting mixed row kinds.",
+      "proposedShape": {
+        "emitsAggregateRows": true,
+        "aggregateSource": [
+          "totals",
+          "minimums",
+          "maximums"
+        ]
+      }
+    },
+    {
+      "where": "streamMode / streams[*].origin",
+      "description": "The stream list is neither purely static nor `discovered` in the schema's sense. Eight reports are hardcoded; additional bindings come from a user-authored JSON array in the endpoint config, validated against dimension/metric names fetched from the property's /metadata endpoint. That is user-configured, not schema-discovered, so `discovery` is null and streamMode is `static` with an archetype entry.",
+      "proposedShape": {
+        "streamMode": "static|discovered|mixed|user_defined",
+        "userDefined": {
+          "configField": "custom_reports",
+          "validatedAgainst": "GET /{property_id}/metadata"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "27",
+      "snippet": "API = \"https://analyticsdata.googleapis.com/v1beta/properties\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_google_analytics_data_api_native/models.py",
+      "lines": "40-56",
+      "snippet": "OAUTH2_SPEC = OAuth2Spec(\n    provider=\"google\",\n    accessTokenUrlTemplate=\"https://oauth2.googleapis.com/token\","
+    },
+    "credentialModes[0].scheme.scopes": {
+      "file": "source_google_analytics_data_api_native/models.py",
+      "lines": "50",
+      "snippet": "f\"scope=https://www.googleapis.com/auth/analytics.readonly&\""
+    },
+    "credentialModes[0].tier": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "40-48",
+      "snippet": "\"required\": [\n            \"client_id\",\n            \"client_secret\",\n            \"refresh_token\""
+    },
+    "credentialModes[0].scheme.grant": {
+      "file": "estuary-cdk/estuary_cdk/flow.py",
+      "lines": "233-239",
+      "snippet": "class BaseOAuth2Credentials(_BaseOAuth2CredentialsData, metaclass=abc.ABCMeta):\n    grant_type: ClassVar[str] = \"refresh_token\"\n    refresh_token: str = Field("
+    },
+    "execution.mode": {
+      "file": "source_google_analytics_data_api_native/resources.py",
+      "lines": "161-183",
+      "snippet": "common.open_binding(\n            fetch_changes=functools.partial(fetch_report,\n            fetch_page=functools.partial(backfill_report,"
+    },
+    "streamMode": {
+      "file": "source_google_analytics_data_api_native/resources.py",
+      "lines": "225-228",
+      "snippet": "available_reports = DEFAULT_REPORTS\n    if config.custom_reports:\n        custom_reports = json.loads(config.custom_reports)"
+    },
+    "streams": {
+      "file": "source_google_analytics_data_api_native/default_reports.py",
+      "lines": "1-78",
+      "snippet": "DEFAULT_REPORTS = [\n    {\n        \"name\": \"daily_active_users\","
+    },
+    "streams[*].primaryKey": {
+      "file": "source_google_analytics_data_api_native/resources.py",
+      "lines": "201",
+      "snippet": "key=[\"/property_id\", \"/report_date\"] + [f\"/{d}\" for d in report.dimensions],"
+    },
+    "streams[*].schedules": {
+      "file": "source_google_analytics_data_api_native/resources.py",
+      "lines": "208-210",
+      "snippet": "initial_config=ResourceConfig(\n                name=report.name, interval=timedelta(hours=12)\n            ),"
+    },
+    "streams[*].pull.backfill.paginator": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "150-153",
+      "snippet": "offset += MAX_REPORT_RESULTS_LIMIT\n        if remainder.rowCount is None or offset >= remainder.rowCount:"
+    },
+    "streams[*].pull.backfill.paginator.pageSize": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "28, 60",
+      "snippet": "MAX_REPORT_RESULTS_LIMIT = 250_000\n    limit: int = MAX_REPORT_RESULTS_LIMIT,"
+    },
+    "streams[*].pull.backfill.paginator.tokenTo": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "62-73",
+      "snippet": "body = {\n        \"limit\": limit,\n        \"offset\": offset,"
+    },
+    "streams[*].pull.incremental.path": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "129, 135",
+      "snippet": "url = f\"{API}/{property_id}:runReport\"\n        _, response_body = await http.request_stream(log, url, method=\"POST\", json=body)"
+    },
+    "streams[*].pull.incremental.recordsPath": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "137-142",
+      "snippet": "processor = IncrementalJsonProcessor(\n            response_body(),\n            f\"rows.item\","
+    },
+    "streams[*].pull.incremental.notes": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "176-200",
+      "snippet": "lookback_start = max(\n        log_cursor - timedelta(days=lookback_window_size),\n        start_date,"
+    },
+    "streams[*].pull.backfill.notes": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "233-237",
+      "snippet": "async for record in _paginate_through_report_results(...)\n    next_start = min(start + timedelta(days=1), cutoff)\n    yield dt_to_str(next_start)"
+    },
+    "streams[*].cursorField": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "50-51",
+      "snippet": "record[\"property_id\"] = property_id\n    record[\"report_date\"] = dt_to_date_str(report_date)"
+    },
+    "configFields": {
+      "file": "source_google_analytics_data_api_native/models.py",
+      "lines": "74-108",
+      "snippet": "class EndpointConfig(BaseModel):\n    property_id: str = Field(\n    custom_reports: str = Field("
+    },
+    "streams[8]": {
+      "file": "source_google_analytics_data_api_native/resources.py",
+      "lines": "100-123",
+      "snippet": "elif dimensions_count > MAX_DIMESIONS_COUNT:\n            for metric in model.metrics:\n                if metric not in valid_metrics:"
+    },
+    "unionMisfits[2]": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "113-118",
+      "snippet": "body = _build_report_body(date, report, offset=0, limit=1)\n    return (response.dimensionHeaders, response.metricHeaders)"
+    },
+    "unionMisfits[3]": {
+      "file": "source_google_analytics_data_api_native/api.py",
+      "lines": "155-158",
+      "snippet": "for aggregate in [remainder.totals, remainder.minimums, remainder.maximums]:\n                if aggregate is not None:"
+    }
+  },
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "streamMode": "medium",
+    "streams": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].schedules": "high",
+    "streams[*].pull.backfill.paginator": "high",
+    "streams[*].pull.incremental.paginator": "high",
+    "streams[*].cursorField": "medium",
+    "streams[*].writeDisposition": "medium",
+    "configFields": "high"
+  },
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No static default headers are set on the session; the only header the connector contributes is Authorization: Bearer <token>, added by the CDK TokenSource, and Content-Type from the JSON body helper. Nothing connector-specific to report.",
+    "execution.defaultSchedule": "No connector-wide schedule exists. The only schedule is the per-binding ResourceConfig interval (12h) set at discovery, which the user may override; recorded on each stream instead.",
+    "streams[*].pull.*.incrementalParam": "Not applicable \u2014 the date bound travels in the POST body's dateRanges, not in a named parameter. See unionMisfits.",
+    "streams[*].pull.*.params": "The runReport call takes no query parameters; everything (dimensions, metrics, dateRanges, limit, offset, filters, aggregations) is in the JSON body.",
+    "discovery": "There is no schema discovery. The eight reports are hardcoded and any extra bindings come from a user-written JSON array in endpoint config; the /metadata call is used only to validate dimension/metric names, never to enumerate streams.",
+    "streams[*].writeDisposition": "Inferred, not stated. The key includes property_id + report_date + all dimensions and the lookback window deliberately re-emits the same days, so re-captured documents overwrite by key (merge). The connector never emits deletes or tombstones, and _meta.op defaults to 'u'.",
+    "streams[*].cursorField": "The engine-level cursor is a Python datetime LogCursor held in connector state, not a document field. 'report_date' is the document field it corresponds to; treat the mapping as inferred."
+  }
+}

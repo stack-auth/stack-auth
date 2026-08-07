@@ -1,0 +1,346 @@
+{
+  "id": "gong",
+  "estuaryDir": "source-gong",
+  "displayName": "Gong",
+  "description": "Imports Gong revenue-intelligence data: calls, users, scorecard reviews, and scorecard definitions.",
+  "category": "crm",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{region}.api.gong.io",
+          "placeholders": {
+            "region": "user-supplied `region` endpoint config field (e.g. 'us-55616'); found in the customer's Gong API settings"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v2` embedded in every stream URL_PATH"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key (Access Key + Access Key Secret)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.access_key",
+        "passwordField": "credentials.access_key_secret"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator; only value is \"API Key\"." },
+    { "name": "credentials.access_key", "displayName": "Access Key", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The Gong API Access Key." },
+    { "name": "credentials.access_key_secret", "displayName": "Access Key Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The Gong API Access Key Secret." },
+    { "name": "region", "displayName": "API Region", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "API region subdomain for the Gong account; defaults to 'us-55616'." },
+    { "name": "start_date", "displayName": "Start Date", "required": false, "secret": false, "scope": "endpoint", "type": "date", "description": "UTC datetime; data before this is not replicated. Defaults to 30 days ago." },
+    { "name": "calls_lookback_window", "displayName": "Calls Lookback Window (Days)", "required": false, "secret": false, "scope": "endpoint", "type": "number", "description": "1-30, default 7. Days to look back once per day when fetching calls, to capture post-call enrichment." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of this resource." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between updates for this resource." },
+    { "name": "schedule", "displayName": "Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Cron expression to automatically re-backfill this binding." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "calls",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "started",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 120 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v2/calls",
+          "httpMethod": "GET",
+          "recordsPath": "calls",
+          "params": { "fromDateTime": "<start_date, ISO-8601 with Z>", "toDateTime": "<backfill cutoff, ISO-8601 with Z>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "records.cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "fromDateTime", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v2/calls",
+          "httpMethod": "GET",
+          "recordsPath": "calls",
+          "params": { "fromDateTime": "<cursor timestamp, minus calls_lookback_window days on the first run of each day>", "toDateTime": "<now minus a 5-minute consistency lag>" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "records.cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": { "param": "fromDateTime", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "created",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 120 } },
+        { "role": "automatic re-backfill of the binding", "schedule": { "kind": "cron", "expr": "0 0 * * *" } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v2/users/extensive",
+          "httpMethod": "POST",
+          "recordsPath": "users",
+          "params": { "filter": { "createdFromDateTime": "<start_date, ISO-8601 with Z>", "createdToDateTime": "<backfill cutoff, ISO-8601 with Z>" } },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "records.cursor",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.createdFromDateTime", "format": "iso8601" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v2/users/extensive",
+          "httpMethod": "POST",
+          "recordsPath": "users",
+          "params": { "filter": { "createdFromDateTime": "<cursor timestamp>", "createdToDateTime": "<min(cursor + 1 day, now - 5 minutes)>" } },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "records.cursor",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.createdFromDateTime", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "scorecards",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/scorecardId"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "reviewTime",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 120 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/v2/stats/activity/scorecards",
+          "httpMethod": "POST",
+          "recordsPath": "scorecards",
+          "params": { "filter": { "reviewFromDate": "<start_date, YYYY-MM-DD>", "reviewToDate": "<backfill cutoff, YYYY-MM-DD>" } },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "records.cursor",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.reviewFromDate", "format": "date" }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/v2/stats/activity/scorecards",
+          "httpMethod": "POST",
+          "recordsPath": "scorecards",
+          "params": { "filter": { "reviewFromDate": "<cursor timestamp, YYYY-MM-DD>", "reviewToDate": "<min(cursor + 1 day, now - 5 minutes), YYYY-MM-DD>" } },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "body_cursor",
+            "cursorBodyKey": "cursor",
+            "cursorPath": "records.cursor",
+            "hasMorePath": null,
+            "tokenFrom": "body",
+            "tokenTo": "body_field",
+            "terminateOn": "absent_token"
+          },
+          "incrementalParam": { "param": "filter.reviewFromDate", "format": "date" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "scorecard_definitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "poll interval", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/v2/settings/scorecards",
+          "httpMethod": "GET",
+          "recordsPath": "scorecards",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "records.cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "Exactly one credential mode: a Gong Access Key + Access Key Secret pair the user self-serves from Gong's API settings, sent as HTTP Basic (base64 of 'access_key:access_key_secret') in the Authorization header by the CDK's TokenSource. The connector explicitly constructs TokenSource with oauth_spec=None, so no OAuth app registration and no refresh token are involved.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.params",
+      "description": "For the POST streams the date filter is not a flat param map: it is nested under a `filter` object in the JSON request body (FILTER_WRAPPER), while the pagination `cursor` sits at the TOP level of that same body, as a sibling of `filter`. The schema's flat `params` map plus `incrementalParam.param` cannot express 'the incremental bound is nested one level but the page token is not'.",
+      "proposedShape": {
+        "params": { "kind": "json_body", "body": { "filter": { "<fromParam>": "...", "<toParam>": "..." } }, "paginationTokenLocation": "$.cursor" }
+      }
+    },
+    {
+      "where": "streams[].pull.incremental",
+      "description": "Two distinct incremental behaviours share one shape. `calls` uses a daily-triggered lookback re-read (re-emits up to calls_lookback_window days of already-seen calls on the first run of each calendar day, deduped downstream by primary key), while `users`/`scorecards` walk forward in fixed 1-day windows and emit max(cursor)+1s. There is no field for 'lookback/overlap window' or 'window step size'.",
+      "proposedShape": {
+        "incrementalStrategy": { "kind": "windowed", "windowSize": "1d", "lookback": "<N>d", "lookbackCadence": "once per calendar day", "consistencyLag": "5m" }
+      }
+    },
+    {
+      "where": "execution / transport error semantics",
+      "description": "Gong returns HTTP 404 with a body like {\"errors\":[\"No calls found corresponding to the provided filters\"]} instead of a 200 with an empty array when a filtered query matches zero rows; the connector regex-matches that body and treats it as an empty page, re-raising any other 404. There is nowhere in the schema to record 'empty result is signalled by an error status'.",
+      "proposedShape": { "emptyResultSignal": { "status": 404, "bodyMatch": "\"No ... found ... provided filters", "treatAs": "empty_page" } }
+    },
+    {
+      "where": "execution / rate limiting",
+      "description": "The connector ships a client-side sliding-window rate limiter (170 requests per 60 seconds, described in code as a safety margin under Gong's ~3 req/s limit) applied to every request including credential validation. The schema has no rate-limit field.",
+      "proposedShape": { "rateLimit": { "kind": "sliding_window", "maxRequests": 170, "windowSeconds": 60 } }
+    },
+    {
+      "where": "streams[].schedules",
+      "description": "The `users` cron '0 0 * * *' is not a second poll cadence — in this CDK the resource-config `schedule` field triggers an automatic RE-BACKFILL of the binding (the description reads 'Schedule to automatically rebackfill this binding'). `role` is free text, so this is representable but easy to misread as a poll schedule."
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_gong/models.py", "lines": "75-77", "snippet": "@property\n    def base_url(self) -> str:\n        return f\"https://{self.region}.api.gong.io\"" },
+    "credentialModes[0].scheme": { "file": "source_gong/models.py", "lines": "30-46", "snippet": "class GongCredentials(BasicAuth):\n    username: str = Field(title=\"Access Key\", ..., alias=\"access_key\")\n    password: str = Field(title=\"Access Key Secret\", ..., alias=\"access_key_secret\")" },
+    "credentialModes[0].tier": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "306-311", "snippet": "elif isinstance(self.credentials, BasicAuth):\n            return (\"Basic\", base64.b64encode(f\"{self.credentials.username}:{self.credentials.password}\".encode()).decode())" },
+    "authTierOverall": { "file": "source_gong/resources.py", "lines": "225-228", "snippet": "http.token_source = TokenSource(\n        oauth_spec=None,\n        credentials=config.credentials,\n    )" },
+    "streamMode": { "file": "source_gong/resources.py", "lines": "27-28", "snippet": "FULL_REFRESH_MODELS: list[type[GongResource]] = [ScorecardDefinition]\nINCREMENTAL_MODELS: list[type[IncrementalGongResource]] = [User, Scorecard]" },
+    "streams[0].pull.backfill.path": { "file": "source_gong/models.py", "lines": "197-204", "snippet": "NAME = \"calls\"\n    URL_PATH = \"/v2/calls\"\n    ITEMS_KEY = \"calls\"\n    FROM_PARAM = \"fromDateTime\"" },
+    "streams[0].pull.incremental.params": { "file": "source_gong/api.py", "lines": "242-248", "snippet": "if cursor_dt.date() < now.date():\n        start_date = cursor_dt - timedelta(days=lookback_window)\n    else:\n        start_date = cursor_dt" },
+    "streams[0].pull.backfill.paginator": { "file": "source_gong/api.py", "lines": "113-121", "snippet": "case HttpMethod.GET:\n            params = {cls.FROM_PARAM: from_val, cls.TO_PARAM: to_val}\n            if cursor:\n                params[\"cursor\"] = cursor" },
+    "streams[1].pull.backfill.paginator": { "file": "source_gong/api.py", "lines": "123-130", "snippet": "case HttpMethod.POST:\n            body = {cls.FROM_PARAM: from_val, cls.TO_PARAM: to_val}\n            if cls.FILTER_WRAPPER:\n                body = {\"filter\": body}\n            if cursor:\n                body[\"cursor\"] = cursor" },
+    "streams[1].pull.backfill.paginator.cursorPath": { "file": "source_gong/models.py", "lines": "143-145", "snippet": "@property\n    def next_cursor(self) -> str | None:\n        return self.records.cursor if self.records else None" },
+    "streams[1].pull.backfill.path": { "file": "source_gong/models.py", "lines": "218-226", "snippet": "URL_PATH = \"/v2/users/extensive\"\n    METHOD = HttpMethod.POST\n    FROM_PARAM = \"createdFromDateTime\"\n    FILTER_WRAPPER = True" },
+    "streams[1].schedules": { "file": "source_gong/resources.py", "lines": "192-199", "snippet": "schedule = \"0 0 * * *\" if cls is User else None\n        config_kwargs = {\"name\": cls.NAME, \"interval\": timedelta(minutes=2)}" },
+    "streams[2].pull.backfill.path": { "file": "source_gong/models.py", "lines": "236-244", "snippet": "URL_PATH = \"/v2/stats/activity/scorecards\"\n    METHOD = HttpMethod.POST\n    DATE_FORMAT = DateFormat.DATE\n    FROM_PARAM = \"reviewFromDate\"" },
+    "streams[3].writeDisposition": { "file": "source_gong/resources.py", "lines": "79-89", "snippet": "fetch_snapshot=functools.partial(snapshot_resource, cls, cls.URL_PATH, cls.ITEMS_KEY, ...),\n            tombstone=GongResource(_meta=GongResource.Meta(op=\"d\")),"},
+    "streams[3].pull.snapshot.paginator": { "file": "source_gong/api.py", "lines": "176-188", "snippet": "params = {}\n        if cursor:\n            params[\"cursor\"] = cursor\n        response = await http.request(log, url, params=params if params else None)" },
+    "streams[3].schedules": { "file": "source_gong/resources.py", "lines": "97-99", "snippet": "initial_config=ResourceConfigWithSchedule(name=cls.NAME, interval=timedelta(hours=1))" },
+    "streams[0].schedules": { "file": "source_gong/resources.py", "lines": "184-188", "snippet": "initial_config=ResourceConfigWithSchedule(name=Call.NAME, interval=timedelta(minutes=2))" },
+    "configFields": { "file": "tests/snapshots/snapshots__spec__stdout.json", "lines": "35-77", "snippet": "\"properties\": {\"credentials\": ..., \"region\": ..., \"start_date\": ..., \"calls_lookback_window\": ...}" },
+    "execution.mode": { "file": "source_gong/api.py", "lines": "275-287", "snippet": "async def fetch_changes(...):\n    start_date = _ts_to_dt(log_cursor)\n    end_date = min(start_date + timedelta(days=1), now)" },
+    "unionMisfits[2].description": { "file": "source_gong/api.py", "lines": "37-39", "snippet": "_NO_RESULTS_404_PATTERN = re.compile(r'\"No [^\"]*found[^\"]*provided filters', re.IGNORECASE)" },
+    "unionMisfits[3].description": { "file": "source_gong/api.py", "lines": "75-79", "snippet": "def __init__(self, max_requests: int = 170, window_seconds: float = 60.0):" },
+    "streams[].primaryKey": { "file": "tests/snapshots/snapshots__discover__stdout.json", "lines": "1-310", "snippet": "calls ['/id']; scorecard_definitions ['/_meta/row_id']; scorecards ['/scorecardId']; users ['/id']" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "medium",
+    "credentialModes": "high",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[0]": "high",
+    "streams[1]": "high",
+    "streams[2]": "high",
+    "streams[3]": "high",
+    "streams[3].pull.snapshot.paginator": "medium",
+    "streams[].pull.*.paginator.cursorPath": "high",
+    "streams[0].pull.incremental.params": "high",
+    "execution.mode": "high",
+    "configFields": "high",
+    "category": "medium"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No connector-level default headers are set; the Authorization header is added by the shared CDK HTTP session from TokenSource, and no other static headers appear.",
+    "execution.defaultSchedule": "There is no connector-wide default; every binding carries its own interval (and users additionally a cron) in its initial ResourceConfigWithSchedule.",
+    "execution.continuity": "mode is 'poll' over a stateless REST API; no server-side artifacts are created and the schema makes continuity optional for poll mode. Gong-side retention of calls/scorecards is not described anywhere in the connector source, so no resumeWindow can be asserted.",
+    "streams[].pull.*.paginator.pageSize": "No page-size parameter is ever sent; the connector accepts Gong's server-side default page size. records.currentPageSize is parsed but never used to control paging.",
+    "streams[].pull.*.paginator.hasMorePath": "Termination is purely on the absence of records.cursor; the envelope exposes totalRecords/currentPageNumber but the code never reads them.",
+    "streams[3].cursorField": "scorecard_definitions is a full-refresh snapshot resource with a synthetic row_id key; the model declares no CURSOR_FIELD.",
+    "discovery": "streamMode is static — the four bindings are hard-coded model classes, confirmed by the discover snapshot. No discovery mechanism exists.",
+    "streams[].pull.*.recordsPath": "Recorded as the ITEMS_KEY the envelope pops from the response object (e.g. 'calls', 'users', 'scorecards'); note scorecards and scorecard_definitions BOTH use items key 'scorecards' at different paths, which is intentional in the source but worth verifying against live responses."
+  }
+}

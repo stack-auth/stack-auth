@@ -1,0 +1,414 @@
+{
+  "id": "brevo",
+  "estuaryDir": "source-brevo",
+  "displayName": "Brevo",
+  "description": "Imports contacts and contact metadata (attributes, lists, folders, segments) plus senders and webhook configurations from a Brevo (ex-Sendinblue) marketing account.",
+  "category": "marketing",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": { "kind": "constant", "value": "https://api.brevo.com/v3" },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/v3` baked into the base URL constant; no version header or query param is sent"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "API key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "api-key",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+
+  "configFields": [
+    {
+      "name": "credentials.credentials_title",
+      "displayName": "Credentials Title",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator; the only value is \"API Key\"."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "API Key",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Brevo API key, sent verbatim in the `api-key` request header."
+    },
+    {
+      "name": "name",
+      "displayName": "Name",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Name of this resource; also the resource path pointer."
+    },
+    {
+      "name": "interval",
+      "displayName": "Interval",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "ISO-8601 duration between updates for this resource. Connector defaults: PT1H for snapshot streams, PT5M for contacts."
+    }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "contacts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "modifiedAt",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "poll", "schedule": { "kind": "interval", "seconds": 300 } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "/contacts",
+          "httpMethod": "GET",
+          "recordsPath": "contacts",
+          "params": { "sort": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 1000,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "/contacts",
+          "httpMethod": "GET",
+          "recordsPath": "contacts",
+          "params": { "sort": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 1000,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": { "param": "modifiedSince", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "contacts_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/attributes",
+          "httpMethod": "GET",
+          "recordsPath": "attributes",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "contacts_lists",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/lists",
+          "httpMethod": "GET",
+          "recordsPath": "lists",
+          "params": { "sort": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "contacts_folders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/folders",
+          "httpMethod": "GET",
+          "recordsPath": "folders",
+          "params": { "sort": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "contacts_segments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/contacts/segments",
+          "httpMethod": "GET",
+          "recordsPath": "segments",
+          "params": { "sort": "asc" },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "offset",
+            "limitParam": "limit",
+            "offsetParam": "offset",
+            "pageSize": 50,
+            "terminateOn": "short_page"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "senders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/senders",
+          "httpMethod": "GET",
+          "recordsPath": "senders",
+          "params": null,
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "webhooks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "snapshot", "schedule": { "kind": "interval", "seconds": 3600 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "/webhooks",
+          "httpMethod": "GET",
+          "recordsPath": "webhooks",
+          "params": { "sort": "asc", "type": "marketing|transactional|inbound (one request per value; results unioned)" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "none" },
+          "incrementalParam": null
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single self-serve Brevo API key (EndpointConfig.credentials is a one-variant discriminated union of ApiKey). TokenSource is constructed with oauth_spec=None, so no OAuth app registration or refresh token is ever involved and no hosted control plane is required. The key is placed verbatim into the `api-key` request header.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.*.paginator + streams[].pull.*.params",
+      "description": "The offset paginator is faithful in shape, but three behaviours the source treats as load-bearing are not expressible: (1) every paginated request pins a constant `sort=asc`, because Brevo's `desc` default renumbers the whole result set on every insert, which for an offset walk shifts rows across page boundaries and for a snapshot stream rewrites every `/_meta/row_id`; the schema's `params` can carry it but nothing marks it as pagination-critical rather than an ordinary filter. (2) `offset` advances by the number of rows actually returned, not by a fixed pageSize — the backfill's cutoff filter suppresses rows from emission but they still count toward the advance (tests/test_contacts_cursor.py::test_backfill_advances_by_rows_read_not_rows_emitted). (3) `paginator: none` here means 'send no limit/offset/sort at all', not 'request page one'; the source states Brevo rejects surprising parameters and a test pins the param dict to empty.",
+      "proposedShape": {
+        "type": "offset",
+        "limitParam": "limit",
+        "offsetParam": "offset",
+        "pageSize": 1000,
+        "terminateOn": "short_page",
+        "constantParams": { "sort": "asc" },
+        "constantParamsArePaginationCritical": true,
+        "offsetAdvance": "rows_returned",
+        "omitAllParamsWhenUnpaginated": true
+      }
+    },
+    {
+      "where": "streams[6].pull.snapshot (webhooks)",
+      "description": "The webhooks stream is not one request but a fan-out: GET /webhooks filters on `type` and defaults to `transactional`, so the connector issues one request per value of (marketing, transactional, inbound) and unions the disjoint results into a single snapshot. A PullSpec has one `params` map with scalar values and no way to express 'iterate this param'. Additionally, Brevo reports 'no webhooks of this type' as HTTP 400 with `document_not_found` rather than an empty array, and the connector swallows that — but only when raised before that type has yielded a row, because a mid-walk truncation would make the CDK tombstone (delete) live rows.",
+        "proposedShape": {
+        "fanOut": { "param": "type", "values": ["marketing", "transactional", "inbound"], "dedupe": false },
+        "emptyResultIsError": { "status": 400, "messageContains": "document_not_found", "onlyBeforeFirstRow": true }
+      }
+    },
+    {
+      "where": "streams[0].pull.backfill (contacts)",
+      "description": "The backfill and incremental legs are not disjoint by query — both hit GET /contacts with the same paginator. Disjointness is enforced client-side: the backfill drops any row whose `modifiedAt` >= the backfill cutoff, leaving those to the incremental sweep. The schema has no field for a client-side cutoff predicate applied to a backfill leg.",
+      "proposedShape": { "clientSideCutoff": { "field": "modifiedAt", "op": "<", "value": "backfill cutoff captured at binding open" } }
+    },
+    {
+      "where": "streams[0].pull.incremental.incrementalParam (contacts)",
+      "description": "`format: iso8601` under-specifies. Brevo requires exactly `YYYY-MM-DDTHH:mm:ss.SSSZ` (millisecond precision, literal Z); the source builds it by hand precisely because datetime.isoformat() emits microseconds and a +00:00 offset, which Brevo does not accept. Also, the cursor written back is the sweep-START instant, not max(modifiedAt), because /contacts cannot be sorted by modification date and has no modifiedBefore bound — a semantic the schema has no place to record.",
+      "proposedShape": { "param": "modifiedSince", "format": "iso8601_millis_z", "formatLiteral": "%Y-%m-%dT%H:%M:%S.mmmZ", "cursorAdvance": "sweep_start_instant", "inclusive": true }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": { "file": "source_brevo/api.py", "lines": "11", "snippet": "API = \"https://api.brevo.com/v3\"" },
+    "credentialModes[0].scheme": { "file": "source_brevo/resources.py", "lines": "32,38-43", "snippet": "AUTHORIZATION_HEADER = \"api-key\"\nreturn TokenSource(oauth_spec=None, credentials=config.credentials, authorization_header=AUTHORIZATION_HEADER,)" },
+    "credentialModes[0].scheme.prefix": { "file": "estuary-cdk/estuary_cdk/http.py", "lines": "526-534", "snippet": "if self.token_source.authorization_header == DEFAULT_AUTHORIZATION_HEADER:\n    header_value = f\"{token_type} {token}\" if token_type else token\nelse:\n    header_value = token" },
+    "credentialModes[0].tier": { "file": "source_brevo/models.py", "lines": "14-29", "snippet": "class ApiKey(AccessToken):\n    credentials_title: Literal[\"API Key\"]\nclass EndpointConfig(BaseModel):\n    credentials: ApiKey" },
+    "configFields[1]": { "file": "source_brevo/models.py", "lines": "19-22", "snippet": "access_token: str = Field(title=\"API Key\", json_schema_extra={\"secret\": True, \"order\": 1},)" },
+    "execution.mode": { "file": "source_brevo/resources.py", "lines": "91-94", "snippet": "initial_config=ResourceConfig(name=model.NAME, interval=timedelta(hours=1),)" },
+    "streamMode": { "file": "source_brevo/resources.py", "lines": "145-148", "snippet": "return [\n    *snapshot_resources(http),\n    contacts(http),\n]" },
+    "streams[0].primaryKey": { "file": "source_brevo/models.py", "lines": "94", "snippet": "KEY: ClassVar[list[str]] = [\"/id\"]" },
+    "streams[0].schedules": { "file": "source_brevo/resources.py", "lines": "132-135", "snippet": "initial_config=ResourceConfig(name=Contact.NAME, interval=timedelta(minutes=5),)" },
+    "streams[0].pull.backfill.paginator": { "file": "source_brevo/api.py", "lines": "226-239", "snippet": "{\"limit\": Contact.PAGE_SIZE, \"offset\": page, \"sort\": \"asc\"},\nif count < Contact.PAGE_SIZE: return\nyield page + count" },
+    "streams[0].pull.incremental.paginator": { "file": "source_brevo/api.py", "lines": "73-86", "snippet": "{**(params or {}), \"limit\": model.PAGE_SIZE, \"offset\": offset, \"sort\": \"asc\"},\noffset += count\nif count < model.PAGE_SIZE: return" },
+    "streams[0].pull.incremental.incrementalParam": { "file": "source_brevo/api.py", "lines": "20-25,176-177", "snippet": "return f\"{utc:%Y-%m-%dT%H:%M:%S}.{utc.microsecond // 1000:03d}Z\"\n{\"modifiedSince\": _filter_timestamp(log_cursor)}," },
+    "streams[0].pull.backfill.params": { "file": "source_brevo/api.py", "lines": "205-212", "snippet": "`sort=asc` makes offset paging safe against *inserts*: contacts created\nwhile the backfill runs are appended past the tail" },
+    "streams[1].pull.snapshot.path": { "file": "source_brevo/models.py", "lines": "50-53", "snippet": "NAME = \"contacts_attributes\"\nPATH = \"contacts/attributes\"\nITEMS_KEY = \"attributes\"" },
+    "streams[2].pull.snapshot.paginator": { "file": "source_brevo/models.py", "lines": "56-60", "snippet": "NAME = \"contacts_lists\"\nPATH = \"contacts/lists\"\nPAGE_SIZE: ClassVar[int | None] = 50" },
+    "streams[3].pull.snapshot.paginator": { "file": "source_brevo/models.py", "lines": "63-67", "snippet": "NAME = \"contacts_folders\"\nPATH = \"contacts/folders\"\nPAGE_SIZE: ClassVar[int | None] = 50" },
+    "streams[4].pull.snapshot.paginator": { "file": "source_brevo/models.py", "lines": "70-74", "snippet": "NAME = \"contacts_segments\"\nPATH = \"contacts/segments\"\nPAGE_SIZE: ClassVar[int | None] = 50" },
+    "streams[5].pull.snapshot": { "file": "source_brevo/models.py", "lines": "77-81", "snippet": "NAME = \"senders\"\nPATH = \"senders\"\nITEMS_KEY = \"senders\"" },
+    "streams[6].pull.snapshot.params": { "file": "source_brevo/api.py", "lines": "17,118-125", "snippet": "WEBHOOK_TYPES = (\"marketing\", \"transactional\", \"inbound\")\nasync for webhook in _paginate(http, log, Webhook, {\"type\": webhook_type, \"sort\": \"asc\"}):" },
+    "streams[1].writeDisposition": { "file": "source_brevo/api.py", "lines": "112-115", "snippet": "the CDK tombstones\n    every row past a shortened snapshot's end, so a mid-walk error would delete\n    live rows from the collection." },
+    "streams[1].primaryKey": { "file": "acmeCo/flow.yaml", "lines": "n/a (collections block)", "snippet": "acmeCo/contacts_attributes:\n    key:\n    - /_meta/row_id" },
+    "unionMisfits[0]": { "file": "tests/test_contacts_cursor.py", "lines": "210-218", "snippet": "Endpoints with `PAGE_SIZE is None` accept no `limit`/`offset`/`sort`, and\n    Brevo rejects surprising parameters outright, so none may be sent.\nassert session.requests[0] == {}" }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.defaultHeaders": "medium",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].scheme.prefix": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "execution.mode": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "streams[0].pull.backfill.paginator": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].pull.incremental.incrementalParam": "high",
+    "streams[0].cursorField": "medium",
+    "streams[1].pull.snapshot.paginator": "high",
+    "streams[2].pull.snapshot.paginator": "high",
+    "streams[3].pull.snapshot.paginator": "high",
+    "streams[4].pull.snapshot.paginator": "high",
+    "streams[5].pull.snapshot.paginator": "high",
+    "streams[6].pull.snapshot.paginator": "high",
+    "streams[6].pull.snapshot.params": "high",
+    "streams[].writeDisposition": "high",
+    "streams[].schedules": "high"
+  },
+
+  "abstained": {
+    "transports[0].spec.defaultHeaders": "No headers are set anywhere in the connector beyond the auth header; no accept/user-agent/version pin appears in source_brevo/. estuary_cdk's HTTPSession may add generic transport headers, but none are connector-specified. Reported as null meaning 'none specified by this connector'.",
+    "discovery": "Null by construction: the stream list is a hardcoded SNAPSHOT_RESOURCES list plus contacts (source_brevo/resources.py:145-148). The connector's `discover` RPC just re-emits that static list; nothing is read from the customer's account to determine which streams exist.",
+    "execution.continuity": "Null: mode is poll, and no server-side artifact is created on Brevo's side. Every request is a plain GET against a REST collection; nothing accrues on the customer side and nothing expires on ours if we stop between ticks (the contacts cursor is a wall-clock timestamp with no retention window, and backfills restart from a stored integer offset).",
+    "streams[0].cursorField": "The document field used for the cutoff/emission decision is `modifiedAt` (api.py:233) and the request filter is `modifiedSince`. But the checkpointed LogCursor is NOT a value read off any record — it is the sweep-start wall clock instant, deliberately not max(modifiedAt). So `modifiedAt` names the filtered field, not a record-derived cursor; treat the value as approximate.",
+    "streams[].primaryKeyKind": "For the six snapshot streams, the key `/_meta/row_id` is not declared in the connector's Python at all — it comes from the CDK's SnapshotResource machinery and is visible only in the generated acmeCo/flow.yaml and discover snapshot. Classified `synthetic` on that basis; if the CDK's snapshot keying changes this changes with it.",
+    "streams[6].pull.snapshot.params.type": "The value recorded is a description of a fan-out over three literal values, not a single sendable parameter value. The schema's params map has no representation for 'iterate'; see unionMisfits[1] for the real shape. Do not send the string literally.",
+    "checkStream / connection test": "validate_credentials hits GET /v3/account (resources.py:50-52) — chosen because it is unpaginated, always present, and readable by every API key. /account is NOT one of the captured streams and has no model in models.py, so it cannot be recorded as a stream; there is no schema field for a non-stream health-check endpoint either. Recorded here so the fact is not lost."
+  }
+}

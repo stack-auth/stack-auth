@@ -1,0 +1,276 @@
+{
+  "id": "dynamics-365-finance-and-operations",
+  "estuaryDir": "source-dynamics-365-finance-and-operations",
+  "displayName": "Microsoft Dynamics 365 Finance and Operations",
+  "description": "Imports Dynamics 365 Finance and Operations table change data from the Azure Synapse Link CSV export landed in an Azure Data Lake Storage Gen2 filesystem.",
+  "category": "finance",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": "Azure Data Lake Storage Gen2 filesystem holding the Synapse Link CSV export (timestamp folders, model.json, Changelog/changelog.info). Reached over the ADLS Gen2 DFS REST API at https://{account_name}.dfs.core.windows.net.",
+      "spec": {
+        "kind": "objectStore",
+        "store": "azure_blob"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Azure storage SAS token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "A single Azure Storage shared access signature. The user pastes the SAS query string (a leading '?' is stripped); the connector appends it verbatim to every request URL, joining with '?' or '&' depending on whether the URL already has a query. It is not a single named query parameter but a whole pre-signed query string (sv/se/sp/sig/...). No OAuth, no Azure AD app registration, no token refresh anywhere in the connector; ConnectorSpec sets oauth2=None."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": "Timestamp folders in the ADLS filesystem are purged on the customer's Synapse Link retention policy. Any finalized folder purged before the connector's cursor reaches it is lost permanently, since the cursor advances folder-by-folder in chronological order and there is no re-read path. Separately, a folder that has table data but never gets a usable model.json is skipped for good once SETTLE_DELAY (1 hour past the successor folder's creation) has elapsed; the connector assumes Synapse Link re-commits those changes into a later folder.",
+      "resumeWindow": "Bounded by the customer's Synapse Link / data-lake retention setting, which the connector neither reads nor controls. Not expressed anywhere in the connector code.",
+      "releasedOnShutdown": null,
+      "notes": "The connector is strictly read-only against the customer's storage account: it lists paths and GETs files, and creates no server-side object (no lease, no checkpoint file, no scratch container). Nothing accrues on the customer side if we stop — Azure Synapse Link keeps writing timestamp folders on its own configured export interval (5 min to 24 h) regardless of whether we consume them. All resumable state is the connector's own LogCursor, a datetime equal to the last fully-read timestamp folder name, checkpointed after each folder."
+    }
+  },
+
+  "configFields": [
+    { "name": "account_name", "displayName": "Account name", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The Azure storage account name. Interpolated into the base URL as https://{account_name}.dfs.core.windows.net." },
+    { "name": "filesystem", "displayName": "Filesystem", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "The ADLS Gen2 filesystem (container) holding the Dynamics 365 F&O export; per README typically named dataverse-[environmentName]-[organizationUniqueName]." },
+    { "name": "credentials.credentials_title", "displayName": "Credentials Title", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Pydantic discriminator, const \"SAS Token\". Only one credential variant exists." },
+    { "name": "credentials.sas_token", "displayName": "SAS Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Azure Storage shared access signature query string. A leading '?' is stripped by a BeforeValidator." },
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Binding name; defaults to the discovered table (model.json entity) name. From the shared CDK ResourceConfig." },
+    { "name": "interval", "displayName": "Interval", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "ISO-8601 duration between sweeps for this binding. CDK default is PT0S, but this connector overrides initial_config to 1 day per binding." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Read the root-level model.json object from the configured ADLS Gen2 filesystem and emit one binding per entity it lists.",
+    "querySketch": "GET https://{account_name}.dfs.core.windows.net/{filesystem}/model.json?{sas} -> parse JSON {name, description, version, entities:[{$type, name, description, attributes:[{name, dataType, maxLength}]}]} -> one Resource per entity, with a per-entity Pydantic subclass of BaseTable built from its attributes so a sourced schema can be emitted.",
+    "excludes": [],
+    "allowlist": null
+  },
+
+  "streams": [
+    {
+      "name": "<Dynamics 365 table name, from a model.json entity — e.g. the entity names Synapse Link exports>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/Id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "per-binding sweep of newly finalized timestamp folders", "schedule": { "kind": "interval", "seconds": 86400 } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "objects",
+          "prefix": "{timestamp_folder}/{table_name}/",
+          "matchExpr": "{timestamp_folder}/{table_name}/*.csv",
+          "matchExprKind": "glob",
+          "format": "csv",
+          "compression": null,
+          "listing": "Two-level. (1) List the filesystem root non-recursively (GET /{filesystem}?resource=filesystem&recursive=false) and keep directory entries whose name parses as a datetime — these are the timestamp folders; read Changelog/changelog.info to learn the in-progress folder and drop it and anything at or after it, leaving only finalized folders, sorted chronologically. Cached for 60s (alru_cache, TTL = 1/5 of the 5-minute minimum Synapse Link export interval). (2) For each folder after the cursor, list {folder}/{table_name} recursively; a 404 with \"The specified path does not exist\" means the table had no changes in that folder and is swallowed. Both listings resume via the ADLS continuation paginator below.",
+          "objectChunking": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "continuation",
+            "cursorPath": "x-ms-continuation",
+            "tokenFrom": "header",
+            "tokenTo": "query_param",
+            "terminateOn": "absent_token",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only credential mode is a single Azure Storage SAS token, pasted as one secret string alongside the account name and filesystem. There is no OAuth flow, no Azure AD application registration, no client id/secret, and no refresh token — ConnectorSpec explicitly returns oauth2=None, and estuary_cdk's TokenSource/OAuth machinery is never imported by this connector. The user does have to have Azure Synapse Link for Dataverse already exporting F&O data in CSV format to that filesystem, but that is a source-side prerequisite, not credential work, so it does not move the tier.",
+
+  "unionMisfits": [
+    {
+      "where": "transports[0].spec",
+      "description": "The transport is genuinely an HTTP REST API (ADLS Gen2 DFS REST) with a per-tenant templated base URL, but objectStore is the only kind that fits 'read CSV objects from a container', and it carries no baseUrl/template field. The account-name templating (https://{account_name}.dfs.core.windows.net) and the hardcoded core.windows.net DNS suffix (the code carries a NOTE that other suffixes — sovereign/government clouds — may need support) therefore have nowhere to live in the schema.",
+      "proposedShape": { "kind": "objectStore", "store": "azure_blob", "baseUrl": { "kind": "template", "template": "https://{account_name}.dfs.core.windows.net", "placeholders": { "account_name": "endpoint config field account_name" } }, "dnsSuffix": "core.windows.net (hardcoded)" }
+    },
+    {
+      "where": "streams[0].pull.incremental (kind: objects) .paginator",
+      "description": "The `objects` PullSpec has no paginator field in the schema; only `http` (and per v2.1 `query`) do. The ADLS path-listing pagination is a real, load-bearing cursor mechanism, so it is emitted under `paginator` inside the objects PullSpec anyway rather than being dropped. Rule 2's distinction matters here and is recorded: the token is read from a RESPONSE HEADER and sent as a QUERY PARAM with a different name — it is not a next-URL.",
+      "proposedShape": { "objects": { "listingPaginator": "<Paginator>" } }
+    },
+    {
+      "where": "streams[0].pull",
+      "description": "There is no distinct backfill shape. common.open_binding is given only fetch_changes, and initial_state seeds the incremental cursor at the Unix epoch, so the historical sweep IS the incremental leg run from epoch — it walks every retained finalized timestamp folder. Putting it in `incremental` and nulling `backfill` is accurate but hides that the first sweep is unbounded over whatever retention the customer keeps.",
+      "proposedShape": { "backfill": { "sameAs": "incremental", "seededAt": "1970-01-01T00:00:00Z" } }
+    },
+    {
+      "where": "streams[0].writeDisposition / cursorField",
+      "description": "Two things do not fit. (a) Deletes: rows carry IsDelete and the connector stamps _meta.op = 'd' vs 'u', so the collection is merge-with-deletes; 'merge' does not say deletes are emitted, and 'snapshot_with_tombstone' is wrong (there is no snapshot). (b) The cursor is not a record field at all — it is the name of the timestamp FOLDER just finished, a datetime LogCursor over the lake's directory layout, so cursorField is null even though the stream is fully incremental. Also worth noting: within a folder the connector deliberately streams all upsert-only CSVs before any delete-only CSV so a last-write-wins reduce on Id lands on the deleted state.",
+      "proposedShape": { "writeDisposition": "merge", "emitsDeletes": true, "cursorKind": "external_partition", "cursorDescription": "timestamp folder name (yyyy-MM-ddTHH:mm:ss.SSSz)" }
+    },
+    {
+      "where": "execution.mode",
+      "description": "Neither 'poll' nor 'log' is clean. The connector polls an object store on a per-binding interval (poll), but what it reads is a change log with soft deletes and a monotonic commit sequence number (versionnumber) produced by someone else's CDC pipeline (Synapse Link). 'poll' is recorded because the connector holds no log position on the source and creates no server-side artifact.",
+      "proposedShape": { "mode": "poll", "readsExternalChangeFeed": true, "changeFeedProducer": "Azure Synapse Link for Dataverse (TrickleFeedService)" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": {
+      "file": "source_dynamics_365_finance_and_operations/adls_gen2_client.py",
+      "lines": "56-57",
+      "snippet": "# NOTE: We may need to support dnsSuffixes other than core.windows.net.\n        self.base_url = f\"https://{account_name}.dfs.core.windows.net\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_dynamics_365_finance_and_operations/adls_gen2_client.py",
+      "lines": "60-62",
+      "snippet": "def _build_url_with_sas(self, url: str) -> str:\n        separator = '&' if '?' in url else '?'\n        return f\"{url}{separator}{self._sas_token}\""
+    },
+    "credentialModes[0].tier": {
+      "file": "source_dynamics_365_finance_and_operations/models.py",
+      "lines": "21-25",
+      "snippet": "sas_token: Annotated[str, BeforeValidator(lambda v: v.lstrip('?'))] = Field(\n        title=\"SAS Token\",\n        json_schema_extra={\"secret\": True, \"order\": 1},"
+    },
+    "authTierOverall": {
+      "file": "source_dynamics_365_finance_and_operations/__init__.py",
+      "lines": "31-34",
+      "snippet": "return ConnectorSpec(\n            configSchema=EndpointConfig.model_json_schema(),\n            oauth2=None,"
+    },
+    "configFields": {
+      "file": "source_dynamics_365_finance_and_operations/models.py",
+      "lines": "27-42",
+      "snippet": "class EndpointConfig(BaseModel):\n    account_name: str = Field(...)\n    filesystem: str = Field(...)"
+    },
+    "streamMode": {
+      "file": "source_dynamics_365_finance_and_operations/resources.py",
+      "lines": "106-110",
+      "snippet": "tables = tables_from_model_dot_json(\n        await fetch_model_dot_json(adls_client, log, format=ModelFormat.PYDANTIC)\n    )"
+    },
+    "discovery.method": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "132-135",
+      "snippet": "path = f\"{directory}/model.json\" if directory else \"model.json\"\n    return await client.read_file(path)"
+    },
+    "discovery.querySketch": {
+      "file": "source_dynamics_365_finance_and_operations/models.py",
+      "lines": "232-240",
+      "snippet": "def tables_from_model_dot_json(model_dot_json: ModelDotJson) -> list[type[BaseTable]]:\n    for entity in model_dot_json.entities:\n        tables.append(model_from_entity(entity))"
+    },
+    "streams[0].primaryKey": {
+      "file": "source_dynamics_365_finance_and_operations/resources.py",
+      "lines": "78-80",
+      "snippet": "common.Resource(\n            name=table.name,\n            key=sorted([\"/Id\"]),"
+    },
+    "streams[0].schedules[0]": {
+      "file": "source_dynamics_365_finance_and_operations/resources.py",
+      "lines": "86-88",
+      "snippet": "initial_config=ResourceConfig(\n                name=table.name, interval=timedelta(days=1)\n            ),"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_dynamics_365_finance_and_operations/adls_gen2_client.py",
+      "lines": "98-103",
+      "snippet": "next_page_token = headers.get(NEXT_PAGE_HEADER, None)\n            if not next_page_token: break\n            params[\"continuation\"] = next_page_token"
+    },
+    "streams[0].pull.incremental.paginator.cursorPath": {
+      "file": "source_dynamics_365_finance_and_operations/adls_gen2_client.py",
+      "lines": "12",
+      "snippet": "NEXT_PAGE_HEADER = \"x-ms-continuation\""
+    },
+    "streams[0].pull.incremental.prefix": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "515-519",
+      "snippet": "not metadata.isDirectory and\n            metadata.name.endswith('.csv') and\n            metadata.name.startswith(f\"{folder}/{table_name}/\")"
+    },
+    "streams[0].pull.incremental.listing": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "313-320",
+      "snippet": "in_progress_folder = await get_in_progress_timestamp_folder(client)\n    finalized_folders = [\n        folder for folder in folders if str_to_dt(folder) < str_to_dt(in_progress_folder)"
+    },
+    "streams[0].pull.incremental.format": {
+      "file": "source_dynamics_365_finance_and_operations/adls_gen2_client.py",
+      "lines": "138-141",
+      "snippet": "_, body = await self.http.request_stream(self.log, url)\n        async for row in IncrementalCSVRowProcessor(body()):\n            yield row"
+    },
+    "streams[0].pull.backfill": {
+      "file": "source_dynamics_365_finance_and_operations/resources.py",
+      "lines": "83-85",
+      "snippet": "initial_state=ResourceState(\n                inc=ResourceState.Incremental(cursor=EPOCH),\n            ),"
+    },
+    "streams[0].writeDisposition": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "741-744",
+      "snippet": "result[\"_meta\"] = {\n        \"op\": \"d\" if result.get(IS_DELETE) else \"u\",\n        \"source_file\": csv_name,"
+    },
+    "streams[0].cursorField": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "791-793",
+      "snippet": "start_index = bisect_right(finalized_folders, log_cursor, key=str_to_dt)\n    for index in range(start_index, len(finalized_folders)):\n        folder = finalized_folders[index]"
+    },
+    "execution.mode": {
+      "file": "source_dynamics_365_finance_and_operations/resources.py",
+      "lines": "63-66",
+      "snippet": "fetch_changes=functools.partial(\n                fetch_changes,\n                adls_client,"
+    },
+    "execution.continuity.ourSideLoss": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "44-49",
+      "snippet": "# SETTLE_DELAY is how long we wait after a folder should have finalized\n# before treating a missing model.json as an abandoned folder we skip\nSETTLE_DELAY = timedelta(hours=1)"
+    },
+    "execution.continuity.notes": {
+      "file": "source_dynamics_365_finance_and_operations/api.py",
+      "lines": "832-835",
+      "snippet": "log.debug(f\"Read all CSVs in folder. Yielding folder name as new cursor.\", ...)\n            yield str_to_dt(folder)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "authTierOverall": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].schedules[0]": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].pull.incremental.prefix": "high",
+    "streams[0].pull.incremental.listing": "high",
+    "streams[0].pull.incremental.format": "high",
+    "streams[0].pull.incremental.matchExprKind": "low",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "medium",
+    "streams[0].cursorField": "high",
+    "execution.mode": "medium",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "medium",
+    "execution.continuity.resumeWindow": "low"
+  },
+
+  "abstained": {
+    "streams[*] (actual stream names)": "The stream list is entirely discovered from the customer's own root model.json — the connector ships no table names, and none appear in code, tests, or the spec snapshot. A single archetype is emitted instead; any concrete D365 F&O table name would be invented.",
+    "streams[0].cursorField": "Set null deliberately. The incremental cursor is not a record field: it is a datetime LogCursor equal to the last fully-read timestamp folder's name. Record fields versionnumber and SinkModifiedOn order rows WITHIN a folder but are explicitly documented as not usable as a global cursor (versionnumber is monotonic only within one Id and has been observed going backwards across Ids). Naming either as cursorField would be the silent-truncation failure rule 1 warns about.",
+    "streams[0].supportedSyncModes": "Recorded as full_refresh+incremental because a fresh binding starts at the epoch and reads all retained history, then continues incrementally. But there is no true full_refresh mode in the code — no re-backfill path, no ResourceConfigWithSchedule/cron, and the CDK binding is opened with fetch_changes only. Re-reading history requires resetting the binding.",
+    "execution.continuity.resumeWindow": "Not expressible from the connector. It is the customer's Synapse Link / data-lake retention setting; the connector never reads or configures it. The README only notes 'Historical folders may be automatically purged based on retention settings'.",
+    "execution.continuity.releasedOnShutdown": "The question does not apply: the connector creates no server-side artifact to release. Set null rather than inventing true/false.",
+    "transports[0].spec.baseUrl / apiVersionPinning": "objectStore transports carry no baseUrl or apiVersionPinning field in the schema (see unionMisfits). The base URL is https://{account_name}.dfs.core.windows.net; no api-version query param or x-ms-version header is set anywhere in adls_gen2_client.py, so the connector relies on the ADLS Gen2 REST default version.",
+    "streams[0].pull.incremental.matchExprKind": "The code does not use a glob or a regex — it is a literal name.startswith(prefix) and name.endswith('.csv') pair. 'glob' is the closest schema value and the expression given is an equivalent, not a verbatim one.",
+    "credentialModes[*] (additional modes)": "Only one credential mode exists. The credentials field is a discriminated union with exactly one member (AzureSASToken), so the union is present for future extension rather than offering the user a choice. No Azure AD / OAuth / managed-identity / account-key path exists in this connector."
+  }
+}

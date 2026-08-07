@@ -1,0 +1,167 @@
+{
+  "id": "google-pubsub",
+  "estuaryDir": "source-google-pubsub",
+  "displayName": "Google Cloud Pub/Sub",
+  "description": "Continuously consumes JSON-encoded messages from Google Cloud Pub/Sub topics via connector-created subscriptions, emitting each message as a document with Pub/Sub metadata.",
+  "category": "streaming",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "stream",
+        "system": "pubsub",
+        "endpointConfig": "No brokers or endpoints are configured. The user supplies only a Google Cloud `projectId`; the official cloud.google.com/go/pubsub client resolves the Pub/Sub service endpoint itself. Topics are named per-binding by `topic` (resource config), and the connector derives a subscription name from the topic + capture name."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "GCP service account JSON key",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "cloudIam",
+        "provider": "gcp",
+        "fields": ["credentialsJson", "projectId"]
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "log",
+    "defaultSchedule": { "kind": "continuous" },
+    "continuity": {
+      "artifacts": [
+        "One Pub/Sub subscription per bound topic, in the CUSTOMER's GCP project, named `EstuaryFlow_<md5(topic+captureName)>` (optionally `<subscriptionPrefix>_` prefixed)",
+        "Per-subscription unacknowledged-message backlog held by Pub/Sub on behalf of that subscription",
+        "Subscription settings written at creation time: EnableMessageOrdering=true, EnableExactlyOnceDelivery=true"
+      ],
+      "customerSideAccrual": "Yes — this is a genuine server-side lease. The subscription is created by the connector in `Apply` (client.CreateSubscription) and is NEVER deleted by any code path in the connector; there is no Delete/teardown call anywhere in the connector. While the subscription exists, every message published to the bound topic is retained for that subscription until the connector acks it. If the connector stops consuming, the unacked backlog grows without bound (up to the subscription's message retention duration), and the customer is billed for Pub/Sub message-backlog storage in their own project. Backlog also grows during normal operation whenever the connector is slower than the publisher, since acks are only sent after the Flow runtime durably commits the document.",
+      "ourSideLoss": "Any message whose retention window expires while unacked is purged by Pub/Sub and is permanently unrecoverable — the connector keeps NO state of its own (every checkpoint is the literal `{}`), so there is no cursor, offset, or seek point to replay from. There is no backfill path: a message that ages out of the subscription can never be captured. Additionally, an idle subscription is subject to Google's subscription expiration policy; the connector does not set an ExpirationPolicy on the subscriptions it creates, so the Google default applies and a sufficiently long outage can cause the subscription itself to be deleted, taking its entire backlog with it. A later `Apply` would then recreate an empty subscription (same deterministic name) that only sees messages published after recreation, silently losing the gap.",
+      "resumeWindow": "Bounded by the subscription's message retention duration and by the subscription expiration policy — neither of which the connector sets, so Google's defaults govern (the connector passes only Topic, EnableMessageOrdering and EnableExactlyOnceDelivery to CreateSubscription). Not determinable from connector source alone; treat as 'the Pub/Sub default retention', beyond which data is lost.",
+      "releasedOnShutdown": false,
+      "notes": "Delivery is explicitly at-least-once and the ack path is two-phase: `emit` hands the caller a `runtimeAck` channel, the document is written with `DocumentsAndCheckpoint(emptyCheckpoint, ...)`, `runtimeAckWorker` closes that channel when the Flow runtime acknowledges the checkpoint, and only then does the message handler call `m.Ack()`. On emit failure or context cancellation the message is `m.Nack()`ed, returning it to the subscription backlog immediately. The connector's own comment states the strategy is at-least-once because it can crash between emitting and acking. Flow control is set very tight (`sub.ReceiveSettings.MaxOutstandingBytes = 1 MiB`) to stop the client library buffering a large backlog, which means backpressure is pushed back onto the subscription (i.e. onto the customer's backlog) rather than absorbed in memory. Because subscription names are a deterministic md5 of topic+capture name, a restarted or re-applied capture reattaches to the SAME existing subscription and resumes from its backlog — that is the entire resumption mechanism."
+    }
+  },
+
+  "configFields": [
+    { "name": "projectId", "displayName": "Project ID", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Google Cloud Project ID that contains the PubSub topics." },
+    { "name": "credentialsJson", "displayName": "Service Account JSON", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Google Cloud Service Account JSON credentials used for authentication; multiline, validated as parseable JSON." },
+    { "name": "subscriptionPrefix", "displayName": "Subscription Prefix", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Optional prefix prepended to the generated subscription names, to make it visible which subscriptions belong to which capture." },
+    { "name": "topic", "displayName": "Topic", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Name of the PubSub topic to subscribe to." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "Pub/Sub ListTopics via the Go client (client.Topics iterator)",
+    "querySketch": "iterate all topics in the configured projectId; one discovered binding per topic, recommended name = topic ID, key = /_meta/id, document schema = a minimal _meta envelope with x-infer-schema enabled",
+    "excludes": [],
+    "allowlist": null
+  },
+  "streams": [
+    {
+      "name": "<topic>",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/id"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "continuous message consumption", "schedule": { "kind": "continuous" } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "partitioned_log",
+          "unit": "Pub/Sub subscription attached to one topic (one subscription per bound topic per capture)",
+          "offsetKind": "none — server-side acknowledgement state. The connector persists an empty checkpoint (`{}`) for every document; position is held entirely by the Pub/Sub subscription's ack state, and progress is made only by acking messages after the Flow runtime commits them.",
+          "shardable": false,
+          "notes": "Streaming `sub.Receive` with a callback per message, one goroutine per binding under a shared errgroup; a callback error cancels the whole subscription context. Subscriptions are created (not deleted) in Apply with EnableMessageOrdering=true so ordering-key messages arrive in order, and EnableExactlyOnceDelivery=true so acked messages are not redelivered. Message payloads MUST be a JSON object — `makeDoc` json.Unmarshal's msg.Data into map[string]any and errors out otherwise (a source-level TODO notes other formats are unsupported), and that error nacks the message and tears down the subscription reader. Emitted document = the message body plus a `_meta` object carrying id, topic, subscription, publishTime, attributes and orderingKey."
+        },
+        "snapshot": null
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "A single credential mode: the user pastes one Google Cloud service account JSON key plus the project ID. `google.CredentialsFromJSON` is called directly with the pubsub.ScopePubSub scope — there is no OAuth authorization-code flow, no client id/secret the user must register, and no refresh token to obtain. The user does have to create a service account in GCP with Pub/Sub permissions sufficient to list topics and CREATE subscriptions (the connector creates subscriptions in their project, so read-only Pub/Sub viewer roles are not enough), but that is still a single self-serve secret, i.e. T1.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[0].supportedSyncModes",
+      "description": "Neither union member is correct. The connector has no full-refresh capability at all — a subscription can only ever deliver messages that arrive after it is created and have not yet been acked, so the historical set is unreadable by construction and re-reading a stream is impossible. It also has no separate incremental leg: there is exactly one continuous consumption mode. The value emitted here (['full_refresh','incremental']) should be read as 'incremental only'; do NOT infer that a backfill exists.",
+      "proposedShape": { "supportedSyncModes": ["incremental_only_no_backfill"] }
+    },
+    {
+      "where": "execution.defaultSchedule / streams[].schedules",
+      "description": "Schedule is a poor fit for a long-lived streaming subscription. There is no tick: `Pull` opens `sub.Receive` and blocks until the process is torn down. Modelled as kind 'continuous', but the operationally important fact is that any gap between 'ticks' is not free — it accrues an unacked backlog in the customer's project (see execution.continuity).",
+      "proposedShape": { "kind": "continuous", "gapCost": "accrues customer-side backlog; bounded by source retention" }
+    },
+    {
+      "where": "streams[0].pull.incremental.offsetKind",
+      "description": "The PullSpec union assumes the connector owns a resumable offset. Here the connector is deliberately stateless (every checkpoint is `{}`); the resume point lives on the customer's server as subscription ack state. A field distinguishing 'connector-held offset' from 'server-held lease position' would be more faithful.",
+      "proposedShape": { "offsetOwner": "server", "offsetKind": "ack_state" }
+    },
+    {
+      "where": "streams[0].writeDisposition",
+      "description": "Semantically append-only at the source (messages are events, never updated or deleted; there are no tombstones), but the discovered binding declares key /_meta/id, so the destination behaves as a merge on a stable server-assigned id. The merge exists purely to de-duplicate at-least-once redelivery, not to reflect source-side mutation. 'append' and 'merge' each capture half the truth.",
+      "proposedShape": { "writeDisposition": "append", "dedupeKey": ["/_meta/id"] }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec": { "file": "main.go", "lines": "38-42", "snippet": "client, err := pubsub.NewClient(\n\t\tctx,\n\t\tc.ProjectID," },
+    "credentialModes[0].scheme": { "file": "main.go", "lines": "33", "snippet": "creds, err := google.CredentialsFromJSON(ctx, []byte(c.CredentialsJSON), pubsub.ScopePubSub)" },
+    "execution.mode": { "file": "driver.go", "lines": "196", "snippet": "return sub.Receive(ctx, func(ctx context.Context, m *pubsub.Message) {" },
+    "execution.continuity.artifacts": { "file": "driver.go", "lines": "110-115", "snippet": "if _, err := client.CreateSubscription(ctx, sub, pubsub.SubscriptionConfig{\n\t\t\t\tTopic: client.Topic(res.Topic),\n\t\t\t\tEnableMessageOrdering: true," },
+    "execution.continuity.artifacts[0]": { "file": "driver.go", "lines": "77-82", "snippet": "out := fmt.Sprintf(\"EstuaryFlow_%s\", digest)\n\tif prefix != \"\" {\n\t\tout = fmt.Sprintf(\"%s_%s\", prefix, out)" },
+    "execution.continuity.customerSideAccrual": { "file": "driver.go", "lines": "104-109", "snippet": "sub := subscriptionName(cfg.SubscriptionPrefix, res.Topic, req.Capture.Name.String())\n\t\texists, err := client.Subscription(sub).Exists(ctx)" },
+    "execution.continuity.ourSideLoss": { "file": "emitter.go", "lines": "15-17", "snippet": "// No state is maintained for this connector, so all checkpoints are an empty\n// checkpoint.\nvar emptyCheckpoint = json.RawMessage(\"{}\")" },
+    "execution.continuity.releasedOnShutdown": { "file": "driver.go", "lines": "86-132", "snippet": "func (driver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) {" },
+    "execution.continuity.notes": { "file": "emitter.go", "lines": "35-37", "snippet": "// channel is closed, the message can be acknowledged to PubSub. Inevitably this\n// kind of strategy is at-least-once, since the connector could crash between\n// emitting the document and sending the PubSub acknowledgement." },
+    "execution.defaultSchedule": { "file": "driver.go", "lines": "169-174", "snippet": "group.Go(func() error {\n\t\t\treturn captureResource(groupCtx, e, client, res.Topic, sub, idx)\n\t\t})" },
+    "configFields": { "file": "main.go", "lines": "15-17", "snippet": "ProjectID          string `json:\"projectId\" jsonschema:\"title=Project ID,...\"`" },
+    "configFields[3]": { "file": "main.go", "lines": "50-52", "snippet": "type resource struct {\n\tTopic string `json:\"topic\" jsonschema:\"title=Topic,description=Name of the PubSub topic to subscribe to.\"`\n}" },
+    "streamMode": { "file": "discovery.go", "lines": "28-37", "snippet": "topicIter := client.Topics(ctx)\n\tfor {\n\t\ttopic, err := topicIter.Next()" },
+    "discovery.method": { "file": "discovery.go", "lines": "48-53", "snippet": "bindings = append(bindings, &pc.Response_Discovered_Binding{\n\t\t\tRecommendedName:    topic,\n\t\t\tKey:                []string{\"/_meta/id\"}," },
+    "streams[0].primaryKey": { "file": "discovery.go", "lines": "52", "snippet": "Key:                []string{\"/_meta/id\"}," },
+    "streams[0].pull.incremental.notes": { "file": "emitter.go", "lines": "138-141", "snippet": "// TODO(whb): For now we only support messages encoded as JSON. Future\n\t// support for other formats could be considered.\n\tif err := json.Unmarshal(msg.Data, &doc); err != nil {" },
+    "streams[0].pull.incremental.offsetKind": { "file": "driver.go", "lines": "209-217", "snippet": "case <-rtAck:\n\t\t\t// When the runtime has acknowledged this message and its\n\t\t\t// checkpoint, acknowledge the receipt to PubSub.\n\t\t\tm.Ack()" },
+    "streams[0].pull.incremental.shardable": { "file": "driver.go", "lines": "187-189", "snippet": "// This setting prevents a large amount of messages to be buffered by the\n\t// PubSub library for this topic before they can be output by the connector.\n\tsub.ReceiveSettings.MaxOutstandingBytes = 1 * 1024 * 1024" },
+    "authTierOverall": { "file": ".snapshots/TestSpecification", "lines": "28-31", "snippet": "\"required\": [\n      \"projectId\",\n      \"credentialsJson\"" }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "credentialModes[0]": "high",
+    "execution.mode": "high",
+    "execution.continuity.artifacts": "high",
+    "execution.continuity.customerSideAccrual": "high",
+    "execution.continuity.ourSideLoss": "high",
+    "execution.continuity.resumeWindow": "low",
+    "execution.continuity.releasedOnShutdown": "high",
+    "execution.defaultSchedule": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0].primaryKey": "high",
+    "streams[0].primaryKeyKind": "high",
+    "streams[0].writeDisposition": "medium",
+    "streams[0].supportedSyncModes": "low",
+    "streams[0].pull.incremental": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "execution.continuity.resumeWindow": "The connector passes only Topic, EnableMessageOrdering and EnableExactlyOnceDelivery to CreateSubscription — it sets neither RetentionDuration nor ExpirationPolicy. The actual resume window is therefore whatever Google's platform defaults are for a subscription, which is not knowable from this source tree. Do not hard-code a number from connector code.",
+    "streams[0].cursorField": "There is no cursor. Every checkpoint emitted is the literal empty object; position is server-side subscription ack state, not a document field. `publishTime` is present in _meta but is never used as a filter or resume bound anywhere in the code.",
+    "streams[0].pull.backfill": "No backfill leg exists. A Pub/Sub subscription only sees messages published after it was created; there is no historical sweep code path, and no seek/replay call anywhere in the connector.",
+    "streams[0].pull.snapshot": "No snapshot leg — the collection is a message stream and cannot be re-read.",
+    "execution.continuity.artifacts.subscriptionDeletion": "No code path in the connector deletes a subscription. Whether the Flow control plane deletes them out-of-band when a capture is deleted cannot be determined from this directory; on the evidence available here they persist indefinitely in the customer's project."
+  }
+}

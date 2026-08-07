@@ -1,0 +1,292 @@
+{
+  "id": "mysql-batch",
+  "estuaryDir": "source-mysql-batch",
+  "displayName": "MySQL (Batch Queries)",
+  "description": "Periodically executes SELECT queries against a MySQL database and emits the resulting rows of discovered tables and views as JSON documents.",
+  "category": "database",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "sql",
+        "engine": "mysql",
+        "defaultPort": 3306,
+        "sslPolicy": "Opportunistic TLS: connects with TLS first using tls.Config{InsecureSkipVerify: true} (encryption without certificate/hostname verification), and silently retries without TLS if the TLS attempt fails. No user-facing SSL mode setting exists. If the plaintext retry fails with MySQL error 3159 (secure transport required) only the TLS error is reported.",
+        "tunnelSupport": "Optional SSH bastion tunnel via the shared go/network-tunnel TunnelConfig ('networkTunnel.sshForwarding'). When in use the tunnel is started before connecting and the driver dials localhost:3306 instead of the configured address."
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Database user and password",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "dsn",
+        "fields": ["address", "user", "password", "advanced.dbname"]
+      }
+    },
+    {
+      "name": "SSH private key (bastion tunnel only, in addition to the DB password)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "other",
+        "description": "Optional SSH forwarding credentials: networkTunnel.sshForwarding.sshEndpoint (ssh://user@hostname[:port]) plus networkTunnel.sshForwarding.privateKey. This is not an alternative to the DB password; it only reaches the database through a bastion host."
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": {
+      "kind": "other",
+      "literal": "24h",
+      "description": "Connector-wide default polling schedule (endpoint field advanced.poll). Grammar is either a Go duration string ('5m', '6h', '500ms') or the literal form 'daily at HH:MMZ' (UTC), enforced by the regex ^([-+]?([0-9]+([.][0-9]+)?(h|m|s|ms))+|daily at [0-9][0-9]?:[0-9]{2}Z)$. Defaults to '24h' when unset. Each binding may override it with its own resource-level 'poll'."
+    },
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Pure polling with plain SELECT statements: no replication slot, publication, binlog position, change table, or scratch table is created on the source. Nothing accrues on the customer side if we stop between ticks, and nothing expires on our side — resume state is entirely the connector-held cursor tuple in the Flow checkpoint. The only correctness cost of a long pause is that rows deleted or updated-then-re-updated in the interim are never observed (a cursor poll sees only rows whose cursor advanced; deletes are only inferred for keyless full-refresh bindings, by row-count shrinkage)."
+    }
+  },
+
+  "configFields": [
+    { "name": "address", "displayName": "Server Address", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Host or host:port at which the database can be reached; ':3306' is appended when no port is given." },
+    { "name": "user", "displayName": "User", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Database user to authenticate as. Defaults to 'flow_capture'." },
+    { "name": "password", "displayName": "Password", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "Password for the specified database user." },
+    { "name": "advanced.discover_views", "displayName": "Discover Views", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "When set, VIEW entities are also discovered as resources; otherwise only BASE TABLE entities are." },
+    { "name": "advanced.poll", "displayName": "Default Polling Schedule", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Go duration string ('5m', '6h') or 'daily at 12:34Z'. Defaults to '24h'." },
+    { "name": "advanced.discover_schemas", "displayName": "Discovery Schema Selection", "required": false, "secret": false, "scope": "endpoint", "type": "array", "description": "If non-empty, only tables whose table_schema is in this list are discovered; otherwise all non-system schemas." },
+    { "name": "advanced.dbname", "displayName": "Database Name", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Database to connect to. Discovery and capture span every database the user is authorized to read, so this mostly does not matter." },
+    { "name": "advanced.source_tag", "displayName": "Source Tag", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Value copied into /_meta/source/tag of every emitted document." },
+    { "name": "advanced.feature_flags", "displayName": "Feature Flags", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Estuary-internal flag string; defaults are keyless_row_id=true and emit_sourced_schemas=true." },
+    { "name": "networkTunnel.sshForwarding.sshEndpoint", "displayName": "SSH Endpoint", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "Remote SSH bastion in the form ssh://user@hostname[:port]. Required if the sshForwarding object is present." },
+    { "name": "networkTunnel.sshForwarding.privateKey", "displayName": "SSH Private Key", "required": false, "secret": true, "scope": "endpoint", "type": "string", "description": "Private key used to authenticate to the SSH bastion. Required if the sshForwarding object is present." },
+
+    { "name": "name", "displayName": "Name", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Unique resource name; also the resource path pointer (/name)." },
+    { "name": "schema", "displayName": "Schema Name", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Schema (MySQL database) containing the captured table. Required unless a query template override is supplied." },
+    { "name": "table", "displayName": "Table Name", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Table to capture. Required unless a query template override is supplied." },
+    { "name": "cursor", "displayName": "Cursor Columns", "required": false, "secret": false, "scope": "resource", "type": "array", "description": "Ordered list of column names persisted between query executions as the resume cursor. Empty means every poll is a full refresh. Changing this list resets the stream's saved state." },
+    { "name": "poll", "displayName": "Polling Schedule", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Per-binding override of the endpoint polling schedule; same Go-duration-or-'daily at HH:MMZ' grammar." },
+    { "name": "template", "displayName": "Query Template Override", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Go text/template replacing the built-in SELECT template. Receives .IsFirstQuery, .CursorFields, .SchemaName, .TableName and the quoteTableName/quoteIdentifier funcs." }
+  ],
+
+  "streamMode": "discovered",
+  "discovery": {
+    "method": "information_schema query (three queries: tables, columns, primary keys)",
+    "querySketch": "SELECT table_schema, table_name, table_type FROM information_schema.tables  --  then SELECT table_schema, table_name, column_name, ordinal_position, is_nullable, data_type, column_type, character_maximum_length FROM information_schema.columns ORDER BY schema, table, ordinal_position  --  then SELECT kcu.table_schema, kcu.table_name, kcu.column_name, kcu.ordinal_position FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tcs ON the 6-tuple {CONSTRAINT,TABLE}_{CATALOG,SCHEMA,NAME} WHERE tcs.constraint_type = 'PRIMARY KEY' ORDER BY schema, table, ordinal_position. Results are joined in-process on schema+table.",
+    "excludes": [
+      "information_schema",
+      "mysql",
+      "performance_schema",
+      "sys",
+      "entities whose table_type is neither 'BASE TABLE' nor (when advanced.discover_views is set) 'VIEW' — these are skipped with a warning rather than failing discovery",
+      "views, unless advanced.discover_views is set"
+    ],
+    "allowlist": "advanced.discover_schemas: when non-empty, discovery is intersected with this schema list (applied in addition to the system-schema exclusion)."
+  },
+
+  "streams": [
+    {
+      "name": "<schema>/<table> — keyed table, no cursor configured (discovery default)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<pk_column>", "…"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "resource 'poll' or endpoint 'advanced.poll', default '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "table",
+          "schema": "<discovered table_schema>",
+          "table": "<discovered table_name>",
+          "keyColumns": ["<primary key columns from information_schema.key_column_usage>"],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM `schema`.`table>`;  -- the no-cursor branch of the built-in template: unbounded, unordered, re-read in full on every poll",
+          "chunking": "None. The whole table is streamed in one prepared statement per poll (ExecuteSelectStreaming); a Flow checkpoint is emitted every 1000 documents purely to bound transaction size, and carries no resume position. A mid-poll restart re-reads the table from the beginning. Watchdogs: 30 minutes waiting for the first row, 5 minutes between subsequent rows; both are fatal."
+        }
+      }
+    },
+    {
+      "name": "<schema>/<table> — keyless table, fallback /_meta/row_id key",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/_meta/row_id"],
+      "primaryKeyKind": "synthetic",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "snapshot_with_tombstone",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "resource 'poll' or endpoint 'advanced.poll', default '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "table",
+          "schema": "<discovered table_schema>",
+          "table": "<discovered table_name>",
+          "keyColumns": [],
+          "cursorColumns": [],
+          "querySketch": "SELECT * FROM `schema`.`table`;  -- rows are keyed by a zero-based counter (/_meta/row_id) restarted at 0 each refresh; /_meta/op is 'c' for row ids past the previous high-water mark and 'u' below it",
+          "chunking": "None (whole table per poll, checkpoint every 1000 documents for transaction sizing only). After the poll, if this refresh produced fewer rows than the last, one tombstone document ( _meta.op = 'd' ) is emitted per missing row id to infer deletions."
+        }
+      }
+    },
+    {
+      "name": "<schema>/<table> — cursor-incremental binding (user sets resource 'cursor')",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": ["/<pk_column>", "…", "or /_meta/row_id when the table is keyless"],
+      "primaryKeyKind": "json_pointers",
+      "cursorField": "<the resource's 'cursor' column list, e.g. updated_at or an autoincrement id; may be a multi-column tuple>",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "resource 'poll' or endpoint 'advanced.poll', default '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": {
+          "kind": "table",
+          "schema": "<discovered table_schema>",
+          "table": "<discovered table_name>",
+          "keyColumns": ["<primary key columns, if any>"],
+          "cursorColumns": ["<resource.cursor columns>"],
+          "querySketch": "SELECT * FROM `schema`.`table` ORDER BY `c1`, `c2`, …;  -- the .IsFirstQuery branch: no WHERE clause, but ordered by the cursor tuple so the run leaves behind a usable high-water mark",
+          "chunking": "Not chunked into separate queries: one ordered streaming SELECT covers the whole table. Resumability comes from checkpointing the cursor tuple of the *previous* row every >=1000 documents, and only at a boundary where the cursor tuple actually changes, so the next poll's strict '>' predicate cannot skip rows sharing a cursor value. A mid-backfill restart resumes from the last such checkpoint via the incremental query shape."
+        },
+        "incremental": {
+          "kind": "table",
+          "schema": "<discovered table_schema>",
+          "table": "<discovered table_name>",
+          "keyColumns": ["<primary key columns, if any>"],
+          "cursorColumns": ["<resource.cursor columns>"],
+          "querySketch": "SELECT * FROM `schema`.`table` WHERE (`c1` > ?) OR (`c1` = ? AND `c2` > ?) OR (`c1` = ? AND `c2` = ? AND `c3` > ?) ORDER BY `c1`, `c2`, `c3`;  -- lexicographic row-value comparison expanded from @flow_cursor_value[N] placeholders into positional '?' args bound to the persisted cursor tuple",
+          "chunking": "Each poll is one bounded slice: lower bound = the persisted cursor tuple (strict, exclusive), upper bound = whatever the table holds when the query runs; no LIMIT or explicit upper watermark. Bounded resumability is by cursor-tuple checkpointing every >=1000 documents at distinct-cursor-value boundaries, plus an end-of-poll checkpoint that advances to the last emitted row. Deleted and cursor-unchanged updates are never seen."
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom query template binding (resource 'template' override)",
+      "origin": "discovered",
+      "kind": "archetype",
+      "primaryKey": [],
+      "primaryKeyKind": "none",
+      "cursorField": "<whatever columns the operator lists in resource 'cursor'>",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [
+        { "role": "fetch query", "schedule": { "kind": "other", "literal": "resource 'poll' or endpoint 'advanced.poll', default '24h'", "description": "Go duration string or 'daily at HH:MMZ' (UTC)." } }
+      ],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "query",
+          "language": "sql",
+          "querySketch": "Operator-supplied Go text/template rendered with {.IsFirstQuery, .CursorFields, .SchemaName, .TableName} and the quoteTableName/quoteIdentifier funcs; @flow_cursor_value[N] (and the deprecated ':N' / bare '?') placeholders are rewritten to positional '?' args bound to the persisted cursor tuple. The connector does not parse or constrain the SQL. Bindings with a template override are excluded from SourcedSchema emission because their output shape is unknowable from discovery."
+        }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The only mandatory credential is a MySQL host/user/password triple that the customer already controls — no OAuth app registration, no refresh token, no hosted control plane involvement. The optional SSH bastion adds a private key but is still self-serve and does not change the tier.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[].pull.snapshot / PullSpec kind \"table\"",
+      "description": "Discovery ships NO cursor: generateMySQLResource emits only {name, schema, table}, so every freshly discovered binding is a full-table re-read and the incremental leg exists only if a human later fills in resource.cursor. The schema's backfill/incremental/snapshot split therefore cannot be decided per stream from the code alone — the same discovered table is a snapshot binding or a backfill+incremental binding depending on post-discovery user configuration.",
+      "proposedShape": { "pull": { "modeDependsOn": "resource.cursor (user-supplied, empty by default)", "whenEmpty": "snapshot", "whenSet": "backfill+incremental" } }
+    },
+    {
+      "where": "streams[].writeDisposition",
+      "description": "The keyless full-refresh archetype is snapshot_with_tombstone, but the tombstones are synthesized by row-count arithmetic (emit `state.DocumentCount - nextRowID` delete docs at synthetic row ids after the poll), not by observing deletes. That is materially weaker than a source-emitted delete and the enum does not distinguish them.",
+      "proposedShape": { "writeDisposition": "snapshot_with_tombstone", "tombstoneOrigin": "inferred_from_rowcount_shrinkage" }
+    },
+    {
+      "where": "execution.defaultSchedule / <Schedule>",
+      "description": "The poll grammar is a single string field accepting either a Go duration ('5m', '6h', '500ms', sign allowed) or the literal 'daily at HH:MMZ'. These are two genuinely different schedule kinds behind one regex, so `kind: \"other\"` collapses an interval and a daily-cron into the same shape.",
+      "proposedShape": { "kind": "either", "options": [{ "kind": "interval", "goDuration": "5m" }, { "kind": "dailyAt", "utcTime": "12:34" }] }
+    },
+    {
+      "where": "transports[0].spec.sslPolicy",
+      "description": "There is no sslPolicy enum value for 'try TLS with verification disabled, silently fall back to plaintext'. It is neither require, prefer-with-verification, nor disable, and it is not user-configurable at all.",
+      "proposedShape": { "sslPolicy": { "mode": "opportunistic", "verifyCertificate": false, "userConfigurable": false, "fallbackToPlaintext": true } }
+    },
+    {
+      "where": "streams[].pull.*.chunking",
+      "description": "\"How one bounded chunk is bounded\" assumes query-level chunking (LIMIT/OFFSET or keyset pages). Here one poll issues exactly one unbounded streaming query and boundedness lives entirely in the checkpoint cadence (every >=1000 rows, gated on a cursor-tuple change). Those are separate axes.",
+      "proposedShape": { "chunking": { "queryBound": "none", "checkpointCadence": { "everyNDocuments": 1000, "gatedOn": "distinct cursor-tuple boundary" } } }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.defaultPort": { "file": "main.go", "lines": "87-89", "snippet": "if !strings.Contains(c.Address, \":\") {\n\t\tc.Address += \":3306\"\n\t}" },
+    "transports[0].spec.sslPolicy": { "file": "main.go", "lines": "158-161", "snippet": "var withTLS = func(c *client.Conn) error {\n\t\tc.SetTLSConfig(&tls.Config{InsecureSkipVerify: true})\n\t\treturn nil" },
+    "transports[0].spec.tunnelSupport": { "file": "main.go", "lines": "139-144", "snippet": "if cfg.NetworkTunnel.InUse() {\n\t\tif _, err := cfg.NetworkTunnel.Start(ctx, cfg.Address, \"3306\"); err != nil {\n\t\t\treturn nil, err" },
+    "credentialModes[0].scheme": { "file": "main.go", "lines": "178", "snippet": "if connWithTLS, errWithTLS := client.Connect(address, cfg.User, cfg.Password, cfg.Advanced.DBName, withTimeouts, withTLS); errWithTLS == nil {" },
+    "credentialModes[1].scheme": { "file": ".snapshots/TestSpec", "lines": "sshForwarding block", "snippet": "\"sshEndpoint\": {... \"description\": \"Endpoint of the remote SSH server that supports tunneling (in the form of ssh://user@hostname[:port])\"" },
+    "execution.mode": { "file": "driver.go", "lines": "397-401", "snippet": "// Wait for next scheduled polling cycle.\n\t\tif err := schedule.WaitForNext(ctx, pollSchedule, state.LastPolled); err != nil {" },
+    "execution.defaultSchedule": { "file": "main.go", "lines": "91-93", "snippet": "if c.Advanced.PollSchedule == \"\" {\n\t\tc.Advanced.PollSchedule = \"24h\"\n\t}" },
+    "execution.defaultSchedule.description": { "file": "main.go", "lines": "47", "snippet": "PollSchedule string `json:\"poll,omitempty\" jsonschema:\"...Accepts a Go duration string like '5m' or '6h'...or a string like 'daily at 12:34Z'...\"`" },
+    "execution.continuity": { "file": "driver.go", "lines": "154-156", "snippet": "// Apply does nothing for batch SQL captures.\nfunc (BatchSQLDriver) Apply(ctx context.Context, req *pc.Request_Apply) (*pc.Response_Applied, error) {" },
+    "discovery.querySketch": { "file": "discovery.go", "lines": "222", "snippet": "const queryDiscoverTables = `SELECT table_schema, table_name, table_type FROM information_schema.tables;`" },
+    "discovery.excludes": { "file": "main.go", "lines": "259-264", "snippet": "ExcludedSystemSchemas: []string{\n\t\t\"information_schema\",\n\t\t\"mysql\",\n\t\t\"performance_schema\",\n\t\t\"sys\"," },
+    "discovery.allowlist": { "file": "discovery.go", "lines": "246-248", "snippet": "if len(discoverSchemas) > 0 && !slices.Contains(discoverSchemas, tableSchema) {\n\t\t\tlog...Debug(\"ignoring table\")\n\t\t\tcontinue" },
+    "streams[0].pull.snapshot.querySketch": { "file": "main.go", "lines": "223-225", "snippet": "{{- else -}}\n  SELECT * FROM {{quoteTableName .SchemaName .TableName}};\n{{- end}}" },
+    "streams[1].primaryKey": { "file": "discovery.go", "lines": "114-115", "snippet": "// The fallback key of discovered collections when the source table has no primary key.\n\tfallbackKey = []string{\"/_meta/row_id\"}" },
+    "streams[1].pull.snapshot.chunking": { "file": "driver.go", "lines": "727-728", "snippet": "if isRowIDKey && isFullRefresh {\n\t\tfor i := int64(0); i < state.DocumentCount-nextRowID; i++ {" },
+    "streams[2].pull.backfill.querySketch": { "file": "main.go", "lines": "208-212", "snippet": "{{if .CursorFields -}}\n  {{- if .IsFirstQuery -}}\n    SELECT * FROM {{quoteTableName .SchemaName .TableName}}" },
+    "streams[2].pull.incremental.querySketch": { "file": "main.go", "lines": "214-222", "snippet": "{{- if eq $i 0}} WHERE ({{else}}) OR ({{end -}}\n\t\t  {{$n}} = @flow_cursor_value[{{$j}}] AND {{end -}}\n\t  {{$k}} > @flow_cursor_value[{{$i}}]" },
+    "streams[2].cursorField": { "file": "driver.go", "lines": "86", "snippet": "Cursor []string `json:\"cursor,omitempty\" jsonschema:\"title=Cursor Columns,description=The names of columns which should be persisted between query executions as a cursor.\"`" },
+    "streams[2].pull.incremental.chunking": { "file": "driver.go", "lines": "650-658", "snippet": "if documentsSinceLastCheckpoint >= documentsPerCheckpoint {\n\t\t\t\t} else if prevCursorValues != nil && !cursorValuesEqual(prevCursorValues, currentCursorValues) {\n\t\t\t\t\tstate.CursorValues = prevCursorValues" },
+    "streams[3].pull.snapshot.querySketch": { "file": "driver.go", "lines": "438-443", "snippet": "var queryPlaceholderRegexp = regexp.MustCompile(`([?]|:[0-9]+|@flow_cursor_value\\[[0-9]+\\])`)\n// expandQueryPlaceholders simulates numbered query placeholders in MySQL by replacing\n// each numbered placeholder `@flow_cursor_value[N]` with a question mark" },
+    "configFields": { "file": ".snapshots/TestSpec", "lines": "config_schema_json + resource_config_schema_json", "snippet": "\"required\": [ \"address\", \"user\", \"password\" ], \"title\": \"Batch SQL\"" },
+    "unionMisfits[0]": { "file": "main.go", "lines": "244-248", "snippet": "return &Resource{\n\t\t\tName:       resourceName,\n\t\t\tSchemaName: schemaName,\n\t\t\tTableName:  tableName,\n\t\t}, nil" },
+    "streamMode": { "file": "discovery.go", "lines": "19-21", "snippet": "// Discover enumerates tables and views from `information_schema.tables` and generates\n// placeholder capture queries for those tables." }
+  },
+
+  "confidence": {
+    "transports[0].spec": "high",
+    "transports[0].spec.sslPolicy": "high",
+    "credentialModes": "high",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "high",
+    "execution.continuity": "high",
+    "configFields": "high",
+    "streamMode": "high",
+    "discovery": "high",
+    "streams[0]": "high",
+    "streams[1]": "high",
+    "streams[2].pull.backfill": "high",
+    "streams[2].pull.incremental": "high",
+    "streams[2].primaryKey": "medium",
+    "streams[3]": "medium",
+    "category": "high",
+    "authTierOverall": "high"
+  },
+
+  "abstained": {
+    "streams[].name": "There is no literal stream list: bindings are generated one-per-discovered-table with recommended catalog name '<schema>/<table>' (lowercased, non [a-z0-9-_.] replaced with '_'). All entries are archetypes, not real streams.",
+    "streams[2].cursorField": "The connector never picks a cursor column itself — discovery emits resources with an empty cursor list, so the actual cursor is always operator-supplied. No default or heuristic candidate exists in the code.",
+    "streams[3].primaryKey": "A template-override binding's collection key is whatever the operator declares in their catalog; the connector neither derives nor validates it.",
+    "execution.continuity.resumeWindow": "Not applicable rather than unknown — there is no server-side retention artifact whose expiry could bound a pause.",
+    "transports[0].spec.baseUrl": "N/A for a sql transport.",
+    "streams[].pull.*.paginator": "N/A — no HTTP pull shape anywhere in this connector."
+  }
+}

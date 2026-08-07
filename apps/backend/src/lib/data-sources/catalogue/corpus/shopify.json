@@ -1,0 +1,547 @@
+{
+  "id": "shopify",
+  "estuaryDir": "source-shopify",
+  "displayName": "Shopify (legacy REST)",
+  "description": "Imports Shopify store commerce data (orders, products, customers, collections, inventory, price rules, transactions, refunds) from the Shopify Admin REST API.",
+  "category": "other",
+
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{store}.myshopify.com/admin/api/{api_version}",
+          "placeholders": {
+            "store": "endpoint config field `store` (the myshopify subdomain); the whole prefix is overridden verbatim by the optional `admin_url` config field, to which `/api/{api_version}` is still appended",
+            "api_version": "hardcoded module constant API_VERSION in tap_shopify/client.py, value 2023-10"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment: /admin/api/2023-10, hardcoded as API_VERSION in client.py (not user-configurable)"
+      }
+    }
+  ],
+
+  "credentialModes": [
+    {
+      "name": "Access Token",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "header",
+        "header": "X-Shopify-Access-Token",
+        "field": "credentials.access_token",
+        "prefix": null
+      }
+    },
+    {
+      "name": "Shopify OAuth",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://{config.store}.myshopify.com/admin/oauth/authorize",
+        "tokenUrl": "https://{config.store}.myshopify.com/admin/oauth/access_token",
+        "scopes": [
+          "read_locales",
+          "read_products",
+          "read_orders",
+          "read_checkouts",
+          "read_locations",
+          "read_inventory",
+          "read_fulfillments",
+          "read_customers"
+        ],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": {
+      "artifacts": [],
+      "customerSideAccrual": null,
+      "ourSideLoss": null,
+      "resumeWindow": null,
+      "releasedOnShutdown": null,
+      "notes": "Stateless REST polling. Resumption is entirely client-side: the Singer replication_key_value (updated_at, or id for collects) is checkpointed and replayed as updated_at_min/since_id on the next run. No server-side object is created on the Shopify side, so nothing accrues on the customer's infra and nothing expires if we pause. The only pause risk is that the connector re-walks from the last cursor value, and that per-run Link-header page_info cursors are short-lived, but page_info is never persisted across runs."
+    }
+  },
+
+  "configFields": [
+    { "name": "credentials.auth_type", "displayName": "Auth Type", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Discriminator: \"oauth\" or \"access_token\"." },
+    { "name": "credentials.client_id", "displayName": "Client ID", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth mode only: Shopify app client id." },
+    { "name": "credentials.client_secret", "displayName": "Client Secret", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "OAuth mode only: Shopify app client secret." },
+    { "name": "credentials.access_token", "displayName": "Access Token", "required": true, "secret": true, "scope": "endpoint", "type": "string", "description": "The access token to authenticate with the Shopify API. Required in BOTH credential modes." },
+    { "name": "store", "displayName": "Store", "required": true, "secret": false, "scope": "endpoint", "type": "string", "description": "Shopify store id, the prefix of the admin url e.g. https://[your store].myshopify.com/admin." },
+    { "name": "start_date", "displayName": "Start Date", "required": true, "secret": false, "scope": "endpoint", "type": "date", "description": "The earliest record date to sync. Default 2020-01-01." },
+    { "name": "admin_url", "displayName": "Admin URL", "required": false, "secret": false, "scope": "endpoint", "type": "string", "description": "The Admin url for the Shopify store; overrides the 'store' property." },
+    { "name": "is_plus_account", "displayName": "Is Plus Account", "required": false, "secret": false, "scope": "endpoint", "type": "boolean", "description": "Enables Shopify Plus account endpoints (adds the users stream)." },
+    { "name": "stream", "displayName": "Stream", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "Singer stream name for this binding." },
+    { "name": "replication_method", "displayName": "Replication Method", "required": true, "secret": false, "scope": "resource", "type": "string", "description": "INCREMENTAL or FULL_TABLE." },
+    { "name": "replication_key", "displayName": "Replication Key", "required": false, "secret": false, "scope": "resource", "type": "string", "description": "Field used as the incremental cursor." }
+  ],
+
+  "streamMode": "static",
+  "discovery": null,
+
+  "streams": [
+    {
+      "name": "collects",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "id",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http", "path": "/collects.json", "httpMethod": "GET",
+          "recordsPath": "$.collects[*]",
+          "params": { "created_at_min": "<start_date>", "since_id": "<null on first run>" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": null
+        },
+        "incremental": {
+          "kind": "http", "path": "/collects.json", "httpMethod": "GET",
+          "recordsPath": "$.collects[*]",
+          "params": { "updated_at_min": "<last replication_key_value>", "since_id": "<last replication_key_value (an id)>" },
+          "pathPlaceholders": null,
+          "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null },
+          "incrementalParam": { "param": "since_id", "format": "iso8601" }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "custom_collections",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/custom_collections.json", "httpMethod": "GET", "recordsPath": "$.custom_collections[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/custom_collections.json", "httpMethod": "GET", "recordsPath": "$.custom_collections[*]", "params": null, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "customers",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/customers.json", "httpMethod": "GET", "recordsPath": "$.customers[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/customers.json", "httpMethod": "GET", "recordsPath": "$.customers[*]", "params": null, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "locations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/locations.json", "httpMethod": "GET", "recordsPath": "$.locations[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "inventory_levels",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["inventory_item_id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/inventory_levels.json", "httpMethod": "GET", "recordsPath": "$.inventory_levels[*]", "params": { "location_ids": "<location_id from parent locations stream>", "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "inventory_items",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/inventory_items/{inventory_item_id}.json", "httpMethod": "GET", "recordsPath": "$.inventory_item", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": { "inventory_item_id": "record.inventory_item_id from the parent inventory_levels stream (which is itself child of locations)" }, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "metafields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/metafields.json", "httpMethod": "GET", "recordsPath": "$.metafields[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/metafields.json", "httpMethod": "GET", "recordsPath": "$.metafields[*]", "params": null, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "orders",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/orders.json", "httpMethod": "GET", "recordsPath": "$.orders[*]", "params": { "status": "any", "order": "updated_at asc", "updated_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/orders.json", "httpMethod": "GET", "recordsPath": "$.orders[*]", "params": { "status": "any", "order": "updated_at asc" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "products",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/products.json", "httpMethod": "GET", "recordsPath": "$.products[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/products.json", "httpMethod": "GET", "recordsPath": "$.products[*]", "params": null, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "transactions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/orders/{order_id}/transactions.json", "httpMethod": "GET", "recordsPath": "$.transactions[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": { "order_id": "record.id from the parent orders stream" }, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "refunds",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/orders/{order_id}/refunds.json", "httpMethod": "GET", "recordsPath": "$.refunds[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": { "order_id": "record.id from the parent orders stream" }, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "order_risks",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/orders/{order_id}/risks.json", "httpMethod": "GET", "recordsPath": "$.risks[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": { "order_id": "record.id from the parent orders stream" }, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "price_rules",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": ["full_refresh", "incremental"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": { "kind": "http", "path": "/price_rules.json", "httpMethod": "GET", "recordsPath": "$.price_rules[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null },
+        "incremental": { "kind": "http", "path": "/price_rules.json", "httpMethod": "GET", "recordsPath": "$.price_rules[*]", "params": null, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": { "param": "updated_at_min", "format": "iso8601" } },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "discount_code",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/price_rules/{price_rule_id}/discount_codes.json", "httpMethod": "GET", "recordsPath": "$.discount_codes[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": { "price_rule_id": "record.id from the parent price_rules stream" }, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "carrier_services",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/carrier_services.json", "httpMethod": "GET", "recordsPath": "$.carrier_services[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": ["id"],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": ["full_refresh"],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": { "kind": "http", "path": "/users.json", "httpMethod": "GET", "recordsPath": "$.users[*]", "params": { "created_at_min": "<start_date>" }, "pathPlaceholders": null, "paginator": { "type": "cursor", "cursorParam": null, "cursorPath": "Link header, rel=\"next\"", "tokenFrom": "header", "tokenTo": "query_param", "terminateOn": "absent_token", "pageSizeParam": null, "pageSize": null }, "incrementalParam": null }
+      }
+    }
+  ],
+
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The connector offers two credential modes and the easiest is 'Access Token': a single self-serve secret (a Shopify Admin API access token obtained by creating a custom app in the store admin) sent as the X-Shopify-Access-Token header. No app registration, no client id/secret, no refresh token, no token exchange in the connector. The alternative 'Shopify OAuth' mode requires the user to register their own Shopify app and supply client_id + client_secret, which is T2_BYO_APP standalone; Estuary's hosted control plane fills those in via the declared oauth2 authUrlTemplate/accessTokenUrlTemplate (x-oauth2-provider: shopify), so hosted users do no work, but the standalone tier is T2. Note that even the OAuth mode's config requires access_token as a required property, and no refresh_token field exists anywhere in the schema (Shopify offline access tokens do not expire), so it is not T3.",
+
+  "unionMisfits": [
+    {
+      "where": "streams[*].pull.*.paginator",
+      "description": "The paginator is a hybrid the union does not name. The token is read from the HTTP `Link` response header (rel=\"next\") as a FULL URL, but that URL is NOT followed verbatim: only its query string is parsed out and re-applied as the query params of a request whose scheme/host/path are rebuilt from url_base + stream path. So it is neither `next_url` (not verbatim) nor a `cursor` with a single named cursorParam (the code forwards ALL query params opaquely; it never names page_info or limit). Classified here as cursor + tokenFrom:header + tokenTo:query_param with cursorParam null. A second wrinkle: pagination also stops when the response body is falsy, not only when the Link header lacks rel=\"next\", so terminateOn is really absent_token OR empty_body.",
+      "proposedShape": {
+        "type": "cursor",
+        "tokenFrom": "header_link_url",
+        "tokenTo": "query_param_set",
+        "tokenIsOpaqueQueryString": true,
+        "carriesAllQueryParams": true,
+        "rebuildsPathFromStreamDefinition": true,
+        "terminateOn": ["absent_token", "empty_body"]
+      }
+    },
+    {
+      "where": "credentialModes[1].tier",
+      "description": "The 'Shopify OAuth' mode requires client_id AND client_secret AND access_token as required config properties, but there is no refresh_token. The T1/T2/T3 ladder has no rung for 'bring your own app plus a non-expiring access token'. Scored T2_BYO_APP because app registration is the dominant cost and no refresh token is asked for, but a standalone user must actually complete the OAuth dance themselves to obtain the access_token, which is strictly more work than T2 implies.",
+      "proposedShape": { "tier": "T2_BYO_APP", "extraUserSuppliedTokens": ["access_token"], "refreshTokenRequired": false, "hostedControlPlaneFillsClientCredentials": true }
+    },
+    {
+      "where": "streams[*].pull.backfill vs .incremental",
+      "description": "There is no distinct backfill request shape. Backfill and incremental are the SAME path, records path and paginator; they differ only in which timestamp query param the shared get_url_params emits: created_at_min=<start_date> when no state exists, updated_at_min=<checkpointed value> once it does. The orders stream overrides this and uses updated_at_min in both cases (plus status=any and order=updated_at asc). Splitting into two PullSpecs duplicates almost everything.",
+      "proposedShape": { "pull": { "unified": { "windowParamWhenCold": "created_at_min", "windowParamWhenWarm": "updated_at_min" } } }
+    },
+    {
+      "where": "streams[*].pull.snapshot.params",
+      "description": "FULL_TABLE streams still receive created_at_min=<start_date> from the shared base get_url_params, because the base method keys off replication_key_value being absent rather than off the replication method. This means a 'snapshot' stream is silently date-filtered by start_date, which the schema's snapshot notion ('re-reads the whole collection') does not express.",
+      "proposedShape": { "snapshot": { "filteredBy": { "param": "created_at_min", "source": "start_date" } } }
+    },
+    {
+      "where": "streams",
+      "description": "The shipped stream list is static but conditionally mutated: UsersStream is appended to the module-level STREAM_TYPES list at discover time when config.is_plus_account is true (a mutation of module global state, so it accumulates across repeated discovery calls in one process). AbandonedCheckouts is fully implemented (path /checkouts.json, records $.checkouts[*], cursor updated_at) but commented out of STREAM_TYPES with the note that it is gated behind Estuary's Shopify app being granted protected-data permissions, so it is not discoverable. 'static' plus a config-gated addition plus a dead-but-present stream has no representation in streamMode.",
+      "proposedShape": { "streamMode": "static", "conditionalStreams": [ { "name": "users", "enabledBy": "config.is_plus_account" } ], "disabledStreams": [ { "name": "abandoned_checkouts", "reason": "protected customer data scope not granted to the Estuary Shopify app" } ] }
+    },
+    {
+      "where": "transports[0].spec.baseUrl",
+      "description": "Two-layer base URL: the `admin_url` config field replaces the templated https://{store}.myshopify.com/admin prefix wholesale, but the connector still appends /api/{API_VERSION} to whatever the user supplied. So it is neither a pure template nor a pure resolved URL; it is a template with a user-supplied override of only the prefix.",
+      "proposedShape": { "kind": "template", "template": "{prefix}/api/{api_version}", "prefixDefault": "https://{store}.myshopify.com/admin", "prefixOverrideField": "admin_url" }
+    },
+    {
+      "where": "connector-level (mechanism drift vs source-shopify-native)",
+      "description": "MATERIAL DIFFERENCE from source-shopify-native: this legacy connector is a vendored Meltano/Singer tap (tap-shopify) wrapped by flow_sdk.shim_singer_sdk.CaptureShim; it does NOT use estuary-cdk at all. It speaks the Admin REST API (/admin/api/2023-10/*.json) with Link-header cursor pagination and per-stream parent/child fan-out (one HTTP request per order for transactions/refunds/risks, one per inventory item). The native connector uses GraphQL bulk operations, which is a completely different execution shape (submit job, poll, download JSONL) with different rate-limit and continuity characteristics. Any shared 'shopify' config model must not assume the two share a transport, paginator, or stream-key model.",
+      "proposedShape": { "note": "keep source-shopify and source-shopify-native as separate connector records; do not unify their pull specs" }
+    }
+  ],
+
+  "evidence": {
+    "transports[0].spec.baseUrl": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "22-26",
+      "snippet": "url_base = self.config.get(\"admin_url\") or \"https://{store}.myshopify.com/admin\".format(store=self.config[\"store\"])\nreturn f\"{url_base}/api/{API_VERSION}\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "13",
+      "snippet": "API_VERSION = \"2023-10\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "35-40",
+      "snippet": "return tap_shopifyAuthenticator(self, key=\"X-Shopify-Access-Token\",\n    value=str(self.config[\"credentials\"][\"access_token\"]), location=\"header\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_shopify/tap_shopify/tap.py",
+      "lines": "96-115",
+      "snippet": "\"title\": \"Access Token\", ... \"access_token\": {\"type\": [\"string\"], \"description\": \"The access token to authenticate with the Shopify API\", \"secret\": True}\n\"required\": [\"auth_type\", \"access_token\"]"
+    },
+    "credentialModes[1].scheme": {
+      "file": "__main__.py",
+      "lines": "27-44",
+      "snippet": "oauth2={\"provider\": \"shopify\", \"authUrlTemplate\": (...oauth/authorize?client_id=...&scope=...),\n \"accessTokenUrlTemplate\": (...oauth/access_token?client_id=...&client_secret=...&code=...)}"
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "__main__.py",
+      "lines": "4-14",
+      "snippet": "scopes = \",\".join([\"read_locales\", \"read_products\", \"read_orders\", \"read_checkouts\",\n  \"read_locations\", \"read_inventory\", \"read_fulfillments\", \"read_customers\"])"
+    },
+    "credentialModes[1].tier": {
+      "file": "source_shopify/tap_shopify/tap.py",
+      "lines": "66-95",
+      "snippet": "\"title\": \"Shopify OAuth\", \"x-oauth2-provider\": \"shopify\", properties client_id/client_secret/access_token all secret\n\"required\": [\"auth_type\", \"client_id\", \"client_secret\", \"access_token\"]"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "54-59",
+      "snippet": "next_link = response.links.get(\"next\")\nif not next_link or not response.json(): self.last_id = None; return None\nreturn next_link[\"url\"]"
+    },
+    "unionMisfits[0]": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "67-68",
+      "snippet": "if next_page_token:\n    return dict(parse_qsl(urlsplit(next_page_token).query))"
+    },
+    "unionMisfits[2]": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "89-94",
+      "snippet": "if last_updated: params[\"updated_at_min\"] = last_updated\nelif start_date: params[\"created_at_min\"] = start_date"
+    },
+    "streams[7].pull.incremental.params": {
+      "file": "source_shopify/tap_shopify/client.py",
+      "lines": "69-81",
+      "snippet": "elif not next_page_token and self.name == \"orders\":\n    params[\"status\"] = \"any\"; params[\"order\"] = \"updated_at asc\"\n    ... params[\"updated_at_min\"] = last_updated"
+    },
+    "streams[0].pull.incremental.incrementalParam": {
+      "file": "source_shopify/tap_shopify/streams.py",
+      "lines": "38-41",
+      "snippet": "last_id = context_state.get(\"replication_key_value\")\nparams[\"since_id\"] = last_id"
+    },
+    "streams[4].pull.snapshot.params": {
+      "file": "source_shopify/tap_shopify/streams.py",
+      "lines": "101-102",
+      "snippet": "if not next_page_token:\n    params[\"location_ids\"] = context[\"location_id\"]"
+    },
+    "streamMode": {
+      "file": "source_shopify/tap_shopify/tap.py",
+      "lines": "30-47",
+      "snippet": "STREAM_TYPES = [CollectStream, CustomCollections, CustomersStream, InventoryItemsStream,\n InventoryLevelsStream, LocationsStream, MetafieldsStream, OrdersStream, ProductsStream, ...]"
+    },
+    "unionMisfits[4]": {
+      "file": "source_shopify/tap_shopify/tap.py",
+      "lines": "29 and 154-155",
+      "snippet": "# Commented stream types are gated behind our shopify app being granted protected data permissions\nif self.config.get(\"is_plus_account\"): STREAM_TYPES.append(UsersStream)"
+    },
+    "configFields": {
+      "file": "tests/snapshots/snapshots__spec__capture.stdout.json",
+      "lines": "configSchema/resourceConfigSchema",
+      "snippet": "\"required\": [\"credentials\", \"store\", \"start_date\"] ... resourceConfigSchema properties: stream, replication_method, replication_key"
+    },
+    "streams[*].supportedSyncModes": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "per-binding resourceConfig",
+      "snippet": "{\"tap_stream_id\": \"orders\", \"replication_key\": \"updated_at\", \"replication_method\": \"INCREMENTAL\", \"key_properties\": [\"id\"]}"
+    },
+    "unionMisfits[6]": {
+      "file": "__main__.py",
+      "lines": "1-2, 24-26",
+      "snippet": "from flow_sdk import shim_singer_sdk\nshim_singer_sdk.CaptureShim(config_schema=Tap_Shopify.config_jsonschema, delegate_factory=Tap_Shopify, ...)"
+    }
+  },
+
+  "confidence": {
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0]": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].tier": "medium",
+    "authTierOverall": "high",
+    "streamMode": "high",
+    "streams[*].name": "high",
+    "streams[*].pull.*.path": "high",
+    "streams[*].pull.*.recordsPath": "high",
+    "streams[*].primaryKey": "high",
+    "streams[*].cursorField": "high",
+    "streams[*].supportedSyncModes": "high",
+    "streams[*].pull.*.paginator.type": "medium",
+    "streams[*].pull.*.paginator.tokenFrom": "high",
+    "streams[*].pull.*.paginator.tokenTo": "high",
+    "streams[*].pull.*.paginator.cursorParam": "low",
+    "streams[*].pull.*.incrementalParam": "high",
+    "streams[0].pull.incremental.incrementalParam": "medium",
+    "streams[*].writeDisposition": "low",
+    "execution.mode": "high",
+    "execution.defaultSchedule": "low",
+    "execution.continuity": "medium",
+    "configFields": "high",
+    "category": "low"
+  },
+
+  "abstained": {
+    "streams[*].pull.*.paginator.cursorParam": "The code never names a pagination query parameter. It parses the entire query string out of the Link-header URL and re-sends every parameter opaquely (client.py: dict(parse_qsl(urlsplit(token).query))). Shopify's REST API in practice puts page_info and limit there, but the connector does not encode that fact, so naming page_info would be an inference about the server, not an extracted fact.",
+    "streams[*].pull.*.paginator.pageSize": "No limit/page-size parameter is set anywhere in the connector; Shopify's server default applies. Nothing in the source states it.",
+    "execution.defaultSchedule": "Neither the tap nor flow_sdk/shim_singer_sdk.py contains any interval, cron, or sleep logic. Cadence is decided by the Flow runtime outside this repo directory.",
+    "streams[*].schedules": "Same reason: no per-binding schedule appears in the resource config schema (only stream, replication_method, replication_key) or in any resource.N.config.yaml.",
+    "streams[*].writeDisposition": "Not stated by the connector. Recorded as 'merge' because every binding declares key_properties and Flow collections key on those, but the connector emits Singer RECORD messages only and never emits deletes or tombstones, so this is an inference about the destination, not a mined fact.",
+    "streams[0].pull.incremental.incrementalParam.format": "The collects stream's cursor is `id` (an integer), carried in since_id, not a timestamp. None of the schema's format values (iso8601/unix_seconds/date) describe an integer id; iso8601 is recorded only because the enum has no integer option. See also the misfit: the base class simultaneously sets updated_at_min to that same id value, which is very likely a bug.",
+    "streams[*].pull.*.params.created_at_min": "Values shown as <start_date>/<last replication_key_value> placeholders because they are runtime state, not literals.",
+    "category": "Shopify is e-commerce, which is not one of the enum options; 'other' chosen rather than forcing payments or product.",
+    "transports[0].spec.defaultHeaders": "http_headers only conditionally sets User-Agent from an undocumented `user_agent` config key that is not in the config schema; no constant default headers exist besides the auth header."
+  }
+}

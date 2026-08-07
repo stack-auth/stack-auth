@@ -1,0 +1,2140 @@
+{
+  "id": "zendesk-support",
+  "estuaryDir": "source-zendesk-support",
+  "displayName": "Zendesk Support",
+  "description": "Imports tickets, users, organizations, comments, audits, satisfaction ratings and related help-desk configuration from a Zendesk Support account.",
+  "category": "support",
+  "transports": [
+    {
+      "role": "primary",
+      "purpose": null,
+      "spec": {
+        "kind": "http",
+        "baseUrl": {
+          "kind": "template",
+          "template": "https://{subdomain}.zendesk.com/api/v2/",
+          "placeholders": {
+            "subdomain": "the `subdomain` endpoint config field, i.e. the tenant name in the customer's account URL https://{subdomain}.zendesk.com/"
+          }
+        },
+        "defaultHeaders": null,
+        "apiVersionPinning": "path segment `/api/v2/` in the base URL"
+      }
+    }
+  ],
+  "credentialModes": [
+    {
+      "name": "API token (email + token, HTTP Basic)",
+      "appliesToTransport": "primary",
+      "tier": "T1_SIMPLE",
+      "scheme": {
+        "type": "basic",
+        "usernameField": "credentials.email (the literal suffix \"/token\" is appended by the connector before base64-encoding)",
+        "passwordField": "credentials.api_token"
+      }
+    },
+    {
+      "name": "OAuth 2.0 access token (Bearer)",
+      "appliesToTransport": "primary",
+      "tier": "T2_BYO_APP",
+      "scheme": {
+        "type": "oauth2",
+        "authUrl": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+        "tokenUrl": "https://{subdomain}.zendesk.com/oauth/tokens",
+        "scopes": [
+          "read"
+        ],
+        "grant": "authorization_code"
+      }
+    }
+  ],
+  "execution": {
+    "mode": "poll",
+    "defaultSchedule": null,
+    "continuity": null
+  },
+  "configFields": [
+    {
+      "name": "start_date",
+      "displayName": "Start Date",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "date",
+      "description": "Replicate data generated after this instant; format YYYY-MM-DDT00:00:00Z."
+    },
+    {
+      "name": "subdomain",
+      "displayName": "Subdomain",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Zendesk subdomain from the account URL https://{MY_SUBDOMAIN}.zendesk.com/; also selects the API host."
+    },
+    {
+      "name": "credentials.credentials",
+      "displayName": "Authentication method",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Discriminator constant: \"oauth2.0\" or \"api_token\"."
+    },
+    {
+      "name": "credentials.access_token",
+      "displayName": "Access Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth access token; required only in the OAuth2.0 branch."
+    },
+    {
+      "name": "credentials.client_id",
+      "displayName": "Client ID",
+      "required": false,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth client id; injected by the hosted OAuth flow (complete_oauth_server_output_specification) rather than typed by the user."
+    },
+    {
+      "name": "credentials.client_secret",
+      "displayName": "Client Secret",
+      "required": false,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "OAuth client secret; injected by the hosted OAuth flow."
+    },
+    {
+      "name": "credentials.email",
+      "displayName": "Email",
+      "required": true,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Zendesk account user email; required only in the API Token branch."
+    },
+    {
+      "name": "credentials.api_token",
+      "displayName": "API Token",
+      "required": true,
+      "secret": true,
+      "scope": "endpoint",
+      "type": "string",
+      "description": "Zendesk API token; required only in the API Token branch."
+    },
+    {
+      "name": "ignore_pagination",
+      "displayName": "Read a single page per sweep. Should be left unchecked in most situations.",
+      "required": false,
+      "secret": false,
+      "scope": "endpoint",
+      "type": "boolean",
+      "description": "When true, every stream's next_page_token returns None, so only the first page of each sweep is read."
+    },
+    {
+      "name": "stream",
+      "displayName": "Name of this stream",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Which shipped stream this binding captures."
+    },
+    {
+      "name": "syncMode",
+      "displayName": "Sync Mode",
+      "required": true,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "full_refresh or incremental."
+    },
+    {
+      "name": "namespace",
+      "displayName": "Namespace",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "string",
+      "description": "Enclosing schema namespace; unused by this connector."
+    },
+    {
+      "name": "cursorField",
+      "displayName": "Cursor Field",
+      "required": false,
+      "secret": false,
+      "scope": "resource",
+      "type": "array",
+      "description": "Cursor field path, defaulted per stream at discovery."
+    }
+  ],
+  "streamMode": "static",
+  "discovery": null,
+  "streams": [
+    {
+      "name": "organization_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "organization_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "organization_memberships",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "groups",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "groups",
+          "httpMethod": "GET",
+          "recordsPath": "groups",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 100,
+            "exclude_deleted": false
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "group_memberships",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "group_memberships",
+          "httpMethod": "GET",
+          "recordsPath": "group_memberships",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 100,
+            "sort_by": "asc"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "satisfaction_ratings",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "satisfaction_ratings",
+          "httpMethod": "GET",
+          "recordsPath": "satisfaction_ratings",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "posts",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "community/posts",
+          "httpMethod": "GET",
+          "recordsPath": "posts",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "audit_logs",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "created_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "audit_logs",
+          "httpMethod": "GET",
+          "recordsPath": "audit_logs",
+          "params": {
+            "page[size]": 100,
+            "sort": "created_at",
+            "filter[created_at][]": [
+              "<state cursor or start_date>",
+              "<now minus 30s>"
+            ]
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "filter[created_at][]",
+            "format": "iso8601"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_metric_events",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "time",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/ticket_metric_events",
+          "httpMethod": "GET",
+          "recordsPath": "ticket_metric_events",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page[size]": 1000
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 1000
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_skips",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "skips.json",
+          "httpMethod": "GET",
+          "recordsPath": "skips",
+          "params": {
+            "start_time": "<unix seconds from state or start_date; dropped once paginating>",
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "macros",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "macros",
+          "httpMethod": "GET",
+          "recordsPath": "macros",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page": "<1..ceil(count/100)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": null,
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_fields",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "ticket_fields",
+          "httpMethod": "GET",
+          "recordsPath": "ticket_fields",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "page": "<1..ceil(count/100)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "page",
+            "limitParam": null,
+            "pageParam": "page",
+            "pageSize": 100,
+            "startPage": 1,
+            "terminateOn": "explicit_total"
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "organizations",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/organizations",
+          "httpMethod": "GET",
+          "recordsPath": "organizations",
+          "params": {
+            "start_time": "<unix seconds; from state end_time or start_date>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "end_time",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tickets",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "after_cursor",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "tickets",
+          "params": {
+            "start_time": "<unix seconds from start_date, clamped to now-1s (now-3s for tickets/ticket_metrics)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "tickets",
+          "params": {
+            "cursor": "<after_cursor from state or previous response>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "users",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "after_cursor",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/users/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "users",
+          "params": {
+            "start_time": "<unix seconds from start_date, clamped to now-1s (now-3s for tickets/ticket_metrics)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/users/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "users",
+          "params": {
+            "cursor": "<after_cursor from state or previous response>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_metrics",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "after_cursor",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "tickets -> metric_set",
+          "params": {
+            "include": "metric_sets",
+            "start_time": "<unix seconds from start_date, clamped to now-1s (now-3s for tickets/ticket_metrics)>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/tickets/cursor",
+          "httpMethod": "GET",
+          "recordsPath": "tickets -> metric_set",
+          "params": {
+            "include": "metric_sets",
+            "cursor": "<after_cursor from state or previous response>"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "cursor",
+            "cursorPath": "after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "created_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "incremental/ticket_events.json",
+          "httpMethod": "GET",
+          "recordsPath": "ticket_events[].child_events[] where event_type == 'Comment'",
+          "params": {
+            "start_time": "<unix seconds from state or start_date>",
+            "include": "comment_events"
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "start_time",
+            "cursorPath": "next_page",
+            "tokenFrom": "url_query",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": null,
+            "pageSize": null
+          },
+          "incrementalParam": {
+            "param": "start_time",
+            "format": "unix_seconds"
+          }
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "ticket_audits",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "after_cursor",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "tickets/{ticket_id}/audits",
+          "httpMethod": "GET",
+          "recordsPath": "audits",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": {
+            "ticket_id": "id of each record from the tickets incremental cursor export (parent stream)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "tags",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "name"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "tags",
+          "httpMethod": "GET",
+          "recordsPath": "tags",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "brands",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "brands",
+          "httpMethod": "GET",
+          "recordsPath": "brands",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "post_comments",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/comments",
+          "httpMethod": "GET",
+          "recordsPath": "comments",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": {
+            "post_id": "id of each record from the posts stream (parent)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "post_votes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/votes",
+          "httpMethod": "GET",
+          "recordsPath": "votes",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": {
+            "post_id": "id of each record from the posts stream (parent)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "post_comment_votes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "community/posts/{post_id}/comments/{comment_id}/votes",
+          "httpMethod": "GET",
+          "recordsPath": "votes",
+          "params": {
+            "page[size]": 100
+          },
+          "pathPlaceholders": {
+            "post_id": "post_id of each record from the post_comments stream (parent)",
+            "comment_id": "id of each record from the post_comments stream (parent)"
+          },
+          "paginator": {
+            "type": "cursor",
+            "cursorParam": "page[after]",
+            "cursorPath": "meta.after_cursor",
+            "tokenFrom": "body",
+            "tokenTo": "query_param",
+            "terminateOn": "envelope_flag",
+            "pageSizeParam": "page[size]",
+            "pageSize": 100
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "sla_policies",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "slas/policies.json",
+          "httpMethod": "GET",
+          "recordsPath": "sla_policies",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "custom_roles",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "custom_roles",
+          "httpMethod": "GET",
+          "recordsPath": "custom_roles",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "schedules",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "business_hours/schedules.json",
+          "httpMethod": "GET",
+          "recordsPath": "schedules",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "account_attributes",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "routing/attributes",
+          "httpMethod": "GET",
+          "recordsPath": "attributes",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "attribute_definitions",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "subject"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": null,
+      "supportedSyncModes": [
+        "full_refresh"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": null,
+        "snapshot": {
+          "kind": "http",
+          "path": "routing/attributes/definitions",
+          "httpMethod": "GET",
+          "recordsPath": "definitions.conditions_all + definitions.conditions_any",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        }
+      }
+    },
+    {
+      "name": "ticket_forms",
+      "origin": "static",
+      "kind": "actual",
+      "primaryKey": [
+        "id"
+      ],
+      "primaryKeyKind": "columns",
+      "cursorField": "updated_at",
+      "supportedSyncModes": [
+        "full_refresh",
+        "incremental"
+      ],
+      "writeDisposition": "merge",
+      "schedules": [],
+      "pull": {
+        "backfill": null,
+        "incremental": {
+          "kind": "http",
+          "path": "ticket_forms",
+          "httpMethod": "GET",
+          "recordsPath": "ticket_forms",
+          "params": {},
+          "pathPlaceholders": null,
+          "paginator": {
+            "type": "none"
+          },
+          "incrementalParam": null
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "authTierOverall": "T1_SIMPLE",
+  "authTierRationale": "The API-token mode needs only two self-serve values a Zendesk admin can generate in the account UI (their own login email plus an API token); the connector base64-encodes \"{email}/token:{api_token}\" into an HTTP Basic Authorization header, so nothing has to be registered anywhere. That is T1_SIMPLE and it is the easiest mode offered. The alternative OAuth mode is T2_BYO_APP standalone: the config schema accepts a bare `access_token` but obtaining one requires a registered Zendesk OAuth client, and the client_id/client_secret fields are populated by Estuary's hosted control plane via complete_oauth_server_output_specification rather than by the user. It is not T3 - Zendesk OAuth tokens here are long-lived and no refresh_token is stored or exchanged anywhere in the connector.",
+  "unionMisfits": [
+    {
+      "where": "connector runtime / estuary-cdk scope",
+      "description": "This is a legacy Airbyte-derived connector: the stream logic subclasses airbyte_cdk HttpStream and is wrapped by estuary_cdk.shim_airbyte_cdk.CaptureShim. It does NOT use the estuary-cdk native HTTPMixin/TokenSource machinery, so none of the CDK's credential or pagination abstractions apply. The successor connector source-zendesk-support-native is a different implementation of the same API.",
+      "proposedShape": {
+        "implementationLineage": "airbyte_shim|estuary_native"
+      }
+    },
+    {
+      "where": "streams[macros|ticket_fields].pull.incremental.paginator",
+      "description": "The page-numbered paginator is not driven by responses at all. Before any page is fetched the connector GETs `{path}/count.json`, divides the returned count by page_size=100, and fires every page 1..N concurrently through a requests-futures session. There is no sequential next-page step and no termination signal from the data responses; `next_page_token` is hard-coded to None. `page_size` is used only client-side to compute N - it is never sent as a query parameter, so the page count silently depends on the API's own default page size matching 100.",
+      "proposedShape": {
+        "type": "precomputed_page_fanout",
+        "countPath": "{path}/count.json",
+        "countField": "count.value",
+        "pageParam": "page",
+        "assumedPageSize": 100,
+        "concurrency": "unbounded futures deque"
+      }
+    },
+    {
+      "where": "streams[*].pull.snapshot.paginator (the request_params-returns-{} streams)",
+      "description": "sla_policies, custom_roles, schedules, account_attributes, attribute_definitions, ticket_forms and UserSettingsStream override request_params to return {} while INHERITING a next_page_token that still reads meta.after_cursor/meta.has_more. The token is computed and then discarded, so pagination is effectively disabled rather than absent - recorded here as type \"none\". If any of these endpoints ever returns meta.has_more=true the Airbyte read loop would re-issue the identical first-page request forever, which is the classic silent-truncation/loop failure. Recorded as `none` because that is the observable wire behaviour.",
+      "proposedShape": {
+        "type": "none",
+        "suppressedBy": "request_params override",
+        "latentRisk": "non-terminating loop"
+      }
+    },
+    {
+      "where": "streams[ticket_comments|ticket_metrics].recordsPath",
+      "description": "recordsPath is not a plain JSON pointer. ticket_comments reads `ticket_events[]`, then descends into each record's `child_events[]` and keeps only entries whose event_type == \"Comment\", copying via_reference_id/ticket_id/timestamp down from the parent event. ticket_metrics reads `tickets[]` (sideloaded with include=metric_sets) and emits each ticket's `metric_set` object, skipping tickets that have none. The extracted document is therefore a different entity than the listed one.",
+      "proposedShape": {
+        "recordsPath": {
+          "listPath": "string",
+          "descendPath": "string|null",
+          "filter": {
+            "field": "string",
+            "equals": "string"
+          },
+          "hoistFromParent": [
+            "string"
+          ]
+        }
+      }
+    },
+    {
+      "where": "streams[audit_logs].pull.incremental.incrementalParam",
+      "description": "audit_logs ignores start_time entirely and instead sends the SAME query parameter name twice as an array: filter[created_at][]=<lower bound>&filter[created_at][]=<upper bound>, with sort=created_at to force ascending order. The upper bound is now-30s to avoid dropping records sharing the boundary timestamp. `incrementalParam` has no slot for a two-sided window.",
+      "proposedShape": {
+        "incrementalWindow": {
+          "param": "string",
+          "repeated": true,
+          "lowerBound": "string",
+          "upperBound": "string",
+          "format": "iso8601"
+        }
+      }
+    },
+    {
+      "where": "streams[ticket_audits].pull.incremental",
+      "description": "ticket_audits is a child stream whose own cursor is borrowed from its parent. It instantiates Tickets with is_parent=True; the parent's cursor-export sweep yields a synthetic {'cursor': ...} sentinel record interleaved just before the last real record of each response, and the child intercepts that sentinel to advance its own after_cursor state instead of emitting it. The per-request pull shape (tickets/{id}/audits, meta cursor paging) is unrelated to the cursor that is checkpointed.",
+      "proposedShape": {
+        "cursorSource": "parent_stream",
+        "parentStream": "tickets",
+        "sentinelRecordKey": "cursor"
+      }
+    },
+    {
+      "where": "streams[*] / streamMode",
+      "description": "The stream list is static, but three entries are gated at runtime: ticket_forms, account_attributes and attribute_definitions are appended only if a probe read of ticket_forms returns at least one record, because those endpoints exist only on Enterprise plans and Zendesk exposes no plan API. So a discover call on a non-Enterprise account returns 24 streams and on Enterprise 27 - the list is shipped, but conditionally pruned. That is neither `static` nor `discovered` as the schema means them.",
+      "proposedShape": {
+        "streamMode": "static",
+        "conditionalStreams": [
+          {
+            "names": [
+              "string"
+            ],
+            "gate": "string"
+          }
+        ]
+      }
+    },
+    {
+      "where": "credentialModes[0].scheme",
+      "description": "The Basic username is derived, not supplied: the connector appends the literal \"/token\" to the user's email before base64-encoding, and then sends the result through a TokenAuthenticator with auth_method=\"Basic\" rather than through requests' native basic auth. A consumer that naively base64s email:token will get 401s.",
+      "proposedShape": {
+        "type": "basic",
+        "usernameField": "string",
+        "usernameSuffix": "string",
+        "passwordField": "string"
+      }
+    },
+    {
+      "where": "execution.defaultSchedule",
+      "description": "The connector has no schedule of its own. estuary_cdk's shim drives one pass of the Airbyte `read()` generator per task invocation and returns when task.stopping is set; sweep cadence is entirely a property of the Flow runtime, not of this code. `null` here means \"externally driven\", which is different from \"we looked and could not tell\".",
+      "proposedShape": {
+        "defaultSchedule": {
+          "kind": "externally_driven"
+        }
+      }
+    },
+    {
+      "where": "configFields[ignore_pagination]",
+      "description": "A connector-wide kill switch for pagination, not a normal setting: when true every stream's next_page_token short-circuits to None, so each sweep reads exactly one page. It silently truncates output rather than failing, and there is no per-stream override.",
+      "proposedShape": {
+        "paginationOverride": {
+          "scope": "endpoint",
+          "effect": "first_page_only"
+        }
+      }
+    }
+  ],
+  "evidence": {
+    "streams[0].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "780-781",
+      "snippet": "class OrganizationMemberships(SourceZendeskSupportCursorPaginationStream):"
+    },
+    "streams[0].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[0].pull.incremental.params": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "456-466",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[0].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "434-439",
+      "snippet": "class SourceZendeskSupportCursorPaginationStream(...):\n    cursor_field = \"updated_at\""
+    },
+    "streams[1].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "868-881",
+      "snippet": "params.update({\"exclude_deleted\": False})"
+    },
+    "streams[1].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[1].pull.incremental.params": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "456-466",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[1].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "434-439",
+      "snippet": "class SourceZendeskSupportCursorPaginationStream(...):\n    cursor_field = \"updated_at\""
+    },
+    "streams[2].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "884-895",
+      "snippet": "params.update({\"sort_by\": \"asc\"})"
+    },
+    "streams[2].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[2].pull.incremental.params": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "456-466",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[2].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "434-439",
+      "snippet": "class SourceZendeskSupportCursorPaginationStream(...):\n    cursor_field = \"updated_at\""
+    },
+    "streams[3].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "898-916",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state=stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[3].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[3].pull.incremental.params": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "456-466",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[3].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "434-439",
+      "snippet": "class SourceZendeskSupportCursorPaginationStream(...):\n    cursor_field = \"updated_at\""
+    },
+    "streams[4].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1210-1211",
+      "snippet": "def path(self, **kwargs):\n    return \"community/posts\""
+    },
+    "streams[4].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[4].pull.incremental.params": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "456-466",
+      "snippet": "params = {\n    \"start_time\": self.check_stream_state(stream_state),\n    \"page[size]\": self.page_size,"
+    },
+    "streams[4].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "434-439",
+      "snippet": "class SourceZendeskSupportCursorPaginationStream(...):\n    cursor_field = \"updated_at\""
+    },
+    "streams[5].pull.incremental": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "796-815",
+      "snippet": "\"sort\": \"created_at\",\n\"filter[created_at][]\": [start_time, end_time]"
+    },
+    "streams[5].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "791-793",
+      "snippet": "response_list_name: str = \"audit_logs\"\ncursor_field = \"created_at\""
+    },
+    "streams[6].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "963-964",
+      "snippet": "def path(self, **kwargs):\n    return \"incremental/ticket_metric_events\""
+    },
+    "streams[6].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[6].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "959-961",
+      "snippet": "cursor_field = \"time\"\npage_size = 1000"
+    },
+    "streams[7].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1165-1168",
+      "snippet": "response_list_name = \"skips\"\ndef path(self, **kwargs):\n    return \"skips.json\""
+    },
+    "streams[7].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1170-1186",
+      "snippet": "return meta.get(\"after_cursor\") if meta.get(\"has_more\", False) else None\n...\nparams[\"page[after]\"] = next_page_token"
+    },
+    "streams[8].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "245-249",
+      "snippet": "def path(self, **kwargs):\n    return self.name\n\ndef next_page_token(self, *args, **kwargs):\n    return None"
+    },
+    "streams[8].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "284-288",
+      "snippet": "records_count = self.get_api_records_count(...)\npage_count = ceil(records_count / self.page_size)\nfor page_number in range(1, page_count + 1):"
+    },
+    "streams[9].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "245-249",
+      "snippet": "def path(self, **kwargs):\n    return self.name\n\ndef next_page_token(self, *args, **kwargs):\n    return None"
+    },
+    "streams[9].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "284-288",
+      "snippet": "records_count = self.get_api_records_count(...)\npage_count = ceil(records_count / self.page_size)\nfor page_number in range(1, page_count + 1):"
+    },
+    "streams[10].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "551-552",
+      "snippet": "def path(self, **kwargs) -> str:\n    return f\"incremental/{self.response_list_name}\""
+    },
+    "streams[10].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "554-566",
+      "snippet": "pagination_complete = response_json.get(END_OF_STREAM_KEY, False)\nnext_start_time = response_json.get(\"end_time\", None)\nreturn {\"start_time\": next_start_time}"
+    },
+    "streams[11].pull.backfill.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "621-622",
+      "snippet": "def path(self, **kwargs) -> str:\n    return f\"incremental/{self.response_list_name}/cursor\""
+    },
+    "streams[11].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "824-827",
+      "snippet": "class Tickets(SourceZendeskSupportIncrementalCursorExportStream):\n    response_list_name: str = \"tickets\""
+    },
+    "streams[11].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "624-637",
+      "snippet": "pagination_complete = response_json.get(END_OF_STREAM_KEY, None)\ncursor = response_json.get(\"after_cursor\", None)\nreturn {\"cursor\": cursor}"
+    },
+    "streams[11].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "608-612",
+      "snippet": "def cursor_field(self) -> str:\n    return \"after_cursor\""
+    },
+    "streams[12].pull.backfill.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "621-622",
+      "snippet": "def path(self, **kwargs) -> str:\n    return f\"incremental/{self.response_list_name}/cursor\""
+    },
+    "streams[12].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "818-821",
+      "snippet": "class Users(SourceZendeskSupportIncrementalCursorExportStream):\n    response_list_name: str = \"users\""
+    },
+    "streams[12].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "624-637",
+      "snippet": "pagination_complete = response_json.get(END_OF_STREAM_KEY, None)\ncursor = response_json.get(\"after_cursor\", None)\nreturn {\"cursor\": cursor}"
+    },
+    "streams[12].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "608-612",
+      "snippet": "def cursor_field(self) -> str:\n    return \"after_cursor\""
+    },
+    "streams[13].pull.backfill.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "621-622",
+      "snippet": "def path(self, **kwargs) -> str:\n    return f\"incremental/{self.response_list_name}/cursor\""
+    },
+    "streams[13].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "931-944",
+      "snippet": "sideload_param: str = \"metric_sets\"\nresponse_target_entity: str = \"metric_set\"\nparams.update({\"include\": self.sideload_param})"
+    },
+    "streams[13].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "624-637",
+      "snippet": "pagination_complete = response_json.get(END_OF_STREAM_KEY, None)\ncursor = response_json.get(\"after_cursor\", None)\nreturn {\"cursor\": cursor}"
+    },
+    "streams[13].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "608-612",
+      "snippet": "def cursor_field(self) -> str:\n    return \"after_cursor\""
+    },
+    "streams[14].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "492-493",
+      "snippet": "def path(self, **kwargs) -> str:\n    return f\"incremental/{self.response_list_name}.json\""
+    },
+    "streams[14].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "716-724",
+      "snippet": "is_end_of_stream = response_json.get(END_OF_STREAM_KEY, False)\nparams = dict(parse_qsl(urlparse(response_json.get(self.next_page_field, \"\")).query))\nreturn params"
+    },
+    "streams[14].pull.incremental.recordsPath": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "759-766",
+      "snippet": "for event in record.get(self.response_target_entity, []):\n    if event.get(\"event_type\") == self.event_type:"
+    },
+    "streams[15].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1040-1048",
+      "snippet": "ticket_id = stream_slice.get(\"parent\").get(\"id\")\nreturn f\"tickets/{ticket_id}/audits\""
+    },
+    "streams[15].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[15].cursorField": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1000-1003",
+      "snippet": "def cursor_field(self) -> str:\n    return \"after_cursor\""
+    },
+    "streams[16].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1055-1059",
+      "snippet": "class Tags(SourceZendeskSupportFullRefreshStream):\n    primary_key = \"name\""
+    },
+    "streams[16].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[17].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1073-1074",
+      "snippet": "class Brands(SourceZendeskSupportFullRefreshStream):"
+    },
+    "streams[17].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[18].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1223-1231",
+      "snippet": "post_id = stream_slice.get(\"parent\").get(\"id\")\nreturn f\"community/posts/{post_id}/comments\""
+    },
+    "streams[18].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[19].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1243-1251",
+      "snippet": "post_id = stream_slice.get(\"parent\").get(\"id\")\nreturn f\"community/posts/{post_id}/votes\""
+    },
+    "streams[19].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[20].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1263-1272",
+      "snippet": "post_id = stream_slice.get(\"parent\").get(\"post_id\")\ncomment_id = stream_slice.get(\"parent\").get(\"id\")\nreturn f\"community/posts/{post_id}/comments/{comment_id}/votes\""
+    },
+    "streams[20].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "412-420",
+      "snippet": "meta = response.json().get(\"meta\", {})\nreturn {\"page[after]\": meta.get(\"after_cursor\")} if meta.get(\"has_more\") else None"
+    },
+    "streams[21].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1065-1070",
+      "snippet": "def path(self, *args, **kwargs) -> str:\n    return \"slas/policies.json\""
+    },
+    "streams[21].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1065-1070",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "streams[22].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1077-1082",
+      "snippet": "class CustomRoles(SourceZendeskSupportFullRefreshStream):\n    # This endpoint does not use query params ...\n    return {}"
+    },
+    "streams[22].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1077-1082",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "streams[23].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1087-1092",
+      "snippet": "def path(self, *args, **kwargs) -> str:\n    return \"business_hours/schedules.json\""
+    },
+    "streams[23].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1087-1092",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "streams[24].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1124-1131",
+      "snippet": "response_list_name = \"attributes\"\ndef path(self, *args, **kwargs) -> str:\n    return \"routing/attributes\""
+    },
+    "streams[24].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1124-1131",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "streams[25].pull.snapshot.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1137-1155",
+      "snippet": "primary_key = \"subject\"\nreturn \"routing/attributes/definitions\"\ndefs_all = response.json()[\"definitions\"][\"conditions_all\"]"
+    },
+    "streams[25].pull.snapshot.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "1137-1155",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "streams[26].pull.incremental.path": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "923-928",
+      "snippet": "class TicketForms(SourceZendeskSupportCursorPaginationStream):\n    # This endpoint does not use query params ...\n    return {}"
+    },
+    "streams[26].pull.incremental.paginator": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "926-928",
+      "snippet": "# This endpoint does not use query params, so we override the parent class' request_params method.\nreturn {}"
+    },
+    "transports[0].spec.baseUrl": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "237-239",
+      "snippet": "def url_base(self) -> str:\n    return f\"https://{self._subdomain}.zendesk.com/api/v2/\""
+    },
+    "transports[0].spec.apiVersionPinning": {
+      "file": "source_zendesk_support/streams.py",
+      "lines": "237-239",
+      "snippet": "return f\"https://{self._subdomain}.zendesk.com/api/v2/\""
+    },
+    "credentialModes[0].scheme": {
+      "file": "source_zendesk_support/source.py",
+      "lines": "50-57",
+      "snippet": "email_login = email + \"/token\"\ntoken = base64.b64encode(f\"{email_login}:{password}\".encode(\"utf-8\"))\nsuper().__init__(token.decode(\"utf-8\"), auth_method=\"Basic\")"
+    },
+    "credentialModes[0].tier": {
+      "file": "source_zendesk_support/spec.json",
+      "lines": "61-85",
+      "snippet": "\"title\": \"API Token\",\n\"required\": [\"email\", \"api_token\"],"
+    },
+    "credentialModes[1].scheme": {
+      "file": "source_zendesk_support/__main__.py",
+      "lines": "26-44",
+      "snippet": "oauth2=flow.OAuth2Spec(\n    provider=\"zendesk\",\n    accessTokenUrlTemplate=(\"https://{{{ config.subdomain }}}.zendesk.com/oauth/tokens\"),"
+    },
+    "credentialModes[1].scheme.grant": {
+      "file": "source_zendesk_support/__main__.py",
+      "lines": "14-21",
+      "snippet": "accessTokenBody = {\n    \"grant_type\": \"authorization_code\","
+    },
+    "credentialModes[1].scheme.scopes": {
+      "file": "source_zendesk_support/__main__.py",
+      "lines": "20-20",
+      "snippet": "\"scope\": \"read\""
+    },
+    "credentialModes[1].tier": {
+      "file": "source_zendesk_support/spec.json",
+      "lines": "122-134",
+      "snippet": "\"complete_oauth_server_output_specification\": {\n  \"client_id\": {\"path_in_connector_config\": [\"credentials\", \"client_id\"]},"
+    },
+    "execution.mode": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "411-419",
+      "snippet": "for message in self.delegate.read(\n    task.log, config, airbyte_catalog, airbyte_states\n):"
+    },
+    "streamMode": {
+      "file": "source_zendesk_support/source.py",
+      "lines": "122-163",
+      "snippet": "streams = [\n    AuditLogs(**args),\n    GroupMemberships(**args),"
+    },
+    "configFields": {
+      "file": "source_zendesk_support/spec.json",
+      "lines": "7-93",
+      "snippet": "\"required\": [\"start_date\", \"subdomain\", \"credentials\"],"
+    },
+    "configFields[9..12]": {
+      "file": "estuary-cdk/estuary_cdk/shim_airbyte_cdk.py",
+      "lines": "63-81",
+      "snippet": "class ResourceConfig(common.BaseResourceConfig, extra=\"forbid\"):\n    stream: Annotated[str, ...]\n    sync_mode: Literal[\"full_refresh\", \"incremental\"]"
+    },
+    "streams[0].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"organization_memberships\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[1].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"groups\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[2].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"group_memberships\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[3].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"satisfaction_ratings\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[4].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"posts\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[5].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"audit_logs\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[6].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_metric_events\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[7].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_skips\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[8].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"macros\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[9].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_fields\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[10].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"organizations\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[11].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"tickets\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[12].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"users\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[13].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_metrics\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[14].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_comments\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[15].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_audits\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[16].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"tags\" with key ['name'] in the checked-in discover snapshot"
+    },
+    "streams[17].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"brands\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[18].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"post_comments\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[19].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"post_votes\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[20].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"post_comment_votes\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[21].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"sla_policies\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[22].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"custom_roles\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[23].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"schedules\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[24].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"account_attributes\" with key ['id'] in the checked-in discover snapshot"
+    },
+    "streams[25].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"attribute_definitions\" with key ['subject'] in the checked-in discover snapshot"
+    },
+    "streams[26].primaryKey": {
+      "file": "tests/snapshots/snapshots__discover__capture.stdout.json",
+      "lines": "whole file",
+      "snippet": "\"recommendedName\": \"ticket_forms\" with key ['id'] in the checked-in discover snapshot"
+    }
+  },
+  "confidence": {
+    "streams[0].pull.incremental.path": "high",
+    "streams[0].pull.incremental.paginator": "high",
+    "streams[0].pull.incremental.params": "high",
+    "streams[0].cursorField": "high",
+    "streams[1].pull.incremental.path": "high",
+    "streams[1].pull.incremental.paginator": "high",
+    "streams[1].pull.incremental.params": "high",
+    "streams[1].cursorField": "high",
+    "streams[2].pull.incremental.path": "high",
+    "streams[2].pull.incremental.paginator": "high",
+    "streams[2].pull.incremental.params": "high",
+    "streams[2].cursorField": "high",
+    "streams[3].pull.incremental.path": "high",
+    "streams[3].pull.incremental.paginator": "high",
+    "streams[3].pull.incremental.params": "high",
+    "streams[3].cursorField": "high",
+    "streams[4].pull.incremental.path": "high",
+    "streams[4].pull.incremental.paginator": "high",
+    "streams[4].pull.incremental.params": "high",
+    "streams[4].cursorField": "high",
+    "streams[5].pull.incremental": "high",
+    "streams[5].cursorField": "high",
+    "streams[6].pull.incremental.path": "high",
+    "streams[6].pull.incremental.paginator": "medium",
+    "streams[6].cursorField": "high",
+    "streams[7].pull.incremental.path": "high",
+    "streams[7].pull.incremental.paginator": "high",
+    "streams[8].pull.incremental.path": "high",
+    "streams[8].pull.incremental.paginator": "high",
+    "streams[9].pull.incremental.path": "high",
+    "streams[9].pull.incremental.paginator": "high",
+    "streams[10].pull.incremental.path": "high",
+    "streams[10].pull.incremental.paginator": "high",
+    "streams[11].pull.backfill.path": "high",
+    "streams[11].pull.incremental.path": "high",
+    "streams[11].pull.incremental.paginator": "high",
+    "streams[11].cursorField": "high",
+    "streams[12].pull.backfill.path": "high",
+    "streams[12].pull.incremental.path": "high",
+    "streams[12].pull.incremental.paginator": "high",
+    "streams[12].cursorField": "high",
+    "streams[13].pull.backfill.path": "high",
+    "streams[13].pull.incremental.path": "high",
+    "streams[13].pull.incremental.paginator": "high",
+    "streams[13].cursorField": "high",
+    "streams[14].pull.incremental.path": "high",
+    "streams[14].pull.incremental.paginator": "high",
+    "streams[14].pull.incremental.recordsPath": "high",
+    "streams[15].pull.incremental.path": "high",
+    "streams[15].pull.incremental.paginator": "high",
+    "streams[15].cursorField": "high",
+    "streams[16].pull.snapshot.path": "high",
+    "streams[16].pull.snapshot.paginator": "high",
+    "streams[17].pull.snapshot.path": "high",
+    "streams[17].pull.snapshot.paginator": "high",
+    "streams[18].pull.snapshot.path": "high",
+    "streams[18].pull.snapshot.paginator": "high",
+    "streams[19].pull.snapshot.path": "high",
+    "streams[19].pull.snapshot.paginator": "high",
+    "streams[20].pull.snapshot.path": "high",
+    "streams[20].pull.snapshot.paginator": "high",
+    "streams[21].pull.snapshot.path": "high",
+    "streams[21].pull.snapshot.paginator": "high",
+    "streams[22].pull.snapshot.path": "high",
+    "streams[22].pull.snapshot.paginator": "high",
+    "streams[23].pull.snapshot.path": "high",
+    "streams[23].pull.snapshot.paginator": "high",
+    "streams[24].pull.snapshot.path": "high",
+    "streams[24].pull.snapshot.paginator": "high",
+    "streams[25].pull.snapshot.path": "high",
+    "streams[25].pull.snapshot.paginator": "high",
+    "streams[26].pull.incremental.path": "high",
+    "streams[26].pull.incremental.paginator": "high",
+    "transports[0].spec.baseUrl": "high",
+    "transports[0].spec.apiVersionPinning": "high",
+    "credentialModes[0].scheme": "high",
+    "credentialModes[0].tier": "high",
+    "credentialModes[1].scheme": "high",
+    "credentialModes[1].scheme.grant": "high",
+    "credentialModes[1].scheme.scopes": "high",
+    "credentialModes[1].tier": "high",
+    "execution.mode": "high",
+    "streamMode": "high",
+    "configFields": "high",
+    "configFields[9..12]": "high",
+    "streams[0].primaryKey": "high",
+    "streams[1].primaryKey": "high",
+    "streams[2].primaryKey": "high",
+    "streams[3].primaryKey": "high",
+    "streams[4].primaryKey": "high",
+    "streams[5].primaryKey": "high",
+    "streams[6].primaryKey": "high",
+    "streams[7].primaryKey": "high",
+    "streams[8].primaryKey": "high",
+    "streams[9].primaryKey": "high",
+    "streams[10].primaryKey": "high",
+    "streams[11].primaryKey": "high",
+    "streams[12].primaryKey": "high",
+    "streams[13].primaryKey": "high",
+    "streams[14].primaryKey": "high",
+    "streams[15].primaryKey": "high",
+    "streams[16].primaryKey": "high",
+    "streams[17].primaryKey": "high",
+    "streams[18].primaryKey": "high",
+    "streams[19].primaryKey": "high",
+    "streams[20].primaryKey": "high",
+    "streams[21].primaryKey": "high",
+    "streams[22].primaryKey": "high",
+    "streams[23].primaryKey": "high",
+    "streams[24].primaryKey": "high",
+    "streams[25].primaryKey": "high",
+    "streams[26].primaryKey": "high",
+    "id": "high",
+    "estuaryDir": "high",
+    "displayName": "high",
+    "category": "high",
+    "authTierOverall": "high"
+  },
+  "abstained": {
+    "streams[26].pull.incremental.incrementalParam": "No incremental query parameter is sent at all; the endpoint is read in full each sweep and records are filtered client-side in BaseSourceZendeskSupportStream.parse_response by comparing updated_at against the checkpointed cursor (streams.py 194-201).",
+    "execution.defaultSchedule": "The connector performs one Airbyte read() pass per invocation and contains no sleep/interval/cron logic; the shim only yields to the event loop (asyncio.sleep(0)) and returns on task.stopping. Sweep cadence is set by the Flow runtime outside this repository directory, so no interval could be recovered.",
+    "execution.continuity": "mode is \"poll\" over a stateless REST API. No server-side artifact is created on the customer's Zendesk account and nothing accrues while we are stopped. The only pause-sensitive value is the Zendesk cursor-export `after_cursor`; the connector never handles a cursor-expiry error path, so no resume window could be established from the source.",
+    "streams[*].writeDisposition": "The connector itself never declares a write disposition. The shim always sets Airbyte destination_sync_mode=\"append\" and stamps _meta.op=\"u\", and every stream here has a source-defined key (/id, /name, /subject), so the effective behaviour in Flow is keyed last-write-wins. \"merge\" is recorded on that basis and is an inference about the runtime, not a value read out of this connector.",
+    "streams[*].schedules": "No per-binding schedule exists; the resource config carries only stream/syncMode/namespace/cursorField.",
+    "streams[macros|ticket_fields].pull.incremental.params.start_time": "request_params sets start_time for the page requests, but the Zendesk /macros and /ticket_fields list endpoints are not documented as time-filterable and the connector's own count call drops the parameter, so it could not be confirmed that the parameter has any effect."
+  }
+}
