@@ -103,21 +103,35 @@ export class FlyClient {
     }
   }
 
+  private async readResponseText(response: Response, unknownMutationDescription: string | null): Promise<string> {
+    try {
+      return await response.text();
+    } catch (error) {
+      if (unknownMutationDescription === null) throw error;
+      // fetch() resolves as soon as response headers arrive. A later body reset/timeout still
+      // leaves the write's outcome uncertain and therefore requires the same lease drain.
+      throw new MutationOutcomeUnknownError(`${unknownMutationDescription} response ended before its body was received`, { cause: error });
+    }
+  }
+
   private async fetchMachinesApi<T>(path: string, init?: { method?: string, body?: unknown, allow404?: boolean }): Promise<T | null> {
     const { fly } = getConfig();
+    const method = init?.method ?? "GET";
     const response = await this.fetchWithReadRetry(`${fly.machinesApiUrl}/v1${path}`, {
-      method: init?.method ?? "GET",
+      method,
       headers: {
         "authorization": `Bearer ${this.token}`,
         ...(init?.body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
+    const text = await this.readResponseText(
+      response,
+      method === "GET" || method === "HEAD" ? null : `Fly mutation ${method} ${path}`,
+    );
     if (response.status === 404 && init?.allow404) {
-      await response.arrayBuffer();
       return null;
     }
-    const text = await response.text();
     if (!response.ok) {
       let message = text.slice(0, 500);
       try {
@@ -151,7 +165,7 @@ export class FlyClient {
     }
     // Read as text and parse defensively: a non-JSON upstream body (a proxy's 502 HTML page)
     // must surface as a FlyApiError(502-ish), not a bare SyntaxError → generic 500.
-    const text = await response.text();
+    const text = await this.readResponseText(response, options?.read ? null : "Fly GraphQL mutation");
     let json: { data?: T, errors?: { message: string }[] };
     try {
       json = JSON.parse(text) as { data?: T, errors?: { message: string }[] };

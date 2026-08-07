@@ -9,6 +9,7 @@ const SECOND_KEY = parseDataEncryptionRootKey("101112131415161718191a1b1c1d1e1f2
 describe("stored spec cryptography", () => {
   it("rejects the public development key unless mocks are explicitly enabled", () => {
     expect(() => assertDataEncryptionKeyIsSafe(DEVELOPMENT_DATA_ENCRYPTION_KEY, false)).toThrow(/MARSHAL_ALLOW_MOCKS=1/);
+    expect(() => assertDataEncryptionKeyIsSafe(DEVELOPMENT_DATA_ENCRYPTION_KEY.toUpperCase(), false)).toThrow(/MARSHAL_ALLOW_MOCKS=1/);
     expect(() => assertDataEncryptionKeyIsSafe(DEVELOPMENT_DATA_ENCRYPTION_KEY, true)).not.toThrow();
   });
 
