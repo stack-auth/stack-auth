@@ -7,27 +7,36 @@ import { wait } from '@hexclave/shared/dist/utils/promises';
 import type { NextFetchEvent, NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-const token = process.env.BYDEFAULT_INGEST_TOKEN;
-const tracker = token == null || token === ""
-  ? null
-  : new Tracker({
-    token,
-    exclude: [
-      '/api',
-      '/monitoring',
-      '/consume',
-      '/_next',
-      '/handler',
-      '/projects',
-      '/new-project',
-      '/playground',
-      '/purchase',
-      '/integrations',
-      '/health',
-      '/rde-debug',
-      '/development-environment',
-    ],
-  });
+let tracker: Tracker | null | undefined;
+
+function getTracker(): Tracker | null {
+  if (tracker !== undefined) {
+    return tracker;
+  }
+
+  const token = getEnvVariable('BYDEFAULT_INGEST_TOKEN', '');
+  tracker = token === ''
+    ? null
+    : new Tracker({
+      token,
+      exclude: [
+        '/api',
+        '/monitoring',
+        '/consume',
+        '/_next',
+        '/handler',
+        '/projects',
+        '/new-project',
+        '/playground',
+        '/purchase',
+        '/integrations',
+        '/health',
+        '/rde-debug',
+        '/development-environment',
+      ],
+    });
+  return tracker;
+}
 
 const corsAllowedRequestHeaders = [
   // General
@@ -68,8 +77,9 @@ const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllow
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
-  if (tracker != null) {
-    tracker.track(request, event).catch(() => undefined);
+  const currentTracker = getTracker();
+  if (currentTracker != null) {
+    currentTracker.track(request, event).catch(() => undefined);
   }
 
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));
