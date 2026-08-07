@@ -1,42 +1,10 @@
-import { Tracker } from "@bydefault/vercel";
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import './polyfills';
 
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
-import { runAsynchronously, wait } from '@hexclave/shared/dist/utils/promises';
-import type { NextFetchEvent, NextRequest } from 'next/server';
+import { wait } from '@hexclave/shared/dist/utils/promises';
+import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-
-let tracker: Tracker | null | undefined;
-
-function getTracker(): Tracker | null {
-  if (tracker !== undefined) {
-    return tracker;
-  }
-
-  const token = getEnvVariable('HEXCLAVE_BYDEFAULT_INGEST_TOKEN', '');
-  tracker = token === ''
-    ? null
-    : new Tracker({
-      token,
-      exclude: [
-        '/api',
-        '/monitoring',
-        '/consume',
-        '/_next',
-        '/handler',
-        '/projects',
-        '/new-project',
-        '/playground',
-        '/purchase',
-        '/integrations',
-        '/health',
-        '/rde-debug',
-        '/development-environment',
-      ],
-    });
-  return tracker;
-}
 
 const corsAllowedRequestHeaders = [
   // General
@@ -76,12 +44,7 @@ function withHexclaveHeaderAliases(headers: string[]): string[] {
 const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
-export async function proxy(request: NextRequest, event: NextFetchEvent) {
-  const currentTracker = getTracker();
-  if (currentTracker != null) {
-    runAsynchronously(currentTracker.track(request, event), { noErrorLogging: true });
-  }
-
+export async function proxy(request: NextRequest) {
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));
   if (delay) {
     if (getNodeEnvironment().includes('production')) {

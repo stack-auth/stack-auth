@@ -16,11 +16,6 @@ function getTracker(): Tracker | null {
     ? null
     : new Tracker({
       token,
-      exclude: [
-        "/api",
-        "/health",
-        (request) => (request.headers.get("accept") ?? "").toLowerCase().includes("text/event-stream"),
-      ],
     });
   return tracker;
 }
