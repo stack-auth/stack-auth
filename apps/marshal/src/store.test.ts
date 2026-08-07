@@ -1,6 +1,6 @@
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DomainClaim } from "./types.js";
+import type { DomainClaim, StoredSpec } from "./types.js";
 
 const send = vi.hoisted(() => vi.fn());
 
@@ -16,6 +16,7 @@ vi.mock("@aws-sdk/client-s3", async (importOriginal) => {
 
 vi.mock("./config.js", () => ({
   getConfig: () => ({
+    dataEncryptionRootKey: Buffer.from("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "hex"),
     s3: {
       region: "test",
       endpoint: "https://s3.example.com",
@@ -29,7 +30,7 @@ vi.mock("./config.js", () => ({
   UPLOAD_EXPIRY_SECONDS: 1,
 }));
 
-import { releaseDomainClaim } from "./store.js";
+import { readSpec, releaseDomainClaim, writeSpec } from "./store.js";
 
 describe("domain claim release", () => {
   const claim = {
@@ -73,5 +74,60 @@ describe("domain claim release", () => {
 
     expect(send).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith(expect.any(DeleteObjectCommand));
+  });
+});
+
+describe("stored service spec encryption", () => {
+  const spec = {
+    ns: "test-namespace",
+    key: "web",
+    spec: {
+      config: { min_instances: 0, max_instances: 1, port: 3000 },
+      source: { image: "registry.example.com/web@sha256:abc" },
+      env: {
+        API_TOKEN: { value: "tenant-secret-value" },
+        DATABASE_URL: { ref: "database.internal_url" },
+      },
+    },
+    revision: "abc123def456",
+    created_at_millis: 1,
+    updated_at_millis: 2,
+    last_apply_error: null,
+  } satisfies StoredSpec;
+
+  afterEach(() => {
+    send.mockReset();
+  });
+
+  it("never writes plaintext environment values and decrypts the stored payload", async () => {
+    send.mockResolvedValueOnce({ ETag: "encrypted-etag" });
+    await expect(writeSpec(spec, { ifNoneMatch: true })).resolves.toBe("encrypted-etag");
+
+    const command = send.mock.calls[0][0];
+    const body = command.input.Body;
+    expect(typeof body).toBe("string");
+    expect(body).not.toContain("tenant-secret-value");
+    expect(body).not.toContain("database.internal_url");
+    expect(body).toContain("encrypted_env");
+
+    send.mockResolvedValueOnce({
+      Body: { transformToString: async () => body },
+      ETag: "encrypted-etag",
+    });
+    await expect(readSpec(spec.ns, spec.key)).resolves.toEqual(spec);
+  });
+
+  it("atomically upgrades a legacy plaintext spec on first read", async () => {
+    send.mockResolvedValueOnce({
+      Body: { transformToString: async () => JSON.stringify(spec) },
+      ETag: "legacy-etag",
+    });
+    send.mockResolvedValueOnce({ ETag: "upgraded-etag" });
+
+    await expect(readSpec(spec.ns, spec.key)).resolves.toEqual(spec);
+
+    const upgradedBody = send.mock.calls[1][0].input.Body;
+    expect(upgradedBody).not.toContain("tenant-secret-value");
+    expect(send.mock.calls[1][0].input.IfMatch).toBe("legacy-etag");
   });
 });

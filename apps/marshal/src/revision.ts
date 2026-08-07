@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { getConfig } from "./config.js";
+import { serviceRevisionKey } from "./spec-crypto.js";
 import type { ServiceSpec } from "./types.js";
 
 // The revision identifies a desired state: config + source + env, canonically serialized.
@@ -6,7 +8,7 @@ import type { ServiceSpec } from "./types.js";
 // never triggers a rebuild/redeploy on its own. Env is hashed in its ORIGINAL EnvValue
 // form ({ref} unresolved) — a ref whose target output changes does not change the
 // revision; the backend re-applies and the machines converge under the same revision.
-export function computeRevision(spec: ServiceSpec): string {
+export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig().dataEncryptionRootKey): string {
   const canonical = {
     config: {
       min_instances: spec.config.min_instances,
@@ -21,5 +23,8 @@ export function computeRevision(spec: ServiceSpec): string {
     source: spec.source,
     env: Object.fromEntries(Object.entries(spec.env).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)),
   };
-  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 12);
+  // A plain digest turns the stored revision into an offline oracle for low-entropy secret
+  // values when the rest of the spec is known. The purpose-derived HMAC key keeps revisions
+  // deterministic for reconciliation without disclosing such a verifier in the bucket or DB.
+  return createHmac("sha256", serviceRevisionKey(rootKey)).update(JSON.stringify(canonical)).digest("hex").slice(0, 12);
 }

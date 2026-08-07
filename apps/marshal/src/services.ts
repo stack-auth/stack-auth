@@ -6,6 +6,7 @@ import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachi
 import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
 import { redactSecrets } from "./redact.js";
+import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
 import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
@@ -267,14 +268,13 @@ function machineConfigForSlot(options: {
   return { ...config, metadata: { ...config.metadata, hexclave_config_hash: hash } };
 }
 
-// Fly does NOT enforce unique volume names within an app, and nothing serializes concurrent
-// applies (applyServiceSpec and completeBuild can both be inside applyMachines at once), so a
-// create race can leave two volumes called VOLUME_NAME. These two helpers make the choice
-// DETERMINISTIC — the currently-attached one first, then the oldest id — so every apply, on
-// every call, converges on the same disk. Choosing arbitrarily is the dangerous case: it
-// would roll the machine onto the other volume and the service would come up with an empty
-// disk, which reads to the tenant as total data loss. Volumes that are being destroyed can
-// never be mounted, so they are never candidates.
+// Fly does NOT enforce unique volume names within an app. The reconciliation lease prevents
+// Marshal replicas from creating concurrently, but a process can still die after Fly accepts
+// a create and before the bucket records the outcome. These helpers make recovery
+// DETERMINISTIC — the currently-attached volume first, then the oldest id — so every later
+// apply converges on the same disk. Choosing arbitrarily is the dangerous case: it would roll
+// the machine onto another volume and the service would come up with an empty disk, which
+// reads to the tenant as total data loss. Volumes being destroyed are never candidates.
 export function candidateVolumes(volumes: FlyVolume[]): FlyVolume[] {
   return volumes
     .filter((candidate) => candidate.name === VOLUME_NAME && candidate.state !== "destroying" && candidate.state !== "pending_destruction")
@@ -292,10 +292,11 @@ export function selectCanonicalVolume(volumes: FlyVolume[]): FlyVolume | null {
 // Idempotently brings the service's single volume to the configured size, returning its id.
 // Created BEFORE any machine: Fly places a machine on its volume's host, and creating the
 // machine first would usually land it on a different host (then the mount fails).
-async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfig): Promise<string> {
+async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfig, lease: ReconciliationLeaseGuard): Promise<string> {
   const config = getConfig();
   const candidates = candidateVolumes(await fly.listVolumes(appName));
   if (candidates.length === 0) {
+    await lease.assertOwned();
     const created = await fly.createVolume(appName, { name: VOLUME_NAME, region: config.fly.region, size_gb: volume.size_gb });
     await fly.waitForVolumeListed(appName, created.id);
     // Re-list and re-select rather than trusting our own create. Two concurrent
@@ -311,12 +312,16 @@ async function ensureVolume(fly: FlyClient, appName: string, volume: VolumeConfi
     if (canonical.id !== created.id) {
       console.error(`volume create race on ${appName}: adopted ${canonical.id}, orphaning ${created.id} (needs manual cleanup)`);
       // The orphan may be smaller than requested; the adopted one still has to grow.
-      if (volume.size_gb > canonical.size_gb) await fly.extendVolume(appName, canonical.id, volume.size_gb);
+      if (volume.size_gb > canonical.size_gb) {
+        await lease.assertOwned();
+        await fly.extendVolume(appName, canonical.id, volume.size_gb);
+      }
     }
     return canonical.id;
   }
   const existing = candidates[0];
   if (volume.size_gb > existing.size_gb) {
+    await lease.assertOwned();
     await fly.extendVolume(appName, existing.id, volume.size_gb);
   } else if (volume.size_gb < existing.size_gb) {
     // Fly volumes are grow-only, and shrinking would mean destroying tenant data. Fail the
@@ -340,15 +345,17 @@ function mountsDiffer(a: { volume: string, path: string }[], b: { volume: string
   return b.some((mount) => !inA.has(key(mount)));
 }
 
-async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: string, env: Record<string, string>): Promise<void> {
+async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: string, env: Record<string, string>, lease: ReconciliationLeaseGuard): Promise<void> {
   const config = getConfig();
   const appName = appNameForService(config.envId, stored.ns, stored.key);
   const network = networkForNamespace(config.envId, stored.ns);
+  await lease.assertOwned();
   await fly.ensureApp(appName, network);
+  await lease.assertOwned();
   await fly.ensureFlycastIp(appName, network);
 
   const volume = stored.spec.config.volume;
-  const volumeId = volume === undefined ? null : await ensureVolume(fly, appName, volume);
+  const volumeId = volume === undefined ? null : await ensureVolume(fly, appName, volume, lease);
 
   const machines = await fly.listMachines(appName);
   const bySlot = new Map<number, FlyMachine>();
@@ -372,6 +379,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     const holdsVolume = (machine: FlyMachine) => (machine.config.mounts ?? []).some((mount) => mount.volume === volumeId);
     const claimHolders = extras.filter(holdsVolume);
     for (const machine of claimHolders) {
+      await lease.assertOwned();
       await fly.destroyMachine(appName, machine.id);
     }
     extras = extras.filter((machine) => !holdsVolume(machine));
@@ -395,6 +403,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     // volume's host. Detaching is recreated too: the reverse transition is equally unproven,
     // and the volume itself always survives (smoke Q3a).
     if (existing !== undefined && mountsDiffer(existing.config.mounts ?? [], desired.mounts as { volume: string, path: string }[] | undefined ?? [])) {
+      await lease.assertOwned();
       await fly.destroyMachine(appName, existing.id);
       existing = undefined;
     }
@@ -409,8 +418,10 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     if (existing !== undefined && existing.config.metadata?.hexclave_config_hash === desiredHash) {
       // Hash matches but a pinned machine is stopped: just start it, no config churn.
       try {
+        await lease.assertOwned();
         await fly.startMachine(appName, existing.id);
-      } catch {
+      } catch (error) {
+        if (error instanceof ReconciliationLeaseLostError) throw error;
         // Already booting / raced — the wait below arbitrates.
       }
       await fly.waitForMachineState(appName, existing.id, "started", { instanceId: existing.instance_id, totalTimeoutSeconds: 120 });
@@ -418,18 +429,22 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     }
     if (existing !== undefined) {
       const wasStopped = existing.state !== "started" && existing.state !== "starting";
+      await lease.assertOwned();
       const updated = await fly.updateMachine(appName, existing.id, desired);
       if (wasStopped) {
         // Updating a stopped machine doesn't reliably boot it; start explicitly so the
         // started-wait below actually gates the roll (autostop re-stops it when idle).
         try {
+          await lease.assertOwned();
           await fly.startMachine(appName, updated.id);
-        } catch {
+        } catch (error) {
+          if (error instanceof ReconciliationLeaseLostError) throw error;
           // Racing the update-triggered boot is fine — the wait below is the arbiter.
         }
       }
       await fly.waitForMachineState(appName, updated.id, "started", { instanceId: updated.instance_id, totalTimeoutSeconds: 120 });
     } else {
+      await lease.assertOwned();
       const created = await fly.createMachine(appName, {
         name: `${stored.key.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 20)}-${slot}`,
         region: config.fly.region,
@@ -439,6 +454,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
     }
   }
   for (const machine of [...bySlot.values(), ...extras]) {
+    await lease.assertOwned();
     await fly.destroyMachine(appName, machine.id);
   }
 }
@@ -502,6 +518,10 @@ async function specIsStillOwned(ns: string, key: string, etag: string): Promise<
 }
 
 export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpec, builder: Builder): Promise<ApplyResult> {
+  return await withReconciliationLease(ns, key, async (lease) => await applyServiceSpecWithLease(ns, key, spec, builder, lease));
+}
+
+async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, builder: Builder, lease: ReconciliationLeaseGuard): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const revision = computeRevision(spec);
@@ -542,7 +562,9 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
     // pushing first fails with "app repository not found").
     const appName = appNameForService(config.envId, ns, key);
     const network = networkForNamespace(config.envId, ns);
+    await lease.assertOwned();
     await fly.ensureApp(appName, network);
+    await lease.assertOwned();
     await fly.ensureFlycastIp(appName, network);
 
     // The record is written as "running" BEFORE the builder starts: completion (webhook or
@@ -637,9 +659,10 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
       return { revision, changed, state: await getServiceState(ns, key) };
     }
     try {
-      await applyMachines(fly, stored, source.image, resolved.env);
+      await applyMachines(fly, stored, source.image, resolved.env, lease);
       stored.last_apply_error = null;
     } catch (error) {
+      if (error instanceof ReconciliationLeaseLostError) throw error;
       stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
     }
   }
@@ -657,6 +680,17 @@ export async function completeBuild(options: {
   metadataJson: string | null,
   errorText: string | null,
 }): Promise<void> {
+  await withReconciliationLease(options.ns, options.key, async (lease) => await completeBuildWithLease(options, lease));
+}
+
+async function completeBuildWithLease(options: {
+  ns: string,
+  key: string,
+  buildId: string,
+  status: "succeeded" | "failed",
+  metadataJson: string | null,
+  errorText: string | null,
+}, lease: ReconciliationLeaseGuard): Promise<void> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns));
   const build = await readBuild(options.ns, options.key, options.buildId);
@@ -714,9 +748,10 @@ export async function completeBuild(options: {
     const resolved = await resolveEnv(fly, options.ns, stored.spec.env);
     if (resolved.ok && await specIsStillOwned(options.ns, options.key, storedVersion.etag)) {
       try {
-        await applyMachines(fly, stored, imageRef, resolved.env);
+        await applyMachines(fly, stored, imageRef, resolved.env, lease);
         stored.last_apply_error = null;
       } catch (error) {
+        if (error instanceof ReconciliationLeaseLostError) throw error;
         stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
       }
     }
@@ -965,6 +1000,10 @@ export async function listServices(ns: string): Promise<ServiceState[]> {
 // DELETE /services/{key}
 
 export async function deleteService(ns: string, key: string): Promise<void> {
+  await withReconciliationLease(ns, key, async (lease) => await deleteServiceWithLease(ns, key, lease));
+}
+
+async function deleteServiceWithLease(ns: string, key: string, lease: ReconciliationLeaseGuard): Promise<void> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const appName = appNameForService(config.envId, ns, key);
@@ -987,6 +1026,7 @@ export async function deleteService(ns: string, key: string): Promise<void> {
   // but before any delete path ships, this must either detach and keep the volume (destroy the
   // machines and release the claims without destroying the app) or require an explicit
   // destructive-delete acknowledgement from the caller.
+  await lease.assertOwned();
   await fly.deleteApp(appName);
   await deleteSpec(ns, key);
 }

@@ -119,6 +119,11 @@ export type StoredBuild = Build & {
   upload_id: string | null,
 };
 
+export type ReconciliationLease = {
+  owner_id: string,
+  expires_at_millis: number,
+};
+
 // Global hostname-uniqueness registry entry (smoke test showed Fly does NOT enforce
 // cross-app hostname uniqueness, so Marshal owns it). Claimed with a conditional PUT.
 export type DomainClaim = {

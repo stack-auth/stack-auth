@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { computeRevision } from "./revision.js";
 import { validateServiceSpec } from "./services.js";
 
+const TEST_DATA_KEY = Buffer.from("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "hex");
+
 function spec(config: Record<string, unknown>) {
   return {
     config: { min_instances: 0, max_instances: 1, port: 3000, ...config },
@@ -30,12 +32,12 @@ describe("volume spec validation", () => {
   it("does not change the revision of a volumeless spec", () => {
     // Guards the above at the level that actually matters: adding the field
     // must not force a redeploy of every existing service.
-    expect(computeRevision(validateServiceSpec(spec({})))).toBe(
+    expect(computeRevision(validateServiceSpec(spec({})), TEST_DATA_KEY)).toBe(
       computeRevision({
         config: { min_instances: 0, max_instances: 1, port: 3000 },
         source: { image: "example/image" },
         env: {},
-      }),
+      }, TEST_DATA_KEY),
     );
   });
 
@@ -45,10 +47,10 @@ describe("volume spec validation", () => {
     // the PREVIOUS stored spec, and silently drops the change while reporting
     // success. The source is identical across all of these on purpose — that is
     // the case a new upload would otherwise mask.
-    const none = computeRevision(validateServiceSpec(spec({})));
-    const tenGb = computeRevision(validateServiceSpec(spec({ volume: { path: "/data", size_gb: 10 } })));
-    const fiftyGb = computeRevision(validateServiceSpec(spec({ volume: { path: "/data", size_gb: 50 } })));
-    const otherPath = computeRevision(validateServiceSpec(spec({ volume: { path: "/other", size_gb: 10 } })));
+    const none = computeRevision(validateServiceSpec(spec({})), TEST_DATA_KEY);
+    const tenGb = computeRevision(validateServiceSpec(spec({ volume: { path: "/data", size_gb: 10 } })), TEST_DATA_KEY);
+    const fiftyGb = computeRevision(validateServiceSpec(spec({ volume: { path: "/data", size_gb: 50 } })), TEST_DATA_KEY);
+    const otherPath = computeRevision(validateServiceSpec(spec({ volume: { path: "/other", size_gb: 10 } })), TEST_DATA_KEY);
     expect(new Set([none, tenGb, fiftyGb, otherPath]).size).toBe(4);
   });
 

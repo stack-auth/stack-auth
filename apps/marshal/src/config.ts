@@ -3,12 +3,15 @@
 // refused unless the process explicitly opts in. This must not depend on NODE_ENV: an
 // omitted production NODE_ENV must fail closed.
 
+import { parseDataEncryptionRootKey } from "./spec-crypto.js";
+
 export const MOCK_FLY_TOKEN = "mock_hexclave_fly_key";
 
 export type MarshalConfig = {
   port: number,
   apiKey: string,
   webhookSecret: string,
+  dataEncryptionRootKey: Buffer,
   // Base URL builder machines use to reach the completion webhook. Only needed for real
   // Fly builds (the mock builder completes in-process).
   publicUrl: string | null,
@@ -84,6 +87,7 @@ export function getConfig(): MarshalConfig {
     port,
     apiKey,
     webhookSecret: env("MARSHAL_WEBHOOK_SECRET", apiKey),
+    dataEncryptionRootKey: parseDataEncryptionRootKey(env("HEXCLAVE_MARSHAL_DATA_ENCRYPTION_KEY")),
     publicUrl,
     envId: env("MARSHAL_ENV_ID"),
     fly: {

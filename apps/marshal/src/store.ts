@@ -1,11 +1,13 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, type ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig, MAX_UPLOAD_BYTES, UPLOAD_EXPIRY_SECONDS } from "./config.js";
-import type { DomainClaim, StoredBuild, StoredSpec } from "./types.js";
+import { decryptString, encryptString } from "./spec-crypto.js";
+import type { DomainClaim, EnvValue, ReconciliationLease, ServiceSpec, StoredBuild, StoredSpec } from "./types.js";
 import { ulidTimeMillis } from "./ulid.js";
 
 // The bucket is Marshal's only state. Layout:
-//   specs/<ns>/<key>.json                 — current desired spec + revision (written on every PUT)
+//   specs/<ns>/<key>.json                 — current desired spec + revision; env is AES-GCM encrypted
+//   reconciliation-leases/<ns>/<key>.json — renewable per-service Fly mutation lease
 //   uploads/<ns>/<id>.tar.gz              — source tarballs (presigned PUT slots; lifecycle-expired)
 //   uploads/.validated/<ns>/<build>.tar.gz — immutable validated copies consumed by builders
 //   builds/<ns>/<key>/rec/<ulid>.json     — build records (ULID ids → lexicographic ≈ chronological)
@@ -160,20 +162,99 @@ async function listKeys(prefix: string): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // Specs
 
+type StoredSpecOnDisk = Omit<StoredSpec, "spec"> & {
+  spec: Omit<ServiceSpec, "env"> & { encrypted_env: unknown },
+};
+type PersistedStoredSpec = StoredSpecOnDisk | StoredSpec;
+
 function specKey(ns: string, key: string): string {
   return `specs/${ns}/${key}.json`;
 }
 
+function specEncryptionContext(ns: string, key: string): string {
+  // Binding ciphertext to its object identity prevents a bucket writer from swapping one
+  // tenant's encrypted environment into another service and having it decrypt successfully.
+  return `specs/${ns}/${key}.json#env`;
+}
+
+function storedSpecForDisk(spec: StoredSpec): StoredSpecOnDisk {
+  const { env, ...specWithoutEnv } = spec.spec;
+  return {
+    ...spec,
+    spec: {
+      ...specWithoutEnv,
+      encrypted_env: encryptString(
+        JSON.stringify(env),
+        specEncryptionContext(spec.ns, spec.key),
+        getConfig().dataEncryptionRootKey,
+      ),
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseStoredEnv(serialized: string): Record<string, EnvValue> {
+  const parsed: unknown = JSON.parse(serialized);
+  if (!isRecord(parsed)) throw new Error("decrypted stored service environment is not an object");
+  const env = new Map<string, EnvValue>();
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!isRecord(value)) throw new Error(`decrypted stored environment entry ${JSON.stringify(key)} is not an object`);
+    const fields = Object.keys(value);
+    if (fields.length === 1 && fields[0] === "value" && typeof value.value === "string") {
+      env.set(key, { value: value.value });
+    } else if (fields.length === 1 && fields[0] === "ref" && typeof value.ref === "string") {
+      env.set(key, { ref: value.ref });
+    } else {
+      throw new Error(`decrypted stored environment entry ${JSON.stringify(key)} is not { value } or { ref }`);
+    }
+  }
+  return Object.fromEntries(env);
+}
+
+function isLegacyStoredSpec(stored: PersistedStoredSpec): stored is StoredSpec {
+  return "env" in stored.spec;
+}
+
+function storedSpecFromDisk(stored: PersistedStoredSpec): StoredSpec {
+  if (isLegacyStoredSpec(stored)) return stored;
+  const { encrypted_env: encryptedEnv, ...specWithoutEnv } = stored.spec;
+  return {
+    ...stored,
+    spec: {
+      ...specWithoutEnv,
+      env: parseStoredEnv(decryptString(
+        encryptedEnv,
+        specEncryptionContext(stored.ns, stored.key),
+        getConfig().dataEncryptionRootKey,
+      )),
+    },
+  };
+}
+
 export async function readSpec(ns: string, key: string): Promise<StoredSpec | null> {
-  return await getJson<StoredSpec>(specKey(ns, key));
+  return (await readSpecVersioned(ns, key))?.value ?? null;
 }
 
 export async function readSpecVersioned(ns: string, key: string): Promise<Versioned<StoredSpec> | null> {
-  return await getJsonVersioned<StoredSpec>(specKey(ns, key));
+  for (;;) {
+    const stored = await getJsonVersioned<PersistedStoredSpec>(specKey(ns, key));
+    if (stored === null) return null;
+    const value = storedSpecFromDisk(stored.value);
+    if (!isLegacyStoredSpec(stored.value)) return { value, etag: stored.etag };
+
+    // Draft/QA buckets may contain specs written before application-layer encryption was
+    // introduced. Upgrade them atomically on first access so rolling out this fix does not
+    // require clearing services, while a concurrent PUT remains the desired-state winner.
+    const encryptedEtag = await writeSpec(value, { ifMatch: stored.etag });
+    if (encryptedEtag !== null) return { value, etag: encryptedEtag };
+  }
 }
 
 export async function writeSpec(spec: StoredSpec, condition: WriteCondition): Promise<string | null> {
-  return await putJsonConditionally(specKey(spec.ns, spec.key), spec, condition);
+  return await putJsonConditionally(specKey(spec.ns, spec.key), storedSpecForDisk(spec), condition);
 }
 
 export async function deleteSpec(ns: string, key: string): Promise<void> {
@@ -185,6 +266,29 @@ export async function listSpecKeys(ns: string): Promise<string[]> {
   return keys
     .filter((key) => key.endsWith(".json"))
     .map((key) => key.slice(`specs/${ns}/`.length, -".json".length));
+}
+
+// ---------------------------------------------------------------------------
+// Per-service reconciliation leases
+
+function reconciliationLeaseKey(ns: string, key: string): string {
+  return `reconciliation-leases/${ns}/${key}.json`;
+}
+
+export async function readReconciliationLease(ns: string, key: string): Promise<Versioned<ReconciliationLease> | null> {
+  return await getJsonVersioned<ReconciliationLease>(reconciliationLeaseKey(ns, key));
+}
+
+export async function createReconciliationLease(ns: string, key: string, lease: ReconciliationLease): Promise<string | null> {
+  return await putJsonConditionally(reconciliationLeaseKey(ns, key), lease, { ifNoneMatch: true });
+}
+
+export async function replaceReconciliationLease(ns: string, key: string, lease: ReconciliationLease, previousEtag: string): Promise<string | null> {
+  return await putJsonConditionally(reconciliationLeaseKey(ns, key), lease, { ifMatch: previousEtag });
+}
+
+export async function releaseReconciliationLease(ns: string, key: string, etag: string): Promise<boolean> {
+  return await deleteObjectConditionally(reconciliationLeaseKey(ns, key), etag);
 }
 
 // ---------------------------------------------------------------------------
