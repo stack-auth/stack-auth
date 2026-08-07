@@ -1,7 +1,5 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { wait } from "@hexclave/shared/dist/utils/promises";
 import { RoutePatternIndex } from "./route-pattern-index";
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
@@ -117,55 +115,9 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
 
   const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
   ensureForwardedForHeader(mergedHeaders, request);
-  const artificialDevelopmentBehaviorDisabled = isArtificialDevelopmentBehaviorDisabled(mergedHeaders);
-  const delay = +getEnvVariable("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  if (delay) {
-    if (getNodeEnvironment().includes("production")) {
-      throw new Error("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development");
-    }
-    if (!artificialDevelopmentBehaviorDisabled) {
-      await wait(delay);
-    }
-  }
 
   const isApiRequest = url.pathname.startsWith("/api/");
   const corsHeadersInit = getCorsHeadersInit(request);
-
-  if (isApiRequest && !artificialDevelopmentBehaviorDisabled && getNodeEnvironment() === "development" && request.method !== "OPTIONS" && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
-    const now = performance.now();
-    while (devRateLimitMarks.length > 0 && now - devRateLimitMarks[0] > DEV_RATE_LIMIT_WINDOW_MS) {
-      devRateLimitMarks.shift();
-    }
-    if (devRateLimitMarks.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
-      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitMarks[0]));
-      const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
-
-      const response = Response.json({
-        message: "Artificial development rate limit triggered. Wait before retrying.",
-      }, {
-        status: 429,
-      });
-
-      if (Math.random() < 0.5 && corsHeadersInit) {
-        for (const [key, value] of Object.entries(corsHeadersInit)) {
-          response.headers.set(key, value);
-        }
-      }
-
-      if (Math.random() < 0.5) {
-        response.headers.set("Retry-After", retryAfterSeconds.toString());
-      }
-
-      return {
-        corsHeadersInit,
-        dispatchPath: url.pathname,
-        mergedHeaders,
-        originalUrl: request.url,
-        shortCircuitResponse: response,
-      };
-    }
-    devRateLimitMarks.push(now);
-  }
 
   if (request.method === "OPTIONS" && isApiRequest) {
     return {
