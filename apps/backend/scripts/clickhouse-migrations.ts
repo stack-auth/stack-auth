@@ -85,7 +85,7 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
-    // Data Sources: ONE table for every connector of every project. Per-project
+    // Data Warehouse: ONE table for every connector of every project. Per-project
     // or per-stream tables would cap the tenant count (ClickHouse recommends
     // <=5000 tables / <=1000 databases), and global per-connector views leak
     // across tenants twice over: SHOW TABLES is not row-filtered, so every
@@ -978,7 +978,7 @@ FROM analytics_internal.events
 WHERE event_type = '$click';
 `;
 
-// Data Sources storage — the entire DDL for imported data.
+// Data Warehouse storage — the entire DDL for imported data.
 //
 // One table, no per-connector or per-project tables/views. `source_id` and
 // `stream` are ordinary columns, so the SAME row policy that scopes every other

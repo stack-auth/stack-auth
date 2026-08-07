@@ -1,8 +1,8 @@
 # Third-party notices
 
-## Estuary connectors (Data Sources catalogue)
+## Estuary connectors (Data Warehouse catalogue)
 
-`apps/backend/src/lib/data-sources/catalogue/corpus/` contains one reviewed
+`apps/backend/src/lib/data-warehouse/catalogue/corpus/` contains one reviewed
 v2.1 fact record per source connector, extracted from the connector definitions in
 [github.com/estuary/connectors](https://github.com/estuary/connectors).
 

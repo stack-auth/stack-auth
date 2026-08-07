@@ -33,7 +33,7 @@ export type PlanProductOfferings = {
   analyticsTimeoutSeconds: number,
   analyticsEvents: number,
   sessionReplays: number,
-  // Imported Data Sources rows resident in ClickHouse. Unlike every other limit
+  // Imported Data Warehouse rows resident in ClickHouse. Unlike every other limit
   // here this one meters STORAGE rather than throughput, so it does not repeat
   // monthly: it is a standing ceiling on how much of a customer's external data
   // may live in our warehouse at once.

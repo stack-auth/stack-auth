@@ -2100,7 +2100,7 @@ model WorkflowScheduleCursor {
   @@id([tenancyId, workflowId, scheduleKey])
 }
 
-// ─── Data Sources ───────────────────────────────────────────────────────────
+// ─── Data Warehouse ───────────────────────────────────────────────────────────
 //
 // INBOUND data movement: external system -> Hexclave. The mirror-image
 // OUTBOUND path (Hexclave -> a customer's own warehouse) is `external-db-sync`
@@ -2114,7 +2114,7 @@ model WorkflowScheduleCursor {
 // BEFORE the first sync when zero rows exist.
 //
 // Like Workflows, these tables are available to every project: the alpha-stage
-// `data-sources-alpha` app gates dashboard visibility only.
+// `data-warehouse-alpha` app gates dashboard visibility only.
 
 enum DataSourceStatus {
   HEALTHY

@@ -227,8 +227,8 @@ export const ALL_APPS = {
   // top-level rather than under `parentAppId: "analytics"` on purpose: imported
   // data is a project-wide asset that workflows and emails will read too, not
   // an analytics sub-feature.
-  "data-sources-alpha": {
-    displayName: "Data Sources",
+  "data-warehouse-alpha": {
+    displayName: "Data Warehouse",
     subtitle: "Connect external systems and query their data alongside your own",
     tags: ["integration", "storage"],
     stage: "alpha",

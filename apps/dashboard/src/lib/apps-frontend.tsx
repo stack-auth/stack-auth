@@ -531,19 +531,19 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
-  "data-sources-alpha": {
+  "data-warehouse-alpha": {
     icon: PlugsConnectedIcon,
     // As with Deployments and Workflows, only the app id carries the `-alpha`
-    // suffix — the route stays /projects/<id>/data-sources, and the source
-    // detail route /data-sources/<id> matches as a child of it.
-    href: "data-sources",
+    // suffix — the route stays /projects/<id>/data-warehouse, and the source
+    // detail route /data-warehouse/<id> matches as a child of it.
+    href: "data-warehouse",
     navigationItems: [
       { displayName: "Sources", href: "." },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>Data Sources imports data from the tools you already use, like Stripe, Klaviyo and Intercom, on a schedule you control.</p>
+        <p>Data Warehouse imports data from the tools you already use, like Stripe, Klaviyo and Intercom, on a schedule you control.</p>
         <p>Imported data sits alongside your own users, teams and events, so one query can match a Stripe customer to the user who signed up with the same email.</p>
         <p>Credentials are encrypted at rest and can never be read back. Every sync shows its status, duration, rows synced, and the exact error if something breaks.</p>
       </>

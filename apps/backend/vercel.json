@@ -19,7 +19,7 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/latest/internal/data-sources/sync-step",
+      "path": "/api/latest/internal/data-warehouse/sync-step",
       "schedule": "* * * * *"
     }
   ],

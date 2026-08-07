@@ -7,7 +7,7 @@ const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
   "/api/latest/internal/workflow-engine-step",
-  "/api/latest/internal/data-sources/sync-step",
+  "/api/latest/internal/data-warehouse/sync-step",
 ];
 
 async function main() {
