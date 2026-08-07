@@ -2,6 +2,10 @@
 
 ---
 
+## 8/14/26
+
+- _(entries added throughout the week)_
+
 ## 7/31/26
 
 ![Sign-in is not available message](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-no-auth-methods.png)
