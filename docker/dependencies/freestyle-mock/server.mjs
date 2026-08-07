@@ -1,49 +1,169 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { cpus } from "node:os";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { NodeRuntime } from "secure-exec";
 
 const PORT = Number(process.env.PORT || 8080);
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_TIMEOUT_MS = 120_000;
 const OUTER_TIMEOUT_GRACE_MS = 1_000;
-// Each in-flight job owns a guest process. Limit concurrency to available CPU
-// capacity with a floor for small CI/dev machines; this also bounds RSS (about
-// 444 MiB at eight concurrent jobs in local measurements).
+const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_OUTPUT_BYTES = 1 * 1024 * 1024;
+const MAX_RESULT_BYTES = 4 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_QUEUE_DEPTH = 100;
 const MAX_IN_FLIGHT = Math.max(2, Math.min(cpus().length, 8));
 const MAX_JOBS_PER_RUNTIME = 50;
 const MAX_NON_DEFAULT_RUNTIMES = 3;
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
-const MODULE_CACHE_DIR = process.env.MODULE_CACHE_DIR || "/app/module-cache";
+const MAX_NODE_MODULES = 20;
+const MAX_CACHE_BYTES = 512 * 1024 * 1024;
+const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_BRIDGE_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_BRIDGE_RESPONSE_BYTES = 8 * 1024 * 1024;
+const HOST_FETCH_TIMEOUT_MS = 30_000;
+const MODULE_CACHE_DIR =
+  process.env.HEXCLAVE_FREESTYLE_MOCK_MODULE_CACHE_DIR || "/app/module-cache";
 const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
-const USER_MODULE_DIR = "/tmp";
+const USER_MODULE_DIR = "/tmp/freestyle-jobs";
+const BRIDGE_ENABLED =
+  process.env.HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ENABLED === "true";
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81";
+const defaultBridgeOrigin = `http://${
+  process.env.HOST_ON_HOST || "host.docker.internal"
+}:${portPrefix}02`;
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+]);
 const STRIPPED_RESPONSE_HEADERS = new Set([
+  ...HOP_BY_HOP_HEADERS,
   "content-encoding",
   "content-length",
-  "transfer-encoding",
 ]);
-const BRIDGED_HOSTS = [
-  ...new Set(
-    (process.env.BRIDGED_HOSTS || process.env.HOST_ON_HOST || "host.docker.internal")
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean),
-  ),
-];
+const PACKAGE_NAME_PATTERN =
+  /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/;
+const PACKAGE_VERSION_PATTERN =
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
-const defaultNodeModules = new Map([
-  ["@react-email/components", "1.0.6"],
-  ["arktype", "2.1.20"],
-  ["react", "19.1.1"],
-  ["react-dom", "19.1.1"],
-]);
+function normalizeHostname(hostname) {
+  return hostname.toLowerCase().replace(/\.$/, "");
+}
+
+function canonicalOrigin(url) {
+  if (url.username || url.password || !url.port) return null;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return `${url.protocol}//${normalizeHostname(url.hostname)}:${url.port}`;
+}
+
+function parseBridgeOrigins(value) {
+  const origins = new Set();
+  for (const rawOrigin of value.split(",")) {
+    let origin = null;
+    try {
+      const url = new URL(rawOrigin.trim());
+      if (url.pathname !== "/" || url.search || url.hash) throw new Error();
+      origin = canonicalOrigin(url);
+    } catch {
+      // Invalid configuration is rejected below.
+    }
+    if (!origin) throw new Error(`Invalid bridge origin configuration: ${rawOrigin}`);
+    origins.add(origin);
+  }
+  if (origins.size === 0) throw new Error("Bridge origin list is empty");
+  return [...origins];
+}
+
+const BRIDGED_ORIGINS = BRIDGE_ENABLED
+  ? parseBridgeOrigins(
+      process.env.HEXCLAVE_FREESTYLE_MOCK_BRIDGE_ORIGINS ||
+        defaultBridgeOrigin,
+    )
+  : [];
+
+const defaultNodeModules = new Map(
+  Object.entries(
+    JSON.parse(
+      await readFile("/app/guest-node-modules/package.json", "utf8"),
+    ).dependencies || {},
+  ),
+);
+
+class ClientError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+class QueueFullError extends ClientError {
+  constructor() {
+    super(429, "Execution queue is full");
+  }
+}
+
+function formatError(error) {
+  return error?.message || String(error);
+}
+
+function logInternalError(context, error) {
+  console.error(`[${context}]`, error);
+}
+
+function isAllowedBridgeUrl(input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    return null;
+  }
+  const origin = canonicalOrigin(url);
+  return origin && BRIDGED_ORIGINS.includes(origin) ? url : null;
+}
 
 function normalizeNodeModules(nodeModules) {
+  if (nodeModules == null) return {};
+  if (
+    typeof nodeModules !== "object" ||
+    Array.isArray(nodeModules) ||
+    Object.getPrototypeOf(nodeModules) !== Object.prototype
+  ) {
+    throw new ClientError(400, "Invalid dependency map");
+  }
+  const entries = Object.entries(nodeModules);
+  if (entries.length > MAX_NODE_MODULES) {
+    throw new ClientError(400, "Too many requested dependencies");
+  }
   return Object.fromEntries(
-    Object.entries(nodeModules || {})
-      .map(([name, version]) => [name, String(version)])
+    entries
+      .map(([name, version]) => {
+        if (
+          !PACKAGE_NAME_PATTERN.test(name) ||
+          typeof version !== "string" ||
+          !PACKAGE_VERSION_PATTERN.test(version)
+        ) {
+          throw new ClientError(400, "Invalid dependency map");
+        }
+        return [name, version];
+      })
       .sort(([a], [b]) => a.localeCompare(b)),
   );
 }
@@ -60,44 +180,102 @@ function isSatisfiedByDefault(nodeModules) {
   );
 }
 
-function formatError(error) {
-  return error?.message || String(error);
+function serializePayload(payload) {
+  try {
+    const serialized = JSON.stringify(payload);
+    if (Buffer.byteLength(serialized) <= MAX_RESPONSE_BYTES) return serialized;
+  } catch (error) {
+    logInternalError("serialize response", error);
+  }
+  return JSON.stringify({ error: "Response exceeded the maximum size", logs: [] });
 }
 
 function sendJson(response, statusCode, payload) {
   if (response.headersSent) return;
   response.writeHead(statusCode, { "Content-Type": "application/json" });
-  response.end(JSON.stringify(payload));
+  response.end(serializePayload(payload));
 }
 
 async function readRequestBody(request) {
-  let body = "";
-  for await (const chunk of request) body += chunk;
-  return JSON.parse(body);
+  const chunks = [];
+  let totalBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+      throw new ClientError(413, "Request body is too large");
+    }
+    chunks.push(buffer);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new ClientError(400, "Malformed JSON request");
+  }
 }
 
-function runNpmInstall(workDir) {
+function resolveTimeout(value) {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(value, MAX_TIMEOUT_MS);
+}
+
+function awaitAbort(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(signal.reason || new Error("Operation aborted"));
+  }
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      signal.addEventListener(
+        "abort",
+        () => reject(signal.reason || new Error("Operation aborted")),
+        { once: true },
+      );
+    }),
+  ]);
+}
+
+function runNpmInstall(workDir, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn("npm", ["install", "--no-audit", "--no-fund"], {
-      cwd: workDir,
-      stdio: "ignore",
-    });
+    const child = spawn(
+      "npm",
+      [
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--package-lock=false",
+      ],
+      {
+        cwd: workDir,
+        stdio: "ignore",
+        env: { ...process.env, NPM_CONFIG_CACHE: "/tmp/npm-cache" },
+      },
+    );
     let settled = false;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      settle(reject, new Error(`npm install timed out after ${NPM_INSTALL_TIMEOUT_MS}ms`));
+      settle(reject, new Error("npm install timed out"));
     }, NPM_INSTALL_TIMEOUT_MS);
 
     function settle(callback, value) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       callback(value);
     }
 
-    child.once("error", (error) => {
-      settle(reject, new Error(`Failed to spawn npm install: ${formatError(error)}`));
-    });
+    function onAbort() {
+      child.kill("SIGKILL");
+      settle(reject, signal.reason || new Error("npm install aborted"));
+    }
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+    child.once("error", (error) =>
+      settle(reject, new Error(`Failed to spawn npm install: ${formatError(error)}`)),
+    );
     child.once("close", (code) => {
       if (code === 0) settle(resolve);
       else settle(reject, new Error(`npm install failed with code ${code}`));
@@ -105,55 +283,122 @@ function runNpmInstall(workDir) {
   });
 }
 
+async function directorySize(path) {
+  let total = 0;
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    const childPath = join(path, entry.name);
+    if (entry.isDirectory()) total += await directorySize(childPath);
+    else total += (await stat(childPath)).size;
+  }
+  return total;
+}
+
 class DependencyCache {
   constructor(rootDir) {
     this.rootDir = rootDir;
     this.installPromises = new Map();
+    this.protectedHashes = () => new Set();
   }
 
-  async get(nodeModules) {
+  setProtectedHashes(callback) {
+    this.protectedHashes = callback;
+  }
+
+  async prune() {
+    let entries;
+    try {
+      entries = await readdir(this.rootDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    const candidates = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
+      if (
+        this.protectedHashes().has(entry.name) ||
+        this.installPromises.has(entry.name)
+      ) {
+        continue;
+      }
+      const path = join(this.rootDir, entry.name);
+      const metadata = await stat(path);
+      const size = await directorySize(path);
+      if (now - metadata.mtimeMs > MAX_CACHE_AGE_MS) {
+        await rm(path, { recursive: true, force: true });
+      } else {
+        candidates.push({ path, size, mtimeMs: metadata.mtimeMs });
+      }
+    }
+    let total = candidates.reduce((sum, candidate) => sum + candidate.size, 0);
+    candidates.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    for (const candidate of candidates) {
+      if (total <= MAX_CACHE_BYTES) break;
+      await rm(candidate.path, { recursive: true, force: true });
+      total -= candidate.size;
+    }
+  }
+
+  async get(nodeModules, signal) {
     const normalized = normalizeNodeModules(nodeModules);
     if (isSatisfiedByDefault(normalized)) {
-      return { hash: "default", nodeModulesPath: DEFAULT_NODE_MODULES_DIR, isDefault: true };
+      return {
+        hash: "default",
+        nodeModulesPath: DEFAULT_NODE_MODULES_DIR,
+        isDefault: true,
+      };
     }
-
     const hash = hashNodeModules(normalized);
     const nodeModulesPath = join(this.rootDir, hash, "node_modules");
-    const installPromise = this.installPromises.get(hash);
-    if (installPromise) {
-      await installPromise;
-      return { hash, nodeModulesPath, isDefault: false };
+    await this.prune();
+    let state = this.installPromises.get(hash);
+    if (!state) {
+      const controller = new AbortController();
+      const promise = this.ensureInstalled(
+        join(this.rootDir, hash),
+        normalized,
+        controller.signal,
+      ).finally(() => {
+        if (this.installPromises.get(hash)?.promise === promise) {
+          this.installPromises.delete(hash);
+        }
+      });
+      state = { controller, promise, waiters: 0 };
+      this.installPromises.set(hash, state);
     }
-
-    const promise = this.ensureInstalled(join(this.rootDir, hash), normalized);
-    this.installPromises.set(hash, promise);
+    state.waiters++;
     try {
-      await promise;
+      await awaitAbort(state.promise, signal);
     } finally {
-      this.installPromises.delete(hash);
+      state.waiters--;
+      if (signal?.aborted && state.waiters === 0) {
+        state.controller.abort(signal.reason);
+      }
     }
     return { hash, nodeModulesPath, isDefault: false };
   }
 
-  async ensureInstalled(cachePath, nodeModules) {
+  async ensureInstalled(cachePath, nodeModules, signal) {
     const completeMarker = join(cachePath, ".complete");
     try {
       await readFile(completeMarker);
       return;
     } catch {
-      // An absent marker means the directory is either new or from an
-      // interrupted install. Rebuild it atomically below.
+      // Rebuild an incomplete or interrupted install atomically below.
     }
-
     const tempPath = `${cachePath}.tmp-${randomUUID()}`;
     await rm(tempPath, { recursive: true, force: true });
     await mkdir(tempPath, { recursive: true });
     try {
       await writeFile(
         join(tempPath, "package.json"),
-        JSON.stringify({ private: true, type: "module", dependencies: nodeModules }),
+        JSON.stringify({
+          private: true,
+          type: "module",
+          dependencies: nodeModules,
+        }),
       );
-      await runNpmInstall(tempPath);
+      await runNpmInstall(tempPath, signal);
       await writeFile(join(tempPath, ".complete"), "ok\n");
       await rm(cachePath, { recursive: true, force: true });
       await rename(tempPath, cachePath);
@@ -167,53 +412,62 @@ class DependencyCache {
 class RuntimeCache {
   constructor() {
     this.entries = new Map();
+    this.creationPromises = new Map();
+    this.recyclingPromises = new Map();
   }
 
   async acquire(dependency) {
     for (;;) {
-      let entry = this.entries.get(dependency.hash);
+      const recycling = this.recyclingPromises.get(dependency.hash);
+      if (recycling) {
+        await recycling;
+        continue;
+      }
+      const entry = this.entries.get(dependency.hash);
       if (entry && !entry.retiring) {
         entry.activeJobs++;
         entry.lastUsed = performance.now();
         return entry;
       }
-
-      if (!entry) {
-        if (!dependency.isDefault && this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES) {
-          if (!await this.evictInactiveRuntime()) {
-            await this.waitForRuntime();
-            continue;
-          }
-        }
-        entry = await this.createEntry(dependency);
-        this.entries.set(dependency.hash, entry);
-      } else {
+      if (entry?.retiring) {
         await this.recycleEntry(entry, dependency);
-        entry = this.entries.get(dependency.hash);
+        continue;
       }
-
-      entry.activeJobs++;
-      entry.lastUsed = performance.now();
-      return entry;
+      if (
+        !dependency.isDefault &&
+        this.nonDefaultCount() >= MAX_NON_DEFAULT_RUNTIMES &&
+        !(await this.evictInactiveRuntime())
+      ) {
+        await this.waitForRuntime();
+        continue;
+      }
+      let creation = this.creationPromises.get(dependency.hash);
+    if (!creation) {
+      creation = this.createEntry(dependency);
+      this.creationPromises.set(dependency.hash, creation);
+        const clearCreation = () => {
+          if (this.creationPromises.get(dependency.hash) === creation) {
+            this.creationPromises.delete(dependency.hash);
+          }
+        };
+        creation.then(clearCreation, clearCreation);
+      }
+      await creation;
     }
   }
 
   async createEntry(dependency) {
-    const runtime = await NodeRuntime.create({
+    const options = {
       nodeModules: dependency.nodeModulesPath,
-      // The host callback below is deliberately limited to the configured
-      // development backend origin. Secure Exec unconditionally blocks the
-      // RFC1918 address behind host.docker.internal, so this is an explicit
-      // dev/CI-only hole rather than a general private-network escape.
       permissions: {
         network: "allow",
-        // This runtime registers exactly one binding, so allowing the binding
-        // scope cannot expose any unrelated host capability.
-        binding: "allow",
+        binding: BRIDGE_ENABLED ? "allow" : "deny",
       },
-      bindings: {
+    };
+    if (BRIDGE_ENABLED) {
+      options.bindings = {
         "freestyle-host-fetch": {
-          description: "Fetch an HTTP resource on the configured development host",
+          description: "Fetch on the configured development origin",
           inputSchema: {
             type: "object",
             properties: {
@@ -225,12 +479,13 @@ class RuntimeCache {
             required: ["url", "method", "headers"],
             additionalProperties: false,
           },
-          timeoutMs: DEFAULT_TIMEOUT_MS,
+          timeoutMs: HOST_FETCH_TIMEOUT_MS,
           handler: hostFetch,
         },
-      },
-    });
-    return {
+      };
+    }
+    const runtime = await NodeRuntime.create(options);
+    const entry = {
       hash: dependency.hash,
       isDefault: dependency.isDefault,
       nodeModulesPath: dependency.nodeModulesPath,
@@ -239,39 +494,56 @@ class RuntimeCache {
       jobsHandled: 0,
       lastUsed: performance.now(),
       retiring: false,
-      recycling: null,
     };
+    this.entries.set(dependency.hash, entry);
+    return entry;
   }
 
   async evictInactiveRuntime() {
-    const candidates = [...this.entries.values()]
-      .filter((entry) => !entry.isDefault && entry.activeJobs === 0 && !entry.retiring)
-      .sort((a, b) => a.lastUsed - b.lastUsed);
-    const candidate = candidates[0];
+    const candidate = [...this.entries.values()]
+      .filter(
+        (entry) =>
+          !entry.isDefault && entry.activeJobs === 0 && !entry.retiring,
+      )
+      .sort((a, b) => a.lastUsed - b.lastUsed)[0];
     if (!candidate) return false;
     this.entries.delete(candidate.hash);
-    await candidate.runtime.dispose();
+    try {
+      await candidate.runtime.dispose();
+    } catch (error) {
+      logInternalError("dispose evicted runtime", error);
+    }
     return true;
   }
 
   async recycleEntry(entry, dependency) {
-    if (entry.recycling) {
-      await entry.recycling;
-      return;
-    }
-    entry.recycling = (async () => {
-      // Each job leaves a uniquely named /tmp/user-*.mjs in the guest VFS.
-      // Recycling after MAX_JOBS_PER_RUNTIME bounds that accumulation and its
-      // associated RSS growth without disposing a runtime with active jobs.
-      while (entry.activeJobs > 0) await new Promise((resolve) => setTimeout(resolve, 10));
-      await entry.runtime.dispose();
-      const replacement = await this.createEntry(dependency);
-      this.entries.set(dependency.hash, replacement);
+    const existing = this.recyclingPromises.get(dependency.hash);
+    if (existing) return existing;
+    const recycling = (async () => {
+      while (entry.activeJobs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (this.entries.get(dependency.hash) === entry) {
+        this.entries.delete(dependency.hash);
+      }
+      try {
+        await entry.runtime.dispose();
+        const replacement = await this.createEntry(dependency);
+        this.entries.set(dependency.hash, replacement);
+      } catch (error) {
+        if (this.entries.get(dependency.hash) === entry) {
+          this.entries.delete(dependency.hash);
+        }
+        throw error;
+      }
     })();
+    this.recyclingPromises.set(dependency.hash, recycling);
     try {
-      await entry.recycling;
+      await recycling;
     } finally {
-      entry.recycling = null;
+      if (this.recyclingPromises.get(dependency.hash) === recycling) {
+        this.recyclingPromises.delete(dependency.hash);
+      }
     }
   }
 
@@ -281,13 +553,20 @@ class RuntimeCache {
     entry.lastUsed = performance.now();
     if (entry.jobsHandled >= MAX_JOBS_PER_RUNTIME) {
       entry.retiring = true;
-      if (entry.activeJobs === 0 && !entry.recycling) {
-        this.recycleEntry(entry, {
-          hash: entry.hash,
-          isDefault: entry.isDefault,
-          nodeModulesPath: entry.nodeModulesPath,
-        }).catch((error) => console.error("Failed to recycle secure-exec runtime:", error));
-      }
+    }
+    if (entry.retiring && entry.activeJobs === 0) {
+      this.recycleEntry(entry, entry).catch((error) =>
+        logInternalError("recycle secure-exec runtime", error),
+      );
+    }
+  }
+
+  retire(entry) {
+    entry.retiring = true;
+    if (entry.activeJobs === 0) {
+      this.recycleEntry(entry, entry).catch((error) =>
+        logInternalError("recycle secure-exec runtime", error),
+      );
     }
   }
 
@@ -300,97 +579,85 @@ class RuntimeCache {
   }
 }
 
-class JobQueue {
-  constructor(runtimeCache, dependencyCache) {
-    this.runtimeCache = runtimeCache;
-    this.dependencyCache = dependencyCache;
-    this.queue = [];
-    this.activeJobs = 0;
-  }
-
-  submit(script, config, timeoutMs) {
-    return new Promise((resolve) => {
-      const controller = new AbortController();
-      const job = {
-        script,
-        config,
-        timeoutMs,
-        controller,
-        output: { stdout: "", stderr: "" },
-        started: false,
-        settled: false,
-        resolve,
-      };
-      job.timer = setTimeout(() => {
-        job.controller.abort(new Error(`Freestyle mock job timed out after ${timeoutMs}ms`));
-        this.settle(job, {
-          statusCode: 500,
-          payload: {
-            error: `Freestyle mock job timed out after ${timeoutMs}ms`,
-            logs: logsFromOutput(job.output),
-          },
-        });
-      }, timeoutMs + OUTER_TIMEOUT_GRACE_MS);
-      this.queue.push(job);
-      this.dispatch();
-    });
-  }
-
-  settle(job, result) {
-    if (job.settled) return;
-    job.settled = true;
-    clearTimeout(job.timer);
-    job.resolve(result);
-  }
-
-  dispatch() {
-    while (this.activeJobs < MAX_IN_FLIGHT && this.queue.length > 0) {
-      const job = this.queue.shift();
-      if (job.settled) continue;
-      this.activeJobs++;
-      job.started = true;
-      this.execute(job)
-        .then((result) => this.settle(job, result))
-        .catch((error) => this.settle(job, {
-          statusCode: 500,
-          payload: { error: formatError(error), logs: [] },
-        }))
-        .finally(() => {
-          this.activeJobs--;
-          this.dispatch();
-        });
-    }
-  }
-
-  async execute(job) {
-    let entry;
-    try {
-      const dependency = await this.dependencyCache.get(job.config.nodeModules);
-      entry = await this.runtimeCache.acquire(dependency);
-      return await executeScript(
-        entry.runtime,
-        job.script,
-        job.config,
-        job.controller.signal,
-        job.output,
-      );
-    } finally {
-      if (entry) this.runtimeCache.release(entry);
-    }
-  }
-}
-
-function makeWrapper(userModulePath) {
-  return `
-const logs = [];
-for (const type of ["log", "info", "warn", "error", "debug"]) {
-  const original = console[type];
-  console[type] = (...args) => {
-    logs.push({ message: args.map(String).join(" "), type });
-    original(...args);
+function createOutput() {
+  return {
+    stdout: "",
+    stderr: "",
+    decoders: { stdout: new TextDecoder(), stderr: new TextDecoder() },
+    finalized: false,
+    truncated: { stdout: false, stderr: false },
   };
 }
-const bridgedHosts = ${JSON.stringify(BRIDGED_HOSTS)};
+
+function appendOutput(output, stream, chunk) {
+  const decoded = output.decoders[stream].decode(chunk, { stream: true });
+  appendOutputText(output, stream, decoded);
+}
+
+function appendOutputText(output, stream, decoded) {
+  const remaining = MAX_OUTPUT_BYTES - Buffer.byteLength(output[stream]);
+  if (remaining <= 0) {
+    output.truncated[stream] = true;
+    return;
+  }
+  const bytes = Buffer.from(decoded);
+  if (bytes.byteLength > remaining) {
+    output[stream] += bytes.subarray(0, remaining).toString("utf8");
+    output.truncated[stream] = true;
+  } else {
+    output[stream] += decoded;
+  }
+}
+
+function finalizeOutput(output) {
+  if (output.finalized) return;
+  for (const stream of ["stdout", "stderr"]) {
+    appendOutputText(
+      output,
+      stream,
+      output.decoders[stream].decode(new Uint8Array()),
+    );
+    if (output.truncated[stream]) output[stream] += "\n[output truncated]";
+  }
+  output.finalized = true;
+}
+
+function logsFromOutput(output) {
+  finalizeOutput(output);
+  return [
+    ...output.stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((message) => ({ message, type: "log" })),
+    ...output.stderr
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((message) => ({ message, type: "error" })),
+  ];
+}
+
+function truncateResult(result) {
+  try {
+    if (Buffer.byteLength(JSON.stringify(result)) <= MAX_RESULT_BYTES) return result;
+  } catch {
+    return "[result could not be serialized]";
+  }
+  return `[result truncated after ${MAX_RESULT_BYTES} bytes]`;
+}
+
+function makeCleanupWrapper(userModuleDir) {
+  return `
+try {
+  const fs = await import("node:fs/promises");
+  await fs.rm(${JSON.stringify(userModuleDir)}, { recursive: true, force: true });
+} catch {}
+`;
+}
+
+function makeWrapper(userModulePath, userModuleDir) {
+  const bridgeSource = BRIDGE_ENABLED
+    ? `
+const bridgedOrigins = ${JSON.stringify(BRIDGED_ORIGINS)};
 const originalFetch = globalThis.fetch;
 const encodeBase64 = (bytes) => {
   let output = "";
@@ -402,34 +669,39 @@ const encodeBase64 = (bytes) => {
 const decodeBase64 = (value) => {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.charCodeAt(index);
-  }
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return bytes;
 };
-// Deliberate dev/CI-only boundary hole: Secure Exec rejects RFC1918
-// destinations, while Hexclave's local backend is only reachable through
-// host.docker.internal. Only the configured development-host hostnames use
-// this host callback; all other URLs retain Secure Exec's network policy. This
-// only replaces globalThis.fetch: node:http and direct undici calls still hit
-// Secure Exec's private-range block.
+const canonicalOrigin = (url) => {
+  if (url.username || url.password || !url.port) return null;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return url.protocol + "//" + url.hostname.toLowerCase().replace(/\\.$/, "") + ":" + url.port;
+};
 const bridgedFetch = async (input, init) => {
   const request = new Request(input, init);
   const target = new URL(request.url);
-  if (!bridgedHosts.includes(target.hostname)) {
-    return originalFetch(input, init);
-  }
+  if (!bridgedOrigins.includes(canonicalOrigin(target))) return originalFetch(request);
   const method = request.method.toUpperCase();
-  const body = method === "GET" || method === "HEAD"
-    ? null
-    : encodeBase64(new Uint8Array(await request.arrayBuffer()));
+  let body = null;
+  if (method !== "GET" && method !== "HEAD") {
+    const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    if (bodyBytes.byteLength > ${MAX_BRIDGE_BODY_BYTES}) {
+      throw new Error("Request body exceeds the bridge limit");
+    }
+    body = encodeBase64(bodyBytes);
+  }
   const bridged = await globalThis.callBinding("freestyle-host-fetch", {
     url: request.url,
     method,
-    headers: Object.fromEntries(request.headers),
+    headers: Object.fromEntries(
+      [...request.headers].filter(([name]) => !${JSON.stringify([...HOP_BY_HOP_HEADERS])}.includes(name)),
+    ),
     bodyBase64: body,
   });
-  return new Response(decodeBase64(bridged.bodyBase64), {
+  const responseBody = bridged.status === 204 || bridged.status === 304
+    ? undefined
+    : decodeBase64(bridged.bodyBase64);
+  return new Response(responseBody, {
     status: bridged.status,
     statusText: bridged.statusText,
     headers: bridged.headers,
@@ -437,8 +709,46 @@ const bridgedFetch = async (input, init) => {
 };
 Object.defineProperty(globalThis, "fetch", {
   configurable: true,
+  writable: false,
   value: bridgedFetch,
 });
+`
+    : "";
+  return `
+const logs = [];
+const MAX_LOG_ENTRIES = 1000;
+const MAX_LOG_MESSAGE_BYTES = 64 * 1024;
+let logBytes = 0;
+const inspectValue = (value) => {
+  try {
+    return JSON.stringify(value, (_, nested) =>
+      typeof nested === "bigint" ? nested.toString() + "n" : nested,
+    ) ?? String(value);
+  } catch {
+    try { return Object.prototype.toString.call(value); } catch { return "<uninspectable>"; }
+  }
+};
+// Guest code can forge or suppress these logs; they are untrusted data.
+for (const type of ["log", "info", "warn", "error", "debug"]) {
+  const original = console[type];
+  console[type] = async (...args) => {
+    if (logs.length < MAX_LOG_ENTRIES) {
+      const values = [];
+      for (const arg of args) values.push(inspectValue(arg));
+      let message = values.join(" ");
+      if (new TextEncoder().encode(message).byteLength > MAX_LOG_MESSAGE_BYTES) {
+        message = message.slice(0, MAX_LOG_MESSAGE_BYTES) + " [log truncated]";
+      }
+      const messageBytes = new TextEncoder().encode(message).byteLength;
+      if (logBytes + messageBytes <= ${MAX_RESULT_BYTES}) {
+        logs.push({ message, type });
+        logBytes += messageBytes;
+      }
+    }
+    original(...args);
+  };
+}
+${bridgeSource}
 try {
   const userModule = await import(${JSON.stringify(userModulePath)});
   const exported = userModule.default ?? userModule;
@@ -450,109 +760,236 @@ try {
     error: error?.message || String(error),
     logs,
   });
+} finally {
+  try {
+    const fs = await import("node:fs/promises");
+    await fs.rm(${JSON.stringify(userModuleDir)}, { recursive: true, force: true });
+  } catch {}
 }
 `;
 }
 
 async function hostFetch(input) {
-  const url = new URL(input.url);
-  // Defense in depth: the guest shim checks this too, but the host callback
-  // must never become a general-purpose private-network request primitive.
-  if (!BRIDGED_HOSTS.includes(url.hostname.toLowerCase())) {
-    throw new Error(`Host callback only permits configured development hosts: ${url.hostname}`);
-  }
+  const url = isAllowedBridgeUrl(input.url);
+  if (!url) throw new Error("Host callback origin is not allowed");
+  const headers = Object.fromEntries(
+    Object.entries(input.headers || {}).filter(
+      ([name]) => !HOP_BY_HOP_HEADERS.has(name.toLowerCase()),
+    ),
+  );
   const requestInit = {
-    method: input.method,
-    headers: input.headers,
+    method: String(input.method || "GET").toUpperCase(),
+    headers,
+    redirect: "manual",
   };
   if (input.bodyBase64 != null) {
-    requestInit.body = Buffer.from(input.bodyBase64, "base64");
+    const body = Buffer.from(input.bodyBase64, "base64");
+    if (body.byteLength > MAX_BRIDGE_BODY_BYTES) {
+      throw new Error("Request body exceeds the bridge limit");
+    }
+    requestInit.body = body;
   }
-  const response = await fetch(url, requestInit);
-  const strippedHeaders = Object.fromEntries(
-    [...response.headers].filter(([name]) => !STRIPPED_RESPONSE_HEADERS.has(name.toLowerCase())),
-  );
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    headers: strippedHeaders,
-    bodyBase64: Buffer.from(await response.arrayBuffer()).toString("base64"),
-  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HOST_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...requestInit,
+      signal: controller.signal,
+    });
+    let body = Buffer.alloc(0);
+    if (response.body && response.status !== 204 && response.status !== 304) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_BRIDGE_RESPONSE_BYTES) {
+          controller.abort();
+          throw new Error("Response body exceeds the bridge limit");
+        }
+        chunks.push(Buffer.from(value));
+      }
+      body = Buffer.concat(chunks);
+    }
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(
+        [...response.headers].filter(
+          ([name]) => !STRIPPED_RESPONSE_HEADERS.has(name.toLowerCase()),
+        ),
+      ),
+      bodyBase64: body.toString("base64"),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-function appendOutput(output, stream, chunk) {
-  output[stream] += new TextDecoder().decode(chunk);
+async function cleanupGuestFiles(runtime, userModuleDir) {
+  try {
+    await runtime.run(makeCleanupWrapper(userModuleDir), { timeout: 2_000 });
+  } catch (error) {
+    logInternalError("cleanup guest source", error);
+  }
 }
 
-function logsFromOutput(output) {
-  return [
-    ...output.stdout.split(/\r?\n/).filter(Boolean).map((message) => ({ message, type: "log" })),
-    ...output.stderr.split(/\r?\n/).filter(Boolean).map((message) => ({ message, type: "error" })),
-  ];
-}
-
-async function executeScript(runtime, script, config, signal, output) {
-  const userModulePath = `${USER_MODULE_DIR}/user-${randomUUID()}.mjs`;
-  await runtime.writeFile(userModulePath, script);
-  // The backend passes executionTimeoutMs through the Freestyle SDK as
-  // config.timeout. Although Freestyle's schema documentation is ambiguous
-  // in one place about seconds, this mock deliberately interprets it as
-  // milliseconds to match our caller's contract.
-  const timeoutMs = Number.isFinite(config.timeout) && config.timeout > 0
-    ? config.timeout
-    : DEFAULT_TIMEOUT_MS;
+async function executeScript(runtime, job) {
+  const userModuleDir = `${USER_MODULE_DIR}/${randomUUID()}`;
+  const userModulePath = `${userModuleDir}/user.mjs`;
+  await runtime.writeFile(userModulePath, job.script);
   let result;
   try {
-    result = await runtime.run(makeWrapper(userModulePath), {
-      env: config.envVars || {},
-      timeout: timeoutMs,
-      signal,
-      onStdout: (chunk) => appendOutput(output, "stdout", chunk),
-      onStderr: (chunk) => appendOutput(output, "stderr", chunk),
+    result = await runtime.run(makeWrapper(userModulePath, userModuleDir), {
+      env: job.config.envVars || {},
+      timeout: job.timeoutMs,
+      signal: job.controller.signal,
+      onStdout: (chunk) => appendOutput(job.output, "stdout", chunk),
+      onStderr: (chunk) => appendOutput(job.output, "stderr", chunk),
     });
   } catch (error) {
+    logInternalError("secure-exec execution", error);
     return {
       statusCode: 500,
       payload: {
-        error: `Secure Exec execution failed: ${formatError(error)}`,
-        logs: logsFromOutput(output),
+        error: "Script execution failed",
+        logs: logsFromOutput(job.output),
       },
     };
+  } finally {
+    await cleanupGuestFiles(runtime, userModuleDir);
   }
-
   if (result.exitCode !== 0 || result.value === undefined) {
-    const stderr = result.stderr.trim();
-    const detail = stderr ? `: ${stderr}` : ` (exit code ${result.exitCode})`;
+    logInternalError("secure-exec nonzero exit", result.stderr || result.exitCode);
     return {
       statusCode: 500,
       payload: {
-        error: `Secure Exec execution failed${detail}`,
-        logs: logsFromOutput(output),
+        error: "Script execution failed",
+        logs: logsFromOutput(job.output),
       },
     };
   }
   if (result.value.status === "error") {
-    return { statusCode: 500, payload: { error: result.value.error, logs: result.value.logs } };
+    return {
+      statusCode: 500,
+      payload: { error: result.value.error, logs: result.value.logs },
+    };
   }
-  return { statusCode: 200, payload: { result: result.value.result, logs: result.value.logs } };
+  return {
+    statusCode: 200,
+    payload: {
+      result: truncateResult(result.value.result),
+      logs: result.value.logs,
+    },
+  };
+}
+
+class JobQueue {
+  constructor(runtimeCache, dependencyCache) {
+    this.runtimeCache = runtimeCache;
+    this.dependencyCache = dependencyCache;
+    this.queue = [];
+    this.activeJobs = 0;
+  }
+
+  submit(script, config, timeoutMs) {
+    if (this.queue.length >= MAX_QUEUE_DEPTH) throw new QueueFullError();
+    return new Promise((resolve) => {
+      this.queue.push({
+        script,
+        config,
+        timeoutMs,
+        controller: new AbortController(),
+        output: createOutput(),
+        entry: null,
+        timer: null,
+        settled: false,
+        resolve,
+      });
+      this.dispatch();
+    });
+  }
+
+  settle(job, result) {
+    if (job.settled) return;
+    job.settled = true;
+    if (job.timer) clearTimeout(job.timer);
+    job.resolve(result);
+  }
+
+  dispatch() {
+    while (this.activeJobs < MAX_IN_FLIGHT && this.queue.length > 0) {
+      const job = this.queue.shift();
+      this.activeJobs++;
+      job.timer = setTimeout(() => {
+        job.forceRecycle = true;
+        if (job.entry) this.runtimeCache.retire(job.entry);
+        job.controller.abort(new Error("Execution timed out"));
+        this.settle(job, {
+          statusCode: 500,
+          payload: {
+            error: "Script execution timed out",
+            logs: logsFromOutput(job.output),
+          },
+        });
+      }, job.timeoutMs + OUTER_TIMEOUT_GRACE_MS);
+      this.execute(job)
+        .then((result) => this.settle(job, result))
+        .catch((error) => {
+          logInternalError("execute job", error);
+          this.settle(job, {
+            statusCode: 500,
+            payload: {
+              error: "Script execution failed",
+              logs: logsFromOutput(job.output),
+            },
+          });
+        })
+        .finally(() => {
+          this.activeJobs--;
+          this.dispatch();
+        });
+    }
+  }
+
+  async execute(job) {
+    let entry;
+    try {
+      const dependency = await this.dependencyCache.get(
+        job.config.nodeModules,
+        job.controller.signal,
+      );
+      entry = await this.runtimeCache.acquire(dependency);
+      job.entry = entry;
+      return await executeScript(entry.runtime, job);
+    } finally {
+      if (entry) this.runtimeCache.release(entry);
+    }
+  }
 }
 
 const dependencyCache = new DependencyCache(MODULE_CACHE_DIR);
 const runtimeCache = new RuntimeCache();
+dependencyCache.setProtectedHashes(() => new Set(runtimeCache.entries.keys()));
 const jobQueue = new JobQueue(runtimeCache, dependencyCache);
 
 await mkdir(MODULE_CACHE_DIR, { recursive: true });
-await runtimeCache.acquire({
+await dependencyCache.prune();
+const defaultEntry = await runtimeCache.acquire({
   hash: "default",
   isDefault: true,
   nodeModulesPath: DEFAULT_NODE_MODULES_DIR,
 });
-const defaultEntry = runtimeCache.entries.get("default");
 runtimeCache.release(defaultEntry);
 
 const server = createServer(async (request, response) => {
   try {
-    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    const url = new URL(
+      request.url || "/",
+      `http://${request.headers.host || "localhost"}`,
+    );
     const isExecutePath =
       request.method === "POST" &&
       /^\/execute\/v[123]\/script$/.test(url.pathname);
@@ -561,22 +998,37 @@ const server = createServer(async (request, response) => {
       response.end("Not found");
       return;
     }
-
     const body = await readRequestBody(request);
-    if (typeof body.script !== "string") {
-      throw new Error("Request body must contain a string script");
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      typeof body.script !== "string"
+    ) {
+      throw new ClientError(400, "Request body must contain a string script");
     }
-    const config = body.config && typeof body.config === "object" ? body.config : {};
-    const timeoutMs = Number.isFinite(config.timeout) && config.timeout > 0
-      ? config.timeout
-      : DEFAULT_TIMEOUT_MS;
+    const config =
+      body.config && typeof body.config === "object" && !Array.isArray(body.config)
+        ? body.config
+        : {};
+    config.nodeModules = normalizeNodeModules(config.nodeModules);
+    const timeoutMs = resolveTimeout(config.timeout);
     const result = await jobQueue.submit(body.script, config, timeoutMs);
     sendJson(response, result.statusCode, result.payload);
   } catch (error) {
-    sendJson(response, 500, { error: formatError(error), logs: [] });
+    if (error instanceof ClientError) {
+      sendJson(response, error.statusCode, { error: error.message, logs: [] });
+      return;
+    }
+    logInternalError("request", error);
+    sendJson(response, 500, { error: "Internal server error", logs: [] });
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`freestyle-mock listening on :${PORT}`);
+  console.log(
+    `freestyle-mock listening on :${PORT} (bridge ${
+      BRIDGE_ENABLED ? BRIDGED_ORIGINS.join(",") : "disabled"
+    })`,
+  );
 });
