@@ -41,6 +41,7 @@ const MAX_NON_DEFAULT_RUNTIMES = 3;
 const NPM_INSTALL_TIMEOUT_MS = 60_000;
 const MAX_NODE_MODULES = 20;
 const MAX_CACHE_BYTES = 512 * 1024 * 1024;
+const MAX_NPM_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BRIDGE_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_BRIDGE_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -318,7 +319,7 @@ class DependencyCache {
     this.installPromises = new Map();
     this.protectedHashes = () => new Set();
     this.pruneTimer = null;
-    this.pruneProtection = new Set();
+    this.pruneProtection = new Map();
   }
 
   setProtectedHashes(callback) {
@@ -326,16 +327,26 @@ class DependencyCache {
   }
 
   schedulePrune(hash) {
-    if (hash) this.pruneProtection.add(hash);
     if (this.pruneTimer) return;
     this.pruneTimer = setTimeout(async () => {
       this.pruneTimer = null;
-      try {
-        await this.prune();
-      } finally {
-        this.pruneProtection.clear();
-      }
+      await this.prune();
     }, 1_000);
+  }
+
+  hold(hash) {
+    if (!hash || hash === "default") return;
+    this.pruneProtection.set(
+      hash,
+      (this.pruneProtection.get(hash) || 0) + 1,
+    );
+  }
+
+  release(hash) {
+    if (!hash || hash === "default") return;
+    const count = this.pruneProtection.get(hash) || 0;
+    if (count <= 1) this.pruneProtection.delete(hash);
+    else this.pruneProtection.set(hash, count - 1);
   }
 
   async prune() {
@@ -378,6 +389,17 @@ class DependencyCache {
         await rm(candidate.path, { recursive: true, force: true });
         total -= candidate.size;
       }
+      const npmCachePath = join(this.rootDir, "npm-cache");
+      if (this.installPromises.size === 0) {
+        try {
+          if ((await directorySize(npmCachePath)) > MAX_NPM_CACHE_BYTES) {
+            await rm(npmCachePath, { recursive: true, force: true });
+            await mkdir(npmCachePath, { recursive: true });
+          }
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+      }
     } catch (error) {
       logInternalError("prune module cache", error);
     }
@@ -390,6 +412,7 @@ class DependencyCache {
         hash: "default",
         nodeModulesPath: DEFAULT_NODE_MODULES_DIR,
         isDefault: true,
+        release: () => {},
       };
     }
     const hash = hashNodeModules(normalized);
@@ -420,7 +443,19 @@ class DependencyCache {
       }
     }
     this.schedulePrune(hash);
-    return { hash, nodeModulesPath, isDefault: false };
+    this.hold(hash);
+    let released = false;
+    return {
+      hash,
+      nodeModulesPath,
+      isDefault: false,
+      release: () => {
+        if (released) return;
+        released = true;
+        this.release(hash);
+        this.schedulePrune(hash);
+      },
+    };
   }
 
   async ensureInstalled(cachePath, nodeModules, signal) {
@@ -754,7 +789,9 @@ const bridgedFetch = async (input, init) => {
     ),
     bodyBase64: body,
   });
-  const responseBody = bridged.status === 204 || bridged.status === 304
+  const responseBody = bridged.status === 204 ||
+    bridged.status === 205 ||
+    bridged.status === 304
     ? undefined
     : decodeBase64(bridged.bodyBase64);
   return new Response(responseBody, {
@@ -1025,8 +1062,9 @@ class JobQueue {
 
   async execute(job) {
     let entry;
+    let dependency;
     try {
-      const dependency = await this.dependencyCache.get(
+      dependency = await this.dependencyCache.get(
         job.config.nodeModules,
         job.controller.signal,
       );
@@ -1038,6 +1076,7 @@ class JobQueue {
       return await executeScript(entry.runtime, job);
     } finally {
       if (entry) this.runtimeCache.release(entry);
+      dependency?.release();
     }
   }
 }
