@@ -1,4 +1,5 @@
 import { getConfig, MOCK_FLY_TOKEN } from "../config.js";
+import { FLY_MUTATION_TIMEOUT_MS, MutationOutcomeUnknownError } from "../mutation-safety.js";
 
 // Thin client for the three Fly API surfaces Marshal talks to, plus the Docker registry.
 // One instance per (org, token) — resolved per namespace via resolveNamespaceOrg.
@@ -93,7 +94,13 @@ export class FlyClient {
     if (init.method === "GET" || init.method === "HEAD") {
       return await this.retryReadOnSocketReset(() => fetch(url, init));
     }
-    return await fetch(url, init);
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(FLY_MUTATION_TIMEOUT_MS) });
+    } catch (error) {
+      // A failed write request can have reached Fly even when no response reached Marshal.
+      // Keep the lease until expiry+drain so a replacement cannot overlap that operation.
+      throw new MutationOutcomeUnknownError(`Fly mutation ${init.method} ${url} ended without a response`, { cause: error });
+    }
   }
 
   private async fetchMachinesApi<T>(path: string, init?: { method?: string, body?: unknown, allow404?: boolean }): Promise<T | null> {
@@ -132,9 +139,16 @@ export class FlyClient {
       method: "POST",
       headers: { "authorization": `Bearer ${this.token}`, "content-type": "application/json" },
       body: JSON.stringify({ query, variables }),
+      ...(!options?.read ? { signal: AbortSignal.timeout(FLY_MUTATION_TIMEOUT_MS) } : {}),
     });
     // Read queries get the same one-shot socket-reset retry the REST reads get.
-    const response = options?.read ? await this.retryReadOnSocketReset(doFetch) : await doFetch();
+    let response: Response;
+    try {
+      response = options?.read ? await this.retryReadOnSocketReset(doFetch) : await doFetch();
+    } catch (error) {
+      if (options?.read) throw error;
+      throw new MutationOutcomeUnknownError("Fly GraphQL mutation ended without a response", { cause: error });
+    }
     // Read as text and parse defensively: a non-JSON upstream body (a proxy's 502 HTML page)
     // must surface as a FlyApiError(502-ish), not a bare SyntaxError → generic 500.
     const text = await response.text();

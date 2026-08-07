@@ -1,18 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { createReconciliationLease, readReconciliationLease, releaseReconciliationLease, replaceReconciliationLease } from "./store.js";
+import { MutationOutcomeUnknownError, RECONCILIATION_TAKEOVER_GRACE_MS } from "./mutation-safety.js";
 import type { ReconciliationLease } from "./types.js";
 
 export type LeaseTimings = {
   durationMs: number,
   renewIntervalMs: number,
   contendedPollMs: number,
+  takeoverGraceMs: number,
 };
 
 const DEFAULT_TIMINGS: LeaseTimings = {
   durationMs: 2 * 60 * 1000,
   renewIntervalMs: 20 * 1000,
   contendedPollMs: 1000,
+  takeoverGraceMs: RECONCILIATION_TAKEOVER_GRACE_MS,
 };
 
 export type ReconciliationLeaseGuard = {
@@ -39,9 +42,10 @@ async function acquireLease(ns: string, key: string, ownerId: string, timings: L
     if (current === null) {
       const etag = await createReconciliationLease(ns, key, desired);
       if (etag !== null) return { etag, value: desired };
-    } else if (current.value.expires_at_millis <= now) {
+    } else if (current.value.expires_at_millis + timings.takeoverGraceMs <= now) {
       // Conditional replacement is the distributed arbiter: exactly one Marshal replica can
-      // take over an expired lease, while the previous owner's next renewal is fenced out.
+      // take over an expired lease. The grace period also drains every bounded Fly write the
+      // previous owner could have started immediately before its last confirmed expiry.
       const etag = await replaceReconciliationLease(ns, key, desired, current.etag);
       if (etag !== null) return { etag, value: desired };
     }
@@ -101,24 +105,28 @@ export async function withReconciliationLease<T>(
   };
 
   let actionFailed = false;
+  let preserveLeaseForDrain = false;
   try {
     return await action(guard);
   } catch (error) {
     actionFailed = true;
+    preserveLeaseForDrain = error instanceof MutationOutcomeUnknownError;
     throw error;
   } finally {
     stop.abort();
     await heartbeat;
-    try {
-      const released = await releaseReconciliationLease(ns, key, held.etag);
-      if (!released && !actionFailed) {
-        throw new Error(`reconciliation lease for ${ns}/${key} was replaced before it could be released`);
+    if (!preserveLeaseForDrain) {
+      try {
+        const released = await releaseReconciliationLease(ns, key, held.etag);
+        if (!released && !actionFailed) {
+          throw new Error(`reconciliation lease for ${ns}/${key} was replaced before it could be released`);
+        }
+      } catch (error) {
+        // Preserve the action's original error. On success, a release failure must surface:
+        // otherwise callers could believe a reconciliation was safely serialized when it was not.
+        if (!actionFailed) throw error;
+        console.error(`releasing reconciliation lease for ${ns}/${key} failed after the action also failed`, error);
       }
-    } catch (error) {
-      // Preserve the action's original error. On success, a release failure must surface:
-      // otherwise callers could believe a reconciliation was safely serialized when it was not.
-      if (!actionFailed) throw error;
-      console.error(`releasing reconciliation lease for ${ns}/${key} failed after the action also failed`, error);
     }
   }
 }

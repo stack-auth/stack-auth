@@ -5,10 +5,11 @@ import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
 import { appNameForService, internalHostForService, networkForNamespace } from "./naming.js";
+import { MutationOutcomeUnknownError } from "./mutation-safety.js";
 import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
-import { deleteSpec, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
+import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
@@ -25,6 +26,10 @@ const UPLOAD_ID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-
 export const BUILD_ID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 // Grace on top of the harness's own watchdog before the lazy backstop declares a build dead.
 const BUILD_STALE_GRACE_MS = 5 * 60 * 1000;
+
+function isReconciliationFencingError(error: unknown): boolean {
+  return error instanceof ReconciliationLeaseLostError || error instanceof MutationOutcomeUnknownError;
+}
 
 export function validateNamespace(ns: string): string {
   if (!NAMESPACE_REGEX.test(ns)) throw badRequest(`invalid namespace ${JSON.stringify(ns)}`);
@@ -421,7 +426,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
         await lease.assertOwned();
         await fly.startMachine(appName, existing.id);
       } catch (error) {
-        if (error instanceof ReconciliationLeaseLostError) throw error;
+        if (isReconciliationFencingError(error)) throw error;
         // Already booting / raced — the wait below arbitrates.
       }
       await fly.waitForMachineState(appName, existing.id, "started", { instanceId: existing.instance_id, totalTimeoutSeconds: 120 });
@@ -438,7 +443,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
           await lease.assertOwned();
           await fly.startMachine(appName, updated.id);
         } catch (error) {
-          if (error instanceof ReconciliationLeaseLostError) throw error;
+          if (isReconciliationFencingError(error)) throw error;
           // Racing the update-triggered boot is fine — the wait below is the arbiter.
         }
       }
@@ -590,9 +595,12 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     // Copy the validated bytes to a build-specific key that the client cannot overwrite.
     // The original presigned PUT remains valid until expiry, so building from it would leave
     // a validation-to-extraction race even after strict tar validation.
+    await lease.assertOwned();
     await writeValidatedUpload(ns, build.id, archive);
-    await writeBuild(build);
+    await lease.assertOwned();
+    if (await createBuild(build) === null) throw new Error(`build id collision for ${build.id}`);
     try {
+      await lease.assertOwned();
       const started = await builder.startBuild({
         ns,
         key,
@@ -601,19 +609,22 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
         appName: appNameForService(config.envId, ns, key),
         uploadId,
         dockerfilePath: stored.spec.source.dockerfile_path ?? null,
-      });
+      }, lease);
       if (started.builderApp !== null || started.builderMachineId !== null) {
         // Attach the builder coordinates (live-log proxy + stale-build backstop need
         // them) — but only if the build hasn't already reached a terminal state.
-        const current = await readBuild(ns, key, build.id);
-        if (current !== null && (current.status === "queued" || current.status === "running")) {
-          await writeBuild({ ...current, builder_app: started.builderApp, builder_machine_id: started.builderMachineId });
+        const current = await readBuildVersioned(ns, key, build.id);
+        if (current !== null && (current.value.status === "queued" || current.value.status === "running")) {
+          await lease.assertOwned();
+          await replaceBuild({ ...current.value, builder_app: started.builderApp, builder_machine_id: started.builderMachineId }, current.etag);
         }
       }
     } catch (error) {
-      const current = await readBuild(ns, key, build.id);
-      if (current !== null && (current.status === "queued" || current.status === "running")) {
-        await writeBuild({ ...current, status: "failed", error: "starting the build failed", finished_at_millis: Date.now() });
+      if (isReconciliationFencingError(error)) throw error;
+      const current = await readBuildVersioned(ns, key, build.id);
+      if (current !== null && (current.value.status === "queued" || current.value.status === "running")) {
+        await lease.assertOwned();
+        await replaceBuild({ ...current.value, status: "failed", error: "starting the build failed", finished_at_millis: Date.now() }, current.etag);
       }
       await deleteValidatedUploadBestEffort(ns, build.id);
       throw error;
@@ -633,7 +644,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
   if (changed && "image" in spec.source) {
     // No-artifact revision (rescale / env edit / direct { image } deploy): record an
     // immediate succeeded build with has_logs: false so the build history stays complete.
-    await writeBuild({
+    const directBuild: StoredBuild = {
       id: ulid(now),
       ns,
       key,
@@ -647,7 +658,9 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
       builder_machine_id: null,
       image: spec.source.image,
       upload_id: null,
-    });
+    };
+    await lease.assertOwned();
+    if (await createBuild(directBuild) === null) throw new Error(`build id collision for ${directBuild.id}`);
   }
 
   // Reaching here means the effective source is an image (either given directly, or an
@@ -662,7 +675,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
       await applyMachines(fly, stored, source.image, resolved.env, lease);
       stored.last_apply_error = null;
     } catch (error) {
-      if (error instanceof ReconciliationLeaseLostError) throw error;
+      if (isReconciliationFencingError(error)) throw error;
       stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
     }
   }
@@ -693,8 +706,9 @@ async function completeBuildWithLease(options: {
 }, lease: ReconciliationLeaseGuard): Promise<void> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(options.ns));
-  const build = await readBuild(options.ns, options.key, options.buildId);
-  if (build === null) throw notFound(`build ${options.buildId} not found`);
+  const buildVersion = await readBuildVersioned(options.ns, options.key, options.buildId);
+  if (buildVersion === null) throw notFound(`build ${options.buildId} not found`);
+  const build = buildVersion.value;
   if (build.status !== "queued" && build.status !== "running") return; // idempotent replay
 
   const appName = appNameForService(config.envId, options.ns, options.key);
@@ -705,7 +719,8 @@ async function completeBuildWithLease(options: {
     // it reports complete:true with no lines yet.
     const failed: StoredBuild = { ...build, status: "failed", error: truncateError(options.errorText) ?? "build failed", finished_at_millis: Date.now() };
     await persistBuildLog(fly, failed);
-    await writeBuild(failed);
+    await lease.assertOwned();
+    if (await replaceBuild(failed, buildVersion.etag) === null) return;
     await deleteValidatedUploadBestEffort(options.ns, build.id);
     // The upload is deliberately kept on failure (a retry of the identical spec can reuse
     // it); the bucket lifecycle rule on uploads/ reclaims it.
@@ -728,7 +743,8 @@ async function completeBuildWithLease(options: {
   if (digest === null) {
     const failed: StoredBuild = { ...build, status: "failed", error: "build reported success but the built image digest could not be resolved", finished_at_millis: Date.now() };
     await persistBuildLog(fly, failed);
-    await writeBuild(failed);
+    await lease.assertOwned();
+    if (await replaceBuild(failed, buildVersion.etag) === null) return;
     await deleteValidatedUploadBestEffort(options.ns, build.id);
     return;
   }
@@ -736,7 +752,8 @@ async function completeBuildWithLease(options: {
   const imageRef = `${config.fly.registryHost}/${appName}@${digest}`;
   const succeeded: StoredBuild = { ...build, status: "succeeded", image: imageRef, finished_at_millis: Date.now() };
   await persistBuildLog(fly, succeeded);
-  await writeBuild(succeeded);
+  await lease.assertOwned();
+  if (await replaceBuild(succeeded, buildVersion.etag) === null) return;
   await deleteValidatedUploadBestEffort(options.ns, build.id);
 
   const storedVersion = await readSpecVersioned(options.ns, options.key);
@@ -751,7 +768,7 @@ async function completeBuildWithLease(options: {
         await applyMachines(fly, stored, imageRef, resolved.env, lease);
         stored.last_apply_error = null;
       } catch (error) {
-        if (error instanceof ReconciliationLeaseLostError) throw error;
+        if (isReconciliationFencingError(error)) throw error;
         stored.last_apply_error = error instanceof Error ? `deploy failed: ${error.message}` : "deploy failed";
       }
     }
@@ -1007,6 +1024,7 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const appName = appNameForService(config.envId, ns, key);
+  const storedVersion = await readSpecVersioned(ns, key);
 
   // Release hostname claims first — certs die with the app, but the bucket registry would
   // otherwise block the hostname forever.
@@ -1028,7 +1046,8 @@ async function deleteServiceWithLease(ns: string, key: string, lease: Reconcilia
   // destructive-delete acknowledgement from the caller.
   await lease.assertOwned();
   await fly.deleteApp(appName);
-  await deleteSpec(ns, key);
+  await lease.assertOwned();
+  if (storedVersion !== null) await deleteSpecConditionally(ns, key, storedVersion.etag);
 }
 
 // ---------------------------------------------------------------------------

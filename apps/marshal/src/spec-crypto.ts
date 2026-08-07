@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 
 const IV_BYTES = 12;
+export const DEVELOPMENT_DATA_ENCRYPTION_KEY = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+export function assertDataEncryptionKeyIsSafe(value: string, mocksAllowed: boolean): void {
+  if (value === DEVELOPMENT_DATA_ENCRYPTION_KEY && !mocksAllowed) {
+    throw new Error("marshal refuses to start: the public development data-encryption key requires MARSHAL_ALLOW_MOCKS=1");
+  }
+}
 
 export type EncryptedString = {
   encryption_version: 1,

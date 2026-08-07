@@ -3,6 +3,7 @@ import { BUILDER_GUEST, BUILDER_IMAGE, BUILD_TIMEOUT_SECONDS, RAILPACK_BUILDER_G
 import { flyClientForNamespaceOrg } from "./fly/client.js";
 import { builderAppName, builderNetworkName } from "./naming.js";
 import { presignValidatedUploadGet, readSpec } from "./store.js";
+import type { ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 
 // Builders start a build for an uploaded source tarball; completion always flows through
 // the webhook path (POST /internal/builds/:id/complete → services.completeBuild), so the
@@ -24,7 +25,7 @@ export type StartBuildOptions = {
 
 export type Builder = {
   name: string,
-  startBuild: (options: StartBuildOptions) => Promise<{ builderApp: string | null, builderMachineId: string | null }>,
+  startBuild: (options: StartBuildOptions, lease: ReconciliationLeaseGuard) => Promise<{ builderApp: string | null, builderMachineId: string | null }>,
 };
 
 // Per-build webhook token: HMAC over (buildId, ns, key) so a stolen token can't complete a
@@ -133,7 +134,7 @@ echo "MARSHAL_BUILD_DONE"
 export function createFlyBuilder(): Builder {
   return {
     name: "fly",
-    async startBuild(options) {
+    async startBuild(options, lease) {
       const config = getConfig();
       if (config.publicUrl === null) {
         throw new Error("MARSHAL_PUBLIC_URL must be set for real Fly builds — the builder machine calls the completion webhook on it");
@@ -141,6 +142,7 @@ export function createFlyBuilder(): Builder {
       const org = resolveNamespaceOrg(options.ns);
       const fly = flyClientForNamespaceOrg(org);
       const builderApp = builderAppName(config.envId);
+      await lease.assertOwned();
       await fly.ensureApp(builderApp, builderNetworkName(config.envId));
 
       const tarballUrl = await presignValidatedUploadGet(options.ns, options.buildId, BUILD_TIMEOUT_SECONDS + 60);
@@ -148,6 +150,7 @@ export function createFlyBuilder(): Builder {
       const webhookUrl = `${config.publicUrl}/internal/builds/${options.buildId}/complete?ns=${encodeURIComponent(options.ns)}&key=${encodeURIComponent(options.key)}`;
 
       const isRailpackBuild = options.dockerfilePath === null;
+      await lease.assertOwned();
       const machine = await fly.createMachine(builderApp, {
         name: `build-${options.buildId.toLowerCase()}`,
         region: config.fly.region,
@@ -199,7 +202,8 @@ export type CompleteBuildFn = (options: {
 export function createMockBuilder(completeBuild: CompleteBuildFn): Builder {
   return {
     name: "mock",
-    async startBuild(options) {
+    async startBuild(options, lease) {
+      await lease.assertOwned();
       // Test hook: a spec whose env declares MARSHAL_MOCK_FAIL_BUILD fails the build —
       // the only way e2e can exercise the failure path with an instant fake builder.
       const stored = await readSpec(options.ns, options.key);

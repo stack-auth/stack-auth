@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { computeRevision } from "./revision.js";
-import { decryptString, encryptString, parseDataEncryptionRootKey } from "./spec-crypto.js";
+import { DEVELOPMENT_DATA_ENCRYPTION_KEY, assertDataEncryptionKeyIsSafe, decryptString, encryptString, parseDataEncryptionRootKey } from "./spec-crypto.js";
 import type { ServiceSpec } from "./types.js";
 
 const FIRST_KEY = parseDataEncryptionRootKey("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
 const SECOND_KEY = parseDataEncryptionRootKey("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f");
 
 describe("stored spec cryptography", () => {
+  it("rejects the public development key unless mocks are explicitly enabled", () => {
+    expect(() => assertDataEncryptionKeyIsSafe(DEVELOPMENT_DATA_ENCRYPTION_KEY, false)).toThrow(/MARSHAL_ALLOW_MOCKS=1/);
+    expect(() => assertDataEncryptionKeyIsSafe(DEVELOPMENT_DATA_ENCRYPTION_KEY, true)).not.toThrow();
+  });
+
   it("round-trips only with the same object identity", () => {
     const encrypted = encryptString('{"TOKEN":{"value":"secret"}}', "specs/ns/web.json#env", FIRST_KEY);
     expect(JSON.stringify(encrypted)).not.toContain("secret");

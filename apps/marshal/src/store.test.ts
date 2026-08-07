@@ -117,6 +117,21 @@ describe("stored service spec encryption", () => {
     await expect(readSpec(spec.ns, spec.key)).resolves.toEqual(spec);
   });
 
+  it("rejects ciphertext moved to another object or paired with modified plaintext fields", async () => {
+    send.mockResolvedValueOnce({ ETag: "encrypted-etag" });
+    await writeSpec(spec, { ifNoneMatch: true });
+    const body = send.mock.calls[0][0].input.Body;
+    if (typeof body !== "string") throw new Error("test S3 request body was not a string");
+
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => body }, ETag: "moved-etag" });
+    await expect(readSpec(spec.ns, "worker")).rejects.toThrow(/identity does not match requested object/);
+
+    const tamperedBody = body.replace('"revision":"abc123def456"', '"revision":"attacker-value"');
+    expect(tamperedBody).not.toBe(body);
+    send.mockResolvedValueOnce({ Body: { transformToString: async () => tamperedBody }, ETag: "tampered-etag" });
+    await expect(readSpec(spec.ns, spec.key)).rejects.toThrow();
+  });
+
   it("atomically upgrades a legacy plaintext spec on first read", async () => {
     send.mockResolvedValueOnce({
       Body: { transformToString: async () => JSON.stringify(spec) },

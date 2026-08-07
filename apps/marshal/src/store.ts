@@ -171,21 +171,24 @@ function specKey(ns: string, key: string): string {
   return `specs/${ns}/${key}.json`;
 }
 
-function specEncryptionContext(ns: string, key: string): string {
-  // Binding ciphertext to its object identity prevents a bucket writer from swapping one
-  // tenant's encrypted environment into another service and having it decrypt successfully.
-  return `specs/${ns}/${key}.json#env`;
+function specEncryptionContext(ns: string, key: string, stored: Omit<StoredSpecOnDisk, "spec"> & { spec: Omit<ServiceSpec, "env"> }): string {
+  // The requested object path is authoritative: deriving this from the untrusted body would
+  // let a bucket writer move a complete object without invalidating its authentication tag.
+  // Authenticate the remaining plaintext too, so config/source/revision tampering is detected
+  // even though only the secret-bearing environment needs confidentiality.
+  return JSON.stringify({ object_key: specKey(ns, key), stored });
 }
 
 function storedSpecForDisk(spec: StoredSpec): StoredSpecOnDisk {
   const { env, ...specWithoutEnv } = spec.spec;
+  const authenticated = { ...spec, spec: specWithoutEnv };
   return {
-    ...spec,
+    ...authenticated,
     spec: {
       ...specWithoutEnv,
       encrypted_env: encryptString(
         JSON.stringify(env),
-        specEncryptionContext(spec.ns, spec.key),
+        specEncryptionContext(spec.ns, spec.key, authenticated),
         getConfig().dataEncryptionRootKey,
       ),
     },
@@ -218,16 +221,20 @@ function isLegacyStoredSpec(stored: PersistedStoredSpec): stored is StoredSpec {
   return "env" in stored.spec;
 }
 
-function storedSpecFromDisk(stored: PersistedStoredSpec): StoredSpec {
+function storedSpecFromDisk(stored: PersistedStoredSpec, expectedNs: string, expectedKey: string): StoredSpec {
+  if (stored.ns !== expectedNs || stored.key !== expectedKey) {
+    throw new Error(`stored service identity does not match requested object ${expectedNs}/${expectedKey}`);
+  }
   if (isLegacyStoredSpec(stored)) return stored;
   const { encrypted_env: encryptedEnv, ...specWithoutEnv } = stored.spec;
+  const authenticated = { ...stored, spec: specWithoutEnv };
   return {
     ...stored,
     spec: {
       ...specWithoutEnv,
       env: parseStoredEnv(decryptString(
         encryptedEnv,
-        specEncryptionContext(stored.ns, stored.key),
+        specEncryptionContext(expectedNs, expectedKey, authenticated),
         getConfig().dataEncryptionRootKey,
       )),
     },
@@ -242,7 +249,7 @@ export async function readSpecVersioned(ns: string, key: string): Promise<Versio
   for (;;) {
     const stored = await getJsonVersioned<PersistedStoredSpec>(specKey(ns, key));
     if (stored === null) return null;
-    const value = storedSpecFromDisk(stored.value);
+    const value = storedSpecFromDisk(stored.value, ns, key);
     if (!isLegacyStoredSpec(stored.value)) return { value, etag: stored.etag };
 
     // Draft/QA buckets may contain specs written before application-layer encryption was
@@ -259,6 +266,10 @@ export async function writeSpec(spec: StoredSpec, condition: WriteCondition): Pr
 
 export async function deleteSpec(ns: string, key: string): Promise<void> {
   await deleteObject(specKey(ns, key));
+}
+
+export async function deleteSpecConditionally(ns: string, key: string, etag: string): Promise<boolean> {
+  return await deleteObjectConditionally(specKey(ns, key), etag);
 }
 
 export async function listSpecKeys(ns: string): Promise<string[]> {
@@ -383,8 +394,20 @@ export async function readBuild(ns: string, key: string, id: string): Promise<St
   return await getJson<StoredBuild>(buildRecordKey(ns, key, id));
 }
 
+export async function readBuildVersioned(ns: string, key: string, id: string): Promise<Versioned<StoredBuild> | null> {
+  return await getJsonVersioned<StoredBuild>(buildRecordKey(ns, key, id));
+}
+
 export async function writeBuild(build: StoredBuild): Promise<void> {
   await putJson(buildRecordKey(build.ns, build.key, build.id), build);
+}
+
+export async function createBuild(build: StoredBuild): Promise<string | null> {
+  return await putJsonConditionally(buildRecordKey(build.ns, build.key, build.id), build, { ifNoneMatch: true });
+}
+
+export async function replaceBuild(build: StoredBuild, previousEtag: string): Promise<string | null> {
+  return await putJsonConditionally(buildRecordKey(build.ns, build.key, build.id), build, { ifMatch: previousEtag });
 }
 
 // Newest-first. ULIDs sort ascending by time, so reverse the (paginated, complete) key
