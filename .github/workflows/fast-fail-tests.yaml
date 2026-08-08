@@ -347,8 +347,18 @@ jobs:
       - name: Run AI-selected subset of tests
         run: |
           set -euo pipefail
-          echo "Running fast-fail subset: $SELECTED_TEST_FILES"
-          pnpm test run $SELECTED_TEST_FILES --reporter=verbose
+          # Perf files are excluded by default and belong in the dedicated one-worker step.
+          selected_test_files=$(printf '%s\n' "$SELECTED_TEST_FILES" \
+            | tr ' ' '\n' \
+            | grep -Ev '\.perf\.test\.' \
+            | tr '\n' ' ' \
+            | sed 's/ *$//' || true)
+          if [ -z "$selected_test_files" ]; then
+            echo "Skipping fast-fail subset: the selector chose only perf files, which run in the dedicated one-worker step."
+            exit 0
+          fi
+          echo "Running fast-fail subset: $selected_test_files"
+          pnpm test run $selected_test_files --reporter=verbose
 
       - name: Print bulldozer-js diagnostics
         if: ${{ failure() }}
