@@ -133,7 +133,13 @@ jobs:
         env:
           HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
         with:
-          run: pnpm run start:bulldozer &
+          run: |
+            bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+            (
+              set +e
+              pnpm run start:bulldozer >"$bulldozer_log" 2>&1
+              echo "$?" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+            ) &
           wait-on: |
             tcp:localhost:8146
           tail: true
@@ -219,6 +225,24 @@ jobs:
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
+
+      - name: Print bulldozer-js diagnostics
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt" ]]; then
+            echo "Bulldozer-js command exited with code $(<"$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt")"
+          else
+            echo "Bulldozer-js command is still running; a child process may have exited"
+          fi
+          tail -n 2000 "$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
+
+      - name: Upload bulldozer-js logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-bulldozer-${{ matrix.freestyle-mode }}
+          path: ${{ runner.temp }}/hexclave-bulldozer.untracked.log
+          if-no-files-found: error
 
       - name: Print Docker Compose logs
         if: always()
