@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
 import { expect } from "vitest";
 import { it, STACK_BACKEND_BASE_URL, updateCookiesFromResponse } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+
+const oauthCodeVerifier = "a".repeat(43);
+const oauthCodeChallenge = createHash("sha256").update(oauthCodeVerifier).digest("base64url");
 
 async function createConfiguredProject() {
   const { projectId } = await Project.createAndSwitch();
@@ -179,7 +183,7 @@ it("rejects unknown clients and authorization requests without PKCE", async () =
       response_type: "code",
       client_id: "unknown-client",
       redirect_uri: "http://localhost:30000/callback",
-      code_challenge: Auth.OAuth.testCodeChallenge,
+      code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",
     },
   });
@@ -208,8 +212,7 @@ it("reads and records an authenticated project OAuth interaction", async () => {
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
       scope: "openid files:read",
-      resource: "https://mcp.example.com/mcp",
-      code_challenge: Auth.OAuth.testCodeChallenge,
+      code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",
     },
   });
@@ -246,4 +249,77 @@ it("reads and records an authenticated project OAuth interaction", async () => {
   });
   expect(decision.status).toBe(200);
   expect(decision.body.done_url).toBe(providerUrl(projectId, `/interaction/${interactionUid}/done`));
+});
+
+it("completes the project OAuth authorization code flow", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    redirect: "manual",
+    query: {
+      response_type: "code",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      scope: "openid files:read",
+      resource: "https://mcp.example.com/mcp",
+      code_challenge: oauthCodeChallenge,
+      code_challenge_method: "S256",
+    },
+  });
+  expect(authorize.status).toBe(303);
+  const providerCookie = updateCookiesFromResponse("", authorize);
+  const interactionLocation = authorize.headers.get("location") ?? "";
+  const interaction = await niceBackendFetch(interactionLocation, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(interaction.status).toBe(307);
+  const interactionUid = new URL(interactionLocation).pathname.split("/").at(-1) ?? "";
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(decision.status).toBe(200);
+  const completed = await niceBackendFetch(decision.body.done_url, {
+    method: "POST",
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(completed.status).toBe(303);
+  const resumed = await niceBackendFetch(completed.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(providerCookie, completed) },
+  });
+  expect(resumed.status).toBe(303);
+  const callback = new URL(resumed.headers.get("location") ?? "");
+  expect(callback.origin).toBe("http://localhost:30000");
+  const code = callback.searchParams.get("code");
+  expect(code).not.toBeNull();
+  const token = await niceBackendFetch(providerUrl(projectId, "/token"), {
+    method: "POST",
+    rawBody: new TextEncoder().encode(new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code ?? "",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      code_verifier: oauthCodeVerifier,
+    }).toString()),
+    rawContentType: "application/x-www-form-urlencoded",
+  });
+  expect(token.status).toBe(200);
+  const idTokenPayload = JSON.parse(Buffer.from(token.body.id_token.split(".")[1] ?? "", "base64url").toString("utf8")) as {
+    iss?: string,
+    aud?: string | string[],
+    resource?: string,
+    scope?: string,
+  };
+  expect(token.body).toMatchObject({
+    token_type: "Bearer",
+    scope: "openid files:read",
+  });
+  expect(idTokenPayload).toMatchObject({
+    iss: providerUrl(projectId, ""),
+    aud: "testClient",
+  });
 });

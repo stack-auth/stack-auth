@@ -197,7 +197,11 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       const userId = decision.userId ?? throwErr("Project OAuth decision user ID was missing");
       const grant = new oidc.Grant({ accountId: userId, clientId });
       const oidcScopes = approved.filter(scope => OIDC_SCOPES.has(scope));
-      if (oidcScopes.length > 0) grant.addOIDCScope(oidcScopes.join(" "));
+      // oidc-provider treats every configured `scopes` entry as an OP scope for consent
+      // bookkeeping, including resource scopes. Keep the complete approved set on the grant so
+      // its `op_scopes_missing` check sees the consent as satisfied; resource authorization is
+      // separately represented below and remains enforced by the resource server.
+      if (approved.length > 0) grant.addOIDCScope(approved.join(" "));
       if (decision.resource !== undefined) grant.addResourceScope(decision.resource, approved.filter(scope => !oidcScopes.includes(scope)).join(" "));
       const grantId = await grant.save(60 * 60);
       return await oidc.interactionFinished(
