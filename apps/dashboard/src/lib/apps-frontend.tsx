@@ -139,6 +139,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Auth Methods", href: "." },
       { displayName: "Sign-up Rules", href: "../sign-up-rules" },
+      { displayName: "OAuth Provider", href: "../oauth-provider" },
     ],
     screenshots: getScreenshots('auth', 6),
     storeDescription: (
