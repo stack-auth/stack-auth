@@ -131,26 +131,40 @@ export default function PageClient() {
         if (!domains.some(domain => domain.id === id)) update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${id}`] = null;
       }
       for (const scope of scopes) {
-        update[`oauthProvider.scopes.${scope.id}.scope`] = optional(scope.scope);
-        update[`oauthProvider.scopes.${scope.id}.displayName`] = optional(scope.displayName);
-        update[`oauthProvider.scopes.${scope.id}.description`] = optional(scope.description);
+        update[`oauthProvider.scopes.${scope.id}`] = {
+          scope: optional(scope.scope),
+          displayName: optional(scope.displayName),
+          description: optional(scope.description),
+        };
       }
       for (const resource of resources) {
-        update[`oauthProvider.resources.${resource.id}.displayName`] = optional(resource.displayName);
-        update[`oauthProvider.resources.${resource.id}.uri`] = optional(resource.uri);
-        for (const [scopeId, value] of Object.entries(resource.scopes)) {
-          update[`oauthProvider.resources.${resource.id}.scopes.${scopeId}.scope`] = optional(typeof value === "string" ? value : value.scope);
-        }
+        update[`oauthProvider.resources.${resource.id}`] = {
+          displayName: optional(resource.displayName),
+          uri: optional(resource.uri),
+          scopes: Object.fromEntries(
+            Object.entries(resource.scopes).map(([scopeId, value]) => [
+              scopeId,
+              { scope: optional(typeof value === "string" ? value : value.scope) },
+            ]),
+          ),
+        };
       }
       for (const client of clients) {
-        update[`oauthProvider.clients.${client.id}.displayName`] = optional(client.displayName);
-        update[`oauthProvider.clients.${client.id}.trusted`] = client.trusted;
-        for (const [redirectId, redirect] of Object.entries(client.redirectUris)) {
-          update[`oauthProvider.clients.${client.id}.redirectUris.${redirectId}.url`] = optional(typeof redirect === "string" ? redirect : redirect.url);
-        }
+        update[`oauthProvider.clients.${client.id}`] = {
+          displayName: optional(client.displayName),
+          trusted: client.trusted,
+          redirectUris: Object.fromEntries(
+            Object.entries(client.redirectUris).map(([redirectId, redirect]) => [
+              redirectId,
+              { url: optional(typeof redirect === "string" ? redirect : redirect.url) },
+            ]),
+          ),
+        };
       }
       for (const domain of domains) {
-        update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${domain.id}.domain`] = optional(domain.domain);
+        update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${domain.id}`] = {
+          domain: optional(domain.domain),
+        };
       }
       await updateConfig({ adminApp: app, configUpdate: update, pushable: false });
     } catch (saveError) {
