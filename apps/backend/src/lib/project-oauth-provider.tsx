@@ -206,15 +206,22 @@ export async function resolveClientIdMetadataDocument(
  * Callers should go through the cache in the route rather than calling this per request —
  * constructing a `Provider` is expensive.
  */
-export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { apiUrl?: string }) {
+export async function createProjectOAuthProvider(
+  tenancy: Tenancy,
+  options?: {
+    apiUrl?: string,
+    interactionUrl?: (interactionUid: string) => string,
+  },
+) {
   const scopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
   const providerConfig = tenancy.config.oauthProvider;
   const resourceServers = getProjectResourceServers(tenancy);
+  const issuer = getProjectOAuthIssuer(tenancy.project.id, options?.apiUrl);
   const resourceUrisByAudience = new Map([...resourceServers].map(([uri, resource]) => [resource.audience, uri]));
 
   return await createOidcProviderInternal({
     id: getProjectIdpId(tenancy),
-    baseUrl: getProjectOAuthIssuer(tenancy.project.id, options?.apiUrl),
+    baseUrl: issuer,
     clients: getProjectStaticClients(tenancy),
     findClient: providerConfig.clientIdMetadataDocuments.enabled
       ? async (clientId) => await resolveClientIdMetadataDocument(tenancy, clientId)
@@ -234,5 +241,22 @@ export async function createProjectOAuthProvider(tenancy: Tenancy, options?: { a
     },
     // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally.
     requirePkce: true,
+    interactionUrl: options?.interactionUrl,
+    jwksRoute: "/.well-known/jwks.json",
+    oauthAuthorizationServerMetadata: {
+      issuer,
+      authorization_endpoint: new URL("/auth", issuer).toString(),
+      token_endpoint: new URL("/token", issuer).toString(),
+      registration_endpoint: providerConfig.dynamicClientRegistration.enabled
+        ? new URL("/reg", issuer).toString()
+        : undefined,
+      revocation_endpoint: new URL("/token/revocation", issuer).toString(),
+      jwks_uri: new URL("/.well-known/jwks.json", issuer).toString(),
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      scopes_supported: scopes,
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none"],
+    },
   });
 }
