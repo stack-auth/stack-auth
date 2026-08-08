@@ -2,9 +2,6 @@ import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
 import { RoutePatternIndex } from "./route-pattern-index";
 
-const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
-const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
-const devRateLimitMarks: number[] = [];
 const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
 for (const version of apiVersions) {
   if (version.migrationFolder == null) {
@@ -87,11 +84,9 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   // the previous contract so signed URLs, caches, and integrations relying on
   // canonicalization behave identically across old and new deployments. Existing e2e
   // tests fetch `/api/v1/` and assert a 200 because their fetch follows redirects — that
-  // held on Next (308→200) and holds again now. This runs before the artificial
-  // development delay and the OPTIONS short-circuit (Next redirected all methods,
-  // including OPTIONS), and redirecting early keeps the dev rate limiter from counting
-  // phantom duplicate paths. 308 (not 301/307) preserves the method and body, exactly
-  // what Next used.
+  // held on Next (308→200) and holds again now. This runs before the OPTIONS short-circuit
+  // (Next redirected all methods, including OPTIONS). A 308 (not 301/307) preserves the
+  // method and body, exactly as Next did.
   const canonicalPathname = getCanonicalPathname(url.pathname);
   if (canonicalPathname !== url.pathname) {
     return {
@@ -181,16 +176,12 @@ function mergeHexclaveHeaderAliases(headers: Headers) {
   return newRequestHeaders;
 }
 
-function isArtificialDevelopmentBehaviorDisabled(headers: Headers) {
-  return Boolean(headers.get("x-stack-disable-artificial-development-delay"));
-}
-
-import.meta.vitest?.test("Hexclave header aliases control artificial development behavior", ({ expect }) => {
+import.meta.vitest?.test("Hexclave header aliases merge into Stack headers", ({ expect }) => {
   const mergedHeaders = mergeHexclaveHeaderAliases(new Headers({
-    "x-hexclave-disable-artificial-development-delay": "true",
+    "x-hexclave-access-token": "test-access-token",
   }));
 
-  expect(isArtificialDevelopmentBehaviorDisabled(mergedHeaders)).toBe(true);
+  expect(mergedHeaders.get("x-stack-access-token")).toBe("test-access-token");
 });
 
 const clientIpForwardingHeaders = ["x-forwarded-for", "x-real-ip", "x-vercel-forwarded-for", "cf-connecting-ip"];
