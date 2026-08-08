@@ -1,11 +1,12 @@
 import { globalPrismaClient } from '@/prisma-client';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
-import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
 import { Json } from '@hexclave/shared/dist/utils/json';
-import { serializeRecipient } from './email-queue-step';
+import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
@@ -66,6 +67,12 @@ export async function sendEmailToMany(options: {
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
     })),
   });
+
+  if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
+    // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
+    // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
+    runAsynchronouslyAndWaitUntil(runEmailQueueStep());
+  }
 }
 
 export async function sendEmailFromDefaultTemplate(options: {
