@@ -54,7 +54,9 @@ const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllow
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
 export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
-  return new URL(request.url).pathname.startsWith("/api/") ? {
+  const pathname = new URL(request.url).pathname;
+  const isProjectOAuthPathInsertion = /^\/\.well-known\/(?:openid-configuration|oauth-authorization-server)\/api\/v1\/projects\/[^/]+\/oidc$/.test(pathname);
+  return pathname.startsWith("/api/") || isProjectOAuthPathInsertion ? {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",
@@ -112,9 +114,11 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   ensureForwardedForHeader(mergedHeaders, request);
 
   const isApiRequest = url.pathname.startsWith("/api/");
+  const isCorsEnabledRequest = isApiRequest
+    || /^\/\.well-known\/(?:openid-configuration|oauth-authorization-server)\/api\/v1\/projects\/[^/]+\/oidc$/.test(url.pathname);
   const corsHeadersInit = getCorsHeadersInit(request);
 
-  if (request.method === "OPTIONS" && isApiRequest) {
+  if (request.method === "OPTIONS" && isCorsEnabledRequest) {
     return {
       corsHeadersInit,
       dispatchPath: url.pathname,

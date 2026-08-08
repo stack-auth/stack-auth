@@ -62,12 +62,16 @@ export const GET = createSmartRouteHandler({
             scope: "project",
             recursive: true,
             userIds: pageUserIds,
+            // Compliance review evaluates full live authority, not an OAuth-token scope intersection.
+            grantedScopes: null,
           }),
           listPermissions(prisma, {
             tenancy,
             scope: "team",
             recursive: true,
             userIds: pageUserIds,
+            // Compliance review evaluates full live authority, not an OAuth-token scope intersection.
+            grantedScopes: null,
           }),
         ]);
       const effectivePermissionsByUser = new Map<string, Set<string>>();

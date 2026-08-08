@@ -243,20 +243,5 @@ export async function createProjectOAuthProvider(
     requirePkce: true,
     interactionUrl: options?.interactionUrl,
     jwksRoute: "/.well-known/jwks.json",
-    oauthAuthorizationServerMetadata: {
-      issuer,
-      authorization_endpoint: new URL("/auth", issuer).toString(),
-      token_endpoint: new URL("/token", issuer).toString(),
-      registration_endpoint: providerConfig.dynamicClientRegistration.enabled
-        ? new URL("/reg", issuer).toString()
-        : undefined,
-      revocation_endpoint: new URL("/token/revocation", issuer).toString(),
-      jwks_uri: new URL("/.well-known/jwks.json", issuer).toString(),
-      response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
-      scopes_supported: scopes,
-      code_challenge_methods_supported: ["S256"],
-      token_endpoint_auth_methods_supported: ["none"],
-    },
   });
 }

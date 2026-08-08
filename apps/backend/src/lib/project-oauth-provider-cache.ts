@@ -45,16 +45,25 @@ export async function getProjectOAuthProvider(
     return await existing.provider;
   }
 
-  const provider = createProjectOAuthProvider(tenancy, options);
-  providerCache.set(idpId, {
+  const entry: CachedProvider = {
     fingerprint,
     expiresAt: now + PROJECT_PROVIDER_CACHE_TTL_MS,
-    provider,
-  });
+    provider: Promise.resolve().then(async () => await createProjectOAuthProvider(tenancy, options)),
+  };
+  entry.provider = entry.provider.then(
+    (provider) => provider,
+    (error) => {
+      if (providerCache.get(idpId) === entry) {
+        providerCache.delete(idpId);
+      }
+      throw error;
+    },
+  );
+  providerCache.set(idpId, entry);
   while (providerCache.size > PROJECT_PROVIDER_CACHE_MAX_SIZE) {
     const oldestIdpId = providerCache.keys().next().value;
     if (oldestIdpId === undefined) break;
     providerCache.delete(oldestIdpId);
   }
-  return await provider;
+  return await entry.provider;
 }

@@ -45,6 +45,10 @@ function providerUrl(projectId: string, suffix: string): string {
   return new URL(`/api/v1/projects/${projectId}/oidc${suffix}`, STACK_BACKEND_BASE_URL).toString();
 }
 
+function pathInsertionUrl(projectId: string, metadata: "openid-configuration" | "oauth-authorization-server"): string {
+  return new URL(`/.well-known/${metadata}/api/v1/projects/${projectId}/oidc`, STACK_BACKEND_BASE_URL).toString();
+}
+
 function normalizeIssuerUrl(url: string, issuer: string): string {
   return url.replace(issuer, "<issuer>");
 }
@@ -74,28 +78,25 @@ it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
       "token_endpoint": "<issuer>/token",
     }
   `);
+  expect(openidConfiguration.body.issuer).toBe(issuer);
+  expect(openidConfiguration.body.authorization_endpoint).toBe(`${issuer}/auth`);
+  expect(openidConfiguration.body.token_endpoint).toBe(`${issuer}/token`);
+  expect(openidConfiguration.body.registration_endpoint).toBe(`${issuer}/reg`);
+  expect(openidConfiguration.body.jwks_uri).toBe(`${issuer}/.well-known/jwks.json`);
+  expect(openidConfiguration.headers.get("access-control-allow-origin")).toBe("*");
 
   const oauthConfiguration = await niceBackendFetch(providerUrl(projectId, "/.well-known/oauth-authorization-server"));
   expect(oauthConfiguration.status).toBe(200);
-  expect({
-    issuer: normalizeIssuerUrl(oauthConfiguration.body.issuer, issuer),
-    authorization_endpoint: normalizeIssuerUrl(oauthConfiguration.body.authorization_endpoint, issuer),
-    token_endpoint: normalizeIssuerUrl(oauthConfiguration.body.token_endpoint, issuer),
-    registration_endpoint: normalizeIssuerUrl(oauthConfiguration.body.registration_endpoint, issuer),
-    revocation_endpoint: normalizeIssuerUrl(oauthConfiguration.body.revocation_endpoint, issuer),
-    jwks_uri: normalizeIssuerUrl(oauthConfiguration.body.jwks_uri, issuer),
-    code_challenge_methods_supported: oauthConfiguration.body.code_challenge_methods_supported,
-  }).toMatchInlineSnapshot(`
-    {
-      "authorization_endpoint": "<issuer>/auth",
-      "code_challenge_methods_supported": ["S256"],
-      "issuer": "<issuer>",
-      "jwks_uri": "<issuer>/.well-known/jwks.json",
-      "registration_endpoint": "<issuer>/reg",
-      "revocation_endpoint": "<issuer>/token/revocation",
-      "token_endpoint": "<issuer>/token",
-    }
-  `);
+  expect(oauthConfiguration.body).toEqual(openidConfiguration.body);
+  expect(oauthConfiguration.headers.get("access-control-allow-origin")).toBe("*");
+
+  const issuerOpenidAlias = await niceBackendFetch(pathInsertionUrl(projectId, "openid-configuration"));
+  const issuerOAuthAlias = await niceBackendFetch(pathInsertionUrl(projectId, "oauth-authorization-server"));
+  expect(issuerOpenidAlias.status).toBe(200);
+  expect(issuerOAuthAlias.status).toBe(200);
+  expect(issuerOpenidAlias.body).toEqual(openidConfiguration.body);
+  expect(issuerOAuthAlias.body).toEqual(openidConfiguration.body);
+  expect(issuerOpenidAlias.headers.get("access-control-allow-origin")).toBe("*");
 
   const jwks = await niceBackendFetch(providerUrl(projectId, "/.well-known/jwks.json"));
   expect(jwks.status).toBe(200);
@@ -113,6 +114,36 @@ it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
     body: {},
   });
   expect(revocation.status).toBe(400);
+  expect(revocation.headers.get("access-control-allow-origin")).toBe("*");
+
+  for (const path of [
+    "/.well-known/openid-configuration",
+    "/.well-known/oauth-authorization-server",
+    "/token",
+    "/reg",
+    "/token/revocation",
+  ]) {
+    const preflight = await niceBackendFetch(providerUrl(projectId, path), {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://mcp.example.com",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    expect(preflight.status).toBe(200);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toContain("POST");
+  }
+
+  const aliasPreflight = await niceBackendFetch(pathInsertionUrl(projectId, "oauth-authorization-server"), {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://mcp.example.com",
+      "Access-Control-Request-Method": "GET",
+    },
+  });
+  expect(aliasPreflight.status).toBe(200);
+  expect(aliasPreflight.headers.get("access-control-allow-origin")).toBe("*");
 });
 
 it("returns a safe 404 for an unknown project", async () => {
@@ -120,8 +151,8 @@ it("returns a safe 404 for an unknown project", async () => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 404,
-      "body": { "message": "Project not found" },
-      "headers": Headers { <some fields may be hidden> },
+      "body": "Project not found",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });

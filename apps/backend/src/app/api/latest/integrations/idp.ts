@@ -231,8 +231,6 @@ export type OidcProviderOptions = {
   interactionUrl?: (interactionUid: string) => string,
   /** Override the JWKS route so discovery advertises the public project-provider URL. */
   jwksRoute?: string,
-  /** RFC 8414 metadata for providers that expose a project OAuth authorization server. */
-  oauthAuthorizationServerMetadata?: Record<string, unknown>,
 };
 
 function wrapOidcMiddleware(oidc: Provider, mw: Parameters<typeof oidc.use>[0]): void {
@@ -375,11 +373,6 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
   wrapOidcMiddleware(oidc, async (ctx, next) => {
     if (ctx.path === '/.well-known/jwks.json') {
       ctx.body = publicJwkSet;
-      ctx.type = 'application/json';
-      return;
-    }
-    if (ctx.path === '/.well-known/oauth-authorization-server' && options.oauthAuthorizationServerMetadata !== undefined) {
-      ctx.body = options.oauthAuthorizationServerMetadata;
       ctx.type = 'application/json';
       return;
     }
