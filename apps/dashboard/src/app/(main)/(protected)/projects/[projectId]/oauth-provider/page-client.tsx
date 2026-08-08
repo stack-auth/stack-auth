@@ -58,7 +58,6 @@ export default function PageClient() {
   const [dcrEnabled, setDcrEnabled] = useState(oauth.dynamicClientRegistration.enabled);
   const [cimdEnabled, setCimdEnabled] = useState(oauth.clientIdMetadataDocuments.enabled);
   const [consentRequired, setConsentRequired] = useState(consentDefault);
-  const [optionalScopes, setOptionalScopes] = useState(oauth.consent.allowUserToDeselectOptionalScopes);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -66,7 +65,7 @@ export default function PageClient() {
   const issuer = getOAuthIssuerUrl({ projectId: project.id, baseUrl: apiBaseUrl });
   const discovery = `${issuer}/.well-known/openid-configuration`;
   const hasChanges = useMemo(() =>
-    JSON.stringify({ scopes, resources, clients, domains, dcrEnabled, cimdEnabled, consentRequired, optionalScopes })
+    JSON.stringify({ scopes, resources, clients, domains, dcrEnabled, cimdEnabled, consentRequired })
     !== JSON.stringify({
       scopes: toScopes(oauth.scopes),
       resources: toResources(oauth.resources),
@@ -75,8 +74,7 @@ export default function PageClient() {
       dcrEnabled: oauth.dynamicClientRegistration.enabled,
       cimdEnabled: oauth.clientIdMetadataDocuments.enabled,
       consentRequired: consentDefault,
-      optionalScopes: oauth.consent.allowUserToDeselectOptionalScopes,
-    }), [clients, cimdEnabled, consentDefault, consentRequired, dcrEnabled, domains, oauth, optionalScopes, resources, scopes]);
+    }), [clients, cimdEnabled, consentDefault, consentRequired, dcrEnabled, domains, oauth, resources, scopes]);
 
   const save = async () => {
     setSaving(true);
@@ -116,7 +114,6 @@ export default function PageClient() {
         "oauthProvider.dynamicClientRegistration.enabled": dcrEnabled,
         "oauthProvider.clientIdMetadataDocuments.enabled": cimdEnabled,
         "oauthProvider.consent.required": consentRequired,
-        "oauthProvider.consent.allowUserToDeselectOptionalScopes": optionalScopes,
       };
       for (const id of Object.keys(oauth.scopes)) {
         if (!scopes.some(scope => scope.id === id)) update[`oauthProvider.scopes.${id}`] = null;
@@ -191,9 +188,25 @@ export default function PageClient() {
       <DesignCard title="Provider behavior" subtitle="Control registration and consent." icon={SlidersHorizontalIcon} glassmorphic>
         <div className="grid gap-4 sm:grid-cols-2">
           <Toggle label="Require consent" value={consentRequired} onChange={setConsentRequired} />
-          <Toggle label="Allow optional scope deselection" value={optionalScopes} onChange={setOptionalScopes} />
           <Toggle label="Enable dynamic client registration" value={dcrEnabled} onChange={setDcrEnabled} />
-          <Toggle label="Enable client ID metadata documents" value={cimdEnabled} onChange={setCimdEnabled} />
+        </div>
+      </DesignCard>
+      <DesignCard title="Client ID metadata documents" subtitle="Let clients serve their own OAuth metadata." icon={GlobeIcon} glassmorphic>
+        <Toggle label="Enable client ID metadata documents" value={cimdEnabled} onChange={setCimdEnabled} />
+        <div className={cimdEnabled ? "mt-4 space-y-3" : "mt-4 space-y-3 opacity-50"}>
+          <Typography className="text-sm text-muted-foreground">
+            Allowed domains restrict which hostnames may serve client metadata documents.
+            {cimdEnabled ? "" : " Enable client ID metadata documents to configure this list."}
+          </Typography>
+          {domains.map(item => (
+            <div key={item.id} className="flex items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <Field label="Hostname" value={item.domain ?? ""} disabled={!cimdEnabled} onChange={domain => setDomains(current => current.map(existing => existing.id === item.id ? { ...existing, domain } : existing))} />
+              </div>
+              <Button variant="secondary" disabled={!cimdEnabled} onClick={() => setDomains(current => current.filter(existing => existing.id !== item.id))}>Remove</Button>
+            </div>
+          ))}
+          <Button variant="secondary" disabled={!cimdEnabled} onClick={() => setDomains(current => [...current, { id: generateUuid(), domain: "" }])}>Add Allowed domain</Button>
         </div>
       </DesignCard>
       <EditableList
@@ -208,16 +221,6 @@ export default function PageClient() {
             <Field label="Display name" value={item.displayName ?? ""} onChange={value => update({ displayName: value })} />
             <Field label="Description" value={item.description ?? ""} onChange={value => update({ description: value })} />
           </div>
-        )}
-      />
-      <EditableList
-        icon={GlobeIcon}
-        title="Allowed domains"
-        items={domains}
-        onAdd={() => setDomains(current => [...current, { id: generateUuid(), domain: "" }])}
-        onChange={setDomains}
-        render={(item, update) => (
-          <Field label="Hostname" value={item.domain ?? ""} onChange={domain => update({ domain })} />
         )}
       />
       <EditableList
@@ -267,8 +270,8 @@ export default function PageClient() {
   );
 }
 
-function Field(props: { label: string, value: string, onChange: (value: string) => void }) {
-  return <label className="space-y-1"><Label>{props.label}</Label><Input value={props.value} onChange={event => props.onChange(event.target.value)} /></label>;
+function Field(props: { label: string, value: string, disabled?: boolean, onChange: (value: string) => void }) {
+  return <label className="space-y-1"><Label>{props.label}</Label><Input disabled={props.disabled} value={props.value} onChange={event => props.onChange(event.target.value)} /></label>;
 }
 
 function StableList(props: {

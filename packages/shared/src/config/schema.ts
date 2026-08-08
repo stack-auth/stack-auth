@@ -209,7 +209,12 @@ const branchOAuthProviderSchema = yupObject({
 
   consent: yupObject({
     required: yupBoolean(),
-    /** Whether the consent screen lets the user uncheck individual optional scopes. */
+    /**
+     * Reserved for a future consent flow. The current oidc-provider integration cannot resume a
+     * reduced grant after optional scopes are removed, so this setting is accepted for config
+     * compatibility but is intentionally ignored and reported as unavailable by the interaction
+     * endpoint.
+     */
     allowUserToDeselectOptionalScopes: yupBoolean(),
   }),
 });
