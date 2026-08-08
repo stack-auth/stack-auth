@@ -67,6 +67,7 @@ describe("resolveClientIdMetadataDocument", () => {
             "authorization_code",
             "refresh_token",
           ],
+          "id_token_signed_response_alg": "ES256",
           "redirect_uris": [
             "http://127.0.0.1:8765/callback",
           ],
