@@ -1,4 +1,3 @@
-import { getHostedHandlerTrustedDomain } from "@/lib/redirect-urls";
 import { getProjectOAuthIssuer } from "@/lib/project-oauth-provider";
 import { getProjectOAuthProvider } from "@/lib/project-oauth-provider-cache";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
@@ -50,17 +49,8 @@ export async function handleProjectOAuthRequest(req: Request): Promise<Response>
 
   // The public issuer has no branch segment, so it serves only the default branch. The provider
   // idpId remains branch-scoped because grants and signing keys are persisted per branch.
-  const interactionBaseUrl = new URL(
-    "/handler/oauth-provider-interaction",
-    getHostedHandlerTrustedDomain(projectId),
-  );
   const oidc = await getProjectOAuthProvider(tenancy, {
     apiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL"),
-    interactionUrl: (interactionUid) => {
-      const interactionUrl = new URL(interactionBaseUrl);
-      interactionUrl.searchParams.set("interaction_uid", interactionUid);
-      return interactionUrl.toString();
-    },
   });
 
   const issuerUrl = new URL(

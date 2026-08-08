@@ -31,7 +31,6 @@ export async function getProjectOAuthProvider(
   tenancy: Tenancy,
   options: {
     apiUrl: string,
-    interactionUrl: (interactionUid: string) => string,
   },
 ): Promise<Provider> {
   const now = performance.now();

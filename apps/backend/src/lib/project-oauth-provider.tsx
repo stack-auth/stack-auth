@@ -8,6 +8,10 @@ import { assertSafeOAuthUrlWithoutDns, fetchOAuthJsonDocument } from "./ssrf-pro
 import { deriveScopesFromConfig } from "./permissions";
 import { getResourceAudience } from "./tokens";
 import { Tenancy } from "./tenancies";
+import {
+  findProjectOAuthAccount,
+  installProjectOAuthInteractionMiddleware,
+} from "./project-oauth-interaction";
 
 /**
  * A Hexclave project acting as its own OAuth 2.1 / OIDC provider.
@@ -212,7 +216,6 @@ export async function createProjectOAuthProvider(
   tenancy: Tenancy,
   options?: {
     apiUrl?: string,
-    interactionUrl?: (interactionUid: string) => string,
   },
 ) {
   const scopes = deriveScopesFromConfig(tenancy.config).map(s => s.scope);
@@ -243,7 +246,8 @@ export async function createProjectOAuthProvider(
     },
     // OAuth 2.1 and the MCP authorization spec both require PKCE unconditionally.
     requirePkce: true,
-    interactionUrl: options?.interactionUrl,
+    findAccount: async (_ctx, sub) => await findProjectOAuthAccount(tenancy, sub),
+    middleware: (oidc) => installProjectOAuthInteractionMiddleware(oidc, tenancy),
     jwksRoute: "/.well-known/jwks.json",
   });
 }
