@@ -61,6 +61,7 @@ export async function handleProjectOAuthRequest(req: Request): Promise<Response>
   // dispatching the provider against the rewritten route path.
   const originalUrl = new URL(issuerUrl);
   originalUrl.pathname = `${issuerUrl.pathname}${providerPath === "/" ? "" : providerPath}`;
+  originalUrl.search = requestUrl.search;
   const internalUrl = new URL(requestUrl);
   internalUrl.pathname = providerPath;
   const [incomingMessage, serverResponse] = await createNodeHttpServerDuplex({
@@ -82,8 +83,6 @@ export async function handleProjectOAuthRequest(req: Request): Promise<Response>
       headers.push([key, `${value}`]);
     }
   }
-  headers = headers.filter(([key, value]) => key !== "set-cookie" || !value.toString().match(/^_session\.?/));
-
   return new Response(body, {
     headers,
     status: {
