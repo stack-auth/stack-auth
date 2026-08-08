@@ -4,6 +4,7 @@ import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
 import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
 import { wait } from "@hexclave/shared/dist/utils/promises";
@@ -163,7 +164,34 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     expectSnakeCase(body, "req.body");
   }
   const projectKeys = backendContext.value.projectKeys;
-  const userAuth = userAuthOverride ?? backendContext.value.userAuth;
+  let userAuth = userAuthOverride ?? backendContext.value.userAuth;
+  // Access tokens live for only 60s in dev/CI (HEXCLAVE_ACCESS_TOKEN_EXPIRATION_TIME), and every request we send carries
+  // the context user's access token, even server-access ones. So any test that spends more than a minute between signing a
+  // user up and its next request fails with ACCESS_TOKEN_EXPIRED, no matter which access type it uses. Refresh the token
+  // the way a real client would instead. Tests that want to observe an expired token can pass an explicit `userAuth`
+  // (skipped below) or leave the refresh token unset.
+  if (userAuthOverride === undefined && projectKeys !== "no-project" && userAuth?.accessToken && userAuth.refreshToken) {
+    const jwtInfo = await getJwtInfo({ jwt: userAuth.accessToken });
+    const expiresAt = jwtInfo.status === "ok" && typeof jwtInfo.data.payload.exp === "number"
+      ? jwtInfo.data.payload.exp * 1000
+      : undefined;
+    if (expiresAt !== undefined && expiresAt <= Date.now() + 5_000) {
+      const refreshResponse = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
+        method: "POST",
+        accessType: "client",
+        userAuth: {
+          refreshToken: userAuth.refreshToken,
+        },
+      });
+      if (refreshResponse.status === 200 && typeof refreshResponse.body === "object" && refreshResponse.body !== null && "access_token" in refreshResponse.body && typeof refreshResponse.body.access_token === "string") {
+        userAuth = {
+          ...userAuth,
+          accessToken: refreshResponse.body.access_token,
+        };
+        backendContext.set({ userAuth });
+      }
+    }
+  }
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
   if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new HexclaveAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
   if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new HexclaveAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
@@ -307,6 +335,13 @@ export namespace Auth {
       accessToken: sessionResponse.body.access_token,
       refreshToken: sessionResponse.body.refresh_token,
     };
+  }
+
+  export async function fastSignUpWithEmail(email = backendContext.value.mailbox.emailAddress) {
+    return await fastSignUp({
+      primary_email: email,
+      primary_email_verified: true,
+    });
   }
 
   export async function ensureParsableAccessToken() {
@@ -570,7 +605,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, sendVerificationEmail?: boolean, waitForVerificationEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -580,7 +615,7 @@ export namespace Auth {
         body: filterUndefined({
           email,
           password,
-          verification_callback_url: "http://localhost:12345/some-callback-url",
+          verification_callback_url: options.sendVerificationEmail ? "http://localhost:12345/some-callback-url" : undefined,
           bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
         }),
       });
@@ -594,8 +629,9 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // Wait for the verification email to arrive (unless explicitly disabled)
-      if (!options.noWaitForEmail) {
+      // Verification emails dominated the baseline outbox and slowed the suite,
+      // so only tests asserting verification behavior opt into sending one.
+      if (options.sendVerificationEmail && options.waitForVerificationEmail !== false) {
         await mailbox.waitForMessagesWithSubject("Verify your email");
       }
 
@@ -792,6 +828,7 @@ export namespace Auth {
     export async function authorize(options: TurnstileTestOptions & {
       redirectUrl?: string,
       errorRedirectUrl?: string,
+      afterCallbackRedirectUrl?: string,
       forceBranchId?: string,
       includeClientSecret?: boolean,
     } = {}) {
@@ -802,6 +839,7 @@ export namespace Auth {
           ...filterUndefined({
             redirect_uri: options.redirectUrl ?? undefined,
             error_redirect_uri: options.errorRedirectUrl ?? undefined,
+            after_callback_redirect_url: options.afterCallbackRedirectUrl ?? undefined,
           }),
         },
       });

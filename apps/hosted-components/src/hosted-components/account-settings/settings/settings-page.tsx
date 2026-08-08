@@ -3,13 +3,19 @@ import { DeleteAccountSection } from "./delete-account-section";
 import { SignOutSection } from "./sign-out-section";
 
 
-export function SettingsPage(props?: {
+export function SettingsPage(props: {
   mockMode?: boolean,
+  showDeleteSection: boolean,
+  onDeleteAccount: () => Promise<void>,
 }) {
   return (
     <PageLayout>
-      <DeleteAccountSection mockMode={props?.mockMode} />
-      <SignOutSection mockMode={props?.mockMode} />
+      <DeleteAccountSection
+        mockMode={props.mockMode}
+        show={props.showDeleteSection}
+        onDeleteAccount={props.onDeleteAccount}
+      />
+      <SignOutSection mockMode={props.mockMode} />
     </PageLayout>
   );
 }

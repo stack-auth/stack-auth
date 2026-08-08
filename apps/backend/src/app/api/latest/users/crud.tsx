@@ -9,6 +9,7 @@ import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-chec
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipDeletedWebhook, sendUserCreatedWebhook, sendUserDeletedWebhook, sendUserUpdatedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, getPrismaClientForTenancy, getPrismaSchemaForSourceOfTruth, globalPrismaClient, rawQuery, retryTransaction, sqlQuoteIdent } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
@@ -65,6 +66,12 @@ const personalTeamDefaultDisplayName = "Personal Team";
 // excluding gmail.com intentionally does not exclude mail.gmail.com.
 const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const maxExcludedEmailDomains = 100; // to prevent abuse
+// Prisma loads each userFullInclude relation with a follow-up query whose IN-list over
+// the composite key (tenancyId, projectUserId) uses two bind parameters per user. The
+// former whole-tenancy path hit PostgreSQL's 65535-parameter limit at ~32.7k users
+// (32.5k OK, 33k -> "bind message has 465 parameter formats but 0 parameters") and
+// already took 10.6s at 30k users.
+const maxListPageSize = 1000;
 
 function getSignedUpAtMillis(signedUpAt: Date): number {
   return signedUpAt.getTime();
@@ -549,7 +556,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   }),
   querySchema: yupObject({
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
-    limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
+    limit: yupNumber().integer().min(1).max(maxListPageSize).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: `The maximum number of items to return (capped at ${maxListPageSize}). Larger result sets must be paged with cursor.` } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
     order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
@@ -680,7 +687,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         { projectUserId: sortDirection },
       ],
       // +1 to detect whether a next page exists without a separate count.
-      take: query.limit ? query.limit + 1 : undefined,
+      take: query.limit == null ? maxListPageSize + 1 : query.limit + 1,
       // Cursor convention (matches teams/crud.tsx): the client sends the
       // id of the LAST row of the previous page; Prisma starts AT that id,
       // and `skip: 1` drops it so we don't re-emit it.
@@ -694,6 +701,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
       } : {},
     });
+
+    if (query.limit == null && db.length > maxListPageSize) {
+      throw new StatusError(StatusError.BadRequest, `Listing more than ${maxListPageSize} users requires a limit. Pass limit and paginate using cursor.`);
+    }
 
     const items = db.slice(0, query.limit).map((user) => userPrismaToCrud(user, auth.tenancy.config));
     const hasMore = query.limit != null && db.length > query.limit;
@@ -870,7 +881,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         throw new HexclaveAssertionError("User was created but not found", newUser);
       }
 
-      return userPrismaToCrud(user, auth.tenancy.config);
+      const crud = userPrismaToCrud(user, auth.tenancy.config);
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox, at-least-once) — unlike the Svix webhook below, which is
+      // fire-and-forget after commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.created", payload: crud });
+      return crud;
     });
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
@@ -1282,6 +1298,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       const user = userPrismaToCrud(db, auth.tenancy.config);
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.updated", payload: user });
       return {
         user,
         wasAnonymousUpgrade,
@@ -1391,6 +1408,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         include: userFullInclude,
       });
+
+      for (const t of teams) {
+        await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_membership.deleted", payload: { team_id: t.teamId, user_id: params.user_id } });
+      }
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "user.deleted", payload: { id: params.user_id, teams: teams.map((t) => ({ id: t.teamId })) } });
 
       return { teams };
     });

@@ -1,5 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
+import crossSpawn from "cross-spawn";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -69,6 +70,13 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   "NEXT_PUBLIC_STACK_IS_PREVIEW",
   DASHBOARD_PORT_ENV_VAR,
 ]);
+
+export function dashboardEnvWithStatePath(env: NodeJS.ProcessEnv, statePath: string): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    STACK_DEV_ENVS_PATH: env.STACK_DEV_ENVS_PATH ?? statePath,
+  };
+}
 
 type DashboardSessionState = {
   session: DashboardSessionResponse,
@@ -436,7 +444,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
 
   const progress = startProgress(`Hexclave dashboard not found on port ${options.port}. Starting now`, { prefix: LOG_PREFIX });
   const dashboardEnv = {
-    ...process.env,
+    ...dashboardEnvWithStatePath(process.env, devEnvStatePath()),
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
     PORT: String(options.port),
     HOSTNAME: "0.0.0.0",
@@ -718,10 +726,11 @@ child.on("error", (error) => {
 });
 `;
 
-function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+export function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      // cross-spawn handles Windows command shims that Node cannot spawn directly.
+      ? crossSpawn(command.command, command.args, { stdio: "inherit", env })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
@@ -879,7 +888,7 @@ export function registerDevCommand(program: Command) {
     .command("dev")
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
-    .requiredOption("--config-file <path>", "Path to stack.config.ts")
+    .requiredOption("--config-file <path>", "Path to hexclave.config.ts")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {

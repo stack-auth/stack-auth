@@ -128,7 +128,7 @@ jobs:
       - name: Start stack-backend on fallback port (8110)
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm -C apps/backend run with-env:test next start --port 8110 &
+          run: PORT=8110 pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
             http://localhost:8110
           tail: true
@@ -157,6 +157,8 @@ jobs:
 
       - name: Start run-email-queue in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          PORT: "8110"
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
@@ -167,6 +169,8 @@ jobs:
 
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          PORT: "8110"
         with:
           run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |

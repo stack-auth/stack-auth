@@ -1,20 +1,20 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
-import ConvexLogo from "../../public/convex-logo.png";
-import NeonLogo from "../../public/neon-logo.png";
-import TanStackStartLogo from "../../public/tanstack-start-logo.png";
+import ConvexLogo from "../../public/convex-logo.webp";
+import NeonLogo from "../../public/neon-logo.webp";
+import TanStackStartLogo from "../../public/tanstack-start-logo.webp";
 import VercelLogo from "../../public/vercel-logo.svg";
 
 export type { AppId };
 
 // Helper to generate screenshot paths
 const getScreenshots = (appName: string, count: number): string[] => {
-  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
+  return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.webp`);
 };
 
 export const DUMMY_ORIGIN = "https://example.com";
@@ -482,6 +482,20 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  compliance: {
+    icon: ShieldWarningIcon,
+    href: "compliance",
+    navigationItems: [
+      { displayName: "Compliance Center", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Compliance Center surfaces authentication, access-denial, and restricted-user activity.</p>
+        <p>Review security posture and access assignments, then export the Compliance Center data for further analysis.</p>
+      </>
+    ),
+  },
   "deployments-alpha": {
     icon: GraphIcon,
     // The route stays /projects/<id>/deployments — only the app id carries the
@@ -496,6 +510,24 @@ export const ALL_APPS_FRONTEND = {
         <p>Deployments gives your project a visual canvas for the services that run your app.</p>
         <p>Drag static sites, containers, and your Hexclave backend around a grid, then wire outputs from one service straight into another service&apos;s environment variables.</p>
         <p>Every project keeps exactly one Hexclave service at its center, so credentials like the secret server key are one reference away.</p>
+      </>
+    ),
+  },
+  "workflows-alpha": {
+    icon: TreeStructureIcon,
+    // Like Deployments, only the app id carries the `-alpha` suffix — the route
+    // stays /projects/<id>/workflows, and the detail route /workflows/<id>
+    // matches as a child of it.
+    href: "workflows",
+    navigationItems: [
+      { displayName: "Workflows", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Workflows lets you write durable background automations in TypeScript and run them on Hexclave&apos;s infrastructure.</p>
+        <p>Trigger them from platform events like <code>user.created</code>, from your own custom events, or on a cron schedule, and let the engine handle retries, sleeps, and versioning for you.</p>
+        <p>Every run is inspectable in the dashboard down to the individual step, so you can see exactly where an automation is and replay it when something goes wrong.</p>
       </>
     ),
   },

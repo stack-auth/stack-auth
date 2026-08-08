@@ -1,4 +1,4 @@
-import { node } from "@elysiajs/node";
+import { node } from "@elysia/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
@@ -426,7 +426,8 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
   try {
-    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+    // Replicated, so that a caller reading right after this write doesn't see the pre-write snapshot root.
+    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRow({
       tableId: options.tableId,
       rowIdentifier: options.rowId,
       newRowData: options.rowData as unknown as PiledriverObject,
@@ -489,7 +490,7 @@ async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: st
     return { rowIdentifier: readStringField(rowData, idField), newRowData: rowData as unknown as PiledriverObject };
   });
   try {
-    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+    await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
   } catch (error) {
     // A batch is one cascade, so a cascade-phase failure can't be pinned to a single row.
     // Attach the table + the batch's row identifiers (no rowData here, to keep batch events small).
@@ -1038,7 +1039,7 @@ const app = new Elysia({ adapter: node() })
   .post("/v1/:tenancyId/test-mode/one-time-purchases", () => notImplemented("create-test-mode-one-time-purchase"))
   .post("/v1/:tenancyId/test-mode/subscriptions/:subscriptionId/switch", () => notImplemented("switch-test-mode-subscription"))
   .listen(port, (server) => {
-    // @elysiajs/node 1.4.5 does not assign the server to app.server, so
+    // @elysia/node 1.4.6 does not assign the server to app.server, so
     // Elysia.stop() throws even though the callback's server is running.
     stopHttpServer = () => server.stop();
   });

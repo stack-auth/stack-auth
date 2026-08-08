@@ -40,7 +40,7 @@ jobs:
             "docker-server-build-run.yaml"
             "setup-tests.yaml"
             "check-prisma-migrations.yaml"
-            "e2e-custom-base-port-api-tests.yaml"
+            "bulldozer-serialization-compat.yaml"
             "table-of-contents.yaml"
             "setup-tests-with-custom-base-port.yaml"
             "fast-fail-tests.yaml"

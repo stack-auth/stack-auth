@@ -19,7 +19,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -59,7 +59,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -92,7 +92,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -134,7 +134,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -173,7 +173,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get restricted user
@@ -232,7 +232,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "upgraded@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       // Get a fresh access token
@@ -263,7 +263,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -284,7 +284,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -313,7 +313,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -345,7 +345,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -377,7 +377,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
@@ -410,7 +410,7 @@ describe("access token refresh on user property changes", () => {
       await clientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password123",
-        verificationCallbackUrl: "http://localhost:3000",
+        noVerificationCallback: true,
       });
 
       const user = await clientApp.getUser({ or: "throw" });
