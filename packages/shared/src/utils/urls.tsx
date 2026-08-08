@@ -23,6 +23,14 @@ import.meta.vitest?.test("createUrlIfValid", ({ expect }) => {
 export function isValidUrl(url: string) {
   return !!createUrlIfValid(url);
 }
+
+export function canonicalizeResourceUri(uri: string): string {
+  const url = new URL(uri);
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
+}
 import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   // Test with valid URLs
   expect(isValidUrl("https://example.com")).toBe(true);

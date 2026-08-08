@@ -96,6 +96,7 @@ const docsJson = {
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
                   "guides/apps/authentication/cli-authentication",
+                  "guides/apps/authentication/oauth-provider",
                   {
                     "group": "All Auth Providers",
                     "root": "guides/apps/authentication/auth-providers",
@@ -189,7 +190,8 @@ const docsJson = {
               "sdk/types/project",
               "sdk/types/connected-account",
               "sdk/types/item",
-              "sdk/types/customer"
+              "sdk/types/customer",
+              "sdk/types/mcp"
             ]
           },
           {

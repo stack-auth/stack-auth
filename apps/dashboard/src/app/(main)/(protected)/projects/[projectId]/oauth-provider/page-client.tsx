@@ -10,8 +10,8 @@ import { PageLayout } from "../page-layout";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { CompleteConfig, BranchConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidCustomScopeId, isValidPermissionScope } from "@hexclave/shared/dist/config/scopes";
-import { isValidHostname } from "@hexclave/shared/dist/utils/urls";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { canonicalizeResourceUri, isValidHostname } from "@hexclave/shared/dist/utils/urls";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { GlobeIcon, KeyIcon, LinkIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
@@ -25,6 +25,8 @@ type EditableScope = ScopeConfig & { id: string };
 type EditableResource = ResourceConfig & { id: string, scopes: Record<string, { scope?: string }> };
 type EditableClient = ClientConfig & { id: string, redirectUris: Record<string, { url?: string }> };
 type EditableDomain = { id: string, domain?: string };
+
+class OAuthProviderValidationError extends Error {}
 
 function optional(value: string | undefined): string | null {
   return value === undefined || value.trim() === "" ? null : value;
@@ -81,7 +83,7 @@ export default function PageClient() {
     setError(null);
     try {
       if (scopes.some(scope => scope.scope == null || !isValidCustomScopeId(scope.scope))) {
-        throw new Error("Scope names must be lowercase custom scopes and cannot use reserved OIDC scopes.");
+        throw new OAuthProviderValidationError("Scope names must be lowercase custom scopes and cannot use reserved OIDC scopes.");
       }
       const resourceUris = resources.map(resource => resource.uri ?? "").filter(uri => uri !== "");
       if (resourceUris.some(uri => {
@@ -92,21 +94,25 @@ export default function PageClient() {
           return true;
         }
       })) {
-        throw new Error("Resource URIs must be valid URLs without query strings or fragments.");
+        throw new OAuthProviderValidationError("Resource URIs must be valid URLs without query strings or fragments.");
       }
-      if (new Set(resourceUris).size !== resourceUris.length) {
-        throw new Error("Resource URIs must be unique.");
+      if (new Set(resourceUris.map(canonicalizeResourceUri)).size !== resourceUris.length) {
+        throw new OAuthProviderValidationError("Resource URIs must be unique after removing trailing slashes.");
       }
       for (const domain of domains) {
         if (domain.domain != null && domain.domain !== "" && !isValidHostname(domain.domain)) {
-          throw new Error("Allowed domains must be valid hostnames.");
+          throw new OAuthProviderValidationError("Allowed domains must be valid hostnames.");
         }
       }
+      const configuredScopes = new Set(scopes.flatMap(scope => scope.scope == null ? [] : [scope.scope]));
       for (const resource of resources) {
         for (const value of Object.values(resource.scopes)) {
           const scope = typeof value === "string" ? value : value.scope;
+          if (scope !== undefined && isValidCustomScopeId(scope) && !configuredScopes.has(scope)) {
+            throw new OAuthProviderValidationError(`Resource scope "${scope}" is not defined in Custom scopes.`);
+          }
           if (scope !== undefined && !isValidCustomScopeId(scope) && !isValidPermissionScope(scope)) {
-            throw new Error(`Resource scope "${scope}" is invalid.`);
+            throw new OAuthProviderValidationError(`Resource scope "${scope}" is invalid.`);
           }
         }
       }
@@ -165,7 +171,12 @@ export default function PageClient() {
       }
       await updateConfig({ adminApp: app, configUpdate: update, pushable: false });
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save OAuth provider settings.");
+      if (saveError instanceof OAuthProviderValidationError) {
+        setError(saveError.message);
+      } else {
+        captureError("dashboard-oauth-provider-save", saveError);
+        setError("Unable to save OAuth provider settings. Please try again.");
+      }
     } finally {
       setSaving(false);
     }

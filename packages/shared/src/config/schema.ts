@@ -15,7 +15,7 @@ import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
-import { isValidHostname } from "../utils/urls";
+import { canonicalizeResourceUri, isValidHostname } from "../utils/urls";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
@@ -150,7 +150,7 @@ const branchOAuthProviderSchema = yupObject({
     const uris = Object.values(resources)
       .map(resource => resource.uri)
       .filter((uri): uri is string => uri !== undefined);
-    return new Set(uris).size === uris.length;
+    return new Set(uris.map(canonicalizeResourceUri)).size === uris.length;
   }),
 
   clients: yupRecord(
