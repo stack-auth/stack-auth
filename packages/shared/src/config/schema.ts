@@ -150,7 +150,14 @@ const branchOAuthProviderSchema = yupObject({
     const uris = Object.values(resources)
       .map(resource => resource.uri)
       .filter((uri): uri is string => uri !== undefined);
-    return new Set(uris.map(canonicalizeResourceUri)).size === uris.length;
+    return new Set(uris.map(uri => {
+      try {
+        return canonicalizeResourceUri(uri);
+      } catch {
+        // Let the URI field report malformed values; uniqueness must not turn them into raw TypeErrors.
+        return uri;
+      }
+    })).size === uris.length;
   }),
 
   clients: yupRecord(
@@ -283,6 +290,16 @@ import.meta.vitest?.test("branchOAuthProviderSchema rejects duplicate resource U
       "second": { uri: "https://mcp.example.com" },
     },
   }, { abortEarly: false })).rejects.toThrow();
+});
+
+import.meta.vitest?.test("branchOAuthProviderSchema reports malformed URIs without crashing uniqueness validation", async ({ expect }) => {
+  await expect(branchOAuthProviderSchema.validate({
+    resources: {
+      "first": { uri: "https://mcp.example.com/mcp" },
+      "duplicate": { uri: "https://mcp.example.com/mcp/" },
+      "malformed": { uri: "not a URL" },
+    },
+  }, { abortEarly: false })).rejects.toBeInstanceOf(yup.ValidationError);
 });
 
 import.meta.vitest?.test("branchOAuthProviderSchema rejects malformed client metadata domains", async ({ expect }) => {

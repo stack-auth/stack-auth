@@ -24,13 +24,6 @@ export function isValidUrl(url: string) {
   return !!createUrlIfValid(url);
 }
 
-export function canonicalizeResourceUri(uri: string): string {
-  const url = new URL(uri);
-  url.protocol = url.protocol.toLowerCase();
-  url.hostname = url.hostname.toLowerCase();
-  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
-  return url.toString();
-}
 import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   // Test with valid URLs
   expect(isValidUrl("https://example.com")).toBe(true);
@@ -41,6 +34,20 @@ import.meta.vitest?.test("isValidUrl", ({ expect }) => {
   expect(isValidUrl("")).toBe(false);
   expect(isValidUrl("not a url")).toBe(false);
   expect(isValidUrl("http://")).toBe(false);
+});
+
+export function canonicalizeResourceUri(uri: string): string {
+  const url = new URL(uri);
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
+}
+
+import.meta.vitest?.test("canonicalizeResourceUri", ({ expect }) => {
+  expect(canonicalizeResourceUri("HTTPS://EXAMPLE.COM/mcp///")).toBe("https://example.com/mcp");
+  expect(canonicalizeResourceUri("https://example.com/")).toBe("https://example.com/");
+  expect(() => canonicalizeResourceUri("not a url")).toThrow();
 });
 
 export function isValidHostname(hostname: string) {
