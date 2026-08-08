@@ -109,7 +109,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     )
     VALUES (
       ${ctx.tenancyId}::uuid, ${mismatchedUserAuthMethodId}::uuid, ${ctx.secondUserId}::uuid,
-      'workos-integration', 'https://api.workos.com', 'mismatched-user', NOW(), NOW()
+      'workos-integration', 'https://api.workos.com/user_management/client_migration_test', 'mismatched-user', NOW(), NOW()
     )
   `).rejects.toThrow(/ExternalAuthMethod_tenancyId_authMethodId_projectUserId_fkey/);
 

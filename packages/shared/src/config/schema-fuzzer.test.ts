@@ -233,7 +233,7 @@ const branchSchemaFuzzerConfig = [{
   }],
   "workos-integration": [{
     clientId: [undefined, "client_123"] as (string | undefined)[],
-    issuer: [undefined, "https://api.workos.com"] as (string | undefined)[],
+    issuer: [undefined, "https://api.workos.com/user_management/client_123"] as (string | undefined)[],
   }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 

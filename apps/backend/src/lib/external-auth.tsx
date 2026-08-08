@@ -1,7 +1,7 @@
 import { Tenancy } from "@/lib/tenancies";
 import { safeOAuthFetch } from "@/lib/ssrf-protection/oauth";
 import { KnownErrors } from "@hexclave/shared";
-import { externalAuthProviderIds, type ExternalAuthProviderId } from "@hexclave/shared/dist/interface/external-auth";
+import { externalAuthProviderIds, getWorkOSVerificationUrls, type ExternalAuthProviderId } from "@hexclave/shared/dist/interface/external-auth";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createRemoteJWKSet, customFetch, decodeJwt, decodeProtectedHeader, errors as joseErrors, jwtVerify, type JWTPayload } from "jose";
 
@@ -102,10 +102,11 @@ function getProviderVerificationConfig(
     case "workos-integration": {
       const config = tenancy.config["workos-integration"];
       const clientId = requireConfigured(config.clientId);
+      const derivedUrls = getWorkOSVerificationUrls(clientId, config.issuer);
       return {
-        issuer: requireConfigured(config.issuer),
+        issuer: derivedUrls.issuer,
         clientId,
-        jwksUrl: `https://api.workos.com/sso/jwks/${encodeURIComponent(clientId)}`,
+        jwksUrl: derivedUrls.jwksUrl,
       };
     }
   }
