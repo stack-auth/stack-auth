@@ -115,8 +115,9 @@ jobs:
             bulldozer_log="$RUNNER_TEMP/hexclave-bulldozer.untracked.log"
             (
               set +e
-              pnpm run start:bulldozer >"$bulldozer_log" 2>&1
-              echo "$?" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
+              # Keep service output correlatable with the surrounding GitHub Actions logs.
+              pnpm run start:bulldozer 2>&1 | TZ=UTC awk '{ print strftime("%Y-%m-%dT%H:%M:%SZ"), $0; fflush() }' >"$bulldozer_log"
+              echo "${PIPESTATUS[0]}" > "$RUNNER_TEMP/hexclave-bulldozer-exit-code.untracked.txt"
             ) &
           wait-on: |
             tcp:localhost:8146
