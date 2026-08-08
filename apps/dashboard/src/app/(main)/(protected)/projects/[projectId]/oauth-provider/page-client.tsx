@@ -3,13 +3,18 @@
 import { useUpdateConfig } from "@/components/config-update";
 import { DesignAlert, DesignCard } from "@/components/design-components";
 import { Button, Input, Label, Switch, Typography } from "@/components/ui";
+import { getPublicEnvVar } from "@/lib/env";
+import { getOAuthIssuerUrl } from "@hexclave/next/mcp";
 import { useAdminApp } from "../use-admin-app";
 import { PageLayout } from "../page-layout";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { CompleteConfig, BranchConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { isValidCustomScopeId, isValidPermissionScope } from "@hexclave/shared/dist/config/scopes";
+import { isValidHostname } from "@hexclave/shared/dist/utils/urls";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { GearSixIcon } from "@phosphor-icons/react";
-import { useMemo, useState, type ReactNode } from "react";
+import { GlobeIcon, KeyIcon, LinkIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react";
+import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 
 type OAuthProviderConfig = CompleteConfig["oauthProvider"];
 type ScopeConfig = OAuthProviderConfig["scopes"][string];
@@ -20,6 +25,10 @@ type EditableScope = ScopeConfig & { id: string };
 type EditableResource = ResourceConfig & { id: string, scopes: Record<string, { scope?: string }> };
 type EditableClient = ClientConfig & { id: string, redirectUris: Record<string, { url?: string }> };
 type EditableDomain = { id: string, domain?: string };
+
+function optional(value: string | undefined): string | null {
+  return value === undefined || value.trim() === "" ? null : value;
+}
 
 function toScopes(value: OAuthProviderConfig["scopes"]): EditableScope[] {
   return Object.entries(value).map(([id, scope]) => ({ id, ...scope }));
@@ -39,6 +48,7 @@ export default function PageClient() {
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const oauth = config.oauthProvider;
+  const { required: consentDefault } = oauth.consent;
   const [scopes, setScopes] = useState(() => toScopes(oauth.scopes));
   const [resources, setResources] = useState(() => toResources(oauth.resources));
   const [clients, setClients] = useState(() => toClients(oauth.clients));
@@ -47,12 +57,13 @@ export default function PageClient() {
   );
   const [dcrEnabled, setDcrEnabled] = useState(oauth.dynamicClientRegistration.enabled);
   const [cimdEnabled, setCimdEnabled] = useState(oauth.clientIdMetadataDocuments.enabled);
-  const [consentRequired, setConsentRequired] = useState<boolean>(oauth.consent["required"]);
+  const [consentRequired, setConsentRequired] = useState(consentDefault);
   const [optionalScopes, setOptionalScopes] = useState(oauth.consent.allowUserToDeselectOptionalScopes);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const issuer = `${window.location.origin}/api/v1/projects/${project.id}/oidc`;
+  const apiBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is required to build OAuth issuer URLs");
+  const issuer = getOAuthIssuerUrl({ projectId: project.id, baseUrl: apiBaseUrl });
   const discovery = `${issuer}/.well-known/openid-configuration`;
   const hasChanges = useMemo(() =>
     JSON.stringify({ scopes, resources, clients, domains, dcrEnabled, cimdEnabled, consentRequired, optionalScopes })
@@ -63,19 +74,18 @@ export default function PageClient() {
       domains: Object.entries(oauth.clientIdMetadataDocuments.allowedDomains).map(([id, value]) => ({ id, ...value })),
       dcrEnabled: oauth.dynamicClientRegistration.enabled,
       cimdEnabled: oauth.clientIdMetadataDocuments.enabled,
-      consentRequired: oauth.consent["required"],
+      consentRequired: consentDefault,
       optionalScopes: oauth.consent.allowUserToDeselectOptionalScopes,
-    }), [clients, cimdEnabled, consentRequired, dcrEnabled, domains, oauth, optionalScopes, resources, scopes]);
+    }), [clients, cimdEnabled, consentDefault, consentRequired, dcrEnabled, domains, oauth, optionalScopes, resources, scopes]);
 
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
-      const scopePattern = /^[a-z][a-z0-9._:-]*$/;
-      if (scopes.some(scope => scope.scope == null || !scopePattern.test(scope.scope) || ["openid", "profile", "email", "phone", "address", "offline_access"].includes(scope.scope))) {
+      if (scopes.some(scope => scope.scope == null || !isValidCustomScopeId(scope.scope))) {
         throw new Error("Scope names must be lowercase custom scopes and cannot use reserved OIDC scopes.");
       }
-      const resourceUris = resources.map(resource => resource.uri ?? "");
+      const resourceUris = resources.map(resource => resource.uri ?? "").filter(uri => uri !== "");
       if (resourceUris.some(uri => {
         try {
           const parsed = new URL(uri);
@@ -90,8 +100,16 @@ export default function PageClient() {
         throw new Error("Resource URIs must be unique.");
       }
       for (const domain of domains) {
-        if (domain.domain != null && !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(domain.domain)) {
+        if (domain.domain != null && domain.domain !== "" && !isValidHostname(domain.domain)) {
           throw new Error("Allowed domains must be valid hostnames.");
+        }
+      }
+      for (const resource of resources) {
+        for (const value of Object.values(resource.scopes)) {
+          const scope = typeof value === "string" ? value : value.scope;
+          if (scope !== undefined && !isValidCustomScopeId(scope) && !isValidPermissionScope(scope)) {
+            throw new Error(`Resource scope "${scope}" is invalid.`);
+          }
         }
       }
       const update: BranchConfigOverrideOverride = {
@@ -113,26 +131,26 @@ export default function PageClient() {
         if (!domains.some(domain => domain.id === id)) update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${id}`] = null;
       }
       for (const scope of scopes) {
-        update[`oauthProvider.scopes.${scope.id}.scope`] = scope.scope ?? "";
-        update[`oauthProvider.scopes.${scope.id}.displayName`] = scope.displayName ?? "";
-        update[`oauthProvider.scopes.${scope.id}.description`] = scope.description ?? "";
+        update[`oauthProvider.scopes.${scope.id}.scope`] = optional(scope.scope);
+        update[`oauthProvider.scopes.${scope.id}.displayName`] = optional(scope.displayName);
+        update[`oauthProvider.scopes.${scope.id}.description`] = optional(scope.description);
       }
       for (const resource of resources) {
-        update[`oauthProvider.resources.${resource.id}.displayName`] = resource.displayName ?? "";
-        update[`oauthProvider.resources.${resource.id}.uri`] = resource.uri ?? "";
+        update[`oauthProvider.resources.${resource.id}.displayName`] = optional(resource.displayName);
+        update[`oauthProvider.resources.${resource.id}.uri`] = optional(resource.uri);
         for (const [scopeId, value] of Object.entries(resource.scopes)) {
-          update[`oauthProvider.resources.${resource.id}.scopes.${scopeId}.scope`] = value.scope ?? "";
+          update[`oauthProvider.resources.${resource.id}.scopes.${scopeId}.scope`] = optional(typeof value === "string" ? value : value.scope);
         }
       }
       for (const client of clients) {
-        update[`oauthProvider.clients.${client.id}.displayName`] = client.displayName ?? "";
+        update[`oauthProvider.clients.${client.id}.displayName`] = optional(client.displayName);
         update[`oauthProvider.clients.${client.id}.trusted`] = client.trusted;
         for (const [redirectId, redirect] of Object.entries(client.redirectUris)) {
-          update[`oauthProvider.clients.${client.id}.redirectUris.${redirectId}.url`] = redirect.url ?? "";
+          update[`oauthProvider.clients.${client.id}.redirectUris.${redirectId}.url`] = optional(typeof redirect === "string" ? redirect : redirect.url);
         }
       }
       for (const domain of domains) {
-        update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${domain.id}.domain`] = domain.domain ?? "";
+        update[`oauthProvider.clientIdMetadataDocuments.allowedDomains.${domain.id}.domain`] = optional(domain.domain);
       }
       await updateConfig({ adminApp: app, configUpdate: update, pushable: false });
     } catch (saveError) {
@@ -156,7 +174,7 @@ export default function PageClient() {
         )}
       />
       {error != null && <DesignAlert variant="error" title="Unable to save changes" description={error} />}
-      <DesignCard title="Provider behavior" subtitle="Control registration and consent." icon={GearSixIcon} glassmorphic>
+      <DesignCard title="Provider behavior" subtitle="Control registration and consent." icon={SlidersHorizontalIcon} glassmorphic>
         <div className="grid gap-4 sm:grid-cols-2">
           <Toggle label="Require consent" value={consentRequired} onChange={setConsentRequired} />
           <Toggle label="Allow optional scope deselection" value={optionalScopes} onChange={setOptionalScopes} />
@@ -165,6 +183,7 @@ export default function PageClient() {
         </div>
       </DesignCard>
       <EditableList
+        icon={KeyIcon}
         title="Custom scopes"
         items={scopes}
         onAdd={() => setScopes(current => [...current, { id: generateUuid(), scope: "", displayName: "", description: "" }])}
@@ -178,6 +197,7 @@ export default function PageClient() {
         )}
       />
       <EditableList
+        icon={GlobeIcon}
         title="Allowed domains"
         items={domains}
         onAdd={() => setDomains(current => [...current, { id: generateUuid(), domain: "" }])}
@@ -187,6 +207,7 @@ export default function PageClient() {
         )}
       />
       <EditableList
+        icon={LinkIcon}
         title="Resource servers"
         items={resources}
         onAdd={() => setResources(current => [...current, { id: generateUuid(), displayName: "", uri: "", scopes: {} }])}
@@ -197,15 +218,16 @@ export default function PageClient() {
               <Field label="Display name" value={item.displayName ?? ""} onChange={value => update({ displayName: value })} />
               <Field label="URI" value={item.uri ?? ""} onChange={value => update({ uri: value })} />
             </div>
-            <Field
-              label="Allowed scopes (comma-separated)"
-              value={Object.values(item.scopes).map(scope => typeof scope === "string" ? scope : scope.scope ?? "").join(", ")}
-              onChange={value => update({ scopes: Object.fromEntries(value.split(",").map(scope => scope.trim()).filter(scope => scope !== "").map(scope => [generateUuid(), { scope }])) })}
+            <StableList
+              label="Allowed scopes"
+              values={Object.entries(item.scopes).map(([id, value]) => ({ id, value: typeof value === "string" ? value : value.scope ?? "" }))}
+              onChange={values => update({ scopes: Object.fromEntries(values.map(value => [value.id, { scope: value.value }])) })}
             />
           </div>
         )}
       />
       <EditableList
+        icon={UsersThreeIcon}
         title="OAuth clients"
         items={clients}
         onAdd={() => setClients(current => [...current, { id: generateUuid(), displayName: "", type: "public", trusted: false, redirectUris: {} }])}
@@ -216,10 +238,10 @@ export default function PageClient() {
               <Field label="Display name" value={item.displayName ?? ""} onChange={value => update({ displayName: value })} />
               <Toggle label="Trusted client" value={item.trusted === true} onChange={trusted => update({ trusted })} />
             </div>
-            <Field
-              label="Redirect URIs (comma-separated)"
-              value={Object.values(item.redirectUris).map(uri => uri.url ?? "").join(", ")}
-              onChange={value => update({ redirectUris: Object.fromEntries(value.split(",").map(url => url.trim()).filter(url => url !== "").map(url => [generateUuid(), { url }])) })}
+            <StableList
+              label="Redirect URIs"
+              values={Object.entries(item.redirectUris).map(([id, value]) => ({ id, value: typeof value === "string" ? value : value.url ?? "" }))}
+              onChange={values => update({ redirectUris: Object.fromEntries(values.map(value => [value.id, { url: value.value }])) })}
             />
           </div>
         )}
@@ -235,6 +257,25 @@ function Field(props: { label: string, value: string, onChange: (value: string) 
   return <label className="space-y-1"><Label>{props.label}</Label><Input value={props.value} onChange={event => props.onChange(event.target.value)} /></label>;
 }
 
+function StableList(props: {
+  label: string,
+  values: { id: string, value: string }[],
+  onChange: (values: { id: string, value: string }[]) => void,
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{props.label}</Label>
+      {props.values.map(item => (
+        <div key={item.id} className="flex gap-2">
+          <Input value={item.value} onChange={event => props.onChange(props.values.map(value => value.id === item.id ? { ...value, value: event.target.value } : value))} />
+          <Button variant="secondary" onClick={() => props.onChange(props.values.filter(value => value.id !== item.id))}>Remove</Button>
+        </div>
+      ))}
+      <Button variant="secondary" onClick={() => props.onChange([...props.values, { id: generateUuid(), value: "" }])}>Add</Button>
+    </div>
+  );
+}
+
 function Toggle(props: { label: string, value: boolean, onChange: (value: boolean) => void }) {
   return <label className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.08] p-3 dark:border-white/[0.12]"><Typography className="text-sm">{props.label}</Typography><Switch checked={props.value} onCheckedChange={props.onChange} /></label>;
 }
@@ -245,13 +286,14 @@ function CopyableValue(props: { label: string, value: string }) {
 
 function EditableList<T extends { id: string }>(props: {
   title: string,
+  icon: ComponentType<{ size?: number | string }>,
   items: T[],
   onAdd: () => void,
   onChange: (items: T[]) => void,
   render: (item: T, update: (value: Partial<T>) => void) => ReactNode,
 }) {
   return (
-    <DesignCard title={props.title} icon={GearSixIcon} glassmorphic>
+    <DesignCard title={props.title} icon={props.icon} glassmorphic>
       <div className="space-y-4">
         {props.items.map(item => (
           <div key={item.id} className="rounded-xl border border-black/[0.08] p-4 dark:border-white/[0.12]">
