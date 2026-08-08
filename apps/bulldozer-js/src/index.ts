@@ -1041,6 +1041,14 @@ const app = new Elysia({ adapter: node() })
   .listen(port, (server) => {
     // @elysia/node 1.4.6 does not assign the server to app.server, so
     // Elysia.stop() throws even though the callback's server is running.
+    const node = Reflect.get(server, "node");
+    const nodeHttpServer = isRecord(node) ? Reflect.get(node, "server") : undefined;
+    if (!isRecord(nodeHttpServer)) throw new Error("Bulldozer HTTP server did not expose its underlying Node server");
+    // Keep idle connections alive longer than the client's idle timeout (Node's
+    // default is 5s) so a busy event loop cannot race undici while it reuses a
+    // keep-alive connection. Node requires headersTimeout > keepAliveTimeout,
+    // which its 60s default still satisfies.
+    Reflect.set(nodeHttpServer, "keepAliveTimeout", 30_000);
     stopHttpServer = () => server.stop();
   });
 
