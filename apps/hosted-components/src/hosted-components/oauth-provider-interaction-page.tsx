@@ -1,6 +1,8 @@
 import { useStackApp, useUser } from "@hexclave/react";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
+import { getApiBaseUrlFromEnv } from "~/lib/api-base-url";
 import { Button, Checkbox, Typography } from "~/components/ui";
 import {
   HostedAuthHeading,
@@ -17,8 +19,6 @@ type InteractionDetails = {
   allow_user_to_deselect_optional_scopes: boolean,
 };
 
-const apiBaseUrl = import.meta.env.VITE_HEXCLAVE_API_URL || import.meta.env.VITE_STACK_API_URL;
-
 export function HostedOAuthProviderInteraction() {
   const app = useStackApp();
   const user = useUser({ or: "return-null" });
@@ -27,6 +27,7 @@ export function HostedOAuthProviderInteraction() {
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const interactionUid = new URLSearchParams(window.location.search).get("interaction_uid");
+  const apiBaseUrl = getApiBaseUrlFromEnv() ?? throwErr("A hosted components API base URL is required. Set VITE_HEXCLAVE_API_URL or VITE_STACK_API_URL.");
 
   useEffect(() => {
     if (user == null) {
@@ -99,7 +100,7 @@ export function HostedOAuthProviderInteraction() {
       window.location.assign(body.done_url);
     } catch (finishError) {
       setRedirecting(false);
-        setError("We couldn't complete this authorization request. Please return to the application and try again.");
+      setError("We couldn't complete this authorization request. Please return to the application and try again.");
     }
   };
 

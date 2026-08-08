@@ -311,7 +311,7 @@ it("reads and records an authenticated project OAuth interaction", async () => {
 
 it("completes the project OAuth authorization code flow", async () => {
   const projectId = await createConfiguredProject();
-  await Auth.fastSignUp();
+  const normalSession = await Auth.fastSignUp();
   const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
     redirect: "manual",
     query: {
@@ -419,6 +419,15 @@ it("completes the project OAuth authorization code flow", async () => {
     headers: { Authorization: `Bearer ${token.body.access_token}` },
   });
   expect(rejectedByAuthorizationHeader.status).toBe(400);
+  const authorizationHeaderNormalSessionControl = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+    userAuth: {},
+    headers: { Authorization: `Bearer ${normalSession.accessToken}` },
+  });
+  // The main API does not accept Authorization: Bearer for any session type; both tokens reach
+  // the same header-validation 400. The x-stack-access-token assertion above is the token-specific
+  // rejection check, while this control prevents the Bearer result from being misread as one.
+  expect(authorizationHeaderNormalSessionControl.status).toBe(400);
   const refreshed = await niceBackendFetch(providerUrl(projectId, "/token"), {
     method: "POST",
     rawBody: new TextEncoder().encode(new URLSearchParams({
