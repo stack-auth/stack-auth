@@ -317,6 +317,15 @@ export async function createOidcProviderInternal(options: OidcProviderOptions) {
             audience: resourceServer.audience,
             scope: resourceServer.scopes.join(" "),
             accessTokenFormat: 'jwt' as const,
+            // Resource JWTs must use an algorithm and key that are published by this provider's
+            // JWKS. The key set is ES256-only; leaving this unset makes oidc-provider default to
+            // RS256 and fail with a server error because no matching RSA key exists.
+            jwt: {
+              sign: {
+                alg: privateJwkSet.keys[0]?.alg ?? throwErr("Project OAuth JWKS had no signing algorithm"),
+                kid: privateJwkSet.keys[0]?.kid ?? throwErr("Project OAuth JWKS had no signing key ID"),
+              },
+            },
           };
         },
       } : { enabled: false },

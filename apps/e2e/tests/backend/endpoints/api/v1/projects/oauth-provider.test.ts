@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createMcpTokenVerifier } from "@hexclave/js/mcp";
 import { expect } from "vitest";
 import { it, STACK_BACKEND_BASE_URL, updateCookiesFromResponse } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -304,11 +305,12 @@ it("completes the project OAuth authorization code flow", async () => {
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
       code_verifier: oauthCodeVerifier,
+      resource: "https://mcp.example.com/mcp",
     }).toString()),
     rawContentType: "application/x-www-form-urlencoded",
   });
   expect(token.status).toBe(200);
-  const idTokenPayload = JSON.parse(Buffer.from(token.body.id_token.split(".")[1] ?? "", "base64url").toString("utf8")) as {
+  const accessTokenPayload = JSON.parse(Buffer.from(token.body.access_token.split(".")[1] ?? "", "base64url").toString("utf8")) as {
     iss?: string,
     aud?: string | string[],
     resource?: string,
@@ -316,10 +318,21 @@ it("completes the project OAuth authorization code flow", async () => {
   };
   expect(token.body).toMatchObject({
     token_type: "Bearer",
-    scope: "openid files:read",
+    scope: "files:read",
   });
-  expect(idTokenPayload).toMatchObject({
+  expect(accessTokenPayload).toMatchObject({
     iss: providerUrl(projectId, ""),
-    aud: "testClient",
+    aud: expect.any(String),
+    resource: "https://mcp.example.com/mcp",
+    scope: "files:read",
+  });
+  const verifier = createMcpTokenVerifier({
+    projectId,
+    baseUrl: STACK_BACKEND_BASE_URL,
+    resource: "https://mcp.example.com/mcp",
+  });
+  await expect(verifier.verifyAccessToken(token.body.access_token)).resolves.toMatchObject({
+    scopes: ["files:read"],
+    resource: new URL("https://mcp.example.com/mcp"),
   });
 });
