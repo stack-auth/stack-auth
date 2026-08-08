@@ -26,7 +26,19 @@ ADD COLUMN "dockerfilePath" TEXT,
 ADD COLUMN "maxInstances" INTEGER,
 ADD COLUMN "minInstances" INTEGER,
 ADD COLUMN "port" INTEGER,
+ADD COLUMN "transport" TEXT NOT NULL DEFAULT 'http',
+ADD COLUMN "visibility" TEXT NOT NULL DEFAULT 'private',
 ADD COLUMN "provisionedAt" TIMESTAMP(3);
+
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_visibility_check"
+CHECK ("visibility" IN ('public', 'private'));
+
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_transport_check"
+CHECK ("transport" IN ('http', 'tcp')),
+ADD CONSTRAINT "DeploymentService_tcp_private_check"
+CHECK ("transport" <> 'tcp' OR "visibility" = 'private');
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",

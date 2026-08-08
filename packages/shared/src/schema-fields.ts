@@ -120,6 +120,17 @@ import.meta.vitest?.test("getNested", ({ expect }) => {
   expect(yupUnion(yupString(), yupObject({ a: yupNumber() })).getNested("a" as never).describe().type).toEqual("mixed");
   expect(yupUnion(yupObject({ a: yupString() }), yupObject({ a: yupNumber() })).getNested("a").describe().type).toEqual("mixed");
 });
+import.meta.vitest?.test("yupRecord applies nested defaults without leaking the record as the child parent", async ({ expect }) => {
+  const schema = yupObject({
+    services: yupRecord(yupString(), yupObject({
+      visibility: yupString().oneOf(["public", "private"]).default("private").defined(),
+      transport: yupString().oneOf(["http", "tcp"]).default("http").defined(),
+    }).defined()).defined(),
+  });
+  await expect(schema.validate({ services: { web: {} } })).resolves.toEqual({
+    services: { web: { visibility: "private", transport: "http" } },
+  });
+});
 
 export async function yupValidate<S extends yup.ISchema<any>>(
   schema: S,
@@ -305,13 +316,29 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 
         // Validate the value
         try {
-          await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
-            ...context.options,
+          const validatedValue = await yupValidate(valueSchema, (value as Record<string, unknown>)[key], {
+            // Do not forward Yup's internal `parent`/`originalValue` fields
+            // from the record test. They describe the whole record and make
+            // the nested schema validate that record as its own parent, which
+            // prevents nested defaults from being applied.
+            abortEarly: context.options.abortEarly,
+            disableStackTrace: context.options.disableStackTrace,
+            recursive: context.options.recursive,
+            // Yup runs custom tests in a strict validation phase after the
+            // outer object has cast. The record's dynamic children were not
+            // part of that cast, so they still need their own non-strict pass
+            // for defaults and transforms.
+            strict: false,
+            stripUnknown: context.options.stripUnknown,
             context: {
               ...context.options.context,
               path: path ? `${path}.${key}` : key,
             },
           });
+          // yupRecord is represented as a custom object test, so Yup cannot
+          // install the cast child value for us. Preserve defaults and other
+          // child casts in the returned record explicitly.
+          (value as Record<string, unknown>)[key] = validatedValue;
         } catch (e: any) {
           return createError({
             path: path ? `${path}.${key}` : key,

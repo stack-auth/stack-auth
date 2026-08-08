@@ -7,8 +7,8 @@ export type ServiceType = string;
 
 // Caller-resolved value, or a ref the runtime resolves locally. Refs carry no namespace —
 // cross-tenant references are unrepresentable. A ref to a not-yet-provisioned output (only
-// the domain-dependent `url` can be missing) makes the service `blocked`; the backend
-// re-applies when the blocking output appears.
+// a private service's domain-dependent `url` can be missing) makes the service `blocked`;
+// the backend re-applies when the blocking output appears.
 export type EnvValue =
   | { value: string }
   | { ref: string }; // "<service_key>.<output_key>"
@@ -25,9 +25,14 @@ export type VolumeConfig = {
 // 1/1 → serverful (one always-on instance, no cold starts). Anything else → serverless,
 // scaling between bounds; min_instances: 0 scales to zero, cold-starts on next request.
 export type ContainerConfig = {
+  // Public allocates Fly ingress and guarantees a built-in fly.dev URL.
+  visibility: "public" | "private",
+  // TCP is private-only and exposes a raw Flycast port. HTTP receives the
+  // existing HTTP/TLS handlers and may be public or private.
+  transport: "http" | "tcp",
   min_instances: number,
   max_instances: number, // >= min_instances; v1 cap: 5
-  // The single HTTP port the container listens on. Readiness = port accepts connections.
+  // The single port the container listens on. Readiness = port accepts connections.
   port: number,
   // Absent = the container filesystem is entirely ephemeral.
   volume?: VolumeConfig,

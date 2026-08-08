@@ -1713,9 +1713,13 @@ model DeploymentService {
   // stored build settings and env definition.
   definitionSyncedAt DateTime?
   definitionSyncId   String?   @db.Uuid
-  // Container definition: the single HTTP port the container listens on, and
+  // Container definition: the single port the container listens on, its
+  // application transport, and
   // the serverless scaling bounds (1/1 = serverful). Null on unsynced rows.
   port          Int?
+  // Public services receive a platform endpoint even without a custom domain.
+  visibility    String @default("private")
+  transport     String @default("http")
   minInstances  Int?
   maxInstances  Int?
   rootDirectory String?

@@ -38,12 +38,13 @@ export const HEXCLAVE_SERVICE_ID = "hexclave";
 // production), so exposing it would be a documented dead end — every deploy
 // referencing it would fail with "no successful preview deployment yet".
 export const HEXCLAVE_OUTPUT_KEYS = ["projectId", "apiUrl", "jwksUrl", "publishableClientKey", "secretServerKey"] as const;
-// `url` is the public URL and exists only once a custom domain verifies —
-// container services are private by default. `internalUrl`/`internalHost` are
+// `url` is the public URL. Public services receive a platform URL; private
+// services expose it only once a custom domain verifies. `internalUrl`/`internalHost` are
 // the private-network address (deterministic from the service's identity, so
 // they never block a deploy) and are the normal way services talk to each
-// other.
-export const SERVICE_OUTPUT_KEYS = ["url", "internalUrl", "internalHost"] as const;
+// other. `internalPort` is the Flycast-facing port: 80 for HTTP and the
+// configured service port for TCP.
+export const SERVICE_OUTPUT_KEYS = ["url", "internalUrl", "internalHost", "internalPort"] as const;
 
 export type HexclaveOutputKey = typeof HEXCLAVE_OUTPUT_KEYS[number];
 export type ServiceOutputKey = typeof SERVICE_OUTPUT_KEYS[number];
@@ -70,8 +71,14 @@ export type DeploymentServiceDefinition = {
   // definitions stay unambiguous once more types are added (every write path
   // must state what it's creating).
   type: "container",
-  // The single HTTP port the container listens on. Readiness = the port
-  // accepts connections.
+  // Public services receive a platform endpoint even without a custom domain.
+  // Private is the author-facing default.
+  visibility: "public" | "private",
+  // HTTP is the default application protocol. TCP services are private-only
+  // in v1 and are reached over Flycast with internalHost/internalPort.
+  transport: "http" | "tcp",
+  // The single port the container listens on. Readiness = the port accepts
+  // connections.
   port: number,
   // Scaling bounds. 1/1 = serverful (one always-on instance, no cold starts);
   // anything else is serverless between the bounds, and min 0 scales to zero.
@@ -147,6 +154,8 @@ export const deploymentSecretDefaultsSchema = yupRecord(
 
 export const deploymentServiceDefinitionSchema = yupObject({
   type: yupString().oneOf(["container"]).defined(),
+  visibility: yupString().oneOf(["public", "private"]).default("private").defined(),
+  transport: yupString().oneOf(["http", "tcp"]).default("http").defined(),
   port: yupNumber().integer().min(1).max(65535).defined(),
   // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
   // ever fail downstream.
@@ -217,7 +226,8 @@ export const deploymentServiceDefinitionSchema = yupObject({
     yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment env var keys must start with a letter or underscore and contain only letters, digits, and underscores"),
     deploymentEnvVarSchema.defined(),
   ).defined(),
-});
+}).test("tcp-private-only", 'deployment services with transport "tcp" must have visibility "private"', (value) =>
+  value.transport !== "tcp" || value.visibility === "private");
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var shapes", async ({ expect }) => {
   await expect(deploymentServiceDefinitionSchema.validate({
@@ -235,6 +245,13 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts all env var 
       API_INTERNAL_URL: { type: "connection", value: "api.internalUrl" },
     },
   }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults networking and validates public HTTP", async ({ expect }) => {
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "private", transport: "http" });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "public", port: 3000, env: {} })).resolves.toMatchObject({ visibility: "public" });
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "unlisted", port: 3000, env: {} })).rejects.toThrow();
+  await expect(deploymentServiceDefinitionSchema.validate({ type: "container", visibility: "public", transport: "tcp", port: 5432, env: {} })).rejects.toThrow(/private/);
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema accepts a volume on a single-instance service", async ({ expect }) => {

@@ -34,7 +34,7 @@ describe("volume spec validation", () => {
     // must not force a redeploy of every existing service.
     expect(computeRevision(validateServiceSpec(spec({})), TEST_DATA_KEY)).toBe(
       computeRevision({
-        config: { min_instances: 0, max_instances: 1, port: 3000 },
+        config: { visibility: "private", transport: "http", min_instances: 0, max_instances: 1, port: 3000 },
         source: { image: "example/image" },
         env: {},
       }, TEST_DATA_KEY),
@@ -92,5 +92,19 @@ describe("volume spec validation", () => {
     // The backend omits the key rather than sending null, but a hand-rolled
     // client shouldn't get a confusing type error for the obvious spelling.
     expect("volume" in validateServiceSpec(spec({ volume: null })).config).toBe(false);
+  });
+});
+
+describe("visibility spec validation", () => {
+  it("defaults to private, accepts public, and includes visibility in the revision", () => {
+    const privateSpec = validateServiceSpec(spec({}));
+    const publicSpec = validateServiceSpec(spec({ visibility: "public" }));
+    expect(privateSpec.config.visibility).toBe("private");
+    expect(publicSpec.config.visibility).toBe("public");
+    expect(computeRevision(privateSpec, TEST_DATA_KEY)).not.toBe(computeRevision(publicSpec, TEST_DATA_KEY));
+  });
+
+  it("rejects unsupported visibility values", () => {
+    expect(() => validateServiceSpec(spec({ visibility: "unlisted" }))).toThrow(/config\.visibility/);
   });
 });

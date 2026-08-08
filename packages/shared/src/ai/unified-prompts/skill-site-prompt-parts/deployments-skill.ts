@@ -7,7 +7,7 @@ import { deindent } from "../../../utils/strings";
 export const deploymentsSkillSection = deindent`
   # Hexclave Deployments
 
-  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default — they reach each other over an internal network, and only become publicly accessible when you attach a custom domain. Only the \`container\` service type exists for now.
+  The Deployments app runs your services as containers built remotely from your source — by default the build is auto-detected with Railpack (https://railpack.com), or you can point a service at your own Dockerfile. You can define multiple services per Hexclave project (e.g. a backend and a frontend). Services are private by default and reach each other over an internal network. Set \`visibility: "public"\` to give a service a built-in public URL without requiring a custom domain. Only the \`container\` service type exists for now.
 
   Enable the app by adding \`"deployments-alpha"\` under \`apps.installed\` in your config (quote it — it contains a hyphen). Services themselves are NOT part of the \`config\` export: they are defined by a separate \`services\` export in \`hexclave.config.ts\`.
 
@@ -26,36 +26,74 @@ export const deploymentsSkillSection = deindent`
   export const services = ({ isDev, secret, service, hexclave }) => ({
     web: {
       type: "container",
+      visibility: "public",
       port: 3000,
       devCommand: "pnpm dev",
       env: {
         MY_ENV_VAR: "true",
         OPENAI_API_KEY: isDev ? null : secret("OPENAI_API_KEY"),
         API_URL: isDev ? "http://localhost:3001" : service("api").internalUrl,
+        DATABASE_HOST: isDev ? "localhost" : service("database").internalHost,
+        DATABASE_PORT: isDev ? "5432" : service("database").internalPort,
         NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: hexclave.projectId,
       },
     },
     api: { type: "container", port: 8080, rootDirectory: "./api" },
+    database: {
+      type: "container",
+      transport: "tcp",
+      port: 5432,
+      rootDirectory: "./database",
+      dockerfilePath: "Dockerfile",
+      volume: { path: "/data", size: 10 },
+      env: { POSTGRES_PASSWORD: secret("POSTGRES_PASSWORD") },
+    },
   });
   \`\`\`
 
-  It is a FUNCTION returning a record of services keyed by service id. \`port\` (required) is the single HTTP port the container listens on; \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next request; \`volume\` (optional) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
+  It is a FUNCTION returning a record of services keyed by service id. \`visibility\` is \`"public"\` or \`"private"\` (default \`"private"\`); public HTTP services receive a stable platform URL and private HTTP services have no public ingress unless a custom domain is attached. \`transport\` is \`"http"\` or \`"tcp"\` (default \`"http"\`). TCP services are private-only and cannot have custom domains. \`port\` (required) is the single HTTP or TCP port the container listens on. \`rootDirectory\` (relative to the config file, default \`./\`) is where the service's code lives; \`dockerfilePath\` (optional, relative to \`rootDirectory\`) selects a Dockerfile to build from — omit it to build with Railpack auto-detection; \`minInstances\`/\`maxInstances\` (defaults 0/1, max 5) are the scaling bounds — \`1\`/\`1\` is serverful (always on, no cold starts), \`minInstances: 0\` scales to zero and cold-starts on the next connection; \`volume\` (optional) attaches a persistent disk; \`devCommand\` is what \`hexclave dev --service-id <id>\` runs.
 
   \`minInstances\` above 0 requires a paid plan. On the Free plan the deploy fails naming the offending services; set \`minInstances: 0\` (or remove it) so they scale to zero, or upgrade.
+
+  ## Network model: HTTP and private TCP
+
+  Use the default \`transport: "http"\` for web applications and APIs. HTTP services expose \`internalUrl\`, \`internalHost\`, and \`internalPort\` (80); \`visibility: "public"\` additionally creates a public platform URL. The process must listen for HTTP on its configured container \`port\` and bind to \`0.0.0.0\`.
+
+  Use \`transport: "tcp"\` for a database, cache, queue, SMTP server, or other raw TCP daemon such as PostgreSQL, MySQL, Redis, or RabbitMQ. TCP services are reachable only from other services in the same project: pass \`service("database").internalHost\` and \`.internalPort\` as separate env vars. They do not expose \`url\` or \`internalUrl\`, and \`visibility: "public"\` and custom domains are rejected. The daemon must bind to \`0.0.0.0\`, not only localhost. Do not manually change generated Fly infrastructure; Hexclave reconciliation owns it and can replace out-of-band changes.
+
+  A service with \`minInstances: 0\` autostarts when a connection reaches its Flycast host and port. Make clients retry initial DNS/connect/auth failures with a bounded backoff: an HTTP app and its TCP dependency may be cold-starting simultaneously. If startup latency is unacceptable, use \`minInstances: 1\` on a paid plan.
 
   ## Storage: the container filesystem is ephemeral
 
   By default anything a service writes to disk is lost on every deploy, restart, and scale-to-zero. Give a service a persistent disk with \`volume: { path: "/data", size: 10 }\` — \`path\` is an absolute mount point inside the container, \`size\` is gigabytes (1–500). Everything written under \`path\` then survives deploys and restarts.
 
+  A volume mount replaces whatever the image had at that exact path, and a newly formatted filesystem is not guaranteed to be literally empty (it may contain provider/filesystem metadata). Prefer a neutral mount point such as \`/data\`, then configure the application to store its files in a child directory such as \`/data/app\`; do not mount directly over an image's built-in data/config directory or point software that requires an empty directory at the mount root.
+
+  The container's runtime user must also be able to write to the mounted filesystem. In a Dockerfile, explicitly end with the intended non-root \`USER\`, make the mount point owned by that user in the image, and configure the application/entrypoint to create its child data directory. Do not assume an entrypoint will run as root and repair permissions after the volume is mounted. For a third-party image, inspect its user and data-directory requirements first; if they are incompatible, derive a small Dockerfile that establishes an explicit writable user/path rather than patching the running machine after deployment.
+
+  For example, keep PostgreSQL's data in a child of the neutral mount and make the runtime user explicit:
+
+  \`\`\`dockerfile title="database/Dockerfile"
+  FROM postgres:17-alpine
+  USER root
+  RUN mkdir -p /data && chown postgres:postgres /data
+  ENV PGDATA=/data/postgres
+  USER postgres
+  \`\`\`
+
+  Apply the same pattern generically: learn the base image's intended runtime user and data-directory environment setting; create and own a neutral mount point; configure data into a child directory; and leave the final \`USER\` set correctly. Never bake mutable data into the image path that the volume will cover.
+
   A volume is a single disk on a single machine, so a service that has one must be single-instance: \`maxInstances\` must be 1 (\`minInstances: 0\` is still fine — the disk comes back with the machine). It is NOT replicated and NOT a backup; a host failure can lose it. Use it for caches, uploads, SQLite, and similar — keep anything you cannot lose in a managed database or object storage.
 
   Disks only grow: raising \`size\` expands them in place, but LOWERING it fails the deploy rather than silently ignoring you. Removing \`volume\` from a service detaches the disk without deleting it — the data stays (re-adding \`volume\` remounts it) and so does the billing, so a disk you truly want gone has to be deleted deliberately. \`hexclave dev\` ignores \`volume\` entirely; locally your app just writes to your own filesystem.
 
-  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` / \`.internalHost\` — the target's private-network address (the normal way services talk to each other; always available); \`service("<id>").url\` — the target's PUBLIC URL, which only exists once a custom domain verifies on it (until then the depending service is \`blocked\` and its deploy FAILS — verify the target's domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
+  Env var values may be: a plain string; \`null\` (omit the var — useful with \`isDev\`); \`secret(key, defaultValue?)\` — the value is stored per project in the dashboard (Project Settings > Secrets), never in the config; \`service("<id>").internalUrl\` for an HTTP target; \`.internalHost\` and \`.internalPort\` for either transport (use these as separate values for TCP clients); \`service("<id>").url\` — an HTTP target's PUBLIC URL, available immediately for a public service or once a custom domain verifies for a private service (until then the depending service is \`blocked\` and its deploy FAILS — make the target public, verify its domain first, or prefer \`internalUrl\`); or \`hexclave.projectId\` / \`.apiUrl\` / \`.jwksUrl\` / \`.publishableClientKey\` / \`.secretServerKey\` for the managed Hexclave backend. A TCP target has no URL, so requesting its \`.url\` or \`.internalUrl\` fails with guidance to use host and port. References must be the WHOLE value — string interpolation with them throws. During \`hexclave dev\`, \`secret()\` resolves to its default value (error if it has none and isn't guarded by \`isDev\`) and \`service()\` returns \`null\`.
 
   ## How services are built
 
-  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on \`port\` on \`0.0.0.0\`. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source — Railpack env vars like \`RAILPACK_BUILD_CMD\` have no effect here. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
+  Each service is built remotely — Docker is never required locally. By default (no \`dockerfilePath\`) the build is auto-detected with [Railpack](https://railpack.com), which handles Node, Python, Go, PHP, Java, Ruby, and more out of the box; either way, the image's default command must start a server listening on \`port\` on \`0.0.0.0\` and speaking the configured \`transport\`. Set \`dockerfilePath\` to build from your own Dockerfile instead — a Dockerfile in the source is deliberately NOT picked up unless \`dockerfilePath\` names it. Stateful third-party server images should generally use a small explicit Dockerfile so their runtime user and child data path are unambiguous. To adjust Railpack's detection (custom install/build/start commands, static output dirs), add a \`railpack.json\` to the service's source — Railpack env vars like \`RAILPACK_BUILD_CMD\` have no effect here. If detection can't work at all, add a Dockerfile and set \`dockerfilePath\`; the remote build's logs are available if a build fails.
+
+  A successful image build only proves that the image was produced; it does not prove that the service can boot, listen on the configured port, reach its dependencies, or read/write its volume. After every first deploy or infrastructure change, request a real application endpoint and exercise at least one dependency-backed operation. For services with \`minInstances: 0\`, make dependency connection startup retry-safe: the application and a dependency can cold-start at the same time, so fail-fast one-shot connection initialization can turn a healthy cold start into a 500.
 
   ## Secrets
 
@@ -131,7 +169,7 @@ export const deploymentsSkillSection = deindent`
 
   ## Domains
 
-  Services have no public URL until a custom domain is attached and its DNS verifies — internal traffic uses \`service("<id>").internalUrl\` and needs no domain. Prefer the CLI to attach one:
+  Public HTTP services already have a platform URL; a verified custom domain becomes their preferred user-facing URL. A custom domain is also how a private HTTP service can expose a public URL. TCP services are private-only and reject domains. Internal HTTP traffic uses \`service("<id>").internalUrl\`; internal TCP traffic uses \`.internalHost\` plus \`.internalPort\`. Prefer the CLI to attach an HTTP domain:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\

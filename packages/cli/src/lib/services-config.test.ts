@@ -23,6 +23,7 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     const { services } = evaluate(({ isDev, secret, service, hexclave }: ServicesFunctionContext) => ({
       frontend: {
         type: "container",
+        visibility: "public",
         port: 3000,
         minInstances: 1,
         maxInstances: 3,
@@ -46,6 +47,8 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     const frontend = services.get("frontend");
     expect(frontend?.definition).toEqual({
       type: "container",
+      visibility: "public",
+      transport: "http",
       port: 3000,
       min_instances: 1,
       max_instances: 3,
@@ -71,6 +74,15 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     expect(services.get("database")?.definition.root_directory).toBe(".");
   });
 
+  it("defaults networking and rejects unsupported or public TCP combinations", () => {
+    const { services } = evaluate(() => ({ web: { type: "container", port: 3000 } }));
+    expect(services.get("web")?.definition.visibility).toBe("private");
+    expect(services.get("web")?.definition.transport).toBe("http");
+    expect(() => evaluate(() => ({ web: { type: "container", port: 3000, visibility: "unlisted" } }))).toThrow('visibility must be "public" or "private"');
+    expect(() => evaluate(() => ({ database: { type: "container", port: 5432, transport: "smtp" } }))).toThrow('transport must be "http" or "tcp"');
+    expect(() => evaluate(() => ({ database: { type: "container", port: 5432, transport: "tcp", visibility: "public" } }))).toThrow("private-only");
+  });
+
   it("rejects service() references to undefined services", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "container", port: 3000, env: { X: (service("databsae") as any).url } },
@@ -78,11 +90,34 @@ describe("evaluateServicesFunction (deploy mode)", () => {
     }))).toThrow('service("databsae") does not match any defined service. Available services: web, database.');
   });
 
+  it("rejects URL outputs from TCP services and exposes host and port instead", () => {
+    expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
+      web: { type: "container", port: 3000, env: { DATABASE_URL: (service("database") as any).internalUrl } },
+      database: { type: "container", transport: "tcp", port: 5432 },
+    }))).toThrow("internalHost and .internalPort");
+
+    const { services } = evaluate(({ service }: ServicesFunctionContext) => ({
+      web: {
+        type: "container",
+        port: 3000,
+        env: {
+          DATABASE_HOST: (service("database") as any).internalHost,
+          DATABASE_PORT: (service("database") as any).internalPort,
+        },
+      },
+      database: { type: "container", transport: "tcp", port: 5432 },
+    }));
+    expect(services.get("web")?.definition.env).toMatchObject({
+      DATABASE_HOST: { type: "connection", value: "database.internalHost" },
+      DATABASE_PORT: { type: "connection", value: "database.internalPort" },
+    });
+  });
+
   it("rejects unknown outputs on service() with the available outputs", () => {
     expect(() => evaluate(({ service }: ServicesFunctionContext) => ({
       web: { type: "container", port: 3000, env: { X: (service("db") as any).ur } },
       db: { type: "container", port: 3000 },
-    }))).toThrow('service("db") has no output named "ur". Available outputs: url, internalUrl, internalHost.');
+    }))).toThrow('service("db") has no output named "ur". Available outputs: url, internalUrl, internalHost, internalPort.');
   });
 
   it("rejects string interpolation of references", () => {

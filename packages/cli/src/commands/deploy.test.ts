@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateServicesFunction, type ServicesFunctionContext } from "../lib/services-config.js";
-import { collectRequiredSecretKeys, deployService, resolveDeployConfigPath } from "./deploy.js";
+import { collectPublicUrls, collectRequiredSecretKeys, deployService, resolveDeployConfigPath } from "./deploy.js";
 
 describe("deploy command helpers", () => {
   const tempDirs: string[] = [];
@@ -57,7 +57,7 @@ describe("deploy command helpers", () => {
     const service = evaluateServicesFunction({
       configPath: path.join(dir, "hexclave.config.ts"),
       servicesExport: () => ({
-        web: { type: "container", port: 3000, dockerfilePath: "Dockerfile" },
+        web: { type: "container", visibility: "public", port: 3000, dockerfilePath: "Dockerfile" },
       }),
       mode: "deploy",
     }).services.get("web");
@@ -122,6 +122,23 @@ describe("deploy command helpers", () => {
       error: null,
     });
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns one final URL for each successfully deployed public service", () => {
+    const services = evaluateServicesFunction({
+      configPath: path.join(os.tmpdir(), "hexclave.config.ts"),
+      servicesExport: () => ({
+        web: { type: "container", visibility: "public", port: 3000 },
+        worker: { type: "container", port: 3001 },
+        failed: { type: "container", visibility: "public", port: 3002 },
+      }),
+      mode: "deploy",
+    }).services;
+    expect(collectPublicUrls(["web", "worker", "failed"], services, new Map([
+      ["web", { serviceId: "web", status: "ready", runId: "run-web", url: "https://web.fly.dev", error: null }],
+      ["worker", { serviceId: "worker", status: "ready", runId: "run-worker", url: null, error: null }],
+      ["failed", { serviceId: "failed", status: "error", runId: "run-failed", url: null, error: "failed" }],
+    ]))).toEqual([{ serviceId: "web", url: "https://web.fly.dev" }]);
   });
 
   it("fails before upload when the declared dockerfilePath is not in the packaged source", async () => {

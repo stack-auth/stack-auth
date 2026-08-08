@@ -125,6 +125,8 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
 
 export function definitionFromServiceRow(row: {
   serviceId: string,
+  visibility: string,
+  transport: string,
   port: number | null,
   minInstances: number | null,
   maxInstances: number | null,
@@ -134,8 +136,16 @@ export function definitionFromServiceRow(row: {
   volumeSizeGb: number | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
+  if (row.visibility !== "public" && row.visibility !== "private") {
+    throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid visibility ${JSON.stringify(row.visibility)}.`);
+  }
+  if (row.transport !== "http" && row.transport !== "tcp") {
+    throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid transport ${JSON.stringify(row.transport)}.`);
+  }
   return {
     type: "container",
+    visibility: row.visibility,
+    transport: row.transport,
     // Rows that predate a synced definition have no port. The `0` placeholder is only ever
     // reached by display-only callers (serviceToApiShape reads row.port directly, and the
     // deploy route guards `row.port == null` before building a spec), so it never reaches
@@ -277,11 +287,29 @@ async function assertNoVolumeShrink(prisma: PrismaClientTransaction, tenancy: Te
 
 export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
   await assertNoVolumeShrink(prisma, tenancy, services);
+  const tcpServiceIds = Object.entries(services)
+    .filter(([, definition]) => definition.transport === "tcp")
+    .map(([serviceId]) => serviceId);
+  if (tcpServiceIds.length > 0) {
+    const serviceWithDomain = await prisma.deploymentService.findFirst({
+      where: {
+        tenancyId: tenancy.id,
+        serviceId: { in: tcpServiceIds },
+        domains: { some: {} },
+      },
+      select: { serviceId: true },
+    });
+    if (serviceWithDomain !== null) {
+      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so it cannot use transport "tcp". Remove the domain first or keep transport: "http".`);
+    }
+  }
   for (const [serviceId, definition] of Object.entries(services)) {
     const definitionColumns = {
       definitionSyncedAt: new Date(),
       definitionSyncId,
       port: definition.port,
+      visibility: definition.visibility,
+      transport: definition.transport,
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
@@ -462,6 +490,7 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
   url: "url",
   internalUrl: "internal_url",
   internalHost: "internal_host",
+  internalPort: "internal_port",
 } satisfies Record<ServiceOutputKey, string>;
 
 /**
@@ -479,10 +508,11 @@ const SERVICE_OUTPUT_KEY_TO_MARSHAL = {
  *   them,
  * - `hexclave.*` connections resolve the managed Hexclave service's outputs
  *   server-side (they are backend state, not runtime state),
- * - `<serviceId>.<output>` connections to other deployment services become
- *   Marshal `{ ref }`s, resolved by the runtime itself: `internalUrl`/
- *   `internalHost` are deterministic and never block. `url` needs a verified
- *   domain on the target; if none exists yet, Marshal reports the service
+ * - `<serviceId>.internalPort` resolves directly from the synced target
+ *   definition; the other deployment-service outputs become Marshal `{ ref }`s.
+ *   `internalUrl`/`internalHost` are deterministic and never block. `url` is immediate for
+ *   a public target, while a private target needs a verified custom domain;
+ *   if neither exists yet, Marshal reports the service
  *   `blocked` and the RUN FAILS (refreshRunFromMarshal finalizes it ERROR).
  *   There is no automatic re-apply when the target's domain later verifies —
  *   the user must re-deploy. (Marshal's `needsBuild` is keyed to make such a
@@ -507,10 +537,12 @@ export async function resolveEnvVars(options: {
   redactionSecrets: string[],
 }> {
   const { tenancy, prisma, serviceId, env, secretDefaults } = options;
-  const existingServiceIds = new Set((await prisma.deploymentService.findMany({
+  const existingServices = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
-    select: { serviceId: true },
-  })).map((row) => row.serviceId));
+    select: { serviceId: true, transport: true, port: true },
+  });
+  const existingServiceIds = new Set(existingServices.map((row) => row.serviceId));
+  const existingServicesById = new Map(existingServices.map((row) => [row.serviceId, row]));
 
   // Cache per-secret reads so N env vars filled from the same secret don't
   // repeat KMS decryptions, and per-output resolution for hexclave.* outputs.
@@ -580,11 +612,22 @@ export async function resolveEnvVars(options: {
         if (!(SERVICE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
         }
+        const target = existingServicesById.get(normalized.serviceId);
+        if (normalized.outputKey === "internalPort") {
+          if (target?.port == null) {
+            throw new StatusError(400, `The env var connection "${raw}" points to a service without a synced port. Sync the complete services export before deploying.`);
+          }
+          resolvedEnv.set(envVarKey, { value: String(target.transport === "http" ? 80 : target.port) });
+          break;
+        }
+        if (target?.transport === "tcp" && (normalized.outputKey === "url" || normalized.outputKey === "internalUrl")) {
+          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a TCP service. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and ${JSON.stringify(`${normalized.serviceId}.internalPort`)} instead.`);
+        }
         // Narrowed by the includes() check above; the map is `satisfies Record<ServiceOutputKey,…>`.
         const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as ServiceOutputKey];
         // The runtime resolves service-to-service refs itself: internal addresses are
-        // deterministic there. A `url` whose target has no verified domain yet makes the
-        // service `blocked` — the run then fails (there is no backend re-apply on domain
+        // deterministic there. A `url` whose private target has no verified domain yet makes
+        // the service `blocked` — the run then fails (there is no backend re-apply on domain
         // verification yet; see startDeployment / refreshRunFromMarshal). Prefer internalUrl
         // for service-to-service wiring.
         resolvedEnv.set(envVarKey, { ref: `${normalized.serviceId}.${marshalOutputKey}` });
@@ -706,6 +749,8 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
   const minInstances = definition.min_instances ?? DEFAULT_MIN_INSTANCES;
   return {
     config: {
+      visibility: definition.visibility,
+      transport: definition.transport,
       min_instances: minInstances,
       // Default max to at least min: a definition with `minInstances` and no `maxInstances`
       // must not synthesize an invalid spec (max < min) that Marshal 400s after the upload is
@@ -989,6 +1034,8 @@ export type DnsRecord = MarshalDnsRecord;
 export type DeploymentServiceApiShape = {
   id: string,
   type: "container",
+  visibility: "public" | "private",
+  transport: "http" | "tcp",
   port: number | null,
   min_instances: number | null,
   max_instances: number | null,
@@ -1112,12 +1159,22 @@ export async function serviceToApiShape(options: {
     }
   })();
 
-  // The public URL is a verified custom domain, full stop — container services have no
-  // platform-assigned URL. Deliberately NOT falling back to the latest run's serviceUrl: that
-  // value is frozen when the run goes terminal and never cleared, so a removed domain would be
-  // reported as the service URL forever.
+  // Verified custom domains remain the preferred user-facing URL. Public services fall back
+  // to Marshal's stable Fly platform URL. Keep using the most recent successful run after a
+  // later failed deploy: the previous machines (and their endpoint) can still be serving.
   const verifiedPrimary = row.domains.find((d) => d.isPrimary && d.verified) ?? row.domains.find((d) => d.verified);
-  const url = verifiedPrimary != null ? `https://${verifiedPrimary.hostname}` : null;
+  const latestSuccessfulPublicUrl = definition.transport === "http" && definition.visibility === "public" && verifiedPrimary == null && latestRun?.serviceUrl == null
+    ? (await prisma.deploymentRun.findFirst({
+      where: { tenancyId: tenancy.id, deploymentServiceId: row.id, status: "READY", serviceUrl: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { serviceUrl: true },
+    }))?.serviceUrl ?? null
+    : null;
+  const url = definition.transport !== "http"
+    ? null
+    : verifiedPrimary != null
+      ? `https://${verifiedPrimary.hostname}`
+      : definition.visibility === "public" ? latestRun?.serviceUrl ?? latestSuccessfulPublicUrl : null;
 
   // KNOWN GAP — `status`/`has_successful_deploy` are derived purely from the build record, so a
   // service whose image builds fine but crash-loops on boot still reports "deployed". Marshal
@@ -1162,6 +1219,8 @@ export async function serviceToApiShape(options: {
   return {
     id: row.serviceId,
     type: "container",
+    visibility: definition.visibility,
+    transport: definition.transport,
     port: row.port,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,

@@ -101,6 +101,8 @@ async function pollRunToStatus(runId: string, wantedStatus: "ready" | "error"): 
 
 type MockApp = {
   name: string,
+  sharedIpv4: string | null,
+  dedicatedIps: { id: string, address: string, type: string }[],
   machines: { id: string, image: string, metadata: Record<string, string>, env: Record<string, string>, mounts: { volume: string, path: string }[] }[],
   volumes: { id: string, name: string, size_gb: number, attached_machine_id: string | null }[],
   certificates: { hostname: string, clientStatus: string }[],
@@ -191,6 +193,7 @@ describe("definition sync", () => {
     await syncServices({
       api: {
         type: "container",
+        visibility: "public",
         port: 8080,
         // min_instances stays 0: this project's billing team is on the Free
         // plan, where always-on instances are rejected by the sync route.
@@ -211,6 +214,8 @@ describe("definition sync", () => {
     expect(body).toMatchObject({
       id: "api",
       type: "container",
+      visibility: "public",
+      transport: "http",
       port: 8080,
       min_instances: 0,
       max_instances: 3,
@@ -230,6 +235,29 @@ describe("definition sync", () => {
 
     const listResponse = await niceBackendFetch("/api/v1/deployments/services", { accessType: "admin" });
     expect((listResponse.body as any).items.map((item: any) => item.id)).toEqual(["api"]);
+  });
+
+  it("defaults transport to HTTP, accepts private TCP, and rejects public TCP", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    await syncServices({
+      database: { type: "container", transport: "tcp", port: 5432, env: {} },
+    });
+    const database = await niceBackendFetch("/api/v1/deployments/services/database", { accessType: "admin" });
+    expect(database.status).toBe(200);
+    expect(database.body).toMatchObject({ visibility: "private", transport: "tcp", port: 5432 });
+
+    const invalid = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: {
+        services: {
+          database: { type: "container", visibility: "public", transport: "tcp", port: 5432, env: {} },
+        },
+      },
+    });
+    expect(invalid.status).toBe(400);
+    expect(JSON.stringify(invalid.body)).toContain("private");
   });
 
   it("rejects always-on instances on the Free plan, naming the offending services", async ({ expect }) => {
@@ -666,6 +694,31 @@ describe("deploys against the Marshal runtime", () => {
     // The service reports blocked and has no public URL.
     const service = await niceBackendFetch(`/api/v1/deployments/services/${webServiceId}`, { accessType: "admin" });
     expect((service.body as any).url).toBeNull();
+  });
+
+  it("gives public services a fly.dev endpoint and removes ingress when they become private", { timeout: 180_000 }, async ({ expect }) => {
+    await Project.createAndSwitch();
+    const serviceId = uniqueServiceId("public");
+
+    const first = await syncServiceAndUpload(serviceId, { visibility: "public" });
+    const publicRun = await pollRunToStatus(await startDeploy(serviceId, first.uploadId, first.definitionSyncId), "ready");
+    expect(publicRun.url).toMatch(/^https:\/\/hxc-.+\.fly\.dev$/);
+    const publicService = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect((publicService.body as any).visibility).toBe("public");
+    expect((publicService.body as any).url).toBe(publicRun.url);
+    const publicApp = await findMockApp(serviceId);
+    expect(publicApp.sharedIpv4).not.toBeNull();
+    expect(publicApp.dedicatedIps.some((ip) => ip.type === "v6")).toBe(true);
+
+    const second = await syncServiceAndUpload(serviceId, { visibility: "private" });
+    const privateRun = await pollRunToStatus(await startDeploy(serviceId, second.uploadId, second.definitionSyncId), "ready");
+    expect(privateRun.url).toBeNull();
+    const privateService = await niceBackendFetch(`/api/v1/deployments/services/${serviceId}`, { accessType: "admin" });
+    expect((privateService.body as any).visibility).toBe("private");
+    expect((privateService.body as any).url).toBeNull();
+    const privateApp = await findMockApp(serviceId);
+    expect(privateApp.sharedIpv4).toBeNull();
+    expect(privateApp.dedicatedIps.filter((ip) => ip.type === "v6")).toEqual([]);
   });
 
   it("rejects a connection to a service that doesn't exist", async ({ expect }) => {

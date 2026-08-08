@@ -11,11 +11,12 @@ import type { ServiceSpec } from "./types.js";
 export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig().dataEncryptionRootKey): string {
   const canonical = {
     config: {
+      visibility: spec.config.visibility,
+      transport: spec.config.transport,
       min_instances: spec.config.min_instances,
       max_instances: spec.config.max_instances,
       port: spec.config.port,
-      // Conditionally spread so a volumeless spec hashes exactly as it did before volumes
-      // existed (no mass redeploy). It MUST be included: without it a volume-only change —
+      // It MUST be included: without it a volume-only change —
       // adding, resizing, or removing a disk — produces the same revision, so applyServiceSpec
       // takes the unchanged path, keeps the PREVIOUS spec, and silently drops the change.
       ...(spec.config.volume !== undefined ? { volume: spec.config.volume } : {}),

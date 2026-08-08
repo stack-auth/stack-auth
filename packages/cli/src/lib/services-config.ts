@@ -217,7 +217,7 @@ export type EvaluatedServices = {
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
-  "type", "port", "minInstances", "maxInstances",
+  "type", "visibility", "transport", "port", "minInstances", "maxInstances",
   "rootDirectory", "dockerfilePath", "devCommand", "volume", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "size"]);
@@ -397,6 +397,17 @@ export function evaluateServicesFunction(options: {
         ? `services.${serviceId} has no \`type\`. Add \`type: "container"\`.`
         : `services.${serviceId}.type must be "container" (got ${JSON.stringify(record.type)}).`);
     }
+    const visibility = readOptionalStringField(record, serviceId, "visibility") ?? "private";
+    if (visibility !== "public" && visibility !== "private") {
+      throw new CliError(`services.${serviceId}.visibility must be "public" or "private" (got ${JSON.stringify(visibility)}).`);
+    }
+    const transport = readOptionalStringField(record, serviceId, "transport") ?? "http";
+    if (transport !== "http" && transport !== "tcp") {
+      throw new CliError(`services.${serviceId}.transport must be "http" or "tcp" (got ${JSON.stringify(transport)}).`);
+    }
+    if (transport === "tcp" && visibility === "public") {
+      throw new CliError(`services.${serviceId} uses transport "tcp", which is private-only. Set visibility: "private" and connect with service(${JSON.stringify(serviceId)}).internalHost/internalPort.`);
+    }
 
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
     const absoluteRootDirectory = path.resolve(configDirectory, rootDirectoryRaw ?? ".");
@@ -422,7 +433,7 @@ export function evaluateServicesFunction(options: {
 
     const port = readOptionalIntegerField(record, serviceId, "port");
     if (port === undefined) {
-      throw new CliError(`services.${serviceId} has no \`port\`. Container services must declare the HTTP port the container listens on, e.g. \`port: 3000\`.`);
+      throw new CliError(`services.${serviceId} has no \`port\`. Container services must declare the port the container listens on, e.g. \`port: 3000\`.`);
     }
     if (port < 1 || port > 65535) {
       throw new CliError(`services.${serviceId}.port must be between 1 and 65535 (got ${port}).`);
@@ -462,6 +473,8 @@ export function evaluateServicesFunction(options: {
       serviceId,
       definition: {
         type: "container",
+        visibility,
+        transport,
         port,
         min_instances: minInstances,
         max_instances: maxInstances,
@@ -492,6 +505,22 @@ export function evaluateServicesFunction(options: {
       throw new CliError(`service(${JSON.stringify(referencedServiceId)}) does not match any defined service. Available services: ${[...services.keys()].join(", ")}.`);
     }
   }
+  // Reject URL-shaped connections to raw TCP before uploading anything. The
+  // backend enforces this too, but config evaluation can name both services
+  // and the correct replacement immediately.
+  for (const [serviceId, service] of services) {
+    for (const [envVarKey, value] of Object.entries(service.env)) {
+      if (value.kind !== "connection") continue;
+      const [targetServiceId, outputKey] = value.reference.split(".");
+      if (targetServiceId === HEXCLAVE_SERVICE_ID) continue;
+      const target = services.get(targetServiceId);
+      if (target == null) throw new CliError(`Internal error: validated service reference ${JSON.stringify(value.reference)} has no target definition.`);
+      if (target.definition.transport === "tcp" && (outputKey === "url" || outputKey === "internalUrl")) {
+        throw new CliError(`services.${serviceId}.env.${envVarKey} requests ${JSON.stringify(value.reference)} from a TCP service. Use service(${JSON.stringify(targetServiceId)}).internalHost and .internalPort as separate values instead.`);
+      }
+    }
+  }
+
   // A self-referential `url` can never be satisfied (the public URL only
   // exists once a domain verifies, which the service's own first deploy can't
   // provide). The internal outputs are deterministic and fine to self-reference.
@@ -524,7 +553,7 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // connections to services OUTSIDE this config (possible when deploying a
       // subset in the future) are resolved against already-deployed state.
       // Self-references never create a deploy edge: a self `url` is rejected outright above,
-      // and self `internalUrl`/`internalHost` are deterministic (they don't depend on the
+      // and self internal outputs are deterministic from the synced definition (they don't depend on the
       // service having deployed). Adding a self-edge here would make computeDeploymentLevels
       // report a false circular-dependency error for a config that deploys fine.
       if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId && services.has(targetServiceId)) {

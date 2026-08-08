@@ -9,6 +9,7 @@ import { MutationOutcomeUnknownError } from "./mutation-safety.js";
 import { redactSecrets } from "./redact.js";
 import { ReconciliationLeaseLostError, withReconciliationLease, type ReconciliationLeaseGuard } from "./reconciliation-lock.js";
 import { computeRevision } from "./revision.js";
+import { reconcilePublicIps } from "./public-networking.js";
 import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuild, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
 import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
@@ -53,6 +54,11 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   const minInstances = config.min_instances;
   const maxInstances = config.max_instances;
   const port = config.port;
+  const visibility = config.visibility ?? "private";
+  const transport = config.transport ?? "http";
+  if (visibility !== "public" && visibility !== "private") throw badRequest('config.visibility must be "public" or "private"');
+  if (transport !== "http" && transport !== "tcp") throw badRequest('config.transport must be "http" or "tcp"');
+  if (transport === "tcp" && visibility === "public") throw badRequest('config.visibility must be "private" when config.transport is "tcp"');
   if (typeof minInstances !== "number" || !Number.isInteger(minInstances) || minInstances < 0) throw badRequest("config.min_instances must be a non-negative integer");
   if (typeof maxInstances !== "number" || !Number.isInteger(maxInstances) || maxInstances < 1) throw badRequest("config.max_instances must be a positive integer");
   if (maxInstances < minInstances) throw badRequest("config.max_instances must be >= config.min_instances");
@@ -124,9 +130,8 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
 
   return {
     // Key order is canonical here too (see the source note below). `volume` is only present
-    // when set, so a volumeless spec hashes exactly as it did before this field existed —
-    // computeRevision mirrors that same conditional spread.
-    config: { min_instances: minInstances, max_instances: maxInstances, port: port, ...(volume !== undefined ? { volume } : {}) },
+    // when set; computeRevision mirrors that same conditional spread.
+    config: { visibility, transport, min_instances: minInstances, max_instances: maxInstances, port: port, ...(volume !== undefined ? { volume } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: hasUploadId
@@ -143,14 +148,20 @@ type ResolvedEnv =
   | { ok: true, env: Record<string, string> }
   | { ok: false, blockedRefs: string[] };
 
-// internal_host/internal_url are pure functions of the service name, so they resolve even
-// before the target exists (this is what keeps mutually-referencing services from
-// deadlocking). Only `url` depends on external state (a verified domain) and can block.
+// internal_host is a pure function of the service name. Transport-dependent
+// outputs need the target spec; the backend normally resolves internal_port
+// directly from the synced definition, while this remains a safe runtime
+// implementation for direct API callers.
 async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvValue>): Promise<ResolvedEnv> {
   const { envId } = getConfig();
   const resolved = new Map<string, string>();
   const blockedRefs: string[] = [];
   const urlCache = new Map<string, string | null>();
+  const targetSpecCache = new Map<string, StoredSpec | null>();
+  const targetSpec = async (targetKey: string): Promise<StoredSpec | null> => {
+    if (!targetSpecCache.has(targetKey)) targetSpecCache.set(targetKey, await readSpec(ns, targetKey));
+    return targetSpecCache.get(targetKey) ?? null;
+  };
 
   for (const [key, value] of Object.entries(env)) {
     if ("value" in value) {
@@ -169,7 +180,21 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         break;
       }
       case "internal_url": {
-        resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}`);
+        const target = await targetSpec(targetKey);
+        if (target?.spec.config.transport !== "http") {
+          blockedRefs.push(value.ref);
+        } else {
+          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}`);
+        }
+        break;
+      }
+      case "internal_port": {
+        const target = await targetSpec(targetKey);
+        if (target === null) {
+          blockedRefs.push(value.ref);
+        } else {
+          resolved.set(key, String(target.spec.config.transport === "http" ? 80 : target.spec.config.port));
+        }
         break;
       }
       case "url": {
@@ -201,6 +226,10 @@ function certificateIsVerified(certificate: FlyCertificate): boolean {
 
 async function computeServiceUrl(fly: FlyClient, ns: string, key: string): Promise<string | null> {
   const { envId } = getConfig();
+  const stored = await readSpec(ns, key);
+  if (stored?.spec.config.visibility === "public") {
+    return `https://${appNameForService(envId, ns, key)}.fly.dev`;
+  }
   const certificates = await fly.listCertificates(appNameForService(envId, ns, key));
   const verified = certificates.filter(certificateIsVerified).map((certificate) => certificate.hostname).sort();
   return verified.length > 0 ? `https://${verified[0]}` : null;
@@ -221,7 +250,7 @@ function pinnedMachineCount(spec: ServiceSpec): number {
   return isServerful(spec) ? 1 : spec.config.min_instances;
 }
 
-function machineConfigForSlot(options: {
+export function machineConfigForSlot(options: {
   imageRef: string,
   spec: ServiceSpec,
   revision: string,
@@ -259,12 +288,17 @@ function machineConfigForSlot(options: {
       // max_instances fleet is pre-created).
       autostop: pinned ? "off" : "stop",
       autostart: true,
-      ports: [
-        // Port 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
-        { port: 80, handlers: ["http"] },
-        { port: 443, handlers: ["tls", "http"] },
-      ],
-      concurrency: { type: "requests", soft_limit: SOFT_CONCURRENCY_LIMIT },
+      ports: options.spec.config.transport === "http"
+        ? [
+          // Port 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
+          { port: 80, handlers: ["http"] },
+          { port: 443, handlers: ["tls", "http"] },
+        ]
+        : [{ port: options.spec.config.port }],
+      concurrency: {
+        type: options.spec.config.transport === "http" ? "requests" : "connections",
+        soft_limit: SOFT_CONCURRENCY_LIMIT,
+      },
     }],
   };
   // The config hash makes re-applies cheap no-ops and catches resolved-ref drift that the
@@ -358,6 +392,8 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
   await fly.ensureApp(appName, network);
   await lease.assertOwned();
   await fly.ensureFlycastIp(appName, network);
+  await lease.assertOwned();
+  await reconcilePublicIps(fly, appName, stored.spec.config.visibility);
 
   const volume = stored.spec.config.volume;
   const volumeId = volume === undefined ? null : await ensureVolume(fly, appName, volume, lease);
@@ -529,6 +565,9 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
 async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, builder: Builder, lease: ReconciliationLeaseGuard): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
+  if (spec.config.transport === "tcp" && (await listDomainClaimsForService(ns, key)).length > 0) {
+    throw badRequest('a service with custom domains cannot use config.transport "tcp"; detach the domains first');
+  }
   const revision = computeRevision(spec);
   const now = Date.now();
   const claimed = await claimDesiredSpec(ns, key, spec, revision, now);
@@ -571,6 +610,8 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     await fly.ensureApp(appName, network);
     await lease.assertOwned();
     await fly.ensureFlycastIp(appName, network);
+    await lease.assertOwned();
+    await reconcilePublicIps(fly, appName, stored.spec.config.visibility);
 
     // The record is written as "running" BEFORE the builder starts: completion (webhook or
     // mock) may land at any moment after startBuild, and a blind write here afterwards
@@ -959,8 +1000,16 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
     target_revision: runningRevision === stored.revision && allAtTarget ? null : stored.revision,
     outputs: {
       internal_host: internalHostForService(config.envId, ns, key),
-      internal_url: `http://${internalHostForService(config.envId, ns, key)}`,
-      url: verifiedHostnames.length > 0 ? `https://${verifiedHostnames[0]}` : null,
+      internal_port: String(stored.spec.config.transport === "http" ? 80 : stored.spec.config.port),
+      internal_url: stored.spec.config.transport === "http" ? `http://${internalHostForService(config.envId, ns, key)}` : null,
+      // Keep a public service's platform URL stable even while custom domains are added or
+      // removed. The backend prefers a verified custom domain for display, then falls back
+      // to this value; private services continue to expose only a verified custom domain.
+      url: stored.spec.config.transport !== "http"
+        ? null
+        : stored.spec.config.visibility === "public"
+          ? `https://${appName}.fly.dev`
+          : verifiedHostnames.length > 0 ? `https://${verifiedHostnames[0]}` : null,
     },
     domains,
     error,

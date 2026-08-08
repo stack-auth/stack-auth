@@ -66,6 +66,8 @@ describe("stored deployment environment", () => {
   it("preserves __proto__ from the entry-array database representation", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
+      visibility: "private",
+      transport: "http",
       port: 3000,
       minInstances: 0,
       maxInstances: 1,
@@ -82,6 +84,8 @@ describe("stored deployment environment", () => {
   it("continues to read the legacy object database representation", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
+      visibility: "public",
+      transport: "http",
       port: 3000,
       minInstances: 0,
       maxInstances: 1,
@@ -92,12 +96,15 @@ describe("stored deployment environment", () => {
       env: { SAFE: { value: "legacy" } },
     });
     expect(definition.env.SAFE).toEqual({ type: undefined, value: "legacy", key: undefined });
+    expect(definition.visibility).toBe("public");
   });
 });
 
 describe("stored deployment volumes", () => {
   const baseRow = {
     serviceId: "api",
+    visibility: "private",
+    transport: "http",
     port: 3000,
     minInstances: 0,
     maxInstances: 1,
@@ -130,7 +137,7 @@ describe("stored deployment volumes", () => {
       { image: "registry.fly.io/app@sha256:abc" },
       {},
     );
-    expect(withVolume.config).toEqual({ min_instances: 1, max_instances: 1, port: 3000, volume: { path: "/data", size_gb: 10 } });
+    expect(withVolume.config).toEqual({ visibility: "private", transport: "http", min_instances: 1, max_instances: 1, port: 3000, volume: { path: "/data", size_gb: 10 } });
 
     const withoutVolume = marshalSpecForDefinition(
       definitionFromServiceRow({ ...baseRow, volumePath: null, volumeSizeGb: null }),
@@ -147,6 +154,8 @@ describe("free-plan always-on gate", () => {
   const tenancy = { project: { id: "p1", ownerTeamId: "team1" } } as any;
   const service = (minInstances?: number) => ({
     type: "container" as const,
+    visibility: "private" as const,
+    transport: "http" as const,
     port: 3000,
     ...(minInstances === undefined ? {} : { min_instances: minInstances }),
     env: {},

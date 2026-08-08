@@ -2,6 +2,7 @@ import { getConfig, resolveNamespaceOrg } from "./config.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { appNameForService } from "./naming.js";
+import { ensurePublicIps, releasePublicIpsIfUnused } from "./public-networking.js";
 import { dnsRecordsForCertificate } from "./services.js";
 import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
 import type { DnsRecord } from "./types.js";
@@ -30,8 +31,12 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const appName = appNameForService(config.envId, ns, serviceKey);
-  if (await readSpec(ns, serviceKey) === null) {
+  const stored = await readSpec(ns, serviceKey);
+  if (stored === null) {
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
+  }
+  if (stored.spec.config.transport !== "http") {
+    throw badRequest("custom domains are only supported for HTTP services");
   }
 
   const existingClaim = await readDomainClaimVersioned(hostname);
@@ -45,7 +50,7 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     // Re-PUT within the namespace repoints: certificate moves from the old service's app.
     const previousApp = appNameForService(config.envId, ns, existingClaim.value.service_key);
     await fly.deleteCertificate(previousApp, hostname);
-    await releasePublicIpsIfUnused(ns, existingClaim.value.service_key);
+    await releaseServicePublicIpsIfUnused(ns, existingClaim.value.service_key);
     const rewritten = await rewriteDomainClaim(existingClaim, { hostname, ns, service_key: serviceKey, claimed_at_millis: Date.now() });
     if (!rewritten) throw conflict(`hostname ${JSON.stringify(hostname)} changed owners concurrently; retry the attach`);
   } else {
@@ -55,14 +60,12 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
     await claimDomain(existingClaim.value);
   }
 
-  // Public exposure exists only while domains are attached: allocate the shared IPv4 +
-  // dedicated IPv6 on first attach (no public IP = private service). Concurrent attaches of
+  // A custom domain needs the same public ingress as `visibility: "public"`: allocate the
+  // shared IPv4 + dedicated IPv6 on first attach. Concurrent attaches of
   // different hostnames on the same app can both observe no IP and both allocate a second
   // dedicated v6 — a minor over-allocation the last-detach release reclaims; a true fix needs
   // per-app allocation serialization, tracked for later.
-  const ips = await fly.getAppIps(appName);
-  if (ips.sharedIpv4 === null) await fly.allocateIp(appName, "shared_v4");
-  if (!ips.dedicated.some((ip) => ip.type === "v6")) await fly.allocateIp(appName, "v6");
+  await ensurePublicIps(fly, appName);
 
   let certificate;
   try {
@@ -142,19 +145,14 @@ export async function detachDomain(ns: string, hostname: string, expectedService
   // dedicated IP allocated with no claim (and no code path that would ever revisit it). The
   // service stays running and internally reachable; only its public exposure goes away when
   // the last domain detaches.
-  await releasePublicIpsIfUnused(ns, claim.value.service_key);
+  await releaseServicePublicIpsIfUnused(ns, claim.value.service_key);
   await releaseDomainClaim(claim);
 }
 
-async function releasePublicIpsIfUnused(ns: string, serviceKey: string): Promise<void> {
+async function releaseServicePublicIpsIfUnused(ns: string, serviceKey: string): Promise<void> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const appName = appNameForService(config.envId, ns, serviceKey);
-  const remaining = await fly.listCertificates(appName);
-  if (remaining.length > 0) return;
-  const ips = await fly.getAppIps(appName);
-  if (ips.sharedIpv4 !== null) await fly.releaseIpByAddress(appName, ips.sharedIpv4);
-  for (const ip of ips.dedicated) {
-    if (ip.type === "v6") await fly.releaseIpById(appName, ip.id);
-  }
+  const spec = await readSpec(ns, serviceKey);
+  await releasePublicIpsIfUnused(fly, appName, spec?.spec.config.visibility === "public");
 }

@@ -257,6 +257,8 @@ async function handleRequest(req, res) {
     return sendJson(res, 200, {
       apps: [...appsByName.values()].map((app) => ({
         name: app.name,
+        sharedIpv4: app.sharedIpv4,
+        dedicatedIps: app.dedicatedIps,
         machines: [...app.machinesById.values()].map((machine) => ({
           id: machine.id,
           image: machine.config.image,

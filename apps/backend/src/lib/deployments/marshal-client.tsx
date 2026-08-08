@@ -79,6 +79,8 @@ export type MarshalEnvValue = { value: string } | { ref: string };
 
 export type MarshalServiceSpec = {
   config: {
+    visibility: "public" | "private",
+    transport: "http" | "tcp",
     min_instances: number,
     max_instances: number,
     port: number,

@@ -82,7 +82,7 @@ describe("stored service spec encryption", () => {
     ns: "test-namespace",
     key: "web",
     spec: {
-      config: { min_instances: 0, max_instances: 1, port: 3000 },
+      config: { visibility: "private", transport: "http", min_instances: 0, max_instances: 1, port: 3000 },
       source: { image: "registry.example.com/web@sha256:abc" },
       env: {
         API_TOKEN: { value: "tenant-secret-value" },

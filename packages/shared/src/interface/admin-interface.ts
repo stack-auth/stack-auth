@@ -76,8 +76,10 @@ export type AdminDeploymentEnvVarJson = {
 export type AdminDeploymentServiceJson = {
   id: string,
   type: "container",
+  visibility: "public" | "private",
+  transport: "http" | "tcp",
   // Container definition (null on rows synced before the definition existed):
-  // the single HTTP port the container listens on, and the serverless scaling
+  // the single port the container listens on, and the serverless scaling
   // bounds (1/1 = serverful, min 0 scales to zero).
   port: number | null,
   min_instances: number | null,
