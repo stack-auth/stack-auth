@@ -70,7 +70,9 @@ export const GET = createSmartRouteHandler({
           ? null
           : { uri: interaction.resource, display_name: resourceConfig?.displayName ?? interaction.resource },
         trusted_client: isTrustedClient(auth.tenancy, interaction.clientId),
-        allow_user_to_deselect_optional_scopes: config.consent.allowUserToDeselectOptionalScopes,
+        // oidc-provider resumes the original scope request, so a reduced grant causes a prompt
+        // loop. Keep this capability visibly disabled until reduced-scope continuation is supported.
+        allow_user_to_deselect_optional_scopes: false,
       },
     };
   },

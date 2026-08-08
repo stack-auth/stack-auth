@@ -148,6 +148,15 @@ it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
   `);
   expect(openidConfiguration.body.issuer).toBe(issuer);
   expect(openidConfiguration.body.authorization_endpoint).toBe(`${issuer}/auth`);
+  for (const metadata of ["openid-configuration", "oauth-authorization-server"] as const) {
+    const response = await niceBackendFetch(pathInsertionUrl(projectId, metadata));
+    expect(response.status).toBe(200);
+    expect(response.body.issuer).toBe(issuer);
+  }
+  const unknownProject = await niceBackendFetch(pathInsertionUrl("missing-project", "openid-configuration"));
+  expect(unknownProject.status).toBe(404);
+  const bareDiscovery = await niceBackendFetch(new URL("/.well-known/openid-configuration", STACK_BACKEND_BASE_URL));
+  expect(bareDiscovery.status).toBe(404);
   expect(openidConfiguration.body.token_endpoint).toBe(`${issuer}/token`);
   expect(openidConfiguration.body.registration_endpoint).toBe(`${issuer}/reg`);
   expect(openidConfiguration.body.jwks_uri).toBe(`${issuer}/.well-known/jwks.json`);
@@ -286,7 +295,7 @@ it("reads and records an authenticated project OAuth interaction", async () => {
     ],
     resource: { uri: "https://mcp.example.com/mcp" },
     trusted_client: false,
-    allow_user_to_deselect_optional_scopes: true,
+    allow_user_to_deselect_optional_scopes: false,
   });
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
@@ -394,11 +403,19 @@ it("completes the project OAuth authorization code flow", async () => {
     scopes: ["files:read"],
     resource: new URL("https://mcp.example.com/mcp"),
   });
+  const normalSessionControl = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+  });
+  expect(normalSessionControl.status).toBe(200);
   const rejectedByAccessTokenHeader = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+    userAuth: {},
     headers: { "x-stack-access-token": token.body.access_token },
   });
-  expect(rejectedByAccessTokenHeader.status).toBe(400);
+  expect(rejectedByAccessTokenHeader.status).toBe(401);
   const rejectedByAuthorizationHeader = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+    userAuth: {},
     headers: { Authorization: `Bearer ${token.body.access_token}` },
   });
   expect(rejectedByAuthorizationHeader.status).toBe(400);

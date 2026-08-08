@@ -2,7 +2,7 @@ import { getProjectOAuthIssuer } from "@/lib/project-oauth-provider";
 import { getProjectOAuthProvider } from "@/lib/project-oauth-provider-cache";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@hexclave/shared/dist/utils/node-http";
 const issuerPathPattern = /^\/api\/v1\/projects\/([^/]+)\/oidc(?:\/|$)/;
 export const projectOAuthPathInsertionPattern = /^\/\.well-known\/(openid-configuration|oauth-authorization-server)\/api\/v1\/projects\/([^/]+)\/oidc$/;
@@ -39,7 +39,7 @@ function getRouteDetails(pathname: string): {
     };
   }
 
-  throw new HexclaveAssertionError("Project OAuth provider route did not match its expected path");
+  throw new StatusError(404, "Project OAuth provider route not found");
 }
 
 export async function handleProjectOAuthRequest(req: Request): Promise<Response> {

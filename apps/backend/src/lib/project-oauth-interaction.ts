@@ -248,7 +248,10 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
         },
         update: {},
       });
-      if (isTrustedClient(tenancy, clientId) && typeof details.session?.accountId === "string") {
+      // A project without required consent still requires an authenticated account. This removes
+      // the confirmation click without weakening scope/resource authority checks.
+      if (!projectOAuthClientNeedsInteraction(tenancy, clientId)
+        && typeof details.session?.accountId === "string") {
         const doneUrl = await recordProjectOAuthDecision({
           tenancy,
           uid,
@@ -288,5 +291,5 @@ export async function findProjectOAuthAccount(tenancy: Tenancy, sub: string) {
 }
 
 export function projectOAuthClientNeedsInteraction(tenancy: Tenancy, clientId: string): boolean {
-  return !isTrustedClient(tenancy, clientId);
+  return tenancy.config.oauthProvider.consent.required && !isTrustedClient(tenancy, clientId);
 }

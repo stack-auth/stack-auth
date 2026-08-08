@@ -17,7 +17,7 @@ type InteractionDetails = {
   allow_user_to_deselect_optional_scopes: boolean,
 };
 
-const apiBaseUrl = import.meta.env.NEXT_PUBLIC_STACK_API_URL;
+const apiBaseUrl = import.meta.env.VITE_HEXCLAVE_API_URL || import.meta.env.VITE_STACK_API_URL;
 
 export function HostedOAuthProviderInteraction() {
   const app = useStackApp();
@@ -54,7 +54,7 @@ export function HostedOAuthProviderInteraction() {
         setSelectedScopes(nextDetails.scopes.map(scope => scope.scope));
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load this authorization request.");
+          setError("This authorization request is expired or no longer available.");
         }
       }
     };
@@ -99,7 +99,7 @@ export function HostedOAuthProviderInteraction() {
       window.location.assign(body.done_url);
     } catch (finishError) {
       setRedirecting(false);
-      setError(finishError instanceof Error ? finishError.message : "Unable to complete this authorization request.");
+        setError("We couldn't complete this authorization request. Please return to the application and try again.");
     }
   };
 
