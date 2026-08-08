@@ -6,12 +6,12 @@ import type { Tenancy } from "@/lib/tenancies";
 import { getHostedHandlerTrustedDomain } from "@/lib/redirect-urls";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
 import Provider from "oidc-provider";
 import type { AccountClaims } from "oidc-provider";
 
 const MODEL = "ProjectOAuthInteraction";
 const TTL_SECONDS = 10 * 60;
+const OIDC_SCOPES = new Set(["openid", "profile", "email", "phone", "address", "offline_access"]);
 
 export type ProjectOAuthInteraction = {
   uid: string,
@@ -104,7 +104,7 @@ export async function recordProjectOAuthDecision(options: {
     ? new Set(Object.keys(Object.fromEntries(getProjectResourceServers(options.tenancy))))
     : new Set(getProjectResourceServers(options.tenancy).get(interaction.resource)?.scopes ?? []);
   const defined = new Set(deriveScopesFromConfig(options.tenancy.config).map(scope => scope.scope));
-  if (options.approvedScopes.some(scope => !defined.has(scope) || (interaction.resource !== undefined && !allowed.has(scope)))) {
+  if (options.approvedScopes.some(scope => !defined.has(scope) || (!OIDC_SCOPES.has(scope) && interaction.resource !== undefined && !allowed.has(scope)))) {
     throw new StatusError(400, "The selected permissions are not allowed for this resource.");
   }
 
@@ -126,7 +126,9 @@ export async function recordProjectOAuthDecision(options: {
       expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
     },
   });
-  return urlString`${getProjectOAuthIssuer(options.tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"))}/interaction/${encodeURIComponent(options.uid)}/done`;
+  const doneUrl = new URL(getProjectOAuthIssuer(options.tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
+  doneUrl.pathname = `${doneUrl.pathname.replace(/\/$/, "")}/interaction/${encodeURIComponent(options.uid)}/done`;
+  return doneUrl.toString();
 }
 
 export async function consumeProjectOAuthDecision(tenancy: Tenancy, uid: string): Promise<ProjectOAuthInteraction> {
@@ -187,23 +189,38 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       const allowed = decision.resource === undefined ? undefined : resourceServers.get(decision.resource);
       const definedScopes = new Set(deriveScopesFromConfig(tenancy.config).map(scope => scope.scope));
       const approved = decision.approvedScopes;
-      if (approved === undefined || approved.some(scope => !definedScopes.has(scope) || (allowed !== undefined && !allowed.scopes.includes(scope)))) {
+      if (approved === undefined || approved.some(scope => !definedScopes.has(scope) || (!OIDC_SCOPES.has(scope) && allowed !== undefined && !allowed.scopes.includes(scope)))) {
         captureError("project-oauth-grant-scope-mismatch", new HexclaveAssertionError("Project OAuth grant scope mismatch"));
         throw new StatusError(400, "This authorization request is no longer valid.");
       }
       const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
       const userId = decision.userId ?? throwErr("Project OAuth decision user ID was missing");
       const grant = new oidc.Grant({ accountId: userId, clientId });
-      const oidcScopes = approved.filter(scope => ["openid", "profile", "email", "phone", "address", "offline_access"].includes(scope));
+      const oidcScopes = approved.filter(scope => OIDC_SCOPES.has(scope));
       if (oidcScopes.length > 0) grant.addOIDCScope(oidcScopes.join(" "));
       if (decision.resource !== undefined) grant.addResourceScope(decision.resource, approved.filter(scope => !oidcScopes.includes(scope)).join(" "));
       const grantId = await grant.save(60 * 60);
-      return await oidc.interactionFinished(ctx.req, ctx.res, { login: { accountId: userId }, consent: { grantId } });
+      return await oidc.interactionFinished(
+        ctx.req,
+        ctx.res,
+        { login: { accountId: userId }, consent: { grantId } },
+        { mergeWithLastSubmission: false },
+      );
     }
     const match = /^\/interaction\/([^/]+)$/.exec(ctx.path);
     if (match !== null && ctx.method === "GET") {
       const uid = match[1];
       const details = await oidc.interactionDetails(ctx.req, ctx.res);
+      const issuer = new URL(getProjectOAuthIssuer(tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
+      const returnTo = new URL(details.returnTo, issuer);
+      if (returnTo.origin === issuer.origin && !returnTo.pathname.startsWith(issuer.pathname)) {
+        // The provider computes its resume URL from the request mount. The Next adapter dispatches
+        // through a stripped internal path, so persist the canonical issuer prefix before the
+        // browser leaves this origin; otherwise the final resume navigation would hit /auth/:uid.
+        returnTo.pathname = `${issuer.pathname.replace(/\/$/, "")}${returnTo.pathname}`;
+        details.returnTo = returnTo.toString();
+        await details.save(Math.max(1, details.exp - Math.floor(Date.now() / 1000)));
+      }
       const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
       const resource = typeof details.params.resource === "string" ? details.params.resource : undefined;
       await globalPrismaClient.idPAdapterData.upsert({

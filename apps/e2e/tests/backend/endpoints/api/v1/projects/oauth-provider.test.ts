@@ -1,6 +1,6 @@
 import { expect } from "vitest";
-import { it, STACK_BACKEND_BASE_URL } from "../../../../../helpers";
-import { Project, niceBackendFetch } from "../../../../backend-helpers";
+import { it, STACK_BACKEND_BASE_URL, updateCookiesFromResponse } from "../../../../../helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 async function createConfiguredProject() {
   const { projectId } = await Project.createAndSwitch();
@@ -179,7 +179,7 @@ it("rejects unknown clients and authorization requests without PKCE", async () =
       response_type: "code",
       client_id: "unknown-client",
       redirect_uri: "http://localhost:30000/callback",
-      code_challenge: "challenge",
+      code_challenge: Auth.OAuth.testCodeChallenge,
       code_challenge_method: "S256",
     },
   });
@@ -196,4 +196,54 @@ it("rejects unknown clients and authorization requests without PKCE", async () =
   });
   expect(missingPkce.status).toBe(303);
   expect(new URL(missingPkce.headers.get("location") ?? "").searchParams.get("error")).toBe("invalid_request");
+});
+
+it("reads and records an authenticated project OAuth interaction", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    redirect: "manual",
+    query: {
+      response_type: "code",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      scope: "openid files:read",
+      resource: "https://mcp.example.com/mcp",
+      code_challenge: Auth.OAuth.testCodeChallenge,
+      code_challenge_method: "S256",
+    },
+  });
+  expect(authorize.status).toBe(303);
+  const providerCookie = updateCookiesFromResponse("", authorize);
+  const interactionLocation = authorize.headers.get("location") ?? "";
+  const interaction = await niceBackendFetch(interactionLocation, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(interaction.status).toBe(307);
+  const interactionUid = new URL(interactionLocation).pathname.split("/").at(-1) ?? "";
+  const details = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    accessType: "client",
+  });
+  expect(details.status).toBe(200);
+  expect(details.body).toMatchObject({
+    client: { id: "testClient", display_name: "Test client" },
+    scopes: [
+      { scope: "openid" },
+      { scope: "files:read", display_name: "Read files" },
+    ],
+    resource: { uri: "https://mcp.example.com/mcp" },
+    trusted_client: false,
+    allow_user_to_deselect_optional_scopes: true,
+  });
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      approved_scopes: ["openid", "files:read"],
+      denied: false,
+    },
+  });
+  expect(decision.status).toBe(200);
+  expect(decision.body.done_url).toBe(providerUrl(projectId, `/interaction/${interactionUid}/done`));
 });
