@@ -1,10 +1,9 @@
 import { expect } from "vitest";
 import { it, STACK_BACKEND_BASE_URL } from "../../../../../helpers";
-import { Project, Auth, niceBackendFetch } from "../../../../backend-helpers";
+import { Project, niceBackendFetch } from "../../../../backend-helpers";
 
 async function createConfiguredProject() {
-  await Auth.fastSignUp();
-  const { projectId } = await Project.create();
+  const { projectId } = await Project.createAndSwitch();
   await Project.pushConfig({
     oauthProvider: {
       scopes: {
@@ -74,7 +73,23 @@ it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
       "issuer": "<issuer>",
       "jwks_uri": "<issuer>/.well-known/jwks.json",
       "registration_endpoint": "<issuer>/reg",
-      "scopes_supported": ["address", "email", "files:read", "offline_access", "openid", "phone", "profile"],
+      "scopes_supported": [
+        "address",
+        "email",
+        "files:read",
+        "offline_access",
+        "openid",
+        "phone",
+        "profile",
+        "team_perm:$delete_team",
+        "team_perm:$invite_members",
+        "team_perm:$manage_api_keys",
+        "team_perm:$read_members",
+        "team_perm:$remove_members",
+        "team_perm:$update_team",
+        "team_perm:team_admin",
+        "team_perm:team_member",
+      ],
       "token_endpoint": "<issuer>/token",
     }
   `);
@@ -172,12 +187,13 @@ it("rejects unknown clients and authorization requests without PKCE", async () =
   expect(unknownClient.body).toMatchObject({ error: "invalid_client" });
 
   const missingPkce = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    redirect: "manual",
     query: {
       response_type: "code",
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
     },
   });
-  expect(missingPkce.status).toBe(400);
-  expect(missingPkce.body).toMatchObject({ error: "invalid_request" });
+  expect(missingPkce.status).toBe(303);
+  expect(new URL(missingPkce.headers.get("location") ?? "").searchParams.get("error")).toBe("invalid_request");
 });

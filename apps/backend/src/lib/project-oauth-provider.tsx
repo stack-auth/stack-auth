@@ -111,6 +111,7 @@ export function getProjectStaticClients(tenancy: Tenancy): ClientMetadata[] {
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
+      id_token_signed_response_alg: "ES256",
       // MCP clients are overwhelmingly native/CLI apps that listen on a loopback port.
       application_type: "native",
     }];
@@ -196,6 +197,7 @@ export async function resolveClientIdMetadataDocument(
     token_endpoint_auth_method: "none",
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
+    id_token_signed_response_alg: "ES256",
     application_type: "native",
   };
 }
