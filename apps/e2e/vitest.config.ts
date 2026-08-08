@@ -13,11 +13,11 @@ export default mergeConfig(
       // requests strictly sequentially and report per-operation latency, so running them next to
       // the rest of the suite is bad in both directions: they are slowed down by everything else
       // sharing the backend (which makes them flake against their own timeout), and their
-      // measurements stop meaning anything. Set HEXCLAVE_RUN_PERF_TESTS to run them; CI does that
+      // measurements stop meaning anything. Set HEXCLAVE_RUN_PERF_TESTS=1 to run them; CI does that
       // in a dedicated step with a single worker.
       exclude: [
         ...configDefaults.exclude,
-        ...(process.env.HEXCLAVE_RUN_PERF_TESTS ? [] : ["**/*.perf.test.{js,ts,jsx,tsx}"]),
+        ...(process.env.HEXCLAVE_RUN_PERF_TESTS === "1" ? [] : ["**/*.perf.test.{js,ts,jsx,tsx}"]),
       ],
       setupFiles: [
         // load-env must come first so env vars are populated before setup.ts

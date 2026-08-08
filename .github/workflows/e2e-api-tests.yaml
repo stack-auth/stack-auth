@@ -221,7 +221,7 @@ jobs:
         if: matrix.freestyle-mode == 'mock'
         env:
           HEXCLAVE_RUN_PERF_TESTS: "1"
-        run: pnpm test run --min-workers=1 --max-workers=1 perf
+        run: pnpm test run --min-workers=1 --max-workers=1 .perf.test
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
