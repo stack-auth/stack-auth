@@ -420,14 +420,16 @@ import.meta.vitest?.test("uncaught /api/ dispatch errors use the global sanitize
   vi.stubEnv("NODE_ENV", "production");
   const request = new Request("http://localhost/api/v1");
   const originalHeaders = request.headers;
-  let shouldThrow = true;
+  let headersReadCount = 0;
+  let headerReadThrew = false;
   // Simulate an unexpected internal failure escaping dispatch for an /api/ request.
-  // The getter throws once to fail dispatch, then returns the original headers because
-  // response compression reads request headers after the error handler runs.
+  // This depends on runRequestPipeline reading headers first; after the first throw,
+  // return them because response compression reads request headers after the error handler.
   Object.defineProperty(request, "headers", {
     get() {
-      if (shouldThrow) {
-        shouldThrow = false;
+      headersReadCount++;
+      if (headersReadCount === 1) {
+        headerReadThrew = true;
         throw new Error("unexpected request header access");
       }
       return originalHeaders;
@@ -437,6 +439,8 @@ import.meta.vitest?.test("uncaught /api/ dispatch errors use the global sanitize
   try {
     const response = await app.handle(request);
 
+    expect(headerReadThrew).toBe(true);
+    expect(headersReadCount).toBeGreaterThan(1);
     expect({
       status: response.status,
       body: await response.text(),
