@@ -5,7 +5,10 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@hexclave/shared/dist/utils/node-http";
 const issuerPathPattern = /^\/api\/v1\/projects\/([^/]+)\/oidc(?:\/|$)/;
-const pathInsertionPattern = /^\/\.well-known\/(openid-configuration|oauth-authorization-server)\/api\/v1\/projects\/([^/]+)\/oidc$/;
+export const projectOAuthPathInsertionPattern = /^\/\.well-known\/(openid-configuration|oauth-authorization-server)\/api\/v1\/projects\/([^/]+)\/oidc$/;
+export function isProjectOAuthPathInsertion(pathname: string): boolean {
+  return projectOAuthPathInsertionPattern.test(pathname);
+}
 
 function getRouteDetails(pathname: string): {
   projectId: string,
@@ -25,7 +28,7 @@ function getRouteDetails(pathname: string): {
     };
   }
 
-  const pathInsertionMatch = pathInsertionPattern.exec(pathname);
+  const pathInsertionMatch = projectOAuthPathInsertionPattern.exec(pathname);
   if (pathInsertionMatch !== null) {
     const [, metadataRoute, encodedProjectId] = pathInsertionMatch;
     return {

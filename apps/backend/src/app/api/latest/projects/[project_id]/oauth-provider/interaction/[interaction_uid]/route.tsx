@@ -9,6 +9,7 @@ const authSchema = yupObject({
   type: clientOrHigherAuthTypeSchema.defined(),
   project: adaptSchema.defined(),
   tenancy: adaptSchema.defined(),
+  user: adaptSchema.defined(),
 }).defined();
 
 const paramsSchema = yupObject({
@@ -38,9 +39,8 @@ export const GET = createSmartRouteHandler({
       allow_user_to_deselect_optional_scopes: yupBoolean().defined(),
     }).defined(),
   }),
-  handler: async ({ auth, params }, fullReq) => {
+  handler: async ({ auth, params }) => {
     if (auth.project.id !== params.project_id) throw new StatusError(404, "Project not found");
-    if (fullReq.auth?.user == null) throw new StatusError(401, "User authentication required.");
     const interaction = await getProjectOAuthInteraction(auth.tenancy, params.interaction_uid);
     if (interaction === undefined) throw new StatusError(404, "This authorization request has expired.");
 

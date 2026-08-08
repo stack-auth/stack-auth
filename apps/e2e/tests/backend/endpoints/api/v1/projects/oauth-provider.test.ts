@@ -7,7 +7,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 const oauthCodeVerifier = "a".repeat(43);
 const oauthCodeChallenge = createHash("sha256").update(oauthCodeVerifier).digest("base64url");
 
-async function createConfiguredProject() {
+async function createConfiguredProject(options: { trustedClient?: boolean } = {}) {
   const { projectId } = await Project.createAndSwitch();
   await Project.pushConfig({
     oauthProvider: {
@@ -32,6 +32,7 @@ async function createConfiguredProject() {
             callback: { url: "http://localhost:30000/callback" },
           },
           type: "public",
+          ...(options.trustedClient === true ? { trusted: true } : {}),
         },
       },
       dynamicClientRegistration: { enabled: true },
@@ -55,6 +56,53 @@ function pathInsertionUrl(projectId: string, metadata: "openid-configuration" | 
 
 function normalizeIssuerUrl(url: string, issuer: string): string {
   return url.replace(issuer, "<issuer>");
+}
+
+async function startProjectInteraction(projectId: string, scope = "openid files:read") {
+  const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    redirect: "manual",
+    query: {
+      response_type: "code",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      scope,
+      resource: "https://mcp.example.com/mcp",
+      code_challenge: oauthCodeChallenge,
+      code_challenge_method: "S256",
+    },
+  });
+  expect(authorize.status).toBe(303);
+  const providerCookie = updateCookiesFromResponse("", authorize);
+  const interactionLocation = authorize.headers.get("location") ?? "";
+  const interaction = await niceBackendFetch(interactionLocation, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(interaction.status).toBe(307);
+  return {
+    interactionUid: new URL(interactionLocation).pathname.split("/").at(-1) ?? "",
+    providerCookie,
+  };
+}
+
+async function getProjectAuthorizationCode(projectId: string): Promise<string> {
+  const { interactionUid, providerCookie } = await startProjectInteraction(projectId);
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(decision.status).toBe(200);
+  const completed = await niceBackendFetch(decision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  const resumed = await niceBackendFetch(completed.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(providerCookie, completed) },
+  });
+  expect(resumed.status).toBe(303);
+  return new URL(resumed.headers.get("location") ?? "").searchParams.get("code") ?? "";
 }
 
 it("serves OAuth/OIDC discovery and project-provider JWKS", async () => {
@@ -261,8 +309,9 @@ it("completes the project OAuth authorization code flow", async () => {
       response_type: "code",
       client_id: "testClient",
       redirect_uri: "http://localhost:30000/callback",
-      scope: "openid files:read",
+      scope: "openid profile email offline_access files:read",
       resource: "https://mcp.example.com/mcp",
+      prompt: "consent",
       code_challenge: oauthCodeChallenge,
       code_challenge_method: "S256",
     },
@@ -276,10 +325,20 @@ it("completes the project OAuth authorization code flow", async () => {
   });
   expect(interaction.status).toBe(307);
   const interactionUid = new URL(interactionLocation).pathname.split("/").at(-1) ?? "";
+  const fullDetails = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    accessType: "client",
+  });
+  expect(fullDetails.body.scopes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ scope: "openid" }),
+    expect.objectContaining({ scope: "profile" }),
+    expect.objectContaining({ scope: "email" }),
+    expect.objectContaining({ scope: "offline_access" }),
+    expect.objectContaining({ scope: "files:read" }),
+  ]));
   const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
     method: "POST",
     accessType: "client",
-    body: { approved_scopes: ["openid", "files:read"], denied: false },
+    body: { approved_scopes: ["openid", "profile", "email", "offline_access", "files:read"], denied: false },
   });
   expect(decision.status).toBe(200);
   const completed = await niceBackendFetch(decision.body.done_url, {
@@ -335,4 +394,157 @@ it("completes the project OAuth authorization code flow", async () => {
     scopes: ["files:read"],
     resource: new URL("https://mcp.example.com/mcp"),
   });
+  const rejectedByAccessTokenHeader = await niceBackendFetch("/api/v1/users/me", {
+    headers: { "x-stack-access-token": token.body.access_token },
+  });
+  expect(rejectedByAccessTokenHeader.status).toBe(400);
+  const rejectedByAuthorizationHeader = await niceBackendFetch("/api/v1/users/me", {
+    headers: { Authorization: `Bearer ${token.body.access_token}` },
+  });
+  expect(rejectedByAuthorizationHeader.status).toBe(400);
+  const refreshed = await niceBackendFetch(providerUrl(projectId, "/token"), {
+    method: "POST",
+    rawBody: new TextEncoder().encode(new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: token.body.refresh_token,
+      client_id: "testClient",
+      resource: "https://mcp.example.com/mcp",
+    }).toString()),
+    rawContentType: "application/x-www-form-urlencoded",
+  });
+  expect(refreshed.status).toBe(200);
+  expect(refreshed.body).toMatchObject({ token_type: "Bearer", scope: "files:read" });
+  const revoked = await niceBackendFetch(providerUrl(projectId, "/token/revocation"), {
+    method: "POST",
+    rawBody: new TextEncoder().encode(new URLSearchParams({
+      token: refreshed.body.refresh_token,
+      client_id: "testClient",
+    }).toString()),
+    rawContentType: "application/x-www-form-urlencoded",
+  });
+  expect(revoked.status).toBe(200);
+  const afterRevocation = await niceBackendFetch(providerUrl(projectId, "/token"), {
+    method: "POST",
+    rawBody: new TextEncoder().encode(new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshed.body.refresh_token,
+      client_id: "testClient",
+      resource: "https://mcp.example.com/mcp",
+    }).toString()),
+    rawContentType: "application/x-www-form-urlencoded",
+  });
+  expect(afterRevocation.status).toBe(400);
+});
+
+it("rejects an approved scope that was not requested", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const { interactionUid } = await startProjectInteraction(projectId);
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read", "files:write"], denied: false },
+  });
+  expect(decision.status).toBe(400);
+  expect(decision.body).toMatchInlineSnapshot(`"The selected permissions are not part of this authorization request."`);
+});
+
+it("denies an interaction and rejects replay of its consumed decision", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const { interactionUid, providerCookie } = await startProjectInteraction(projectId);
+  const decision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: [], denied: true },
+  });
+  expect(decision.status).toBe(200);
+  const completed = await niceBackendFetch(decision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(completed.status).toBe(303);
+  const resumed = await niceBackendFetch(completed.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: updateCookiesFromResponse(providerCookie, completed) },
+  });
+  expect(resumed.status).toBe(303);
+  const callback = new URL(resumed.headers.get("location") ?? "");
+  expect(callback.searchParams.get("error")).toBe("access_denied");
+  const replay = await niceBackendFetch(decision.body.done_url, {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(replay.status).toBe(400);
+});
+
+it("rejects a decision submitted by a different user", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  const { interactionUid } = await startProjectInteraction(projectId);
+  const firstDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(firstDecision.status).toBe(200);
+  await Auth.fastSignUp();
+  const secondDecision = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    method: "POST",
+    accessType: "client",
+    body: { approved_scopes: ["openid", "files:read"], denied: false },
+  });
+  expect(secondDecision.status).toBe(400);
+  expect(secondDecision.body).toMatchInlineSnapshot(`"This authorization request is not available for this user."`);
+});
+
+it("marks trusted clients so the hosted flow can skip consent", async () => {
+  const projectId = await createConfiguredProject({ trustedClient: true });
+  await Auth.fastSignUp();
+  const authorize = await niceBackendFetch(providerUrl(projectId, "/auth"), {
+    redirect: "manual",
+    query: {
+      response_type: "code",
+      client_id: "testClient",
+      redirect_uri: "http://localhost:30000/callback",
+      scope: "openid files:read",
+      resource: "https://mcp.example.com/mcp",
+      code_challenge: oauthCodeChallenge,
+      code_challenge_method: "S256",
+    },
+  });
+  expect(authorize.status).toBe(303);
+  const providerCookie = updateCookiesFromResponse("", authorize);
+  const interaction = await niceBackendFetch(authorize.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: providerCookie },
+  });
+  expect(interaction.status).toBe(307);
+  const interactionUid = new URL(authorize.headers.get("location") ?? "").pathname.split("/").at(-1) ?? "";
+  const details = await niceBackendFetch(`/api/v1/projects/${projectId}/oauth-provider/interaction/${interactionUid}`, {
+    accessType: "client",
+  });
+  expect(details.body.trusted_client).toBe(true);
+});
+
+it("rejects invalid resources with an OAuth error and consumes each fresh code safely", async () => {
+  const projectId = await createConfiguredProject();
+  await Auth.fastSignUp();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const code = await getProjectAuthorizationCode(projectId);
+    const token = await niceBackendFetch(providerUrl(projectId, "/token"), {
+      method: "POST",
+      rawBody: new TextEncoder().encode(new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: "testClient",
+        redirect_uri: "http://localhost:30000/callback",
+        code_verifier: oauthCodeVerifier,
+        resource: "https://invalid.example.com/mcp",
+      }).toString()),
+      rawContentType: "application/x-www-form-urlencoded",
+    });
+    expect(token.status).toBe(400);
+    expect(token.body).toMatchObject({ error: "invalid_target" });
+  }
 });

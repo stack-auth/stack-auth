@@ -11,6 +11,7 @@ import type { AccountClaims } from "oidc-provider";
 
 const MODEL = "ProjectOAuthInteraction";
 const TTL_SECONDS = 10 * 60;
+const GRANT_TTL_SECONDS = 14 * 24 * 60 * 60;
 const OIDC_SCOPES = new Set(["openid", "profile", "email", "phone", "address", "offline_access"]);
 
 export type ProjectOAuthInteraction = {
@@ -95,18 +96,7 @@ export async function recordProjectOAuthDecision(options: {
     throw new StatusError(400, "This authorization request is not available for this user.");
   }
 
-  const requested = new Set(interaction.requestedScopes);
-  if (options.approvedScopes.some(scope => !requested.has(scope))) {
-    throw new StatusError(400, "The selected permissions are not part of this authorization request.");
-  }
-
-  const allowed = interaction.resource === undefined
-    ? new Set(Object.keys(Object.fromEntries(getProjectResourceServers(options.tenancy))))
-    : new Set(getProjectResourceServers(options.tenancy).get(interaction.resource)?.scopes ?? []);
-  const defined = new Set(deriveScopesFromConfig(options.tenancy.config).map(scope => scope.scope));
-  if (options.approvedScopes.some(scope => !defined.has(scope) || (!OIDC_SCOPES.has(scope) && interaction.resource !== undefined && !allowed.has(scope)))) {
-    throw new StatusError(400, "The selected permissions are not allowed for this resource.");
-  }
+  validateApprovedScopes(options.tenancy, interaction, options.approvedScopes);
 
   await globalPrismaClient.idPAdapterData.update({
     where: {
@@ -129,6 +119,24 @@ export async function recordProjectOAuthDecision(options: {
   const doneUrl = new URL(getProjectOAuthIssuer(options.tenancy.project.id, getEnvVariable("NEXT_PUBLIC_STACK_API_URL")));
   doneUrl.pathname = `${doneUrl.pathname.replace(/\/$/, "")}/interaction/${encodeURIComponent(options.uid)}/done`;
   return doneUrl.toString();
+}
+
+function validateApprovedScopes(
+  tenancy: Tenancy,
+  interaction: ProjectOAuthInteraction,
+  approvedScopes: string[],
+): void {
+  const requested = new Set(interaction.requestedScopes);
+  if (approvedScopes.some(scope => !requested.has(scope))) {
+    throw new StatusError(400, "The selected permissions are not part of this authorization request.");
+  }
+  const defined = new Set(deriveScopesFromConfig(tenancy.config).map(scope => scope.scope));
+  const allowed = interaction.resource === undefined
+    ? undefined
+    : new Set(getProjectResourceServers(tenancy).get(interaction.resource)?.scopes ?? []);
+  if (approvedScopes.some(scope => !OIDC_SCOPES.has(scope) && (!defined.has(scope) || (allowed !== undefined && !allowed.has(scope))))) {
+    throw new StatusError(400, "The selected permissions are not allowed for this resource.");
+  }
 }
 
 export async function consumeProjectOAuthDecision(tenancy: Tenancy, uid: string): Promise<ProjectOAuthInteraction> {
@@ -169,13 +177,7 @@ export async function consumeProjectOAuthDecision(tenancy: Tenancy, uid: string)
 export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy: Tenancy): void {
   oidc.use(async (ctx, next) => {
     const doneMatch = /^\/interaction\/([^/]+)\/done$/.exec(ctx.path);
-    if (doneMatch !== null && ctx.method === "GET") {
-      ctx.status = 200;
-      ctx.type = "text/html";
-      ctx.body = "<html><body><form method=\"POST\"><button type=\"submit\">Continue</button></form><script>document.forms[0].submit()</script></body></html>";
-      return;
-    }
-    if (doneMatch !== null && ctx.method === "POST") {
+    if (doneMatch !== null && (ctx.method === "GET" || ctx.method === "POST")) {
       const uid = doneMatch[1];
       const details = await oidc.interactionDetails(ctx.req, ctx.res);
       const decision = await consumeProjectOAuthDecision(tenancy, uid);
@@ -185,14 +187,12 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       }
       if (decision.denied) return await oidc.interactionFinished(ctx.req, ctx.res, { error: "access_denied" });
 
-      const resourceServers = getProjectResourceServers(tenancy);
-      const allowed = decision.resource === undefined ? undefined : resourceServers.get(decision.resource);
-      const definedScopes = new Set(deriveScopesFromConfig(tenancy.config).map(scope => scope.scope));
       const approved = decision.approvedScopes;
-      if (approved === undefined || approved.some(scope => !definedScopes.has(scope) || (!OIDC_SCOPES.has(scope) && allowed !== undefined && !allowed.scopes.includes(scope)))) {
+      if (approved === undefined) {
         captureError("project-oauth-grant-scope-mismatch", new HexclaveAssertionError("Project OAuth grant scope mismatch"));
         throw new StatusError(400, "This authorization request is no longer valid.");
       }
+      validateApprovedScopes(tenancy, decision, approved);
       const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
       const userId = decision.userId ?? throwErr("Project OAuth decision user ID was missing");
       const grant = new oidc.Grant({ accountId: userId, clientId });
@@ -203,7 +203,9 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       // separately represented below and remains enforced by the resource server.
       if (approved.length > 0) grant.addOIDCScope(approved.join(" "));
       if (decision.resource !== undefined) grant.addResourceScope(decision.resource, approved.filter(scope => !oidcScopes.includes(scope)).join(" "));
-      const grantId = await grant.save(60 * 60);
+      // oidc-provider's default refresh-token lifetime is 14 days. Keep the consent grant alive
+      // for the same period so offline_access does not silently outlive its backing grant.
+      const grantId = await grant.save(GRANT_TTL_SECONDS);
       return await oidc.interactionFinished(
         ctx.req,
         ctx.res,
@@ -227,6 +229,7 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
       }
       const clientId = typeof details.params.client_id === "string" ? details.params.client_id : throwErr("Project OAuth client ID was missing");
       const resource = typeof details.params.resource === "string" ? details.params.resource : undefined;
+      const requestedScopes = `${details.params.scope ?? ""}`.split(" ").filter(Boolean);
       await globalPrismaClient.idPAdapterData.upsert({
         where: { idpId_model_id: { idpId: getProjectIdpId(tenancy), model: MODEL, id: interactionId(tenancy, uid) } },
         create: {
@@ -238,13 +241,23 @@ export function installProjectOAuthInteractionMiddleware(oidc: Provider, tenancy
             projectId: tenancy.project.id,
             idpId: getProjectIdpId(tenancy),
             clientId,
-            requestedScopes: `${details.params.scope ?? ""}`.split(" ").filter(Boolean),
+            requestedScopes,
             ...(resource === undefined ? {} : { resource }),
           },
           expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
         },
         update: {},
       });
+      if (isTrustedClient(tenancy, clientId) && typeof details.session?.accountId === "string") {
+        const doneUrl = await recordProjectOAuthDecision({
+          tenancy,
+          uid,
+          userId: details.session.accountId,
+          approvedScopes: requestedScopes,
+          denied: false,
+        });
+        return ctx.redirect(doneUrl);
+      }
       const interactionUrl = new URL("/handler/oauth-provider-interaction", getHostedHandlerTrustedDomain(tenancy.project.id));
       interactionUrl.searchParams.set("interaction_uid", uid);
       return ctx.redirect(interactionUrl.toString());
