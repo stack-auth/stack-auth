@@ -35,9 +35,9 @@ function decodeClaims(token: string): Claims {
   const payload = token.split(".")[1];
   if (payload == null)
     throw new Error("The WorkOS token did not contain a JWT payload");
-  return JSON.parse(
-    atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
-  ) as Claims;
+  const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+  const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes)) as Claims;
 }
 
 function Claim({
@@ -108,7 +108,9 @@ export function WorkosDemo() {
         return (await response.json()) as ProviderSession;
       }),
       fetch("/api/auth/exchange").then(async (response) => {
-        const result = (await response.json()) as Exchange;
+        const result = response.headers.get("content-type")?.includes("application/json")
+          ? await response.json() as Exchange
+          : {};
         if (!response.ok)
           throw new Error(
             result.error ?? `WorkOS exchange returned ${response.status}`,
@@ -143,6 +145,25 @@ export function WorkosDemo() {
       active = false;
     };
   }, [signedOut]);
+
+  useEffect(() => {
+    if (providerSession == null) return;
+    let active = true;
+    app.getUser().then((sdkUser) => {
+      if (active) {
+        setUser(sdkUser == null ? null : {
+          id: sdkUser.id,
+          primaryEmail: sdkUser.primaryEmail,
+          displayName: sdkUser.displayName,
+        });
+      }
+    }).catch(() => {
+      if (active) setError("Hexclave SDK user lookup failed");
+    });
+    return () => {
+      active = false;
+    };
+  }, [app, providerSession]);
 
   if (signedOut) {
     return (

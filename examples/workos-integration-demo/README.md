@@ -13,7 +13,9 @@ with the local Hexclave backend, and displays the resulting session metadata.
    - `WORKOS_COOKIE_PASSWORD` (use a local value at least 32 characters long)
 3. Set the local Hexclave client and server keys and API URL.
 4. Configure `http://localhost:8110/auth/callback` as an allowed WorkOS redirect
-   URI.
+   URI. If `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX` is set, use the matching
+   `${prefix}10` port instead; `.env` files use the working default because they
+   do not expand shell variables.
 5. Run `pnpm dev` from this directory.
 
 The example intentionally does not include provider credentials, access tokens,

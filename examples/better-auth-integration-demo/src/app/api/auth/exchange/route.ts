@@ -19,6 +19,12 @@ export async function GET(request: Request) {
     },
     body: JSON.stringify({ provider_id: "better-auth-integration", token: token.token }),
   });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || !contentType.includes("application/json")) {
+    return NextResponse.json({
+      error: "Hexclave rejected the Better Auth token exchange",
+    }, { status: response.ok ? 502 : response.status });
+  }
   const result = await response.json() as { access_token?: string, session_id?: string, user_id?: string, is_new_user?: boolean, code?: string, error?: string };
   let profile: { primary_email?: string | null, display_name?: string | null } = {};
   if (result.access_token != null) {
@@ -29,7 +35,10 @@ export async function GET(request: Request) {
         "x-hexclave-project-id": projectId,
       },
     });
-    if (profileResponse.ok) profile = await profileResponse.json() as typeof profile;
+    if (!profileResponse.ok || !(profileResponse.headers.get("content-type") ?? "").includes("application/json")) {
+      return NextResponse.json({ error: "Hexclave user lookup failed after token exchange" }, { status: 502 });
+    }
+    profile = await profileResponse.json() as typeof profile;
   }
   return NextResponse.json({
     sessionId: result.session_id,

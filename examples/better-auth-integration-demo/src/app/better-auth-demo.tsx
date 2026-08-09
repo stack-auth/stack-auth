@@ -30,9 +30,9 @@ function decodeClaims(token: string): Claims {
   const payload = token.split(".")[1];
   if (payload == null)
     throw new Error("The Better Auth token did not contain a JWT payload");
-  return JSON.parse(
-    atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
-  ) as Claims;
+  const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+  const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes)) as Claims;
 }
 
 function Claim({
@@ -69,7 +69,7 @@ export function BetterAuthDemo() {
         getSessionId: () => sessionId,
         getToken: async () => {
           const response = await fetch("/api/auth/token");
-          if (!response.ok) return null;
+          if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) return null;
           return ((await response.json()) as { token: string }).token;
         },
         subscribe: (callback) => {
@@ -79,15 +79,26 @@ export function BetterAuthDemo() {
         },
         signOut: async () => {
           setIsSubmitting(true);
-          await fetch("/api/auth/sign-out", { method: "POST" });
-          setSessionId(null);
-          setProviderUser(null);
-          setClaims(null);
-          setExchange(null);
-          setUser(null);
-          setStatus("idle");
-          window.dispatchEvent(new Event("better-auth-session-change"));
-          setIsSubmitting(false);
+          try {
+            const response = await fetch("/api/auth/sign-out", { method: "POST" });
+            if (!response.ok) {
+              setError(`Better Auth sign-out returned ${response.status}`);
+              setStatus("error");
+              return;
+            }
+            setSessionId(null);
+            setProviderUser(null);
+            setClaims(null);
+            setExchange(null);
+            setUser(null);
+            setStatus("idle");
+            window.dispatchEvent(new Event("better-auth-session-change"));
+          } catch {
+            setError("Better Auth sign-out failed");
+            setStatus("error");
+          } finally {
+            setIsSubmitting(false);
+          }
         },
       }),
     [sessionId],
@@ -108,41 +119,62 @@ export function BetterAuthDemo() {
   const authenticate = async (path: "sign-up" | "sign-in") => {
     setError(null);
     setIsSubmitting(true);
-    const response = await fetch(`/api/auth/${path}/email`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password, name: email.split("@")[0] }),
-    });
-    if (!response.ok) {
-      setError(await response.text());
-      setIsSubmitting(false);
+    try {
+      const response = await fetch(`/api/auth/${path}/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password, name: email.split("@")[0] }),
+      });
+      if (!response.ok) {
+        setError("Better Auth authentication request failed");
+        setStatus("error");
+        return;
+      }
+      const sessionResponse = await fetch("/api/auth/get-session");
+      if (!sessionResponse.ok) {
+        setError(`Better Auth session endpoint returned ${sessionResponse.status}`);
+        setStatus("error");
+        return;
+      }
+      const session = (await sessionResponse.json()) as {
+        session?: { id: string };
+        user?: ProviderUser;
+      };
+      if (session.session == null) {
+        setError("Better Auth sign-in succeeded but no session was returned");
+        setStatus("error");
+        return;
+      }
+      setProviderUser(session.user ?? { email, name: email.split("@")[0] });
+      setSessionId(session.session.id);
+      window.dispatchEvent(new Event("better-auth-session-change"));
+    } catch {
+      setError("Better Auth authentication request failed");
       setStatus("error");
-      return;
-    }
-    const sessionResponse = await fetch("/api/auth/get-session");
-    if (!sessionResponse.ok) {
-      setError(
-        `Better Auth session endpoint returned ${sessionResponse.status}`,
-      );
+    } finally {
       setIsSubmitting(false);
-      setStatus("error");
-      return;
     }
-    const session = (await sessionResponse.json()) as {
-      session?: { id: string };
-      user?: ProviderUser;
-    };
-    if (session.session == null) {
-      setError("Better Auth sign-in succeeded but no session was returned");
-      setIsSubmitting(false);
-      setStatus("error");
-      return;
-    }
-    setProviderUser(session.user ?? { email, name: email.split("@")[0] });
-    setSessionId(session.session.id);
-    window.dispatchEvent(new Event("better-auth-session-change"));
-    setIsSubmitting(false);
   };
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/get-session")
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json() as { session?: { id: string }; user?: ProviderUser };
+      })
+      .then((session) => {
+        if (!active || session?.session == null) return;
+        setProviderUser(session.user ?? null);
+        setSessionId(session.session.id);
+      })
+      .catch(() => {
+        if (active) setError("Better Auth session lookup failed");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (sessionId == null) return;
@@ -157,7 +189,9 @@ export function BetterAuthDemo() {
         return ((await response.json()) as { token: string }).token;
       }),
       fetch("/api/auth/exchange").then(async (response) => {
-        const result = (await response.json()) as Exchange;
+        const result = response.ok && (response.headers.get("content-type") ?? "").includes("application/json")
+          ? await response.json() as Exchange
+          : {};
         if (!response.ok)
           throw new Error(
             result.error ?? `Better Auth exchange returned ${response.status}`,
@@ -169,15 +203,12 @@ export function BetterAuthDemo() {
         if (!active) return;
         setClaims(decodeClaims(token));
         setExchange(result);
-        setUser(
-          result.userId == null
-            ? null
-            : {
-              id: result.userId,
-              primaryEmail: result.primaryEmail ?? null,
-              displayName: result.displayName ?? null,
-            },
-        );
+        const sdkUser = await app.getUser();
+        setUser(sdkUser == null ? null : {
+          id: sdkUser.id,
+          primaryEmail: sdkUser.primaryEmail,
+          displayName: sdkUser.displayName,
+        });
         setStatus("exchanged");
       })
       .catch((reason) => {

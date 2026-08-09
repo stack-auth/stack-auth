@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack --port 8111",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}11",
     "build": "next build",
-    "start": "next start --port 8111",
+    "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}11",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
