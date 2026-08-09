@@ -66,6 +66,7 @@ jobs:
           run: pnpm run dev &
           wait-on: |
             http://localhost:6902
+            tcp:localhost:6946
           tail: true
           wait-for: 120s
           log-output-if: true
