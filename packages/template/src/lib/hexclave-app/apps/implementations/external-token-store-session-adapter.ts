@@ -117,12 +117,13 @@ export class ExternalTokenStoreSessionAdapter {
         sessionKey,
         refreshAccessTokenWithoutRefreshTokenCallback: async () => {
           const state = this.states.get(externalTokenStore) ?? throwErr("External token store state was not initialized");
+          const expectedGeneration = state.generation;
           const assertSessionIdentityUnchanged = () => {
             const liveSessionKey = this.buildSessionKey(externalTokenStore, {
               generation: state.generation,
               providerSessionId: externalTokenStore.getSessionId?.(),
             });
-            if (liveSessionKey !== sessionKey) {
+            if (state.generation !== expectedGeneration || liveSessionKey !== sessionKey) {
               throw new Error("The external provider session changed while exchanging a token; retrying with the current provider session.");
             }
           };

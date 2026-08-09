@@ -252,6 +252,53 @@ describe("StackClientApp external token stores", () => {
     expect(session.isKnownToBeInvalid()).toBe(false);
   });
 
+  it("does not install a token when the provider switches away and back during token retrieval", async () => {
+    let providerSessionId = "clerk-session-a";
+    let notifyProviderChange: (() => void) | undefined;
+    let resolveProviderToken: ((token: string) => void) | undefined;
+    const clientApp = new StackClientApp({
+      automaticSideEffects: false,
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: clerkTokenStore({
+        getSessionId: () => providerSessionId,
+        getToken: () => new Promise(resolve => {
+          resolveProviderToken = resolve;
+        }),
+        subscribe: callback => {
+          notifyProviderChange = callback;
+          return () => {};
+        },
+      }),
+      redirectMethod: "none",
+    });
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    Reflect.set(clientInterface, "exchangeExternalAuthToken", async () => ({
+      status: "ok",
+      data: {
+        accessToken: createAccessTokenString("hexclave-external-session"),
+        sessionId: "hexclave-external-session",
+        userId: "user-id",
+      },
+    }));
+
+    const getSession = Reflect.get(clientApp, "_getSession");
+    const session = await getSession.call(clientApp);
+    const pending = session.getOrFetchLikelyValidTokens(20_000, null);
+    await vi.waitFor(() => expect(resolveProviderToken).toBeDefined());
+
+    providerSessionId = "clerk-session-b";
+    notifyProviderChange?.();
+    providerSessionId = "clerk-session-a";
+    notifyProviderChange?.();
+    resolveProviderToken?.("clerk-token");
+
+    await expect(pending).rejects.toThrow("provider session changed");
+    expect(session.getAccessTokenIfNotExpiredYet(0, null)).toBeNull();
+    expect(session.isKnownToBeInvalid()).toBe(false);
+  });
+
   it("invalidates the session when the retried exchange is rejected too", async () => {
     let exchangeCount = 0;
     const clientApp = new StackClientApp({
