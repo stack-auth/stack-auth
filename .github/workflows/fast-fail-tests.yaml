@@ -54,7 +54,7 @@ jobs:
 
           git diff --name-only "$merge_base" "$HEAD_SHA" > changed-files.txt || true
           # Cap the patch so the prompt stays within a reasonable size.
-          git diff "$merge_base" "$HEAD_SHA" | head -c 200000 > diff.patch || true
+          git diff "$merge_base" "$HEAD_SHA" | head -c 60000 > diff.patch || true
 
           echo "Changed files:"
           cat changed-files.txt || true
@@ -143,16 +143,13 @@ jobs:
           # request is sent unauthenticated and fails with 401.
           printenv OPENAI_API_KEY | codex login --with-api-key
 
-          # `codex exec` runs non-interactively. We keep it read-only and never
-          # prompt for approvals so it can't hang CI. It's given the diff + test
-          # list directly in the prompt, so it doesn't need to explore the repo.
-          codex exec \
+          # Pass the prompt over stdin to avoid Linux's per-argument length limit.
+          codex exec - \
             --skip-git-repo-check \
             -s read-only \
             -c approval_policy="never" \
             --output-schema schema.json \
-            --output-last-message codex-out.json \
-            "$(cat prompt.txt)"
+            --output-last-message codex-out.json < prompt.txt
 
           echo "Codex raw output:"
           cat codex-out.json
