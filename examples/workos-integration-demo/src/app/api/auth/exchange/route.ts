@@ -1,0 +1,51 @@
+import { withAuth } from "@workos-inc/authkit-nextjs";
+import { NextResponse } from "next/server";
+
+export async function GET(request: Request) {
+  const { accessToken } = await withAuth();
+  if (accessToken == null) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const apiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL;
+  const projectId = process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID;
+  if (apiUrl == null || apiUrl.length === 0) throw new Error("Missing required environment variable: NEXT_PUBLIC_HEXCLAVE_API_URL");
+  if (projectId == null || projectId.length === 0) throw new Error("Missing required environment variable: NEXT_PUBLIC_HEXCLAVE_PROJECT_ID");
+  const response = await fetch(`${apiUrl}/api/latest/auth/external/token`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-hexclave-access-type": "client",
+      "x-hexclave-project-id": projectId,
+    },
+    body: JSON.stringify({ provider_id: "workos-integration", token: accessToken }),
+    signal: request.signal,
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || !contentType.includes("application/json")) {
+    return NextResponse.json({
+      error: "Hexclave rejected the WorkOS token exchange",
+    }, { status: response.ok ? 502 : response.status });
+  }
+  const result = await response.json() as { access_token?: string, session_id?: string, user_id?: string, is_new_user?: boolean, code?: string, error?: string };
+  let profile: { primary_email?: string | null, display_name?: string | null } = {};
+  if (result.access_token != null) {
+    const profileResponse = await fetch(`${apiUrl}/api/v1/users/me`, {
+      headers: {
+        "x-hexclave-access-token": result.access_token,
+        "x-hexclave-access-type": "client",
+        "x-hexclave-project-id": projectId,
+      },
+      signal: request.signal,
+    });
+    if (!profileResponse.ok || !(profileResponse.headers.get("content-type") ?? "").includes("application/json")) {
+      return NextResponse.json({ error: "Hexclave user lookup failed after token exchange" }, { status: 502 });
+    }
+    profile = await profileResponse.json() as typeof profile;
+  }
+  return NextResponse.json({
+    sessionId: result.session_id,
+    userId: result.user_id,
+    isNewUser: result.is_new_user,
+    primaryEmail: profile.primary_email ?? null,
+    displayName: profile.display_name ?? null,
+    error: result.error ?? result.code,
+  }, { status: response.status });
+}
