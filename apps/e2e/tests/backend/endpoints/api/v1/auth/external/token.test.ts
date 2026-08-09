@@ -273,7 +273,6 @@ describe("external authentication token exchange", () => {
       body: {
         display_name: "Anonymous Name",
         primary_email: "anonymous@example.com",
-        primary_email_auth_enabled: false,
       },
     });
     expect(updated.status).toBe(200);

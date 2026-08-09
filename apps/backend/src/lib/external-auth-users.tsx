@@ -45,17 +45,19 @@ export async function getOrCreateExternalAuthSession(options: {
     // overwrite a profile the end user or an admin edited in the meantime.
     const profile = options.currentUser?.is_anonymous === true
       ? {
-        ...(options.identity.name == null ? {} : { display_name: options.identity.name }),
-        ...(options.identity.email == null ? {} : {
-          primary_email: options.identity.email,
-          primary_email_verified: options.identity.emailVerified,
-          primary_email_auth_enabled: false,
-        }),
+        display_name: options.identity.name ?? options.currentUser.display_name,
+        primary_email: options.identity.email ?? options.currentUser.primary_email,
+        primary_email_verified: options.identity.email == null
+          ? options.currentUser.primary_email_verified
+          : options.identity.emailVerified,
+        primary_email_auth_enabled: options.identity.email == null
+          ? options.currentUser.primary_email_auth_enabled
+          : false,
       }
       : {
         display_name: options.identity.name,
         primary_email: options.identity.email,
-        primary_email_verified: options.identity.emailVerified,
+        primary_email_verified: options.identity.email == null ? false : options.identity.emailVerified,
         // The provider owns authentication for this identity, so its address must never become a
         // Hexclave password or OTP login identity of its own.
         primary_email_auth_enabled: false,
