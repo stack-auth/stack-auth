@@ -139,7 +139,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
           adminApp,
           configUpdate: {
             "workos-integration.clientId": clientId,
-            "workos-integration.issuer": issuer,
+            "workos-integration.issuer": issuer.length === 0 ? null : issuer,
           },
           pushable: true,
         });
