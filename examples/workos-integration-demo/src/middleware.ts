@@ -1,8 +1,9 @@
 import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
+import { getWorkOSRedirectUri } from "./lib/workos";
 
 export default authkitMiddleware({
   debug: true,
-  redirectUri: "http://localhost:8110/auth/callback",
+  redirectUri: getWorkOSRedirectUri(),
 });
 
 export const config = {

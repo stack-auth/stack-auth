@@ -1,5 +1,6 @@
 import { handleAuth } from "@workos-inc/authkit-nextjs";
+import { getWorkOSBaseUrl } from "../../../lib/workos";
 
 export const GET = handleAuth({
-  baseURL: "http://localhost:8110",
+  baseURL: getWorkOSBaseUrl(),
 });

@@ -120,12 +120,26 @@ export function BetterAuthDemo() {
       return;
     }
     const sessionResponse = await fetch("/api/auth/get-session");
+    if (!sessionResponse.ok) {
+      setError(
+        `Better Auth session endpoint returned ${sessionResponse.status}`,
+      );
+      setIsSubmitting(false);
+      setStatus("error");
+      return;
+    }
     const session = (await sessionResponse.json()) as {
       session?: { id: string };
       user?: ProviderUser;
     };
+    if (session.session == null) {
+      setError("Better Auth sign-in succeeded but no session was returned");
+      setIsSubmitting(false);
+      setStatus("error");
+      return;
+    }
     setProviderUser(session.user ?? { email, name: email.split("@")[0] });
-    setSessionId(session.session?.id ?? null);
+    setSessionId(session.session.id);
     window.dispatchEvent(new Event("better-auth-session-change"));
     setIsSubmitting(false);
   };
