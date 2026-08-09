@@ -177,9 +177,6 @@ export function BetterAuthDemo() {
       setUser(null);
       setStatus("idle");
       window.dispatchEvent(new Event("better-auth-session-change"));
-    } catch (error: unknown) {
-      setError("Better Auth sign-out failed");
-      setStatus("error");
     } finally {
       setIsSubmitting(false);
     }
@@ -216,9 +213,6 @@ export function BetterAuthDemo() {
       setProviderUser(session.user ?? { email, name: email.split("@")[0] });
       setSessionId(session.session.id);
       window.dispatchEvent(new Event("better-auth-session-change"));
-    } catch (error: unknown) {
-      setError("Better Auth authentication request failed");
-      setStatus("error");
     } finally {
       setIsSubmitting(false);
     }
@@ -238,9 +232,7 @@ export function BetterAuthDemo() {
         setSessionId(session.session.id);
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        if (active && !controller.signal.aborted) {
-          setError("Better Auth session lookup failed");
-        }
+        throw error;
       }
     });
     return () => {
@@ -257,8 +249,7 @@ export function BetterAuthDemo() {
     let active = true;
     setStatus("exchanging");
     runAsynchronously(async () => {
-      try {
-        const [token, result] = await Promise.all([
+      const [token, result] = await Promise.all([
           fetch("/api/auth/token").then(async (response) => {
             if (!response.ok)
               throw new Error(
@@ -285,27 +276,18 @@ export function BetterAuthDemo() {
             }
             return parseExchange(body);
           }),
-        ]);
-        if (!active) return;
-        setClaims(decodeClaims(token));
-        setExchange(result);
-        const sdkUser = await app.getUser();
-        if (!active) return;
-        setUser(sdkUser == null ? null : {
-          id: sdkUser.id,
-          primaryEmail: sdkUser.primaryEmail,
-          displayName: sdkUser.displayName,
-        });
-        setStatus("exchanged");
-      } catch (reason: unknown) {
-        if (!active) return;
-        setStatus("error");
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Better Auth exchange failed",
-        );
-      }
+      ]);
+      if (!active) return;
+      setClaims(decodeClaims(token));
+      setExchange(result);
+      const sdkUser = await app.getUser();
+      if (!active) return;
+      setUser(sdkUser == null ? null : {
+        id: sdkUser.id,
+        primaryEmail: sdkUser.primaryEmail,
+        displayName: sdkUser.displayName,
+      });
+      setStatus("exchanged");
     });
     return () => {
       active = false;

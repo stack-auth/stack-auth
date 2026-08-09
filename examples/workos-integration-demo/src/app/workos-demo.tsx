@@ -1,7 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, workosTokenStore } from "@hexclave/next";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
   iss?: string;
@@ -129,7 +129,7 @@ export function WorkosDemo() {
   const providerSessionRef = useRef<ProviderSession | null>(null);
   const providerSessionSubscribers = useRef(new Set<() => void>());
   const lastReportedSessionId = useRef<string | null>(null);
-  const updateProviderSession = (session: ProviderSession | null) => {
+  const updateProviderSession = useCallback((session: ProviderSession | null) => {
     const previousSessionId = providerSessionRef.current?.sessionId ?? null;
     providerSessionRef.current = session;
     setProviderSession(session);
@@ -139,7 +139,7 @@ export function WorkosDemo() {
         callback();
       }
     }
-  };
+  }, []);
   const tokenStore = useMemo(
     () =>
       workosTokenStore({
@@ -162,7 +162,7 @@ export function WorkosDemo() {
           return () => providerSessionSubscribers.current.delete(callback);
         },
       }),
-    [],
+    [updateProviderSession],
   );
   const app = useMemo(
     () =>
@@ -229,7 +229,7 @@ export function WorkosDemo() {
     return () => {
       active = false;
     };
-  }, [signedOut]);
+  }, [signedOut, updateProviderSession]);
 
   useEffect(() => {
     if (providerSession == null) return;
