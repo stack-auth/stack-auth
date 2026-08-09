@@ -41,17 +41,27 @@ export async function getOrCreateExternalAuthSession(options: {
     // constraint, cleaning up our user if we lost.
     // Provider claims are mapped only here, while creating the user: a returning exchange must not
     // overwrite a profile the end user or an admin edited in the meantime.
-    const user = await createOrUpgradeAnonymousUserWithRules(
-      options.tenancy,
-      options.currentUser?.is_anonymous === true ? options.currentUser : null,
-      {
+    const profile = options.currentUser?.is_anonymous === true
+      ? {
+        ...(options.identity.name == null ? {} : { display_name: options.identity.name }),
+        ...(options.identity.email == null ? {} : {
+          primary_email: options.identity.email,
+          primary_email_verified: options.identity.emailVerified,
+          primary_email_auth_enabled: false,
+        }),
+      }
+      : {
         display_name: options.identity.name,
         primary_email: options.identity.email,
         primary_email_verified: options.identity.emailVerified,
         // The provider owns authentication for this identity, so its address must never become a
         // Hexclave password or OTP login identity of its own.
         primary_email_auth_enabled: false,
-      },
+      };
+    const user = await createOrUpgradeAnonymousUserWithRules(
+      options.tenancy,
+      options.currentUser?.is_anonymous === true ? options.currentUser : null,
+      profile,
       [],
       buildSignUpRuleOptions({
         // External identity providers follow the existing federated sign-up rule path.

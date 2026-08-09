@@ -3,7 +3,7 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import * as http from "node:http";
 import { afterAll, beforeAll, describe } from "vitest";
 import { it } from "../../../../../../helpers";
-import { Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 let jwksServer: http.Server;
 let issuer: string;
@@ -182,6 +182,56 @@ describe("external authentication token exchange", () => {
     expect(user.body).toMatchObject({
       primary_email: "edited@example.com",
       display_name: "Edited Name",
+    });
+  });
+
+  it("preserves an anonymous profile when provider claims are absent", async ({ expect }) => {
+    await configureProject();
+    const anonymous = await Auth.Anonymous.signUp();
+    const updated = await niceBackendFetch("/api/v1/users/me", {
+      method: "PATCH",
+      accessType: "client",
+      body: {
+        display_name: "Anonymous Name",
+        primary_email: "anonymous@example.com",
+        primary_email_auth_enabled: false,
+      },
+    });
+    expect(updated.status).toBe(200);
+
+    const response = await exchange(await createProviderToken(), "better-auth-integration");
+    expect(response.status).toBe(200);
+    expect(response.body.user_id).toBe(anonymous.userId);
+
+    const user = await niceBackendFetch(`/api/v1/users/${anonymous.userId}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      display_name: "Anonymous Name",
+      primary_email: "anonymous@example.com",
+      primary_email_auth_enabled: false,
+    });
+  });
+
+  it("maps provider claims when upgrading an anonymous user", async ({ expect }) => {
+    await configureProject();
+    const anonymous = await Auth.Anonymous.signUp();
+    const response = await exchange(await createProviderToken({
+      email: "upgraded@example.com",
+      name: "Upgraded Provider User",
+      emailVerified: true,
+    }));
+    expect(response.status).toBe(200);
+    expect(response.body.user_id).toBe(anonymous.userId);
+
+    const user = await niceBackendFetch(`/api/v1/users/${anonymous.userId}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      display_name: "Upgraded Provider User",
+      primary_email: "upgraded@example.com",
+      primary_email_verified: true,
+      primary_email_auth_enabled: false,
     });
   });
 
