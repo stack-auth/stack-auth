@@ -13,6 +13,9 @@ export type VerifiedExternalIdentity = {
   subject: string,
   providerSessionId: string,
   expiresAt: Date,
+  email: string | null,
+  name: string | null,
+  emailVerified: boolean,
 };
 
 type ProviderVerificationConfig = {
@@ -120,6 +123,15 @@ function getRequiredClaim(payload: JWTPayload, claim: "sub" | "sid"): string {
   return value;
 }
 
+function getOptionalProfileClaim(payload: JWTPayload, claim: "email" | "name"): string | null {
+  const value = payload[claim];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 256 ? trimmed : null;
+}
+
 function validateTokenEncoding(token: string): void {
   if (token.length > 16_384 || token.split(".").length !== 3) {
     throw new KnownErrors.InvalidExternalAuthToken();
@@ -190,5 +202,8 @@ export async function verifyExternalAuthToken(options: {
     subject,
     providerSessionId,
     expiresAt: new Date(payload.exp * 1000),
+    email: getOptionalProfileClaim(payload, "email"),
+    name: getOptionalProfileClaim(payload, "name"),
+    emailVerified: payload.email_verified === true,
   };
 }

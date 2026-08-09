@@ -42,7 +42,12 @@ export async function getOrCreateExternalAuthSession(options: {
     const user = await createOrUpgradeAnonymousUserWithRules(
       options.tenancy,
       options.currentUser?.is_anonymous === true ? options.currentUser : null,
-      {},
+      {
+        display_name: options.identity.name,
+        primary_email: options.identity.email,
+        primary_email_verified: options.identity.emailVerified,
+        primary_email_auth_enabled: false,
+      },
       [],
       buildSignUpRuleOptions({
         // External identity providers follow the existing federated sign-up rule path.
