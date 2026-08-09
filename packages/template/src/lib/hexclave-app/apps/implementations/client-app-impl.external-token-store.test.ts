@@ -149,6 +149,35 @@ describe("StackClientApp external token stores", () => {
     expect(session.isKnownToBeInvalid()).toBe(false);
   });
 
+  it("does not retry into a different provider session after an exchange rejection", async () => {
+    let providerSessionId: string | null = "clerk-session-a";
+    let exchangeCount = 0;
+    const clientApp = new StackClientApp({
+      automaticSideEffects: false,
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: clerkTokenStore({
+        getSessionId: () => providerSessionId,
+        getToken: async () => "clerk-token",
+      }),
+      redirectMethod: "none",
+    });
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    Reflect.set(clientInterface, "exchangeExternalAuthToken", async () => {
+      exchangeCount += 1;
+      providerSessionId = "clerk-session-b";
+      return { status: "error", error: new KnownErrors.InvalidExternalAuthToken() };
+    });
+
+    const getSession = Reflect.get(clientApp, "_getSession");
+    const session = await getSession.call(clientApp);
+    await expect(session.getOrFetchLikelyValidTokens(20_000, null)).rejects.toThrow("provider session changed");
+    expect(exchangeCount).toBe(1);
+    expect(session.isKnownToBeInvalid()).toBe(false);
+    expect(session.getAccessTokenIfNotExpiredYet(0, null)).toBeNull();
+  });
+
   it("does not install a token when the provider switches accounts mid-exchange", async () => {
     let providerSessionId: string | null = "clerk-session-a";
     let resolveExchange: ((value: string) => void) | undefined;

@@ -18,6 +18,7 @@ export function Onboarding(props: {
   const { t } = useTranslation();
   const hexclaveApp = useStackApp();
   const user = useUser({ or: "return-null", includeRestricted: true });
+  const canSignOut = !hexclaveApp.isExternalAuthApp();
 
   // If user is not restricted anymore, redirect to the intended destination
   // redirectToAfterSignIn automatically checks for after_auth_return_to in the URL
@@ -55,10 +56,10 @@ export function Onboarding(props: {
       <MessageCard
         title={t("Your account has been restricted")}
         fullPage={!!props.fullPage}
-        secondaryButtonText={t("Sign out")}
-        secondaryAction={async () => {
+        secondaryButtonText={canSignOut ? t("Sign out") : undefined}
+        secondaryAction={canSignOut ? async () => {
           await user.signOut();
-        }}
+        } : undefined}
       >
         {/* The public reason is set by the project's administrators (sign-up rules or manually), so it's the most
         helpful thing we can show; the generic sentence is only a fallback for when they didn't provide one. */}
@@ -72,10 +73,10 @@ export function Onboarding(props: {
     <MessageCard
       title={t("Complete your account setup")}
       fullPage={!!props.fullPage}
-      secondaryButtonText={t("Sign out")}
-      secondaryAction={async () => {
+      secondaryButtonText={canSignOut ? t("Sign out") : undefined}
+      secondaryAction={canSignOut ? async () => {
         await user.signOut();
-      }}
+      } : undefined}
     >
       <p>{t("You have not yet completed your account setup. Please reach out to support if you believe this is an error.")}</p>
     </MessageCard>
@@ -185,4 +186,3 @@ function VerifyEmailScreen(props: {
     </MessageCard>
   );
 }
-

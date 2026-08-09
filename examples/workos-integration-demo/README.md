@@ -12,10 +12,7 @@ with the local Hexclave backend, and displays the resulting session metadata.
    - `WORKOS_AUTHKIT_DOMAIN`
    - `WORKOS_COOKIE_PASSWORD` (use a local value at least 32 characters long)
 3. Set the local Hexclave client and server keys and API URL.
-4. Configure `http://localhost:8113/auth/callback` as an allowed WorkOS redirect in WorkOS. If you use a custom `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, update this URI in WorkOS and `.env.local` together.
-   URI. If `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX` is set, use the matching
-   `${prefix}10` port instead; `.env` files use the working default because they
-   do not expand shell variables.
+4. Configure `http://localhost:8113/auth/callback` as an allowed WorkOS redirect in WorkOS. If you use a custom `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, update this URI in WorkOS and `.env.local` together; `.env` files cannot compute these ports from the prefix automatically.
 5. Run `pnpm dev` from this directory.
 
 Enable the `workos-integration` provider in the Hexclave dashboard at
@@ -23,8 +20,8 @@ Enable the `workos-integration` provider in the Hexclave dashboard at
 exchanging a token. Configure the WorkOS client ID and API key there; the
 dashboard derives the issuer and JWKS URL from the client ID unless an explicit
 override is required. If you use a custom port prefix, update the dashboard
-URL, API URL, and redirect URI together; `.env` files do not derive ports
-automatically.
+URL, API URL, and redirect URI together; the redirect URI must be registered in
+WorkOS for the port you use.
 
 The example intentionally does not include provider credentials, access tokens,
 or user credentials. The WorkOS issuer is derived from the configured client ID

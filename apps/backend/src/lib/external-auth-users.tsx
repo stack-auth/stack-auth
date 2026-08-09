@@ -97,16 +97,16 @@ export async function getOrCreateExternalAuthSession(options: {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== PRISMA_ERROR_CODES.UNIQUE_CONSTRAINT_VIOLATION) {
         throw error;
       }
-      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(",") : "";
-      if (target.includes("projectUserId") && target.includes("providerConfigId")) {
-        throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn();
-      }
       // A concurrent first exchange projected the same provider identity between our lookup and our
       // insert. Use the winner's projection and sign into its user instead. This read must go to the
       // primary: the winner's row was committed by a concurrent request, so the read replica may not
       // have caught up yet (the automatic replication wait only covers writes made by ourselves).
-      authMethod = await prisma.$primary().externalAuthMethod.findFirst({ where: identityWhere })
-        ?? throwErr("An external auth method unique constraint was violated, but the identity projection does not exist. The violation must have come from a different constraint, which shouldn't happen: the auth method ID is freshly generated and the user was freshly created or upgraded from an anonymous user (which cannot have had external auth methods).", { cause: error });
+      authMethod = await prisma.$primary().externalAuthMethod.findFirst({ where: identityWhere });
+      if (authMethod == null) {
+        // This is the per-user/provider constraint: the anonymous user already won a different
+        // identity for this provider.
+        throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn();
+      }
       // The user we just created will never be linked to anything, so delete it again — unless it is
       // the caller's own (formerly anonymous, now upgraded) user, which we must not destroy.
       if (options.currentUser?.id !== user.id && authMethod.projectUserId !== user.id) {

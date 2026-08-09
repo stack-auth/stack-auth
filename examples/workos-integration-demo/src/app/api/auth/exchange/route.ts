@@ -2,9 +2,9 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { NextResponse } from "next/server";
 
 type ExchangeResponse = {
-  access_token?: string,
-  session_id?: string,
-  user_id?: string,
+  access_token: string,
+  session_id: string,
+  user_id: string,
   is_new_user?: boolean,
   code?: string,
   error?: string,
@@ -21,17 +21,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseExchangeResponse(value: unknown): ExchangeResponse | null {
   if (!isRecord(value)) return null;
-  const stringFields = ["access_token", "session_id", "user_id", "code", "error"] as const;
-  if (stringFields.some(field => value[field] != null && typeof value[field] !== "string")) return null;
-  if (value.is_new_user != null && typeof value.is_new_user !== "boolean") return null;
-  return value;
+  if (
+    typeof value.access_token !== "string" || value.access_token.length === 0
+    || typeof value.session_id !== "string" || value.session_id.length === 0
+    || typeof value.user_id !== "string" || value.user_id.length === 0
+    || (value.code !== undefined && typeof value.code !== "string")
+    || (value.error !== undefined && typeof value.error !== "string")
+  ) return null;
+  if (value.is_new_user !== undefined && typeof value.is_new_user !== "boolean") return null;
+  return {
+    access_token: value.access_token,
+    session_id: value.session_id,
+    user_id: value.user_id,
+    is_new_user: value.is_new_user,
+    code: value.code,
+    error: value.error,
+  };
 }
 
 function parseProfileResponse(value: unknown): ProfileResponse | null {
   if (!isRecord(value)) return null;
   if (value.primary_email != null && typeof value.primary_email !== "string") return null;
   if (value.display_name != null && typeof value.display_name !== "string") return null;
-  return value;
+  return {
+    primary_email: value.primary_email,
+    display_name: value.display_name,
+  };
 }
 
 async function fetchWithTimeout(request: Request, input: string, init: RequestInit): Promise<Response> {
@@ -81,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Hexclave returned an invalid token exchange response" }, { status: 502 });
   }
   let profile: { primary_email?: string | null, display_name?: string | null } = {};
-  if (result.access_token != null) {
+  if (result.access_token.length > 0) {
     let profileResponse: Response;
     try {
       profileResponse = await fetchWithTimeout(request, new URL("/api/v1/users/me", apiUrl).toString(), {

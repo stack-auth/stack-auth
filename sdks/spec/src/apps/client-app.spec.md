@@ -307,6 +307,17 @@ Errors:
     message: "The password does not meet the project's requirements."
 
 
+## isExternalAuthApp()
+
+Returns: bool
+
+Returns true when this app's configured token store is an
+ExternalTokenStore, meaning authentication is delegated to the configured
+provider. Prebuilt controls use this to omit Hexclave sign-out actions;
+direct signOut calls still throw and applications must sign out through the
+provider.
+
+
 ## signOut(options?)
 
 Arguments:

@@ -1,7 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, betterAuthTokenStore } from "@hexclave/next";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
@@ -18,11 +18,11 @@ type HexclaveUser = {
   displayName: string | null;
 };
 type Exchange = {
-  sessionId?: string;
-  userId?: string;
-  isNewUser?: boolean;
-  primaryEmail?: string | null;
-  displayName?: string | null;
+  sessionId: string;
+  userId: string;
+  isNewUser: boolean;
+  primaryEmail: string | null;
+  displayName: string | null;
   error?: string;
 };
 type Status = "idle" | "exchanging" | "exchanged" | "error";
@@ -83,15 +83,20 @@ function parseSessionResponse(value: unknown): { session?: { id: string }, user?
 
 function parseExchange(value: unknown): Exchange {
   if (!isRecord(value)) throw new Error("Better Auth exchange response was malformed");
-  const stringFields = ["sessionId", "userId", "primaryEmail", "displayName", "error"] as const;
-  if (stringFields.some(field => value[field] != null && typeof value[field] !== "string")
-    || (value.isNewUser != null && typeof value.isNewUser !== "boolean")) {
+  if (
+    typeof value.sessionId !== "string" || value.sessionId.length === 0
+    || typeof value.userId !== "string" || value.userId.length === 0
+    || typeof value.isNewUser !== "boolean"
+    || (value.primaryEmail !== null && value.primaryEmail !== undefined && typeof value.primaryEmail !== "string")
+    || (value.displayName !== null && value.displayName !== undefined && typeof value.displayName !== "string")
+    || (value.error !== undefined && typeof value.error !== "string")
+  ) {
     throw new Error("Better Auth exchange response was malformed");
   }
   return {
-    sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
-    userId: typeof value.userId === "string" ? value.userId : undefined,
-    isNewUser: typeof value.isNewUser === "boolean" ? value.isNewUser : undefined,
+    sessionId: value.sessionId,
+    userId: value.userId,
+    isNewUser: value.isNewUser,
     primaryEmail: typeof value.primaryEmail === "string" ? value.primaryEmail : null,
     displayName: typeof value.displayName === "string" ? value.displayName : null,
     error: typeof value.error === "string" ? value.error : undefined,
@@ -173,7 +178,6 @@ export function BetterAuthDemo() {
       setStatus("idle");
       window.dispatchEvent(new Event("better-auth-session-change"));
     } catch (error: unknown) {
-      if (!(error instanceof Error)) throw error;
       setError("Better Auth sign-out failed");
       setStatus("error");
     } finally {
@@ -213,7 +217,6 @@ export function BetterAuthDemo() {
       setSessionId(session.session.id);
       window.dispatchEvent(new Event("better-auth-session-change"));
     } catch (error: unknown) {
-      if (!(error instanceof Error)) throw error;
       setError("Better Auth authentication request failed");
       setStatus("error");
     } finally {
@@ -225,23 +228,21 @@ export function BetterAuthDemo() {
     let active = true;
     const controller = new AbortController();
     sessionLookupController.current = controller;
-    fetch("/api/auth/get-session", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return parseSessionResponse(await response.json());
-      })
-      .then((session) => {
-        if (!active || session?.session == null) return;
+    runAsynchronously(async () => {
+      try {
+        const response = await fetch("/api/auth/get-session", { signal: controller.signal });
+        if (!response.ok) return;
+        const session = parseSessionResponse(await response.json());
+        if (!active || session.session == null) return;
         setProviderUser(session.user ?? null);
         setSessionId(session.session.id);
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        if (!(error instanceof Error)) throw error;
         if (active && !controller.signal.aborted) {
           setError("Better Auth session lookup failed");
         }
-      });
+      }
+    });
     return () => {
       active = false;
       controller.abort();
@@ -255,26 +256,36 @@ export function BetterAuthDemo() {
     if (sessionId == null) return;
     let active = true;
     setStatus("exchanging");
-    Promise.all([
-      fetch("/api/auth/token").then(async (response) => {
-        if (!response.ok)
-          throw new Error(
-            `Better Auth token endpoint returned ${response.status}`,
-          );
-        return parseTokenResponse(await response.json());
-      }),
-      fetch("/api/auth/exchange").then(async (response) => {
-        const result = response.ok && (response.headers.get("content-type") ?? "").includes("application/json")
-          ? parseExchange(await response.json())
-          : null;
-        if (!response.ok || result == null)
-          throw new Error(
-            result?.error ?? `Better Auth exchange returned ${response.status}`,
-          );
-        return result;
-      }),
-    ])
-      .then(async ([token, result]) => {
+    runAsynchronously(async () => {
+      try {
+        const [token, result] = await Promise.all([
+          fetch("/api/auth/token").then(async (response) => {
+            if (!response.ok)
+              throw new Error(
+                `Better Auth token endpoint returned ${response.status}`,
+              );
+            return parseTokenResponse(await response.json());
+          }),
+          fetch("/api/auth/exchange", { method: "POST" }).then(async (response) => {
+            let body: unknown = null;
+            if ((response.headers.get("content-type") ?? "").includes("application/json")) {
+              try {
+                body = await response.json();
+              } catch {
+                body = null;
+              }
+            }
+            if (!response.ok) {
+              if (isRecord(body) && typeof body.error === "string") {
+                throw new Error(body.error);
+              }
+              throw new Error(
+                `Better Auth exchange returned ${response.status}`,
+              );
+            }
+            return parseExchange(body);
+          }),
+        ]);
         if (!active) return;
         setClaims(decodeClaims(token));
         setExchange(result);
@@ -286,17 +297,16 @@ export function BetterAuthDemo() {
           displayName: sdkUser.displayName,
         });
         setStatus("exchanged");
-      })
-      .catch((reason: unknown) => {
+      } catch (reason: unknown) {
         if (!active) return;
-        if (!(reason instanceof Error)) throw reason;
         setStatus("error");
         setError(
           reason instanceof Error
             ? reason.message
             : "Better Auth exchange failed",
         );
-      });
+      }
+    });
     return () => {
       active = false;
     };

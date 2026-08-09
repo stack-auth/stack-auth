@@ -88,13 +88,21 @@ describe("HexclaveClientInterface bot challenge compatibility", () => {
     })));
 
     const iface = createClientInterface();
-    const result = await iface.exchangeExternalAuthToken("better-auth-integration", "provider-token");
+    await expect(
+      iface.exchangeExternalAuthToken("better-auth-integration", "provider-token"),
+    ).rejects.toThrow("External auth token exchange returned a malformed success response");
+  });
 
-    expect(result.status).toBe("error");
-    if (result.status !== "error") {
-      throw new Error("Expected malformed external auth exchange response to fail");
-    }
-    expect(result.error).toBeInstanceOf(KnownErrors.InvalidExternalAuthToken);
+  it("rejects an external auth exchange response with malformed JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createTextResponse("not-json", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })));
+
+    const iface = createClientInterface();
+    await expect(
+      iface.exchangeExternalAuthToken("better-auth-integration", "provider-token"),
+    ).rejects.toThrow("External auth token exchange returned an unparseable success response");
   });
 
   it("omits bot challenge from magic link requests when no token is provided", async () => {

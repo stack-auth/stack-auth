@@ -1,7 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, workosTokenStore } from "@hexclave/next";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
   iss?: string;
@@ -126,10 +126,24 @@ export function WorkosDemo() {
   const [error, setError] = useState<string | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const providerSessionRef = useRef<ProviderSession | null>(null);
+  const providerSessionSubscribers = useRef(new Set<() => void>());
+  const lastReportedSessionId = useRef<string | null>(null);
+  const updateProviderSession = (session: ProviderSession | null) => {
+    const previousSessionId = providerSessionRef.current?.sessionId ?? null;
+    providerSessionRef.current = session;
+    setProviderSession(session);
+    if (session?.sessionId !== previousSessionId) {
+      lastReportedSessionId.current = session?.sessionId ?? null;
+      for (const callback of providerSessionSubscribers.current) {
+        callback();
+      }
+    }
+  };
   const tokenStore = useMemo(
     () =>
       workosTokenStore({
-        getSessionId: () => providerSession?.sessionId ?? null,
+        getSessionId: () => providerSessionRef.current?.sessionId ?? null,
         // The SDK calls getToken again when the provider session changes or the exchanged token
         // expires, so fetch the current WorkOS JWT instead of reusing the mount-time snapshot.
         getToken: async () => {
@@ -137,10 +151,18 @@ export function WorkosDemo() {
           if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) {
             return null;
           }
-          return parseProviderSession(await response.json()).accessToken;
+          const session = parseProviderSession(await response.json());
+          if (session.sessionId !== lastReportedSessionId.current) {
+            updateProviderSession(session);
+          }
+          return session.accessToken;
+        },
+        subscribe: (callback) => {
+          providerSessionSubscribers.current.add(callback);
+          return () => providerSessionSubscribers.current.delete(callback);
         },
       }),
-    [providerSession],
+    [],
   );
   const app = useMemo(
     () =>
@@ -157,7 +179,7 @@ export function WorkosDemo() {
   const signOutOfWorkOS = () => {
     setIsSigningOut(true);
     setSignedOut(true);
-    setProviderSession(null);
+    updateProviderSession(null);
     setUser(null);
     window.location.assign("/api/auth/signout");
   };
@@ -183,7 +205,7 @@ export function WorkosDemo() {
     ])
       .then(([session, result]) => {
         if (!active) return;
-        setProviderSession(session);
+        updateProviderSession(session);
         setClaims(decodeClaims(session.accessToken));
         setExchange(result);
         setUser(

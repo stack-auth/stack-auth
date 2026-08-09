@@ -116,15 +116,25 @@ export class ExternalTokenStoreSessionAdapter {
         accessToken: tokenObject.accessToken,
         sessionKey,
         refreshAccessTokenWithoutRefreshTokenCallback: async () => {
+          const state = this.states.get(externalTokenStore) ?? throwErr("External token store state was not initialized");
+          const expectedGeneration = state.generation;
+          const expectedProviderSessionId = externalTokenStore.getSessionId?.();
+          const assertProviderIdentityUnchanged = () => {
+            if (
+              state.generation !== expectedGeneration
+              || externalTokenStore.getSessionId?.() !== expectedProviderSessionId
+            ) {
+              throw new Error("The external provider session changed while exchanging a token; retrying with the current provider session.");
+            }
+          };
           // Returning null from this callback permanently invalidates the cached InternalSession, so
           // we must only do it when the provider session is definitively gone — for transient states
           // we throw instead, which surfaces the failure to the current caller but lets the next
           // request retry the exchange.
           const attemptExchange = async (isRetry: boolean): Promise<AccessToken | null> => {
-            const state = this.states.get(externalTokenStore) ?? throwErr("External token store state was not initialized");
-            const exchangeGeneration = state.generation;
-            const exchangeProviderSessionId = externalTokenStore.getSessionId?.();
+            assertProviderIdentityUnchanged();
             const externalToken = await externalTokenStore.getToken();
+            assertProviderIdentityUnchanged();
             if (externalToken == null) {
               if (externalTokenStore.getSessionId?.() != null) {
                 // The provider reports an active session but handed out no token; this is usually a
@@ -140,12 +150,7 @@ export class ExternalTokenStoreSessionAdapter {
               // An explicit session key bypasses InternalSession's identity check. Refuse to install
               // a token if the provider switched accounts while the exchange was in flight instead
               // of returning null, which would permanently invalidate the reusable session.
-              if (
-                state.generation !== exchangeGeneration
-                || externalTokenStore.getSessionId?.() !== exchangeProviderSessionId
-              ) {
-                throw new Error("The external provider session changed while exchanging a token; retrying with the current provider session.");
-              }
+              assertProviderIdentityUnchanged();
               return validatedAccessToken;
             } catch (error) {
               if (!KnownErrors.InvalidExternalAuthToken.isInstance(error)) {

@@ -2,7 +2,7 @@
 
 import { useUpdateConfig } from "@/components/config-update";
 import { DesignAlert, DesignButton, DesignCard, DesignInput } from "@/components/design-components";
-import { getWorkOSVerificationUrls } from "@hexclave/shared";
+import { getWorkOSVerificationUrls } from "@hexclave/shared/dist/interface/external-auth";
 import { FingerprintSimpleIcon, KeyIcon, LinkSimpleIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AppEnabledGuard } from "./app-enabled-guard";

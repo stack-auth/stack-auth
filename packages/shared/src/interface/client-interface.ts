@@ -1288,7 +1288,12 @@ export class HexclaveClientInterface {
     if (res.status === "error") {
       return Result.error(res.error);
     }
-    const body: unknown = await res.data.json();
+    let body: unknown;
+    try {
+      body = await res.data.json();
+    } catch (error) {
+      throw new HexclaveAssertionError("External auth token exchange returned an unparseable success response", { cause: error });
+    }
     if (
       !isRecord(body)
       || typeof body.access_token !== "string"
@@ -1299,7 +1304,7 @@ export class HexclaveClientInterface {
       || body.user_id.length === 0
       || typeof body.is_new_user !== "boolean"
     ) {
-      return Result.error(new KnownErrors.InvalidExternalAuthToken());
+      throw new HexclaveAssertionError("External auth token exchange returned a malformed success response");
     }
     return Result.ok({
       accessToken: body.access_token,
