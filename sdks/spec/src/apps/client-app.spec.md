@@ -34,7 +34,6 @@ Optional:
       getToken(): async string | null
       getSessionId(): string | null [optional]
       subscribe(callback): unsubscribe function [optional]
-      signOut(): async void [optional]
 
     On demand, call getToken() and exchange the provider JWT for a short-lived
     Hexclave access token. Never persist the provider JWT or receive a Hexclave
@@ -45,9 +44,10 @@ Optional:
     SDK session generation because identity continuity cannot be proven.
 
     subscribe(callback) notifies the SDK when the provider token or session changes;
-    expire the current Hexclave access token and re-read the provider state. On
-    Hexclave sign-out, revoke the correlated Hexclave session and then call the
-    optional provider signOut().
+    expire the current Hexclave access token and re-read the provider state. Hexclave
+    sign-out is unsupported for an ExternalTokenStore: it throws a developer-facing
+    assertion before revoking the correlated Hexclave session. The application must
+    sign out through the provider because the provider owns the credential.
 
     JS SDKs expose clerkTokenStore(), betterAuthTokenStore(), and workosTokenStore()
     helpers that construct ExternalTokenStore objects with the corresponding
@@ -308,18 +308,18 @@ Arguments:
   options.redirectUrl: string? - where to redirect after sign out
   options.tokenStore: TokenStoreInit? - override token storage for this call
 
-Returns: void
+Returns: void, or throws for an externally authenticated session.
 
 Request:
   DELETE /api/v1/auth/sessions/current [authenticated]
   Body: {}
 
 Implementation:
-1. Send request (ignore errors - session may already be invalid)
-2. Clear stored tokens (mark session invalid)
-3. Redirect to redirectUrl or afterSignOut URL
-
-Does not error (errors are ignored).
+1. If the current session belongs to an ExternalTokenStore, throw a developer-facing
+   assertion naming the provider and do not revoke the Hexclave session.
+2. Otherwise send the request (ignore errors - session may already be invalid).
+3. Clear stored tokens (mark session invalid).
+4. Redirect to redirectUrl or afterSignOut URL.
 
 
 ## getUser(options?)

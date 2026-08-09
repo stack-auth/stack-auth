@@ -93,7 +93,6 @@ export type ExternalTokenStore = {
   getSessionId?(): string | null,
   getToken(): Promise<string | null>,
   subscribe?(callback: () => void): () => void,
-  signOut?(): Promise<void>,
 };
 
 type ExternalTokenStoreOptions = Omit<ExternalTokenStore, "type" | "providerId">;

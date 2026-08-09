@@ -72,13 +72,6 @@ export function WorkosDemo() {
       workosTokenStore({
         getSessionId: () => providerSession?.sessionId ?? null,
         getToken: async () => providerSession?.accessToken ?? null,
-        signOut: async () => {
-          setIsSigningOut(true);
-          setSignedOut(true);
-          setProviderSession(null);
-          setUser(null);
-          window.location.assign("/api/auth/signout");
-        },
       }),
     [providerSession],
   );
@@ -94,6 +87,13 @@ export function WorkosDemo() {
       }),
     [tokenStore],
   );
+  const signOutOfWorkOS = () => {
+    setIsSigningOut(true);
+    setSignedOut(true);
+    setProviderSession(null);
+    setUser(null);
+    window.location.assign("/api/auth/signout");
+  };
 
   useEffect(() => {
     if (signedOut) return;
@@ -260,7 +260,7 @@ export function WorkosDemo() {
             <button
               type="button"
               disabled={isSigningOut || status === "exchanging"}
-              onClick={() => tokenStore.signOut?.()}
+              onClick={signOutOfWorkOS}
             >
               {isSigningOut ? "Signing out…" : "Sign out of WorkOS"}
             </button>

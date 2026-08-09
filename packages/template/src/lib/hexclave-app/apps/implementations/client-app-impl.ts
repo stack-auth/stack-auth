@@ -4265,8 +4265,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const signOutOperation = (async () => {
       // Preserve the old behavior of serializing concurrent sign-outs without coupling them to unrelated stores.
       await previousSignOut;
+      const externalTokenStore = this._externalTokenStoreSessionAdapter.getExternalTokenStoreForSession(session);
+      if (externalTokenStore != null) {
+        throw new HexclaveAssertionError(
+          `Cannot sign out an externally authenticated session through Hexclave. Sign out through the ${externalTokenStore.providerId} provider instead.`,
+        );
+      }
       await this._interface.signOut(session);
-      await this._externalTokenStoreSessionAdapter.getExternalTokenStoreForSession(session)?.signOut?.();
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {

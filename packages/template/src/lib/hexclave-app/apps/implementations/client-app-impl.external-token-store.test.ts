@@ -193,8 +193,7 @@ describe("StackClientApp external token stores", () => {
     expect(exchangeCount).toBe(1);
   });
 
-  it("signs out of the external provider after revoking the Hexclave session", async () => {
-    let providerSignOutCount = 0;
+  it("rejects signing out an external session without revoking the Hexclave session", async () => {
     const clientApp = new StackClientApp({
       automaticSideEffects: false,
       baseUrl: "http://localhost:12345",
@@ -203,21 +202,23 @@ describe("StackClientApp external token stores", () => {
       tokenStore: clerkTokenStore({
         getSessionId: () => "clerk-session",
         getToken: async () => "clerk-token",
-        signOut: async () => {
-          providerSignOutCount += 1;
-        },
       }),
       redirectMethod: "none",
     });
     const clientInterface = Reflect.get(clientApp, "_interface");
-    Reflect.set(clientInterface, "signOut", async () => {});
+    let hexclaveSignOutCount = 0;
+    Reflect.set(clientInterface, "signOut", async () => {
+      hexclaveSignOutCount += 1;
+    });
     Reflect.set(clientApp, "_redirectToDefaultAfterSignOut", async () => {});
 
     const getSession = Reflect.get(clientApp, "_getSession");
     const session = await getSession.call(clientApp);
     const signOut = Reflect.get(clientApp, "_signOut");
-    await signOut.call(clientApp, session);
+    await expect(signOut.call(clientApp, session)).rejects.toThrow(
+      "Cannot sign out an externally authenticated session through Hexclave",
+    );
 
-    expect(providerSignOutCount).toBe(1);
+    expect(hexclaveSignOutCount).toBe(0);
   });
 });

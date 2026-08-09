@@ -122,16 +122,17 @@ export async function getOrCreateExternalAuthSession(options: {
         providerSessionId: options.identity.providerSessionId,
       },
     },
-    update: {},
     create: {
       tenancyId: options.tenancy.id,
       externalAuthMethodId: authMethod.authMethodId,
       providerSessionId: options.identity.providerSessionId,
     },
+    // Provider verification is the source of truth for this identity, so a fresh valid JWT
+    // re-establishes a Hexclave session after a Hexclave-side revocation.
+    update: {
+      revokedAt: null,
+    },
   });
-  if (session.revokedAt != null) {
-    throw new KnownErrors.InvalidExternalAuthToken();
-  }
 
   return {
     authMethod,

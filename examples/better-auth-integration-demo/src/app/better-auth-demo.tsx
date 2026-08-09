@@ -78,29 +78,6 @@ export function BetterAuthDemo() {
           return () =>
             window.removeEventListener("better-auth-session-change", callback);
         },
-        signOut: async () => {
-          setIsSubmitting(true);
-          try {
-            const response = await fetch("/api/auth/sign-out", { method: "POST" });
-            if (!response.ok) {
-              setError(`Better Auth sign-out returned ${response.status}`);
-              setStatus("error");
-              return;
-            }
-            setSessionId(null);
-            setProviderUser(null);
-            setClaims(null);
-            setExchange(null);
-            setUser(null);
-            setStatus("idle");
-            window.dispatchEvent(new Event("better-auth-session-change"));
-          } catch {
-            setError("Better Auth sign-out failed");
-            setStatus("error");
-          } finally {
-            setIsSubmitting(false);
-          }
-        },
       }),
     [sessionId],
   );
@@ -116,6 +93,29 @@ export function BetterAuthDemo() {
       }),
     [tokenStore],
   );
+  const signOutOfBetterAuth = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/sign-out", { method: "POST" });
+      if (!response.ok) {
+        setError(`Better Auth sign-out returned ${response.status}`);
+        setStatus("error");
+        return;
+      }
+      setSessionId(null);
+      setProviderUser(null);
+      setClaims(null);
+      setExchange(null);
+      setUser(null);
+      setStatus("idle");
+      window.dispatchEvent(new Event("better-auth-session-change"));
+    } catch {
+      setError("Better Auth sign-out failed");
+      setStatus("error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const authenticate = async (path: "sign-up" | "sign-in") => {
     sessionLookupController.current?.abort();
@@ -362,7 +362,7 @@ export function BetterAuthDemo() {
             <button
               type="button"
               disabled={isSubmitting || status === "exchanging"}
-              onClick={() => tokenStore.signOut?.()}
+              onClick={signOutOfBetterAuth}
             >
               {isSubmitting ? "Signing out…" : "Sign out of Better Auth"}
             </button>

@@ -147,6 +147,85 @@ describe("external authentication token exchange", () => {
     expect(sessions.body.items.filter((session: { is_current_session: boolean }) => session.is_current_session)).toHaveLength(1);
   });
 
+  it("re-establishes an external session after either kind of Hexclave revocation", async ({ expect }) => {
+    await configureProject();
+    const providerToken = await createProviderToken({
+      sessionId: "provider-session-revocation",
+      email: "revocation@example.com",
+      name: "Revocation User",
+    });
+    const first = await exchange(providerToken);
+    expect(first.status).toBe(200);
+
+    backendContext.set({ userAuth: { accessToken: first.body.access_token } });
+    const signOut = await niceBackendFetch("/api/v1/auth/sessions/current", {
+      method: "DELETE",
+      accessType: "client",
+    });
+    expect(signOut.status).toBe(200);
+
+    const afterSignOut = await exchange(providerToken);
+    expect(afterSignOut.status).toBe(200);
+    expect(afterSignOut.body).toMatchObject({
+      user_id: first.body.user_id,
+      session_id: first.body.session_id,
+    });
+
+    backendContext.set({ userAuth: { accessToken: afterSignOut.body.access_token } });
+    const sessionsAfterSignOut = await niceBackendFetch("/api/v1/auth/sessions", {
+      method: "GET",
+      accessType: "client",
+      query: { user_id: first.body.user_id },
+    });
+    expect(sessionsAfterSignOut.status).toBe(200);
+    expect(sessionsAfterSignOut.body.items).toHaveLength(1);
+    expect(sessionsAfterSignOut.body.items[0]).toMatchObject({
+      id: first.body.session_id,
+      is_current_session: true,
+    });
+
+    const second = await exchange(await createProviderToken({
+      sessionId: "provider-session-revocation-crud",
+    }));
+    expect(second.status).toBe(200);
+    backendContext.set({ userAuth: { accessToken: second.body.access_token } });
+    const sessionsBeforeDelete = await niceBackendFetch("/api/v1/auth/sessions", {
+      method: "GET",
+      accessType: "client",
+      query: { user_id: first.body.user_id },
+    });
+    expect(sessionsBeforeDelete.status).toBe(200);
+    const secondSession = sessionsBeforeDelete.body.items.find((session: { id: string }) => session.id === second.body.session_id);
+    expect(secondSession).toBeDefined();
+
+    const deleteSession = await niceBackendFetch(`/api/v1/auth/sessions/${second.body.session_id}`, {
+      method: "DELETE",
+      accessType: "client",
+      query: { user_id: first.body.user_id },
+    });
+    expect(deleteSession.status).toBe(200);
+
+    const afterCrudDelete = await exchange(await createProviderToken({
+      sessionId: "provider-session-revocation-crud",
+    }));
+    expect(afterCrudDelete.status).toBe(200);
+    expect(afterCrudDelete.body).toMatchObject({
+      user_id: first.body.user_id,
+      session_id: second.body.session_id,
+    });
+    backendContext.set({ userAuth: { accessToken: afterCrudDelete.body.access_token } });
+    const sessionsAfterCrudDelete = await niceBackendFetch("/api/v1/auth/sessions", {
+      method: "GET",
+      accessType: "client",
+      query: { user_id: first.body.user_id },
+    });
+    expect(sessionsAfterCrudDelete.status).toBe(200);
+    expect(sessionsAfterCrudDelete.body.items).toContainEqual(expect.objectContaining({
+      id: second.body.session_id,
+      is_current_session: true,
+    }));
+  });
+
   it("does not overwrite a profile edited after the first exchange", async ({ expect }) => {
     await configureProject();
     const first = await exchange(await createProviderToken({
