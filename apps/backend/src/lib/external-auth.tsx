@@ -2,6 +2,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { safeOAuthFetch } from "@/lib/ssrf-protection/oauth";
 import { KnownErrors } from "@hexclave/shared";
 import { externalAuthProviderIds, getWorkOSVerificationUrls, type ExternalAuthProviderId } from "@hexclave/shared/dist/interface/external-auth";
+import { emailSchema } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createRemoteJWKSet, customFetch, decodeJwt, decodeProtectedHeader, errors as joseErrors, jwtVerify, type JWTPayload } from "jose";
 
@@ -13,6 +14,9 @@ export type VerifiedExternalIdentity = {
   subject: string,
   providerSessionId: string,
   expiresAt: Date,
+  email: string | null,
+  name: string | null,
+  emailVerified: boolean,
 };
 
 type ProviderVerificationConfig = {
@@ -120,6 +124,21 @@ function getRequiredClaim(payload: JWTPayload, claim: "sub" | "sid"): string {
   return value;
 }
 
+function getOptionalProfileClaim(payload: JWTPayload, claim: "email" | "name"): string | null {
+  const value = payload[claim];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 256) {
+    return null;
+  }
+  if (claim === "email" && !emailSchema.isValidSync(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
 function validateTokenEncoding(token: string): void {
   if (token.length > 16_384 || token.split(".").length !== 3) {
     throw new KnownErrors.InvalidExternalAuthToken();
@@ -185,10 +204,14 @@ export async function verifyExternalAuthToken(options: {
     throw new KnownErrors.InvalidExternalAuthToken();
   }
 
+  const email = getOptionalProfileClaim(payload, "email");
   return {
     issuer: config.issuer,
     subject,
     providerSessionId,
     expiresAt: new Date(payload.exp * 1000),
+    email,
+    name: getOptionalProfileClaim(payload, "name"),
+    emailVerified: email != null && payload.email_verified === true,
   };
 }

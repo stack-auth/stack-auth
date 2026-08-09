@@ -3,7 +3,7 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import * as http from "node:http";
 import { afterAll, beforeAll, describe } from "vitest";
 import { it } from "../../../../../../helpers";
-import { Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 let jwksServer: http.Server;
 let issuer: string;
@@ -63,10 +63,16 @@ async function createProviderToken(options: {
   audience?: string,
   expirationTime?: string,
   authorizedParty?: string,
+  email?: unknown,
+  name?: unknown,
+  emailVerified?: unknown,
 } = {}) {
   return await new SignJWT({
     sid: options.sessionId ?? "provider-session-1",
     ...options.authorizedParty == null ? {} : { azp: options.authorizedParty },
+    ...options.email === undefined ? {} : { email: options.email },
+    ...options.name === undefined ? {} : { name: options.name },
+    ...options.emailVerified === undefined ? {} : { email_verified: options.emailVerified },
   })
     .setProtectedHeader({ alg: "ES256", kid: publicJwk.kid ?? throwErr("Test JWK has no kid") })
     .setIssuer(options.issuer ?? issuer)
@@ -91,7 +97,11 @@ async function exchange(token: string, providerId = "better-auth-integration") {
 describe("external authentication token exchange", () => {
   it("creates one user and reuses provider sessions idempotently", async ({ expect }) => {
     await configureProject();
-    const firstToken = await createProviderToken();
+    const firstToken = await createProviderToken({
+      email: "provider-user@example.com",
+      name: "Provider User",
+      emailVerified: false,
+    });
     const first = await exchange(firstToken);
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({
@@ -99,6 +109,17 @@ describe("external authentication token exchange", () => {
     });
     expect(first.body.user_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(first.body.session_id).toMatch(/^[0-9a-f-]{36}$/);
+
+    const createdUser = await niceBackendFetch(`/api/v1/users/${first.body.user_id}`, {
+      accessType: "server",
+    });
+    expect(createdUser.status).toBe(200);
+    expect(createdUser.body).toMatchObject({
+      primary_email: "provider-user@example.com",
+      primary_email_verified: false,
+      primary_email_auth_enabled: false,
+      display_name: "Provider User",
+    });
 
     const repeated = await exchange(firstToken);
     expect(repeated.status).toBe(200);
@@ -124,6 +145,182 @@ describe("external authentication token exchange", () => {
     expect(sessions.status).toBe(200);
     expect(sessions.body.items).toHaveLength(2);
     expect(sessions.body.items.filter((session: { is_current_session: boolean }) => session.is_current_session)).toHaveLength(1);
+  });
+
+  it("does not overwrite a profile edited after the first exchange", async ({ expect }) => {
+    await configureProject();
+    const first = await exchange(await createProviderToken({
+      email: "original@example.com",
+      name: "Original Name",
+      emailVerified: true,
+    }));
+    expect(first.status).toBe(200);
+
+    const updated = await niceBackendFetch(`/api/v1/users/${first.body.user_id}`, {
+      method: "PATCH",
+      accessType: "server",
+      body: {
+        primary_email: "edited@example.com",
+        display_name: "Edited Name",
+        primary_email_verified: true,
+        primary_email_auth_enabled: false,
+      },
+    });
+    expect(updated.status).toBe(200);
+
+    const repeated = await exchange(await createProviderToken({
+      email: "provider-update@example.com",
+      name: "Provider Update",
+      emailVerified: false,
+    }));
+    expect(repeated.status).toBe(200);
+    expect(repeated.body.user_id).toBe(first.body.user_id);
+
+    const user = await niceBackendFetch(`/api/v1/users/${first.body.user_id}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      primary_email: "edited@example.com",
+      display_name: "Edited Name",
+    });
+  });
+
+  it("preserves an anonymous profile when provider claims are absent", async ({ expect }) => {
+    await configureProject();
+    const anonymous = await Auth.Anonymous.signUp();
+    const updated = await niceBackendFetch("/api/v1/users/me", {
+      method: "PATCH",
+      accessType: "client",
+      body: {
+        display_name: "Anonymous Name",
+        primary_email: "anonymous@example.com",
+        primary_email_auth_enabled: false,
+      },
+    });
+    expect(updated.status).toBe(200);
+
+    const response = await exchange(await createProviderToken(), "better-auth-integration");
+    expect(response.status).toBe(200);
+    expect(response.body.user_id).toBe(anonymous.userId);
+
+    const user = await niceBackendFetch(`/api/v1/users/${anonymous.userId}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      display_name: "Anonymous Name",
+      primary_email: "anonymous@example.com",
+      primary_email_auth_enabled: false,
+    });
+  });
+
+  it("maps provider claims when upgrading an anonymous user", async ({ expect }) => {
+    await configureProject();
+    const anonymous = await Auth.Anonymous.signUp();
+    const response = await exchange(await createProviderToken({
+      email: "upgraded@example.com",
+      name: "Upgraded Provider User",
+      emailVerified: true,
+    }));
+    expect(response.status).toBe(200);
+    expect(response.body.user_id).toBe(anonymous.userId);
+
+    const user = await niceBackendFetch(`/api/v1/users/${anonymous.userId}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      display_name: "Upgraded Provider User",
+      primary_email: "upgraded@example.com",
+      primary_email_verified: true,
+      primary_email_auth_enabled: false,
+    });
+  });
+
+  it("ignores malformed or absent profile claims", async ({ expect }) => {
+    await configureProject();
+    const response = await exchange(await createProviderToken({
+      email: "   ",
+      name: "n".repeat(257),
+      emailVerified: "true",
+    }));
+    expect(response.status).toBe(200);
+
+    const user = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      primary_email: null,
+      display_name: null,
+      primary_email_verified: false,
+      primary_email_auth_enabled: false,
+    });
+  });
+
+  it("ignores syntactically invalid email claims", async ({ expect }) => {
+    await configureProject();
+    const response = await exchange(await createProviderToken({
+      email: "not-an-email",
+      name: "Valid Name",
+      emailVerified: true,
+    }));
+    expect(response.status).toBe(200);
+
+    const user = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      primary_email: null,
+      display_name: "Valid Name",
+      primary_email_verified: false,
+    });
+  });
+
+  it("ignores email_verified when the email claim is absent or invalid", async ({ expect }) => {
+    await configureProject();
+    const absentEmail = await exchange(await createProviderToken({
+      emailVerified: true,
+    }));
+    const invalidEmail = await exchange(await createProviderToken({
+      subject: "invalid-email-user",
+      sessionId: "invalid-email-session",
+      email: "not-an-email",
+      emailVerified: true,
+    }));
+
+    expect(absentEmail.status).toBe(200);
+    expect(invalidEmail.status).toBe(200);
+
+    const users = await Promise.all([
+      niceBackendFetch(`/api/v1/users/${absentEmail.body.user_id}`, { accessType: "server" }),
+      niceBackendFetch(`/api/v1/users/${invalidEmail.body.user_id}`, { accessType: "server" }),
+    ]);
+    expect(users[0].body).toMatchObject({
+      primary_email: null,
+      primary_email_verified: false,
+    });
+    expect(users[1].body).toMatchObject({
+      primary_email: null,
+      primary_email_verified: false,
+    });
+  });
+
+  it("allows a provider email to collide with another user", async ({ expect }) => {
+    await configureProject();
+    const first = await exchange(await createProviderToken({
+      subject: "provider-user-1",
+      sessionId: "provider-session-1",
+      email: "same@example.com",
+      name: "First Provider User",
+    }));
+    const second = await exchange(await createProviderToken({
+      subject: "provider-user-2",
+      sessionId: "provider-session-2",
+      email: "same@example.com",
+      name: "Second Provider User",
+    }));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.user_id).not.toBe(first.body.user_id);
   });
 
   it("projects a new external identity once under concurrent exchanges", async ({ expect }) => {
