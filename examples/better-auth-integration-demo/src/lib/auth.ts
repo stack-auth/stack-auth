@@ -2,6 +2,14 @@ import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import Database from "better-sqlite3";
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (value == null || value.length === 0) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 const database = new Database("./better-auth.db");
 database.exec(`
   create table if not exists "user" ("id" text not null primary key, "name" text not null, "email" text not null unique, "emailVerified" integer not null, "image" text, "createdAt" date not null, "updatedAt" date not null);
@@ -14,15 +22,17 @@ database.exec(`
   create index if not exists "verification_identifier_idx" on "verification" ("identifier");
 `);
 
+const betterAuthUrl = requireEnv("BETTER_AUTH_URL");
+
 export const auth = betterAuth({
   database,
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:8111",
-  secret: process.env.BETTER_AUTH_SECRET ?? "local-only-better-auth-secret",
+  baseURL: betterAuthUrl,
+  secret: requireEnv("BETTER_AUTH_SECRET"),
   emailAndPassword: { enabled: true },
   plugins: [
     jwt({
       jwt: {
-        issuer: process.env.BETTER_AUTH_URL ?? "http://localhost:8111",
+        issuer: betterAuthUrl,
         audience: "better-auth-integration-demo",
         definePayload: ({ user, session }) => ({
           sub: user.id,
