@@ -1,5 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { createUuidV7Generator } from "@hexclave/shared/dist/utils/uuids";
 import * as lmdb from "lmdb";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
@@ -13,48 +14,15 @@ type VersionedBinaryDatabase = BinaryDatabase & {
   getEntry(key: Buffer): { value: Buffer, version?: number } | undefined,
 };
 
-const dumpKeyRandomBits = 74n;
-const dumpKeyRandomMask = (1n << dumpKeyRandomBits) - 1n;
-
 function createDumpKeyGenerator() {
-  let lastTimestampMs = -1;
-  let randomValue = 0n;
+  const generateUuidV7 = createUuidV7Generator();
   return () => {
-    // UUIDv7's timestamp prefix clusters new dumps in a narrow, advancing key range.
-    // The leading version byte lets future layouts coexist; the monotonic random
-    // portion stays at the end so it preserves locality and uniqueness.
-    let timestampMs = Date.now();
-    if (timestampMs > lastTimestampMs) {
-      lastTimestampMs = timestampMs;
-      const randomBytes = crypto.getRandomValues(new Uint8Array(10));
-      randomValue = 0n;
-      for (const byte of randomBytes) randomValue = (randomValue << 8n) | BigInt(byte);
-      randomValue &= dumpKeyRandomMask;
-    } else {
-      timestampMs = lastTimestampMs;
-      randomValue++;
-      if (randomValue > dumpKeyRandomMask) {
-        lastTimestampMs++;
-        timestampMs = lastTimestampMs;
-        randomValue = 0n;
-      }
-    }
     const key = new Uint8Array(17);
+    // Timestamp-first UUIDv7 keys cluster dump writes in an advancing range,
+    // reducing LMDB page scatter. The leading byte is a layout-version marker
+    // so future dump-key formats can coexist without migrating legacy 48-byte keys.
     key[0] = 0x01;
-    let timestamp = BigInt(timestampMs);
-    for (let index = 5; index >= 0; index--) {
-      key[index + 1] = Number(timestamp & 0xffn);
-      timestamp >>= 8n;
-    }
-    const randomA = Number((randomValue >> 62n) & 0xfffn);
-    key[7] = 0x70 | (randomA >> 8);
-    key[8] = randomA & 0xff;
-    let randomB = randomValue & ((1n << 62n) - 1n);
-    key[9] = 0x80 | Number(randomB >> 56n);
-    for (let index = 16; index >= 10; index--) {
-      key[index] = Number(randomB & 0xffn);
-      randomB >>= 8n;
-    }
+    key.set(generateUuidV7(), 1);
     return key.buffer;
   };
 }

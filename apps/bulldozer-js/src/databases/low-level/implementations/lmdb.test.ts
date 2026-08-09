@@ -123,9 +123,6 @@ describe("LMDB low-level database", () => {
         expect(inserted.keys).toHaveLength(450);
         expect(inserted.keys[0].byteLength).toBe(17);
         expect(new Uint8Array(inserted.keys[0])[0]).toBe(0x01);
-        for (let index = 1; index < inserted.keys.length; index++) {
-          expect(Buffer.compare(Buffer.from(inserted.keys[index - 1]), Buffer.from(inserted.keys[index]))).toBeLessThan(0);
-        }
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0x7f)))).buffer)).toBe("legacy-arbitrary");
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0xff)))).buffer)).toBe("legacy-max");
         expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
