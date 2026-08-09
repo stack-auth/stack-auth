@@ -5,9 +5,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UserButton } from "./user-button";
 
-const state = vi.hoisted(() => ({
-  app: null as { isExternalAuthApp: () => boolean, redirectToAccountSettings: () => Promise<void> } | null,
-  user: null as { displayName: string, primaryEmail: string, signOut: () => Promise<void> } | null,
+type MockState = {
+  app: { isExternalAuthApp: () => boolean, redirectToAccountSettings: () => Promise<void> } | null,
+  user: { displayName: string, primaryEmail: string, signOut: () => Promise<void> } | null,
+};
+
+const state = vi.hoisted<MockState>(() => ({
+  app: null,
+  user: null,
 }));
 
 vi.mock("..", () => ({

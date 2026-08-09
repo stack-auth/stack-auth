@@ -25,7 +25,9 @@ export async function getOrCreateExternalAuthSession(options: {
     subject: options.identity.subject,
   };
 
-  let authMethod = await prisma.externalAuthMethod.findFirst({ where: identityWhere });
+  // A returning user's identity may have been committed by an earlier request from this same user,
+  // which the automatic replication wait does not cover, so this lookup cannot tolerate replica lag.
+  let authMethod = await prisma.$primary().externalAuthMethod.findFirst({ where: identityWhere });
   let isNewUser = false;
 
   if (authMethod == null) {
