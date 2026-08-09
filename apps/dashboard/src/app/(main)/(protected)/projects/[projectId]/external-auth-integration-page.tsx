@@ -2,6 +2,7 @@
 
 import { useUpdateConfig } from "@/components/config-update";
 import { DesignAlert, DesignButton, DesignCard, DesignInput } from "@/components/design-components";
+import { getWorkOSVerificationUrls } from "@hexclave/shared/dist/interface/external-auth";
 import { FingerprintSimpleIcon, KeyIcon, LinkSimpleIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AppEnabledGuard } from "./app-enabled-guard";
@@ -90,7 +91,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
       }
       case "workos": {
         return {
-          issuer: config["workos-integration"].issuer ?? "https://api.workos.com",
+          issuer: config["workos-integration"].issuer ?? "",
           authorizedParties: "",
           audience: "",
           jwksUrl: "",
@@ -104,6 +105,9 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
   const [audience, setAudience] = useState(initialValues.audience);
   const [jwksUrl, setJwksUrl] = useState(initialValues.jwksUrl);
   const [clientId, setClientId] = useState(initialValues.clientId);
+  const workosDerivedUrls = props.provider === "workos" && clientId.length > 0
+    ? getWorkOSVerificationUrls(clientId)
+    : null;
 
   const save = async () => {
     switch (props.provider) {
@@ -135,7 +139,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
           adminApp,
           configUpdate: {
             "workos-integration.clientId": clientId,
-            "workos-integration.issuer": issuer,
+            "workos-integration.issuer": issuer.length === 0 ? null : issuer,
           },
           pushable: true,
         });
@@ -173,9 +177,13 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
                 </label>
               )}
               <label className="flex flex-col gap-2 text-sm font-medium">
-                Issuer
-                <DesignInput value={issuer} onChange={event => setIssuer(event.target.value)} placeholder="https://issuer.example.com" leadingIcon={<LinkSimpleIcon />} />
-                <span className="text-xs font-normal text-muted-foreground">Must exactly match the JWT issuer claim.</span>
+                {props.provider === "workos" ? "Issuer override (advanced, optional)" : "Issuer"}
+                <DesignInput value={issuer} onChange={event => setIssuer(event.target.value)} placeholder={props.provider === "workos" ? "Leave blank to derive from Client ID" : "https://issuer.example.com"} leadingIcon={<LinkSimpleIcon />} />
+                <span className="text-xs font-normal text-muted-foreground">
+                  {props.provider === "workos"
+                    ? "Leave blank to use the issuer derived from the Client ID. Only set this for a WorkOS deployment with a different issuer."
+                    : "Must exactly match the JWT issuer claim."}
+                </span>
               </label>
               {props.provider === "clerk" && (
                 <label className="flex flex-col gap-2 text-sm font-medium">
@@ -197,10 +205,11 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
                   </label>
                 </>
               )}
-              {props.provider === "workos" && clientId.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  JWKS URL: https://api.workos.com/sso/jwks/{clientId}
-                </p>
+              {workosDerivedUrls != null && (
+                <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <p>Derived issuer: {workosDerivedUrls.issuer}</p>
+                  <p>JWKS URL: {workosDerivedUrls.jwksUrl}</p>
+                </div>
               )}
               <div>
                 <DesignButton onClick={save}>Save configuration</DesignButton>
