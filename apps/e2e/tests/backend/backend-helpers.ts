@@ -1356,37 +1356,63 @@ export namespace InternalApiKey {
 // The cap is fixed below the 30s minimum timeout declared by any e2e test. This wait runs
 // *inside* Project.create, so keeping it below the suite-wide minimum ensures that slow
 // materialization cannot consume an entire test budget — even for tests that never touch
-// billing (e.g. outbox rendering-state tests).
+// billing (e.g. outbox rendering-state tests). The deadline is enforced before each poll,
+// by aborting the request when its remaining budget expires, and by clamping the sleep
+// between polls to that remaining budget.
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
   const timeoutMs = 15_000;
   const startedAt = performance.now();
+  const deadline = startedAt + timeoutMs;
+  const warnTimeout = () => {
+    const elapsedMs = performance.now() - startedAt;
+    console.warn(
+      `[billing-entitlement-wait] Timed out waiting for team ${ownerTeamId} after ${elapsedMs.toFixed(0)} ms`,
+    );
+  };
 
   while (true) {
-    const quantity = await withInternalProject(async () => {
-      const response = await niceBackendFetch(
-        `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
-        { accessType: "server" },
-      );
-      if (response.status !== 200) {
-        throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
-      }
-      const quantity = response.body.quantity;
-      if (typeof quantity !== "number") {
-        throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
-      }
-      return quantity;
-    });
-    if (quantity > 0) return;
-
-    const elapsedMs = performance.now() - startedAt;
-    if (elapsedMs > timeoutMs) {
-      console.warn(
-        `[billing-entitlement-wait] Timed out waiting for team ${ownerTeamId} after ${elapsedMs.toFixed(0)} ms`,
-      );
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      warnTimeout();
       return;
     }
-    await wait(pollIntervalMs);
+
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), remainingMs);
+    let quantity: number;
+    try {
+      quantity = await withInternalProject(async () => {
+        const response = await niceBackendFetch(
+          `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+          { accessType: "server", signal: abortController.signal },
+        );
+        if (response.status !== 200) {
+          throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+        }
+        const quantity = response.body.quantity;
+        if (typeof quantity !== "number") {
+          throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
+        }
+        return quantity;
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        warnTimeout();
+        return;
+      }
+      throw error;
+    } finally {
+      clearTimeout(abortTimeout);
+    }
+    const remainingAfterPollMs = deadline - performance.now();
+    if (remainingAfterPollMs <= 0) {
+      warnTimeout();
+      return;
+    }
+    if (quantity > 0) return;
+
+    await wait(Math.min(pollIntervalMs, remainingAfterPollMs));
   }
 }
 
