@@ -13,7 +13,7 @@ CREATE TABLE "ExternalAuthMethod" (
 
 CREATE TABLE "ExternalAuthSession" (
     "tenancyId" UUID NOT NULL,
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "externalAuthMethodId" UUID NOT NULL,
     "providerSessionId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -24,7 +24,7 @@ CREATE TABLE "ExternalAuthSession" (
     CONSTRAINT "ExternalAuthSession_pkey" PRIMARY KEY ("tenancyId", "id")
 );
 
-CREATE UNIQUE INDEX "ExternalAuthMethod_tenancyId_providerConfigId_issuer_subject_key"
+CREATE UNIQUE INDEX "ExternalAuthMethod_tenancyId_providerConfigId_issuer_subjec_key"
     ON "ExternalAuthMethod"("tenancyId", "providerConfigId", "issuer", "subject");
 
 CREATE UNIQUE INDEX "ExternalAuthMethod_tenancyId_authMethodId_projectUserId_key"
@@ -33,10 +33,10 @@ CREATE UNIQUE INDEX "ExternalAuthMethod_tenancyId_authMethodId_projectUserId_key
 CREATE UNIQUE INDEX "ExternalAuthMethod_tenancyId_projectUserId_providerConfigId_key"
     ON "ExternalAuthMethod"("tenancyId", "projectUserId", "providerConfigId");
 
-CREATE UNIQUE INDEX "ExternalAuthSession_tenancyId_externalAuthMethodId_providerSessionId_key"
+CREATE UNIQUE INDEX "ExternalAuthSession_tenancyId_externalAuthMethodId_provider_key"
     ON "ExternalAuthSession"("tenancyId", "externalAuthMethodId", "providerSessionId");
 
-CREATE INDEX "ExternalAuthSession_tenancyId_externalAuthMethodId_createdAt_idx"
+CREATE INDEX "ExternalAuthSession_tenancyId_externalAuthMethodId_createdA_idx"
     ON "ExternalAuthSession"("tenancyId", "externalAuthMethodId", "createdAt");
 
 ALTER TABLE "ExternalAuthMethod"

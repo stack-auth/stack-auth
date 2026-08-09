@@ -121,7 +121,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       ${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, ${firstAuthMethodId}::uuid,
       'sess_1', NOW()
     )
-  `).rejects.toThrow(/ExternalAuthSession_tenancyId_externalAuthMethodId_providerSess/);
+  `).rejects.toThrow(/ExternalAuthSession_tenancyId_externalAuthMethodId_provider_key/);
 
   await expect(sql`
     INSERT INTO "ExternalAuthSession" (
