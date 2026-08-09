@@ -39,6 +39,7 @@ jobs:
     runs-on: ubicloud-standard-16
     env:
       NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: "69"
+      STACK_BACKEND_DEV_DISABLE_WATCH: "true"
       HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
@@ -65,6 +66,7 @@ jobs:
           run: pnpm run dev &
           wait-on: |
             http://localhost:6902
+            tcp:localhost:6946
           tail: true
           wait-for: 120s
           log-output-if: true

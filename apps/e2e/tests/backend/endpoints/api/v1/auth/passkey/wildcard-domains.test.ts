@@ -89,7 +89,7 @@ describe("Passkey with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Sign up a user first
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
 
     // Configure wildcard domain that matches our test origin
     const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
@@ -162,7 +162,7 @@ describe("Passkey with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Sign up and register passkey with default localhost allowed
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     const expectedUserId = res.userId;
     await Auth.Passkey.register(); // This uses http://localhost:8103
     await Auth.signOut();
@@ -227,7 +227,7 @@ describe("Passkey with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Sign up a user first
-    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    await Auth.Password.signUpWithEmail();
 
     // Configure exact domain that doesn't match
     const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
@@ -303,7 +303,7 @@ describe("Passkey with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Sign up and register passkey with default localhost allowed
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     await Auth.Passkey.register();
     await Auth.signOut();
 
@@ -375,7 +375,7 @@ describe("Passkey with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Sign up and register passkey with default localhost allowed
-    const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const res = await Auth.Password.signUpWithEmail();
     await Auth.Passkey.register(); // This uses http://localhost:8103
     await Auth.signOut();
 

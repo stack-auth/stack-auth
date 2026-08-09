@@ -1,9 +1,9 @@
 import { normalizeCountryCode } from "@hexclave/shared/dist/utils/country-codes";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
 import { pick } from "@hexclave/shared/dist/utils/objects";
 import { headers } from "@/lib/runtime/headers";
+import { getTrustedProxy, type TrustedProxy } from "@/lib/trusted-proxy";
 
 // An end user is a person sitting behind a computer screen.
 //
@@ -42,8 +42,6 @@ type EndUserLocation = {
   longitude?: number,
   tzIdentifier?: string,
 };
-
-type TrustedProxy = "" | "vercel" | "cloudflare" | "cloudrun";
 
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
@@ -108,6 +106,7 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   const isVercelTrusted = trustedProxy === "vercel";
   const isCloudflareTrusted = trustedProxy === "cloudflare";
   const isCloudRunTrusted = trustedProxy === "cloudrun";
+  const isGenericProxyTrusted = trustedProxy === "generic";
 
   // Only read proxy headers as trusted when the corresponding proxy is configured.
   // Google Cloud's HTTP(S) LB appends two entries to X-Forwarded-For:
@@ -117,10 +116,13 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   const trustedIp = (isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
     ?? (isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
     ?? (isCloudRunTrusted ? allHeaders.get("x-forwarded-for")?.split(",").at(-2)?.trim() : undefined)
+    // A generic proxy cannot have safe chain semantics inferred for it. Operators must
+    // overwrite X-Real-IP and prevent direct access to the origin before enabling this mode.
+    ?? (isGenericProxyTrusted ? allHeaders.get("x-real-ip") : undefined)
     ?? undefined;
 
   // All other IP headers are always spoofable — including proxy headers when the proxy is not configured as trusted
-  const spoofableIp = allHeaders.get("x-real-ip")
+  const spoofableIp = (!isGenericProxyTrusted ? allHeaders.get("x-real-ip") : undefined)
     ?? (!isCloudRunTrusted ? allHeaders.get("x-forwarded-for")?.split(",").at(0) : undefined)
     ?? (!isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
     ?? (!isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
@@ -185,11 +187,9 @@ export async function getEndUserInfo(): Promise<
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
-    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
-    const trustedProxy = getEnvVariable("STACK_TRUSTED_PROXY", "").toLowerCase().trim();
-    if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare" && trustedProxy !== "cloudrun") {
-      throw new HexclaveAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
-    }
+    // HEXCLAVE_TRUSTED_PROXY should name the platform proxy, use "generic" for a locked-down
+    // reverse proxy that overwrites forwarding headers, or remain empty for no proxy trust.
+    const trustedProxy = getTrustedProxy();
     return getBrowserEndUserInfo(allHeaders, trustedProxy);
   }
 
@@ -279,6 +279,35 @@ import.meta.vitest?.describe("getBrowserEndUserInfo(...)", () => {
       maybeSpoofed: false,
       exactInfo: {
         ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("trusts only an overwritten x-real-ip header for a generic reverse proxy", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "192.0.2.1, 10.0.0.1",
+      "x-real-ip": "198.51.100.42",
+    }), "generic");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("does not infer trusted forwarding-chain semantics for a generic reverse proxy", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "192.0.2.1, 198.51.100.42, 10.0.0.1",
+    }), "generic");
+
+    expect(result).toEqual({
+      maybeSpoofed: true,
+      spoofedInfo: {
+        ip: "192.0.2.1",
       },
     });
   });

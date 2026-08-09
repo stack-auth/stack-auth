@@ -2,7 +2,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should allow signing in to existing accounts", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   backendContext.set({ userAuth: null });
   await Auth.expectToBeSignedOut();
   const res2 = await Auth.Password.signInWithEmail({ password: res.password });
@@ -81,7 +81,7 @@ it("should not allow signing in with an e-mail that never signed up", async ({ e
 });
 
 it("should not allow signing in with an incorrect password", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch("/api/v1/auth/password/sign-in", {
     method: "POST",
     accessType: "client",
@@ -106,7 +106,7 @@ it("should not allow signing in with an incorrect password", async ({ expect }) 
 });
 
 it("should not allow signing in when MFA is required", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   await Auth.Mfa.setupTotpMfa();
   await Auth.signOut();
 

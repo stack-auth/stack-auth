@@ -3,7 +3,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should sign in users with MFA enabled", async ({ expect }) => {
-  const passwordRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const passwordRes = await Auth.Password.signUpWithEmail();
   const { totpSecret } = await Auth.Mfa.setupTotpMfa();
   await Auth.signOut();
   const signInRes = await niceBackendFetch("/api/v1/auth/password/sign-in", {
@@ -64,7 +64,7 @@ it("should sign in users with MFA enabled", async ({ expect }) => {
 });
 
 it("should reject invalid attempt codes", async ({ expect }) => {
-  const passwordRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const passwordRes = await Auth.Password.signUpWithEmail();
   const { totpSecret } = await Auth.Mfa.setupTotpMfa();
   await Auth.signOut();
   const totp = generateTOTP(totpSecret, 30, 6);
@@ -94,7 +94,7 @@ it("should reject invalid attempt codes", async ({ expect }) => {
 
 
 it("should reject invalid totp codes", async ({ expect }) => {
-  const passwordRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const passwordRes = await Auth.Password.signUpWithEmail();
   const { totpSecret } = await Auth.Mfa.setupTotpMfa();
   await Auth.signOut();
   const signInRes = await niceBackendFetch("/api/v1/auth/password/sign-in", {

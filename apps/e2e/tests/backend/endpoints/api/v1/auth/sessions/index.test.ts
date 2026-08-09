@@ -4,7 +4,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("cannot create sessions from the client", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   const res2 = await niceBackendFetch("/api/v1/auth/sessions", {
     accessType: "client",
     method: "POST",
@@ -36,7 +36,7 @@ it("cannot create sessions from the client", async ({ expect }) => {
 });
 
 it("creates sessions for existing users", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   backendContext.set({ userAuth: null });
   await Auth.expectToBeSignedOut();
   const res2 = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -59,7 +59,7 @@ it("creates sessions for existing users", async ({ expect }) => {
 });
 
 it("creates sessions that expire", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   await Auth.expectToBeSignedIn();
   const beginDate = new Date();
   const res2 = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -133,7 +133,7 @@ it("creates sessions that expire", async ({ expect }) => {
 });
 
 it("cannot create sessions with an expiry date larger than a year away", async ({ expect }) => {
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   const res2 = await niceBackendFetch("/api/v1/auth/sessions", {
     accessType: "server",
     method: "POST",
@@ -168,7 +168,7 @@ it("cannot create sessions with an expiry date larger than a year away", async (
 
 it("can delete sessions as client", async ({ expect }) => {
   // Create a user and sign up
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
   const additionalSession = await niceBackendFetch("/api/v1/auth/sessions", {
     accessType: "server",
     method: "POST",
@@ -217,7 +217,7 @@ it("can delete sessions as client", async ({ expect }) => {
 
 it("cannot delete current session as client", async ({ expect }) => {
   // Create a user and sign up
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
 
   // List sessions to get the current session ID
   const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -264,11 +264,11 @@ it("cannot delete current session as client", async ({ expect }) => {
 
 it("cannot read another user's sessions as client", async ({ expect }) => {
   // Create first user and sign up (skip email wait — not needed for this test)
-  const user1 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const user1 = await Auth.Password.signUpWithEmail();
 
   // Create second user and sign up
   backendContext.set({ userAuth: null, mailbox: createMailbox() }); // Clear first user's auth
-  const user2 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const user2 = await Auth.Password.signUpWithEmail();
 
   // Try to read user1's sessions while authenticated as user2
   const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -323,7 +323,7 @@ it("server cannot list sessions without user_id", async ({ expect }) => {
 
 it("impersonation sessions hidden for non-admin clients and shown for admins", async ({ expect }) => {
   // Create a user and sign up
-  const res = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const res = await Auth.Password.signUpWithEmail();
 
   // Create an impersonation session for the user
   const impersonationSession = await niceBackendFetch("/api/v1/auth/sessions", {

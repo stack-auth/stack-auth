@@ -14,7 +14,7 @@ it("should sign up with credential", async ({ expect }) => {
   const result1 = await clientApp.signUpWithCredential({
     email: "test@test.com",
     password: "password",
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
 
   expect(result1).toMatchInlineSnapshot(`
@@ -177,7 +177,7 @@ it("should throw a helpful error when destructuring user", async ({ expect }) =>
   const signUpResult = await clientApp.signUpWithCredential({
     email,
     password,
-    verificationCallbackUrl: "http://localhost:3000",
+    noVerificationCallback: true,
   });
   expect(signUpResult.status).toBe("ok");
 

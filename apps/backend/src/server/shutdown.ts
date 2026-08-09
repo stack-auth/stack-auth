@@ -1,9 +1,24 @@
 export type BackendShutdownDependencies = {
-  stopAcceptingRequests: () => Promise<unknown>,
-  drainBackgroundTasks: () => Promise<unknown>,
-  disconnectDatabases: () => Promise<unknown>,
-  closeInstrumentation: () => Promise<unknown>,
+  stopAcceptingRequests: (timeoutMs: number) => Promise<unknown>,
+  drainBackgroundTasks: (timeoutMs: number) => Promise<unknown>,
+  disconnectDatabases: (timeoutMs: number) => Promise<unknown>,
+  closeInstrumentation: (timeoutMs: number) => Promise<unknown>,
   log: (event: BackendShutdownLogEvent) => void,
+};
+
+// Cloud Run and Docker commonly allow ten seconds between SIGTERM and SIGKILL.
+// Graceful work ends one second before our hard exit, which itself runs one
+// second before the platform kill, so the process owns its terminal log and
+// exit code. Database and instrumentation time is reserved from the end of the
+// graceful deadline; HTTP has a cap because close waits for active requests,
+// while background work receives any time HTTP did not use.
+export const backendShutdownBudget = {
+  gracefulShutdownTimeoutMs: 8000,
+  httpServerMaxTimeoutMs: 2000,
+  databaseMaxTimeoutMs: 1000,
+  instrumentationMaxTimeoutMs: 1000,
+  hardExitTimeoutMs: 9000,
+  platformGracePeriodMs: 10000,
 };
 
 export type BackendShutdownLogEvent = {
@@ -18,6 +33,26 @@ type ShutdownStep = {
   run: () => Promise<unknown>,
 };
 
+export async function runShutdownOperationWithTimeout<T>(
+  operationName: string,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${operationName} did not complete within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(), timeoutPromise]);
+  } finally {
+    if (timeout != null) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 async function runShutdownStep(step: ShutdownStep) {
   const [result] = await Promise.allSettled([Promise.resolve().then(step.run)]);
   return {
@@ -26,15 +61,30 @@ async function runShutdownStep(step: ShutdownStep) {
   };
 }
 
+function getRemainingShutdownTimeoutMs(
+  deadline: number,
+  reservedTailMs: number,
+  now: () => number,
+): number {
+  return Math.max(0, Math.floor(deadline - now() - reservedTailMs));
+}
+
 /**
- * Stops ingress first, then drains resources in dependency order. Each phase uses
- * allSettled so one broken cleanup path cannot prevent telemetry from reporting it.
+ * Stops ingress first, then drains resources in dependency order against one
+ * monotonic deadline. Each phase uses allSettled so one broken cleanup path
+ * cannot prevent telemetry from reporting it.
  */
 export async function shutdownBackend(
   signal: NodeJS.Signals,
   dependencies: BackendShutdownDependencies,
+  now: () => number = () => performance.now(),
 ): Promise<void> {
-  const startedAt = performance.now();
+  const startedAt = now();
+  const deadline = startedAt + backendShutdownBudget.gracefulShutdownTimeoutMs;
+  const cleanupTailMs = (
+    backendShutdownBudget.databaseMaxTimeoutMs
+    + backendShutdownBudget.instrumentationMaxTimeoutMs
+  );
   dependencies.log({
     event: "backend.shutdown.started",
     signal,
@@ -43,19 +93,30 @@ export async function shutdownBackend(
   const results = [
     await runShutdownStep({
       name: "http-server",
-      run: dependencies.stopAcceptingRequests,
+      run: async () => await dependencies.stopAcceptingRequests(Math.min(
+        backendShutdownBudget.httpServerMaxTimeoutMs,
+        getRemainingShutdownTimeoutMs(deadline, cleanupTailMs, now),
+      )),
     }),
     await runShutdownStep({
       name: "background-tasks",
-      run: dependencies.drainBackgroundTasks,
+      run: async () => await dependencies.drainBackgroundTasks(
+        getRemainingShutdownTimeoutMs(deadline, cleanupTailMs, now),
+      ),
     }),
     await runShutdownStep({
       name: "databases",
-      run: dependencies.disconnectDatabases,
+      run: async () => await dependencies.disconnectDatabases(Math.min(
+        backendShutdownBudget.databaseMaxTimeoutMs,
+        getRemainingShutdownTimeoutMs(deadline, backendShutdownBudget.instrumentationMaxTimeoutMs, now),
+      )),
     }),
     await runShutdownStep({
       name: "instrumentation",
-      run: dependencies.closeInstrumentation,
+      run: async () => await dependencies.closeInstrumentation(Math.min(
+        backendShutdownBudget.instrumentationMaxTimeoutMs,
+        getRemainingShutdownTimeoutMs(deadline, 0, now),
+      )),
     }),
   ];
   const failures = results.filter((entry) => entry.result.status === "rejected");
@@ -65,7 +126,7 @@ export async function shutdownBackend(
     dependencies.log({
       event: "backend.shutdown.failed",
       signal,
-      durationMs: performance.now() - startedAt,
+      durationMs: now() - startedAt,
       failedSteps,
     });
     throw new AggregateError(
@@ -77,6 +138,6 @@ export async function shutdownBackend(
   dependencies.log({
     event: "backend.shutdown.completed",
     signal,
-    durationMs: performance.now() - startedAt,
+    durationMs: now() - startedAt,
   });
 }

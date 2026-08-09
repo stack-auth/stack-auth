@@ -337,6 +337,13 @@ export namespace Auth {
     };
   }
 
+  export async function fastSignUpWithEmail(email = backendContext.value.mailbox.emailAddress) {
+    return await fastSignUp({
+      primary_email: email,
+      primary_email_verified: true,
+    });
+  }
+
   export async function ensureParsableAccessToken() {
     const accessToken = backendContext.value.userAuth?.accessToken;
     if (accessToken) {
@@ -598,7 +605,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, sendVerificationEmail?: boolean, waitForVerificationEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -608,7 +615,7 @@ export namespace Auth {
         body: filterUndefined({
           email,
           password,
-          verification_callback_url: "http://localhost:12345/some-callback-url",
+          verification_callback_url: options.sendVerificationEmail ? "http://localhost:12345/some-callback-url" : undefined,
           bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
         }),
       });
@@ -622,8 +629,9 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // Wait for the verification email to arrive (unless explicitly disabled)
-      if (!options.noWaitForEmail) {
+      // Verification emails dominated the baseline outbox and slowed the suite,
+      // so only tests asserting verification behavior opt into sending one.
+      if (options.sendVerificationEmail && options.waitForVerificationEmail !== false) {
         await mailbox.waitForMessagesWithSubject("Verify your email");
       }
 
@@ -1345,36 +1353,67 @@ export namespace InternalApiKey {
 // appears, the cap adds no latency on the happy path; it only bounds the wait when
 // materialization has genuinely stalled.
 //
-// The cap is half of Vitest's per-test timeout (see apps/e2e/vitest.config.ts: 60s in CI,
-// 30s locally). This wait runs *inside* Project.create, so a cap at or above the test
-// timeout would turn slow materialization into a hard test timeout — even for tests that
-// never touch billing (e.g. outbox rendering-state tests). Bounding it at half the budget
-// guarantees the wait alone can never time a test out and still leaves ample time for the
-// test body, while giving a stalled TimeFold a fair chance to catch up.
+// The cap is fixed below the 30s minimum timeout declared by any e2e test. This wait runs
+// *inside* Project.create, so keeping it below the suite-wide minimum ensures that slow
+// materialization cannot consume an entire test budget — even for tests that never touch
+// billing (e.g. outbox rendering-state tests). The deadline is enforced before each poll,
+// by aborting the request when its remaining budget expires, and by clamping the sleep
+// between polls to that remaining budget.
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
-  const timeoutMs = (process.env.CI ? 60_000 : 30_000) / 2;
+  const timeoutMs = 15_000;
   const startedAt = performance.now();
+  const deadline = startedAt + timeoutMs;
+  const warnTimeout = () => {
+    const elapsedMs = performance.now() - startedAt;
+    console.warn(
+      `[billing-entitlement-wait] Timed out waiting for team ${ownerTeamId} after ${elapsedMs.toFixed(0)} ms`,
+    );
+  };
 
   while (true) {
-    const quantity = await withInternalProject(async () => {
-      const response = await niceBackendFetch(
-        `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
-        { accessType: "server" },
-      );
-      if (response.status !== 200) {
-        throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+    const remainingMs = deadline - performance.now();
+    if (remainingMs <= 0) {
+      warnTimeout();
+      return;
+    }
+
+    const abortController = new AbortController();
+    const abortTimeout = setTimeout(() => abortController.abort(), remainingMs);
+    let quantity: number;
+    try {
+      quantity = await withInternalProject(async () => {
+        const response = await niceBackendFetch(
+          `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+          { accessType: "server", signal: abortController.signal },
+        );
+        if (response.status !== 200) {
+          throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+        }
+        const quantity = response.body.quantity;
+        if (typeof quantity !== "number") {
+          throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
+        }
+        return quantity;
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        warnTimeout();
+        return;
       }
-      const quantity = response.body.quantity;
-      if (typeof quantity !== "number") {
-        throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
-      }
-      return quantity;
-    });
+      throw error;
+    } finally {
+      clearTimeout(abortTimeout);
+    }
     if (quantity > 0) return;
 
-    if (performance.now() - startedAt > timeoutMs) return;
-    await wait(pollIntervalMs);
+    const remainingAfterPollMs = deadline - performance.now();
+    if (remainingAfterPollMs <= 0) {
+      warnTimeout();
+      return;
+    }
+
+    await wait(Math.min(pollIntervalMs, remainingAfterPollMs));
   }
 }
 

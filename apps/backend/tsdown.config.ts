@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Rolldown, type UserConfig } from "tsdown";
 // @ts-expect-error - this is a workspace tsdown helper imported from source.
 import { createBasePlugin } from "../../configs/tsdown/plugins.ts";
+// @ts-expect-error - the explicit .ts extension is required when Node loads this config directly.
+import { backendRuntimeExternalPackages, isBackendRuntimeExternalPackage } from "./scripts/runtime-external-packages.ts";
 // @ts-expect-error - the explicit .ts extension is required because tsdown loads this config via Node's
 // native ESM loader (type stripping), which doesn't resolve extensionless relative imports. Locally the
 // tsx fallback loader masks this, but CI/Vercel (Node 22) fail with "Cannot find module" without it.
@@ -17,36 +19,10 @@ const backendDir = __dirname;
 
 const packageJson = JSON.parse(readFileSync(resolve(backendDir, "package.json"), "utf-8"));
 
-const externalPackages = [
-  "@prisma/client",
-  "@prisma/adapter-neon",
-  "@prisma/adapter-pg",
-  "@prisma/instrumentation",
-  "@prisma/extension-read-replicas",
-  "@prisma/client/runtime/library",
-  "@prisma/client/runtime/client",
-  "@prisma/client/runtime/edge",
-  "bcrypt",
-  "oidc-provider",
-  "pg",
-  "sharp",
-  // @aws-sdk and @smithy use complex class hierarchies that rolldown mis-scopes
-  // when bundled, emitting references to hoisted classes before they're defined
-  // (e.g. "ReferenceError: StructureSchema$1 is not defined" when the server
-  // bundle boots via `node dist/server.mjs`). Keep them external so Node resolves
-  // them from node_modules at runtime, which is always present alongside the
-  // bundle (Docker image, CI runner, Vercel NFT trace). Mirrors the same fix in
-  // scripts/db-migrations.tsdown.config.ts.
-  "@aws-sdk",
-  "@smithy",
-];
-
 const nodeBuiltins = builtinModules.flatMap((moduleName) => [moduleName, `node:${moduleName}`]);
 
 const customNoExternal = new Set([
-  ...Object.keys(packageJson.dependencies).filter(
-    (dep) => !externalPackages.some((externalPackage) => dep === externalPackage || dep.startsWith(externalPackage + "/"))
-  ),
+  ...Object.keys(packageJson.dependencies).filter((dep) => !isBackendRuntimeExternalPackage(dep)),
 ]);
 
 function packageNameFromSpecifier(specifier: string) {
@@ -103,7 +79,7 @@ export default defineConfig({
   platform: "node",
   noExternal: shouldBundleDependency,
   inlineOnly: false,
-  external: [...nodeBuiltins, ...externalPackages],
+  external: [...nodeBuiltins, ...backendRuntimeExternalPackages],
   clean: true,
   minify: false,
   sourcemap: true,
