@@ -90,6 +90,7 @@ function AddEmailForm(props: {
   const { t } = useTranslation();
   const user = useUser({ or: "throw", includeRestricted: true });
   const hexclaveApp = useStackApp();
+  const canSignOut = !hexclaveApp.isExternalAuthApp();
   const [loading, setLoading] = useState(false);
 
   const emailSchema = yupObject({
@@ -116,10 +117,10 @@ function AddEmailForm(props: {
     <MessageCard
       title={t("Add your email address")}
       fullPage={!!props.fullPage}
-      secondaryButtonText={t("Sign out")}
-      secondaryAction={async () => {
+      secondaryButtonText={canSignOut ? t("Sign out") : undefined}
+      secondaryAction={canSignOut ? async () => {
         await user.signOut();
-      }}
+      } : undefined}
     >
       <Typography className="mb-4">
         {t("Please add an email address to complete your account setup. We'll send you a verification email.")}
@@ -150,6 +151,8 @@ function VerifyEmailScreen(props: {
 }) {
   const { t } = useTranslation();
   const { user, email } = props;
+  const hexclaveApp = useStackApp();
+  const canSignOut = !hexclaveApp.isExternalAuthApp();
   const [changingEmail, setChangingEmail] = useState(false);
 
   if (changingEmail) {
@@ -164,10 +167,10 @@ function VerifyEmailScreen(props: {
       primaryAction={async () => {
         await user.sendVerificationEmail();
       }}
-      secondaryButtonText={t("Sign out")}
-      secondaryAction={async () => {
+      secondaryButtonText={canSignOut ? t("Sign out") : undefined}
+      secondaryAction={canSignOut ? async () => {
         await user.signOut();
-      }}
+      } : undefined}
     >
       <Typography>
         {t("Please verify your email address ")}
