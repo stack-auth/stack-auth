@@ -1405,12 +1405,13 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
     } finally {
       clearTimeout(abortTimeout);
     }
+    if (quantity > 0) return;
+
     const remainingAfterPollMs = deadline - performance.now();
     if (remainingAfterPollMs <= 0) {
       warnTimeout();
       return;
     }
-    if (quantity > 0) return;
 
     await wait(Math.min(pollIntervalMs, remainingAfterPollMs));
   }
