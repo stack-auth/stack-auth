@@ -222,7 +222,7 @@ export function BetterAuthDemo() {
     let active = true;
     const controller = new AbortController();
     sessionLookupController.current = controller;
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       try {
         const response = await fetch("/api/auth/get-session", { signal: controller.signal });
         if (!response.ok) return;
@@ -248,7 +248,7 @@ export function BetterAuthDemo() {
     if (sessionId == null) return;
     let active = true;
     setStatus("exchanging");
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       const [token, result] = await Promise.all([
           fetch("/api/auth/token").then(async (response) => {
             if (!response.ok)
