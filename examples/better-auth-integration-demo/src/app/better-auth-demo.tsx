@@ -1,7 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, betterAuthTokenStore } from "@hexclave/next";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
   iss?: string;
@@ -53,6 +53,7 @@ function Claim({
 }
 
 export function BetterAuthDemo() {
+  const sessionLookupController = useRef<AbortController | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [providerUser, setProviderUser] = useState<ProviderUser | null>(null);
@@ -117,6 +118,8 @@ export function BetterAuthDemo() {
   );
 
   const authenticate = async (path: "sign-up" | "sign-in") => {
+    sessionLookupController.current?.abort();
+    sessionLookupController.current = null;
     setError(null);
     setIsSubmitting(true);
     try {
@@ -158,7 +161,9 @@ export function BetterAuthDemo() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/auth/get-session")
+    const controller = new AbortController();
+    sessionLookupController.current = controller;
+    fetch("/api/auth/get-session", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return null;
         return await response.json() as { session?: { id: string }; user?: ProviderUser };
@@ -169,10 +174,16 @@ export function BetterAuthDemo() {
         setSessionId(session.session.id);
       })
       .catch(() => {
-        if (active) setError("Better Auth session lookup failed");
+        if (active && !controller.signal.aborted) {
+          setError("Better Auth session lookup failed");
+        }
       });
     return () => {
       active = false;
+      controller.abort();
+      if (sessionLookupController.current === controller) {
+        sessionLookupController.current = null;
+      }
     };
   }, []);
 
@@ -204,6 +215,7 @@ export function BetterAuthDemo() {
         setClaims(decodeClaims(token));
         setExchange(result);
         const sdkUser = await app.getUser();
+        if (!active) return;
         setUser(sdkUser == null ? null : {
           id: sdkUser.id,
           primaryEmail: sdkUser.primaryEmail,
