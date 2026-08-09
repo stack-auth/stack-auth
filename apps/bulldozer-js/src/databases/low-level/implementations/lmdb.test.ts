@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import * as lmdb from "lmdb";
 import { describe, expect, it } from "vitest";
 import { declareLmdbLowLevelDatabase } from "./lmdb.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const buffer = (value: string) => textEncoder.encode(value).buffer;
+const byteBuffer = (value: Uint8Array) => new Uint8Array(value).slice().buffer;
 const text = (value: ArrayBuffer | null) => value === null ? null : textDecoder.decode(value);
 const tempLmdbPath = async () => await mkdtemp(join(tmpdir(), "bulldozer-lmdb-"));
 
@@ -86,8 +88,78 @@ describe("LMDB low-level database", () => {
       const dump = db.declareKvDump("heap");
       const { keys: [key], seq } = await dump.insertAll([buffer("payload")]);
       await db.waitUntilDurable(seq);
-      expect(key.byteLength).toBe(48);
+      expect(key.byteLength).toBe(17);
+      expect(new Uint8Array(key)[0]).toBe(0x01);
       expect(text((await dump.get(key)).buffer)).toBe("payload");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("generates ordered dump keys and preserves legacy values", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const rawRoot = lmdb.open({ path, maxDbs: 1024, separateFlushed: true });
+      const rawDump = rawRoot.openDB<Buffer, Uint8Array>({
+        name: "ordered:dump:heap",
+        encoding: "binary",
+        keyEncoding: "binary",
+        useVersions: true,
+      });
+      rawDump.putSync(Buffer.alloc(48, 0x7f), Buffer.from("legacy-arbitrary"), 1);
+      rawDump.putSync(Buffer.alloc(48, 0xff), Buffer.from("legacy-max"), 2);
+      await rawRoot.close();
+
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "ordered" });
+      try {
+        const dump = db.declareKvDump("heap");
+        const inserted = await dump.insertAll([
+          buffer("first"),
+          buffer("second"),
+          ...Array.from({ length: 448 }, () => buffer("extra")),
+        ]);
+        await db.waitUntilDurable(inserted.seq);
+
+        expect(inserted.keys).toHaveLength(450);
+        expect(inserted.keys[0].byteLength).toBe(17);
+        expect(new Uint8Array(inserted.keys[0])[0]).toBe(0x01);
+        for (let index = 1; index < inserted.keys.length; index++) {
+          expect(Buffer.compare(Buffer.from(inserted.keys[index - 1]), Buffer.from(inserted.keys[index]))).toBeLessThan(0);
+        }
+        expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0x7f)))).buffer)).toBe("legacy-arbitrary");
+        expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0xff)))).buffer)).toBe("legacy-max");
+        expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
+        expect(text((await dump.get(inserted.keys[1])).buffer)).toBe("second");
+      } finally {
+        await db.close();
+      }
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("continues generating versioned dump keys after reopening", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db1 = declareLmdbLowLevelDatabase({ path, dbId: "reopen" });
+      const dump1 = db1.declareKvDump("heap");
+      const first = await dump1.insertAll([buffer("first")]);
+      await db1.waitUntilDurable(first.seq);
+      await db1.close();
+
+      const db2 = declareLmdbLowLevelDatabase({ path, dbId: "reopen" });
+      try {
+        const dump2 = db2.declareKvDump("heap");
+        const second = await dump2.insertAll([buffer("second")]);
+        await db2.waitUntilDurable(second.seq);
+
+        expect(second.keys[0].byteLength).toBe(17);
+        expect(new Uint8Array(second.keys[0])[0]).toBe(0x01);
+        expect(text((await dump2.get(first.keys[0])).buffer)).toBe("first");
+        expect(text((await dump2.get(second.keys[0])).buffer)).toBe("second");
+      } finally {
+        await db2.close();
+      }
     } finally {
       await rm(path, { recursive: true, force: true });
     }
