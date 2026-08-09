@@ -143,7 +143,11 @@ jobs:
           # request is sent unauthenticated and fails with 401.
           printenv OPENAI_API_KEY | codex login --with-api-key
 
-          # Pass the prompt over stdin to avoid Linux's per-argument length limit.
+          # `codex exec` runs non-interactively. We keep it read-only and never
+          # prompt for approvals so it can't hang CI. It's given the diff + test
+          # list directly in the prompt, so it doesn't need to explore the repo.
+          # The prompt goes through stdin (`-`) because as a single argv entry it
+          # exceeds Linux's per-argument limit (MAX_ARG_STRLEN, 128 KiB).
           codex exec - \
             --skip-git-repo-check \
             -s read-only \
