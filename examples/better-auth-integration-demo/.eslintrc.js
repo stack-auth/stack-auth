@@ -5,7 +5,6 @@ module.exports = {
   ],
   ignorePatterns: ["/*", "!/src"],
   rules: {
-    "@typescript-eslint/no-misused-promises": [0],
     "@typescript-eslint/no-unnecessary-condition": [0],
   },
 };

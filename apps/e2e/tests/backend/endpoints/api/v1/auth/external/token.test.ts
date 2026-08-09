@@ -429,7 +429,7 @@ describe("external authentication token exchange", () => {
       "not-a-jwt",
       await createProviderToken({ issuer: "https://wrong-issuer.example.com" }),
       await createProviderToken({ audience: "wrong-audience" }),
-      await createProviderToken({ expirationTime: "0s" }),
+      await createProviderToken({ expirationTime: "-1s" }),
     ]) {
       const response = await exchange(token);
       expect(response.status).toBe(401);

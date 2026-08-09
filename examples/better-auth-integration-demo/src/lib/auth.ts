@@ -38,6 +38,7 @@ function createAuth() {
           definePayload: ({ user, session }) => ({
             sub: user.id,
             email: user.email,
+            email_verified: user.emailVerified,
             name: user.name,
             sid: session.id,
           }),

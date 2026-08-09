@@ -76,6 +76,10 @@ type BotChallengeInput = {
   unavailable?: true,
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 const botChallengeKnownErrors = [
   KnownErrors.BotChallengeRequired,
   KnownErrors.BotChallengeFailed,
@@ -1260,7 +1264,7 @@ export class HexclaveClientInterface {
   async exchangeExternalAuthToken(
     providerId: ExternalAuthProviderId,
     token: string,
-  ): Promise<Result<{ accessToken: string, sessionId: string, userId: string }, KnownErrors["ExternalAuthProviderNotConfigured"] | KnownErrors["InvalidExternalAuthToken"] | KnownErrors["SignUpNotEnabled"] | KnownErrors["SignUpRejected"]>> {
+  ): Promise<Result<{ accessToken: string, sessionId: string, userId: string, isNewUser: boolean }, KnownErrors["ExternalAuthProviderNotConfigured"] | KnownErrors["InvalidExternalAuthToken"] | KnownErrors["SignUpNotEnabled"] | KnownErrors["SignUpRejected"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/external/token",
       {
@@ -1284,11 +1288,24 @@ export class HexclaveClientInterface {
     if (res.status === "error") {
       return Result.error(res.error);
     }
-    const body = await res.data.json();
+    const body: unknown = await res.data.json();
+    if (
+      !isRecord(body)
+      || typeof body.access_token !== "string"
+      || body.access_token.length === 0
+      || typeof body.session_id !== "string"
+      || body.session_id.length === 0
+      || typeof body.user_id !== "string"
+      || body.user_id.length === 0
+      || typeof body.is_new_user !== "boolean"
+    ) {
+      return Result.error(new KnownErrors.InvalidExternalAuthToken());
+    }
     return Result.ok({
       accessToken: body.access_token,
       sessionId: body.session_id,
       userId: body.user_id,
+      isNewUser: body.is_new_user,
     });
   }
 

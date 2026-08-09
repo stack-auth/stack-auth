@@ -3588,6 +3588,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return crud && this._currentUserFromCrud(crud, session);
   }
 
+  isExternalAuthApp(): boolean {
+    return typeof this._tokenStoreInit === "object"
+      && this._tokenStoreInit != null
+      && isExternalTokenStore(this._tokenStoreInit);
+  }
+
   // IF_PLATFORM react-like
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentUser<ProjectId>;
@@ -4503,7 +4509,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (typeof this._redirectMethod !== "string") {
           throw new HexclaveAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
-        if (typeof this._tokenStoreInit === "object" && this._tokenStoreInit != null && "type" in this._tokenStoreInit) {
+        if (typeof this._tokenStoreInit === "object" && this._tokenStoreInit != null && isExternalTokenStore(this._tokenStoreInit)) {
           throw new HexclaveAssertionError("Cannot serialize an app with an external token store because its callbacks are not serializable. Construct this app in the client runtime instead.");
         }
 

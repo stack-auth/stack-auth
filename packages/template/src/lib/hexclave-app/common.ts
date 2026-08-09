@@ -92,6 +92,7 @@ export type ExternalTokenStore = {
   readonly providerId: ExternalAuthProviderId,
   getSessionId?(): string | null,
   getToken(): Promise<string | null>,
+  /** The adapter retains this subscription for its own lifetime and does not unsubscribe it. */
   subscribe?(callback: () => void): () => void,
 };
 
@@ -99,9 +100,9 @@ type ExternalTokenStoreOptions = Omit<ExternalTokenStore, "type" | "providerId">
 
 function createExternalTokenStore(providerId: ExternalAuthProviderId, options: ExternalTokenStoreOptions): ExternalTokenStore {
   return {
+    ...options,
     type: "external",
     providerId,
-    ...options,
   };
 }
 

@@ -52,6 +52,11 @@ Optional:
     JS SDKs expose clerkTokenStore(), betterAuthTokenStore(), and workosTokenStore()
     helpers that construct ExternalTokenStore objects with the corresponding
     providerId.
+
+    Prebuilt user controls must not offer a Hexclave sign-out action when the
+    app uses an ExternalTokenStore. Direct calls to signOut still throw the
+    developer-facing assertion; applications must invoke the provider's own
+    sign-out flow instead.
       
   oauthScopesOnSignIn: object
     Additional OAuth scopes to request during sign-in for each provider.

@@ -80,7 +80,10 @@ export class RefreshToken {
  */
 export class InternalSession {
   /**
-  * Each session has a session key that depends on the tokens inside. If the session has a refresh token, the session key depends only on the refresh token. If the session does not have a refresh token, the session key depends only on the access token.
+   * Each session has a session key that depends on the tokens inside unless an explicit sessionKey is provided.
+   * Explicit keys override token-derived keys for delegated external sessions. If the session has a refresh token,
+   * the session key depends only on the refresh token. If the session does not have a refresh token, the session key
+   * depends only on the access token.
   *
   * Multiple Session objects may have the same session key, which implies that they represent the same session by the same user. Furthermore, a session's key never changes over the lifetime of a session object.
   *
@@ -233,6 +236,7 @@ export class InternalSession {
     if (!newAccessToken) return;
     // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token pair
     // that maps to this same session key (validated against the incoming pair, not this session's existing tokens).
+    // Explicit-key sessions skip this in-class session-key check; their caller owns that invariant.
     if (this._options.sessionKey == null && InternalSession.calculateSessionKey(tokens) !== this.sessionKey) return;
     if (this._accessToken.get()?.token === newAccessToken.token) return;
     this._accessToken.set(newAccessToken);
@@ -257,8 +261,9 @@ export class InternalSession {
    * This is particularly useful when the data associated with the access token may have changed for example due to an
    * update to the user's profile.
    *
-   * The current implementation marks the access token as expired if and only if a refresh token is available (regardless of
-   * whether the refresh token is actually valid or not), although this is not a guarantee and subject to change.
+   * The current implementation marks the access token as expired if and only if a refresh token or a
+   * refreshAccessTokenWithoutRefreshTokenCallback is available (regardless of whether it is actually valid),
+   * although this is not a guarantee and subject to change.
    *
    * If you need a stronger guarantee of revoking an access token, use markAccessTokenExpired instead.
    */

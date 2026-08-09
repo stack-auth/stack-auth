@@ -1,6 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, betterAuthTokenStore } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
@@ -26,13 +27,75 @@ type Exchange = {
 };
 type Status = "idle" | "exchanging" | "exchanged" | "error";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 function decodeClaims(token: string): Claims {
   const payload = token.split(".")[1];
   if (payload == null)
     throw new Error("The Better Auth token did not contain a JWT payload");
   const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
   const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes)) as Claims;
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (!isRecord(value)) throw new Error("The Better Auth token payload was malformed");
+  return {
+    iss: typeof value.iss === "string" ? value.iss : undefined,
+    sub: typeof value.sub === "string" ? value.sub : undefined,
+    sid: typeof value.sid === "string" ? value.sid : undefined,
+    aud: typeof value.aud === "string" || Array.isArray(value.aud) && value.aud.every(item => typeof item === "string")
+      ? value.aud
+      : undefined,
+    exp: typeof value.exp === "number" ? value.exp : undefined,
+  };
+}
+
+function parseTokenResponse(value: unknown): string {
+  if (!isRecord(value) || typeof value.token !== "string" || value.token.length === 0) {
+    throw new Error("Better Auth token response was malformed");
+  }
+  return value.token;
+}
+
+function parseSessionResponse(value: unknown): { session?: { id: string }, user?: ProviderUser } {
+  if (!isRecord(value)) {
+    throw new Error("Better Auth session response was malformed");
+  }
+  let session: { id: string } | undefined;
+  if (value.session != null) {
+    if (!isRecord(value.session) || typeof value.session.id !== "string" || value.session.id.length === 0) {
+      throw new Error("Better Auth session response was malformed");
+    }
+    session = { id: value.session.id };
+  }
+  let user: ProviderUser | undefined;
+  if (value.user != null) {
+    if (!isRecord(value.user) || typeof value.user.email !== "string" || typeof value.user.name !== "string") {
+      throw new Error("Better Auth session response was malformed");
+    }
+    user = { email: value.user.email, name: value.user.name };
+  }
+  return {
+    session,
+    user,
+  };
+}
+
+function parseExchange(value: unknown): Exchange {
+  if (!isRecord(value)) throw new Error("Better Auth exchange response was malformed");
+  const stringFields = ["sessionId", "userId", "primaryEmail", "displayName", "error"] as const;
+  if (stringFields.some(field => value[field] != null && typeof value[field] !== "string")
+    || (value.isNewUser != null && typeof value.isNewUser !== "boolean")) {
+    throw new Error("Better Auth exchange response was malformed");
+  }
+  return {
+    sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
+    userId: typeof value.userId === "string" ? value.userId : undefined,
+    isNewUser: typeof value.isNewUser === "boolean" ? value.isNewUser : undefined,
+    primaryEmail: typeof value.primaryEmail === "string" ? value.primaryEmail : null,
+    displayName: typeof value.displayName === "string" ? value.displayName : null,
+    error: typeof value.error === "string" ? value.error : undefined,
+  };
 }
 
 function Claim({
@@ -71,7 +134,7 @@ export function BetterAuthDemo() {
         getToken: async () => {
           const response = await fetch("/api/auth/token");
           if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) return null;
-          return ((await response.json()) as { token: string }).token;
+          return parseTokenResponse(await response.json());
         },
         subscribe: (callback) => {
           window.addEventListener("better-auth-session-change", callback);
@@ -109,7 +172,8 @@ export function BetterAuthDemo() {
       setUser(null);
       setStatus("idle");
       window.dispatchEvent(new Event("better-auth-session-change"));
-    } catch {
+    } catch (error: unknown) {
+      if (!(error instanceof Error)) throw error;
       setError("Better Auth sign-out failed");
       setStatus("error");
     } finally {
@@ -139,10 +203,7 @@ export function BetterAuthDemo() {
         setStatus("error");
         return;
       }
-      const session = (await sessionResponse.json()) as {
-        session?: { id: string };
-        user?: ProviderUser;
-      };
+      const session = parseSessionResponse(await sessionResponse.json());
       if (session.session == null) {
         setError("Better Auth sign-in succeeded but no session was returned");
         setStatus("error");
@@ -151,7 +212,8 @@ export function BetterAuthDemo() {
       setProviderUser(session.user ?? { email, name: email.split("@")[0] });
       setSessionId(session.session.id);
       window.dispatchEvent(new Event("better-auth-session-change"));
-    } catch {
+    } catch (error: unknown) {
+      if (!(error instanceof Error)) throw error;
       setError("Better Auth authentication request failed");
       setStatus("error");
     } finally {
@@ -166,14 +228,16 @@ export function BetterAuthDemo() {
     fetch("/api/auth/get-session", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return null;
-        return await response.json() as { session?: { id: string }; user?: ProviderUser };
+        return parseSessionResponse(await response.json());
       })
       .then((session) => {
         if (!active || session?.session == null) return;
         setProviderUser(session.user ?? null);
         setSessionId(session.session.id);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (!(error instanceof Error)) throw error;
         if (active && !controller.signal.aborted) {
           setError("Better Auth session lookup failed");
         }
@@ -197,15 +261,15 @@ export function BetterAuthDemo() {
           throw new Error(
             `Better Auth token endpoint returned ${response.status}`,
           );
-        return ((await response.json()) as { token: string }).token;
+        return parseTokenResponse(await response.json());
       }),
       fetch("/api/auth/exchange").then(async (response) => {
         const result = response.ok && (response.headers.get("content-type") ?? "").includes("application/json")
-          ? await response.json() as Exchange
-          : {};
-        if (!response.ok)
+          ? parseExchange(await response.json())
+          : null;
+        if (!response.ok || result == null)
           throw new Error(
-            result.error ?? `Better Auth exchange returned ${response.status}`,
+            result?.error ?? `Better Auth exchange returned ${response.status}`,
           );
         return result;
       }),
@@ -223,8 +287,9 @@ export function BetterAuthDemo() {
         });
         setStatus("exchanged");
       })
-      .catch((reason) => {
+      .catch((reason: unknown) => {
         if (!active) return;
+        if (!(reason instanceof Error)) throw reason;
         setStatus("error");
         setError(
           reason instanceof Error
@@ -277,7 +342,7 @@ export function BetterAuthDemo() {
             <button
               type="button"
               disabled={isSubmitting}
-              onClick={() => authenticate("sign-in")}
+              onClick={() => runAsynchronouslyWithAlert(() => authenticate("sign-in"))}
             >
               {isSubmitting ? "Signing in…" : "Sign in to Better Auth"}
             </button>
@@ -285,7 +350,7 @@ export function BetterAuthDemo() {
               className="secondary"
               type="button"
               disabled={isSubmitting}
-              onClick={() => authenticate("sign-up")}
+              onClick={() => runAsynchronouslyWithAlert(() => authenticate("sign-up"))}
             >
               Create Better Auth user
             </button>
@@ -362,7 +427,7 @@ export function BetterAuthDemo() {
             <button
               type="button"
               disabled={isSubmitting || status === "exchanging"}
-              onClick={signOutOfBetterAuth}
+              onClick={() => runAsynchronouslyWithAlert(signOutOfBetterAuth)}
             >
               {isSubmitting ? "Signing out…" : "Sign out of Better Auth"}
             </button>

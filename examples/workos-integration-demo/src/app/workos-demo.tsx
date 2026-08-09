@@ -31,13 +31,72 @@ type Exchange = {
 };
 type Status = "idle" | "exchanging" | "exchanged" | "error";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 function decodeClaims(token: string): Claims {
   const payload = token.split(".")[1];
   if (payload == null)
     throw new Error("The WorkOS token did not contain a JWT payload");
   const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
   const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes)) as Claims;
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (!isRecord(value)) {
+    throw new Error("The WorkOS token payload was malformed");
+  }
+  return {
+    iss: typeof value.iss === "string" ? value.iss : undefined,
+    sub: typeof value.sub === "string" ? value.sub : undefined,
+    sid: typeof value.sid === "string" ? value.sid : undefined,
+    client_id: typeof value.client_id === "string" ? value.client_id : undefined,
+    aud: typeof value.aud === "string" || Array.isArray(value.aud) && value.aud.every(item => typeof item === "string")
+      ? value.aud
+      : undefined,
+    exp: typeof value.exp === "number" ? value.exp : undefined,
+  };
+}
+
+function parseProviderSession(value: unknown): ProviderSession {
+  if (!isRecord(value)
+    || typeof value.accessToken !== "string" || value.accessToken.length === 0
+    || typeof value.sessionId !== "string" || value.sessionId.length === 0) {
+    throw new Error("The WorkOS session response was malformed");
+  }
+  if (value.user != null && (!isRecord(value.user)
+    || (value.user.email != null && typeof value.user.email !== "string")
+    || (value.user.firstName != null && typeof value.user.firstName !== "string")
+    || (value.user.lastName != null && typeof value.user.lastName !== "string"))) {
+    throw new Error("The WorkOS session profile was malformed");
+  }
+  return {
+    accessToken: value.accessToken,
+    sessionId: value.sessionId,
+    user: value.user == null ? null : {
+      email: typeof value.user.email === "string" ? value.user.email : undefined,
+      firstName: typeof value.user.firstName === "string" ? value.user.firstName : undefined,
+      lastName: typeof value.user.lastName === "string" ? value.user.lastName : undefined,
+    },
+  };
+}
+
+function parseExchange(value: unknown): Exchange {
+  if (!isRecord(value)) {
+    throw new Error("The WorkOS exchange response was malformed");
+  }
+  const stringFields = ["sessionId", "userId", "primaryEmail", "displayName", "error"] as const;
+  if (stringFields.some(field => value[field] != null && typeof value[field] !== "string")
+    || (value.isNewUser != null && typeof value.isNewUser !== "boolean")) {
+    throw new Error("The WorkOS exchange response was malformed");
+  }
+  return {
+    sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
+    userId: typeof value.userId === "string" ? value.userId : undefined,
+    isNewUser: typeof value.isNewUser === "boolean" ? value.isNewUser : undefined,
+    primaryEmail: typeof value.primaryEmail === "string" ? value.primaryEmail : null,
+    displayName: typeof value.displayName === "string" ? value.displayName : null,
+    error: typeof value.error === "string" ? value.error : undefined,
+  };
 }
 
 function Claim({
@@ -71,7 +130,15 @@ export function WorkosDemo() {
     () =>
       workosTokenStore({
         getSessionId: () => providerSession?.sessionId ?? null,
-        getToken: async () => providerSession?.accessToken ?? null,
+        // The SDK calls getToken again when the provider session changes or the exchanged token
+        // expires, so fetch the current WorkOS JWT instead of reusing the mount-time snapshot.
+        getToken: async () => {
+          const response = await fetch("/api/auth/provider-session");
+          if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) {
+            return null;
+          }
+          return parseProviderSession(await response.json()).accessToken;
+        },
       }),
     [providerSession],
   );
@@ -105,17 +172,13 @@ export function WorkosDemo() {
           throw new Error(
             `WorkOS session endpoint returned ${response.status}`,
           );
-        return (await response.json()) as ProviderSession;
+        return parseProviderSession(await response.json());
       }),
-      fetch("/api/auth/exchange").then(async (response) => {
-        const result = response.headers.get("content-type")?.includes("application/json")
-          ? await response.json() as Exchange
-          : {};
-        if (!response.ok)
-          throw new Error(
-            result.error ?? `WorkOS exchange returned ${response.status}`,
-          );
-        return result;
+      fetch("/api/auth/exchange", { method: "POST" }).then(async (response) => {
+        if (!response.ok || !(response.headers.get("content-type") ?? "").includes("application/json")) {
+          throw new Error(`WorkOS exchange returned ${response.status}`);
+        }
+        return parseExchange(await response.json());
       }),
     ])
       .then(([session, result]) => {

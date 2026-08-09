@@ -2,7 +2,7 @@
 
 import { useUpdateConfig } from "@/components/config-update";
 import { DesignAlert, DesignButton, DesignCard, DesignInput } from "@/components/design-components";
-import { getWorkOSVerificationUrls } from "@hexclave/shared/dist/interface/external-auth";
+import { getWorkOSVerificationUrls } from "@hexclave/shared";
 import { FingerprintSimpleIcon, KeyIcon, LinkSimpleIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AppEnabledGuard } from "./app-enabled-guard";
@@ -106,7 +106,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
   const [jwksUrl, setJwksUrl] = useState(initialValues.jwksUrl);
   const [clientId, setClientId] = useState(initialValues.clientId);
   const workosDerivedUrls = props.provider === "workos" && clientId.length > 0
-    ? getWorkOSVerificationUrls(clientId)
+    ? getWorkOSVerificationUrls(clientId, issuer.length === 0 ? undefined : issuer)
     : null;
 
   const save = async () => {
@@ -115,7 +115,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
         await updateConfig({
           adminApp,
           configUpdate: {
-            "clerk-integration.issuer": issuer,
+            "clerk-integration.issuer": issuer.length === 0 ? null : issuer,
             "clerk-integration.authorizedParties": authorizedParties,
           },
           pushable: true,
@@ -126,7 +126,7 @@ export function ExternalAuthIntegrationPage(props: { provider: ExternalAuthInteg
         await updateConfig({
           adminApp,
           configUpdate: {
-            "better-auth-integration.issuer": issuer,
+            "better-auth-integration.issuer": issuer.length === 0 ? null : issuer,
             "better-auth-integration.audience": audience,
             "better-auth-integration.jwksUrl": jwksUrl,
           },

@@ -81,6 +81,22 @@ afterEach(() => {
 });
 
 describe("HexclaveClientInterface bot challenge compatibility", () => {
+  it("rejects an external auth exchange response with missing token fields", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse({
+      access_token: "access-token",
+      session_id: "session-id",
+    })));
+
+    const iface = createClientInterface();
+    const result = await iface.exchangeExternalAuthToken("better-auth-integration", "provider-token");
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") {
+      throw new Error("Expected malformed external auth exchange response to fail");
+    }
+    expect(result.error).toBeInstanceOf(KnownErrors.InvalidExternalAuthToken);
+  });
+
   it("omits bot challenge from magic link requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
     vi.stubGlobal("fetch", fetchMock);

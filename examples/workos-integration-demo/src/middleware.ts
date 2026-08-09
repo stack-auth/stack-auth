@@ -4,7 +4,7 @@ import { getWorkOSRedirectUri } from "./lib/workos";
 
 export default function middleware(request: NextRequest, event: NextFetchEvent) {
   return authkitMiddleware({
-    debug: true,
+    debug: process.env.NODE_ENV === "development",
     redirectUri: getWorkOSRedirectUri(),
   })(request, event);
 }

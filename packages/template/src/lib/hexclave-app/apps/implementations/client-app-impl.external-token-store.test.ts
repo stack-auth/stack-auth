@@ -1,5 +1,5 @@
 import { KnownErrors } from "@hexclave/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clerkTokenStore } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
 
@@ -34,6 +34,30 @@ function createAccessTokenString(refreshTokenId: string, issuedAtOffsetSeconds =
 }
 
 describe("StackClientApp external token stores", () => {
+  it("does not reuse a cached token when the provider session has ended", async () => {
+    let providerSessionId: string | null = "clerk-session";
+    const clientApp = new StackClientApp({
+      automaticSideEffects: false,
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: clerkTokenStore({
+        getSessionId: () => providerSessionId,
+        getToken: async () => "stale-provider-token",
+      }),
+      redirectMethod: "none",
+    });
+
+    const getSession = Reflect.get(clientApp, "_getSession");
+    const authenticatedSession = await getSession.call(clientApp);
+    providerSessionId = null;
+    const signedOutSession = await getSession.call(clientApp);
+
+    expect(signedOutSession.sessionKey).toBe("not-logged-in");
+    expect(signedOutSession).not.toBe(authenticatedSession);
+    expect(signedOutSession.getAccessTokenIfNotExpiredYet(0, null)).toBeNull();
+  });
+
   it("exchanges provider tokens and preserves the session across token rotations", async () => {
     let providerSessionId = "clerk-session";
     let notifyProviderChange: (() => void) | undefined;
@@ -122,6 +146,43 @@ describe("StackClientApp external token stores", () => {
     const tokens = await session.getOrFetchLikelyValidTokens(20_000, null);
     expect(tokens).not.toBeNull();
     expect(exchangedTokens).toEqual(["clerk-token-1", "clerk-token-2"]);
+    expect(session.isKnownToBeInvalid()).toBe(false);
+  });
+
+  it("does not install a token when the provider switches accounts mid-exchange", async () => {
+    let providerSessionId: string | null = "clerk-session-a";
+    let resolveExchange: ((value: string) => void) | undefined;
+    const clientApp = new StackClientApp({
+      automaticSideEffects: false,
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: clerkTokenStore({
+        getSessionId: () => providerSessionId,
+        getToken: async () => "clerk-token",
+      }),
+      redirectMethod: "none",
+    });
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    Reflect.set(clientInterface, "exchangeExternalAuthToken", () => new Promise((resolve) => {
+      resolveExchange = (accessToken) => resolve({
+        status: "ok",
+        data: {
+          accessToken,
+          sessionId: "hexclave-external-session",
+          userId: "user-id",
+        },
+      });
+    }));
+
+    const getSession = Reflect.get(clientApp, "_getSession");
+    const session = await getSession.call(clientApp);
+    const pending = session.getOrFetchLikelyValidTokens(20_000, null);
+    await vi.waitFor(() => expect(resolveExchange).toBeDefined());
+    providerSessionId = "clerk-session-b";
+    resolveExchange?.(createAccessTokenString("hexclave-external-session"));
+
+    await expect(pending).rejects.toThrow("provider session changed");
     expect(session.isKnownToBeInvalid()).toBe(false);
   });
 

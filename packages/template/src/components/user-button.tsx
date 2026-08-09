@@ -92,7 +92,7 @@ function UserButtonInnerInner(props: UserButtonProps & { user: CurrentUser | nul
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {user && <Item
+        {user && !app.isExternalAuthApp() && <Item
           text={t('Account settings')}
           onClick={async () => {
             if (props.mockUser) {

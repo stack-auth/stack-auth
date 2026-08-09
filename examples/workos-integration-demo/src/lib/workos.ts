@@ -3,13 +3,12 @@ export function getWorkOSRedirectUri(): string {
   if (redirectUri == null || redirectUri.length === 0) {
     throw new Error("Missing required environment variable: WORKOS_REDIRECT_URI");
   }
-  try {
-    const parsed = new URL(redirectUri);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("unsupported protocol");
-    }
-  } catch {
+  if (!URL.canParse(redirectUri)) {
     throw new Error("WORKOS_REDIRECT_URI must be a valid URL");
+  }
+  const parsed = new URL(redirectUri);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("WORKOS_REDIRECT_URI must use http: or https:");
   }
   return redirectUri;
 }

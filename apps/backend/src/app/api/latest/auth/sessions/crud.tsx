@@ -132,7 +132,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         },
       });
     } else {
-      await prisma.externalAuthSession.updateMany({
+      const revoked = await prisma.externalAuthSession.updateMany({
         where: {
           tenancyId: auth.tenancy.id,
           id: params.id,
@@ -142,6 +142,9 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
           revokedAt: new Date(),
         },
       });
+      if (revoked.count === 0) {
+        throw new StatusError(StatusError.NotFound, 'Session not found.');
+      }
     }
   },
 }));

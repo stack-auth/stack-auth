@@ -96,12 +96,22 @@ export class ExternalTokenStoreSessionAdapter {
     sessionKey: string,
   ): InternalSession {
     const externalTokenStore = this.externalTokenStoresByStore.get(tokenStore);
-    const session = externalTokenStore == null || sessionKey === "not-logged-in"
-      ? this.createSession({
+    let session: InternalSession;
+    if (externalTokenStore == null) {
+      session = this.createSession({
         refreshToken: tokenObject.refreshToken,
         accessToken: tokenObject.accessToken,
-      })
-      : this.createSession({
+      });
+    } else if (sessionKey === "not-logged-in") {
+      // A provider can clear its session before its token store notification arrives; never let
+      // that transiently expose the previous provider session's cached Hexclave token.
+      session = this.createSession({
+        refreshToken: null,
+        accessToken: null,
+        sessionKey,
+      });
+    } else {
+      session = this.createSession({
         refreshToken: null,
         accessToken: tokenObject.accessToken,
         sessionKey,
@@ -111,6 +121,9 @@ export class ExternalTokenStoreSessionAdapter {
           // we throw instead, which surfaces the failure to the current caller but lets the next
           // request retry the exchange.
           const attemptExchange = async (isRetry: boolean): Promise<AccessToken | null> => {
+            const state = this.states.get(externalTokenStore) ?? throwErr("External token store state was not initialized");
+            const exchangeGeneration = state.generation;
+            const exchangeProviderSessionId = externalTokenStore.getSessionId?.();
             const externalToken = await externalTokenStore.getToken();
             if (externalToken == null) {
               if (externalTokenStore.getSessionId?.() != null) {
@@ -122,8 +135,18 @@ export class ExternalTokenStoreSessionAdapter {
             }
             try {
               const accessToken = await this.exchangeToken(externalTokenStore.providerId, externalToken);
-              return AccessToken.createIfValid(accessToken)
+              const validatedAccessToken = AccessToken.createIfValid(accessToken)
                 ?? throwErr("External authentication exchange returned an invalid Hexclave access token");
+              // An explicit session key bypasses InternalSession's identity check. Refuse to install
+              // a token if the provider switched accounts while the exchange was in flight instead
+              // of returning null, which would permanently invalidate the reusable session.
+              if (
+                state.generation !== exchangeGeneration
+                || externalTokenStore.getSessionId?.() !== exchangeProviderSessionId
+              ) {
+                throw new Error("The external provider session changed while exchanging a token; retrying with the current provider session.");
+              }
+              return validatedAccessToken;
             } catch (error) {
               if (!KnownErrors.InvalidExternalAuthToken.isInstance(error)) {
                 throw error;
@@ -138,6 +161,7 @@ export class ExternalTokenStoreSessionAdapter {
           return await attemptExchange(false);
         },
       });
+    }
     if (externalTokenStore != null) {
       this.externalTokenStoresBySession.set(session, externalTokenStore);
     }

@@ -499,6 +499,37 @@ export async function generateAccessTokenForExternalAuthSession(options: {
     return null;
   }
 
+  const ipInfo = await getEndUserIpInfoForEvent();
+  const billingTeamId = getBillingTeamId(options.tenancy.project);
+  await logEvent(
+    [SystemEventTypes.SessionActivity],
+    {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      userId: projectUserId,
+      sessionId: options.externalAuthSession.id,
+      isAnonymous: user.is_anonymous,
+      teamId: undefined,
+    },
+    { billingTeamId },
+  );
+  await logEvent(
+    [SystemEventTypes.TokenRefresh],
+    {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      userId: projectUserId,
+      refreshTokenId: options.externalAuthSession.id,
+      isAnonymous: user.is_anonymous,
+      teamId: undefined,
+      ipInfo,
+    },
+    {
+      refreshTokenId: options.externalAuthSession.id,
+      billingTeamId,
+    },
+  );
+
   return await generateAccessTokenForUser({
     tenancy: options.tenancy,
     projectUserId,

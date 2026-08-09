@@ -97,6 +97,10 @@ export async function getOrCreateExternalAuthSession(options: {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== PRISMA_ERROR_CODES.UNIQUE_CONSTRAINT_VIOLATION) {
         throw error;
       }
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(",") : "";
+      if (target.includes("projectUserId") && target.includes("providerConfigId")) {
+        throw new KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn();
+      }
       // A concurrent first exchange projected the same provider identity between our lookup and our
       // insert. Use the winner's projection and sign into its user instead. This read must go to the
       // primary: the winner's row was committed by a concurrent request, so the read replica may not
