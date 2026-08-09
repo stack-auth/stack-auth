@@ -205,6 +205,54 @@ describe("external authentication token exchange", () => {
     });
   });
 
+  it("ignores syntactically invalid email claims", async ({ expect }) => {
+    await configureProject();
+    const response = await exchange(await createProviderToken({
+      email: "not-an-email",
+      name: "Valid Name",
+      emailVerified: true,
+    }));
+    expect(response.status).toBe(200);
+
+    const user = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+      accessType: "server",
+    });
+    expect(user.body).toMatchObject({
+      primary_email: null,
+      display_name: "Valid Name",
+      primary_email_verified: false,
+    });
+  });
+
+  it("ignores email_verified when the email claim is absent or invalid", async ({ expect }) => {
+    await configureProject();
+    const absentEmail = await exchange(await createProviderToken({
+      emailVerified: true,
+    }));
+    const invalidEmail = await exchange(await createProviderToken({
+      subject: "invalid-email-user",
+      sessionId: "invalid-email-session",
+      email: "not-an-email",
+      emailVerified: true,
+    }));
+
+    expect(absentEmail.status).toBe(200);
+    expect(invalidEmail.status).toBe(200);
+
+    const users = await Promise.all([
+      niceBackendFetch(`/api/v1/users/${absentEmail.body.user_id}`, { accessType: "server" }),
+      niceBackendFetch(`/api/v1/users/${invalidEmail.body.user_id}`, { accessType: "server" }),
+    ]);
+    expect(users[0].body).toMatchObject({
+      primary_email: null,
+      primary_email_verified: false,
+    });
+    expect(users[1].body).toMatchObject({
+      primary_email: null,
+      primary_email_verified: false,
+    });
+  });
+
   it("allows a provider email to collide with another user", async ({ expect }) => {
     await configureProject();
     const first = await exchange(await createProviderToken({
