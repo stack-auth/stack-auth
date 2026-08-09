@@ -39,6 +39,8 @@ export async function getOrCreateExternalAuthSession(options: {
     // already-committed user creation and produces duplicate users). Instead, we create the user
     // first and resolve the (rare) concurrent-first-exchange race below via the identity's unique
     // constraint, cleaning up our user if we lost.
+    // Provider authentication owns this address, so it must not become a Hexclave password or OTP identity.
+    // Apply provider claims only while creating the user; a returning exchange must not overwrite later profile edits.
     const user = await createOrUpgradeAnonymousUserWithRules(
       options.tenancy,
       options.currentUser?.is_anonymous === true ? options.currentUser : null,
