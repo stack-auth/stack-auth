@@ -115,7 +115,7 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
     if (sessionUserId == null || (auth.type === 'client' && auth.user?.id !== sessionUserId)) {
       throw new StatusError(StatusError.NotFound, 'Session not found.');
     }
-    if (auth.refreshTokenId === params.id) {
+    if (session != null && auth.refreshTokenId === params.id) {
       throw new KnownErrors.CannotDeleteCurrentSession();
     }
 

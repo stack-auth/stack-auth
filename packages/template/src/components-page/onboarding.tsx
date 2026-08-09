@@ -18,7 +18,8 @@ export function Onboarding(props: {
   const { t } = useTranslation();
   const hexclaveApp = useStackApp();
   const user = useUser({ or: "return-null", includeRestricted: true });
-  const canSignOut = !hexclaveApp.isExternalAuthApp();
+  const isExternalAuthApp = Reflect.get(hexclaveApp, "isExternalAuthApp");
+  const canSignOut = typeof isExternalAuthApp !== "function" || isExternalAuthApp.call(hexclaveApp) !== true;
 
   // If user is not restricted anymore, redirect to the intended destination
   // redirectToAfterSignIn automatically checks for after_auth_return_to in the URL
@@ -90,7 +91,8 @@ function AddEmailForm(props: {
   const { t } = useTranslation();
   const user = useUser({ or: "throw", includeRestricted: true });
   const hexclaveApp = useStackApp();
-  const canSignOut = !hexclaveApp.isExternalAuthApp();
+  const isExternalAuthApp = Reflect.get(hexclaveApp, "isExternalAuthApp");
+  const canSignOut = typeof isExternalAuthApp !== "function" || isExternalAuthApp.call(hexclaveApp) !== true;
   const [loading, setLoading] = useState(false);
 
   const emailSchema = yupObject({
@@ -152,7 +154,8 @@ function VerifyEmailScreen(props: {
   const { t } = useTranslation();
   const { user, email } = props;
   const hexclaveApp = useStackApp();
-  const canSignOut = !hexclaveApp.isExternalAuthApp();
+  const isExternalAuthApp = Reflect.get(hexclaveApp, "isExternalAuthApp");
+  const canSignOut = typeof isExternalAuthApp !== "function" || isExternalAuthApp.call(hexclaveApp) !== true;
   const [changingEmail, setChangingEmail] = useState(false);
 
   if (changingEmail) {

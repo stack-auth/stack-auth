@@ -82,7 +82,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   // Postgres silently truncates identifiers to 63 characters, so the longer constraint names below
-  // appear truncated in error messages (eg. "..._issuer_subject_ke" instead of "..._issuer_subject_key").
+  // appear truncated in error messages (eg. "..._issuer_subjec_key" instead of "..._issuer_subject_key").
   await expect(sql`
     INSERT INTO "ExternalAuthMethod" (
       "tenancyId", "authMethodId", "projectUserId", "providerConfigId", "issuer", "subject", "createdAt", "updatedAt"
@@ -91,7 +91,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       ${ctx.tenancyId}::uuid, ${duplicateIdentityAuthMethodId}::uuid, ${ctx.thirdUserId}::uuid,
       'clerk-integration', 'https://clerk.example.com', 'user_1', NOW(), NOW()
     )
-  `).rejects.toThrow(/ExternalAuthMethod_tenancyId_providerConfigId_issuer_subject_ke/);
+  `).rejects.toThrow(/ExternalAuthMethod_tenancyId_providerConfigId_issuer_subjec_key/);
 
   await expect(sql`
     INSERT INTO "ExternalAuthMethod" (
