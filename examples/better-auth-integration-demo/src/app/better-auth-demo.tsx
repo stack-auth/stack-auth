@@ -1,7 +1,7 @@
 "use client";
 
 import { HexclaveClientApp, betterAuthTokenStore } from "@hexclave/next";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Claims = {
