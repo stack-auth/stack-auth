@@ -1353,15 +1353,13 @@ export namespace InternalApiKey {
 // appears, the cap adds no latency on the happy path; it only bounds the wait when
 // materialization has genuinely stalled.
 //
-// The cap is half of Vitest's per-test timeout (see apps/e2e/vitest.config.ts: 60s in CI,
-// 30s locally). This wait runs *inside* Project.create, so a cap at or above the test
-// timeout would turn slow materialization into a hard test timeout — even for tests that
-// never touch billing (e.g. outbox rendering-state tests). Bounding it at half the budget
-// guarantees the wait alone can never time a test out and still leaves ample time for the
-// test body, while giving a stalled TimeFold a fair chance to catch up.
+// The cap is fixed below the 30s minimum timeout declared by any e2e test. This wait runs
+// *inside* Project.create, so keeping it below the suite-wide minimum ensures that slow
+// materialization cannot consume an entire test budget — even for tests that never touch
+// billing (e.g. outbox rendering-state tests).
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
-  const timeoutMs = (process.env.CI ? 60_000 : 30_000) / 2;
+  const timeoutMs = 15_000;
   const startedAt = performance.now();
 
   while (true) {
@@ -1381,7 +1379,13 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
     });
     if (quantity > 0) return;
 
-    if (performance.now() - startedAt > timeoutMs) return;
+    const elapsedMs = performance.now() - startedAt;
+    if (elapsedMs > timeoutMs) {
+      console.warn(
+        `[billing-entitlement-wait] Timed out waiting for team ${ownerTeamId} after ${elapsedMs.toFixed(0)} ms`,
+      );
+      return;
+    }
     await wait(pollIntervalMs);
   }
 }
