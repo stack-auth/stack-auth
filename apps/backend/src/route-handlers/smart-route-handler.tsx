@@ -2,6 +2,7 @@ import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
 import { requestContextALS } from "@/lib/runtime/request-context";
+import { isSpanAggregationEnabled } from "@/utils/span-aggregation";
 import { isRequestBodyTooLargeError } from "@/server/request-body-limit";
 import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
@@ -104,8 +105,11 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
         method: req.method,
         ...(normalizedPath == null ? {} : { route: normalizedPath }),
       });
+      const routeSpanName = isSpanAggregationEnabled() && normalizedPath != null
+        ? `${req.method} ${normalizedPath}`
+        : "handling API request";
       return await traceSpan({
-        description: 'handling API request',
+        description: routeSpanName,
         attributes: {
           "stack.request.request-id": requestId,
           "stack.request.method": req.method,

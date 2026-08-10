@@ -239,10 +239,34 @@ jobs:
         continue-on-error: true
         run: .github/scripts/postgres-attribution.sh reset
 
+      # Temporary diagnostic-PR smoke check: prove the built backend emits a route span
+      # before spending a full test pass on the request-path attribution.
+      - name: Smoke-test backend route span
+        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        continue-on-error: true
+        run: |
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if ! curl --fail-with-body --silent --show-error \
+                "http://localhost:${backend_port}/api/latest/users/me" >/dev/null
+              then
+                echo "Backend route smoke request failed (backend port ${backend_port})." >&2
+              fi
+              if response="$(curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+              then
+                printf "%s\n" "$response" | jq .
+              else
+                echo "Backend route span smoke snapshot failed (backend port ${backend_port})." >&2
+              fi
+            '
+
       - name: Run tests
         id: run_tests_pass1
         timeout-minutes: 45
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Snapshot PostgreSQL attribution after pass 1
         if: always()
