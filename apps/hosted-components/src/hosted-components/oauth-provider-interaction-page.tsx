@@ -68,6 +68,12 @@ export function HostedOAuthProviderInteraction() {
     runAsynchronously(load());
     return () => {
       cancelled = true;
+      if (
+        loadStateRef.current.interactionUid === interactionUid
+        && loadStateRef.current.status === "loading"
+      ) {
+        loadStateRef.current = { interactionUid, status: "idle" };
+      }
     };
   }, [app, interactionUid, user?.id]);
 
