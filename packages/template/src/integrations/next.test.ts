@@ -1,4 +1,4 @@
-import { type Tracer, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
+import { InstrumentationBase } from "@opentelemetry/instrumentation";
 import { describe, expect, it, vi } from "vitest";
 import { _HexclaveServerAppImplIncomplete } from "../lib/hexclave-app/apps/implementations/server-app-impl";
 import { StackServerApp } from "../lib/hexclave-app/apps/interfaces/server-app";
@@ -9,7 +9,7 @@ import { createHexclaveNext, hexclaveInstrumentation } from "./next";
 // the @hexclave/sc shim); tests provide them here instead of a Next.js request
 // scope. `state.headers` is mutable so individual tests can vary the headers.
 const state = vi.hoisted(() => ({
-  headers: new Headers({ "cookie": "a=b", "x-hexclave-span-context": "span-context-header" }),
+  headers: new Headers({ "cookie": "a=b", "baggage": "hexclave.session_replay.segment.id=55555555-5555-4555-8555-555555555555" }),
 }));
 vi.mock("@hexclave/sc/force-react-server", () => ({
   headers: async () => state.headers,
@@ -107,7 +107,7 @@ describe("Next.js adapter: serverAction", () => {
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: { name: "createOrder" } });
     // The span links via a RequestLike built from the ambient next/headers.
     const request = (withSpan.mock.calls[0][1] as { request: { headers: Headers } }).request;
-    expect(request.headers.get("x-hexclave-span-context")).toBe("span-context-header");
+    expect(request.headers.get("baggage")).toBe("hexclave.session_replay.segment.id=55555555-5555-4555-8555-555555555555");
     // The user is resolved from the same ambient headers (cookie token store).
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ tokenStore: request, or: "return-null" }));
   });
@@ -158,18 +158,18 @@ describe("hexclaveInstrumentation", () => {
     expect(() => hexclaveInstrumentation(app)).toThrow(/StackServerApp instance/);
   });
 
-  it("exposes a fail-loud collector suppression scope before registration", async () => {
+  it("exposes OTel suppression before provider registration", async () => {
     const instrumentation = hexclaveInstrumentation(makeRealApp());
-    await expect(instrumentation.runWithTelemetrySuppressed(async () => "never"))
-      .rejects.toThrow(/requires the library-span bridge to be registered first/);
+    await expect(instrumentation.runWithTelemetrySuppressed(async () => "suppressed"))
+      .resolves.toBe("suppressed");
   });
 
   it("register() installs the server fetch instrumentation and the uncaught-error monitor", async () => {
-    const installSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_installServerFetchInstrumentation").mockImplementation(() => {});
+    const installSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_ensureOpenTelemetryProvider").mockImplementation(() => {});
     const monitorSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_installServerErrorMonitor").mockImplementation(() => {});
-    // Keep the test focused on the installs — a real bridge registration
-    // would claim the process-global OTel API for the rest of the worker.
-    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge").mockImplementation(async () => null);
+    // Keep the test focused on installs; a real provider would claim the OTel
+    // global for the rest of this worker.
+    const otelSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerOpenTelemetry").mockImplementation(async () => null);
     try {
       const instrumentation = hexclaveInstrumentation(makeRealApp());
       await instrumentation.register();
@@ -179,17 +179,17 @@ describe("hexclaveInstrumentation", () => {
       // forwards.
       expect(installSpy).toHaveBeenCalledTimes(3);
       expect(monitorSpy).toHaveBeenCalledTimes(3);
-      expect(bridgeSpy).toHaveBeenCalledTimes(2);
+      expect(otelSpy).toHaveBeenCalledTimes(2);
     } finally {
       installSpy.mockRestore();
       monitorSpy.mockRestore();
-      bridgeSpy.mockRestore();
+      otelSpy.mockRestore();
     }
   });
 
   it("register() wires the next/headers ambient request provider", async () => {
     const providerSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_setAmbientRequestProvider").mockImplementation(() => {});
-    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge").mockImplementation(async () => null);
+    const otelSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerOpenTelemetry").mockImplementation(async () => null);
     try {
       const instrumentation = hexclaveInstrumentation(makeRealApp());
       await instrumentation.register();
@@ -198,14 +198,14 @@ describe("hexclaveInstrumentation", () => {
       expect(provider).toBeTypeOf("function");
     } finally {
       providerSpy.mockRestore();
-      bridgeSpy.mockRestore();
+      otelSpy.mockRestore();
     }
   });
 
   it("can disable request attribution for an internal control-plane telemetry project", async () => {
     const providerSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_setAmbientRequestProvider").mockImplementation(() => {});
     const suppressionSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_setTelemetrySuppressionPredicate").mockImplementation(() => {});
-    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge").mockImplementation(async () => null);
+    const otelSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerOpenTelemetry").mockImplementation(async () => null);
     const captureSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_captureServerRequestError").mockImplementation(async () => {});
     try {
       const isTelemetrySuppressed = () => true;
@@ -225,64 +225,30 @@ describe("hexclaveInstrumentation", () => {
     } finally {
       providerSpy.mockRestore();
       suppressionSpy.mockRestore();
-      bridgeSpy.mockRestore();
+      otelSpy.mockRestore();
       captureSpy.mockRestore();
     }
   });
 
-  it("register() duck-type-wires OTel instrumentation entries into the bridge provider", async () => {
-    // The provider is opaque to next.ts (duck-typed forwarding only), so a
-    // structural stand-in is enough here; the real provider is covered by
-    // library-span-bridge.test.ts.
-    const noopTracer: Tracer = {
-      startSpan: () => {
-        throw new Error("test tracer must not be used");
-      },
-      startActiveSpan: () => {
-        throw new Error("test tracer must not be used");
-      },
-    };
-    const fakeProvider: TracerProvider = { getTracer: () => noopTracer };
-    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge")
-      .mockImplementation(async () => ({ provider: fakeProvider }));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("register() passes typed OTel instrumentation entries to the managed SDK", async () => {
+    const otelSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerOpenTelemetry")
+      .mockImplementation(async () => null);
     try {
-      const received: unknown[] = [];
-      let enabled = 0;
-      const instrumentationEntry = {
-        setTracerProvider: (provider: unknown) => received.push(provider),
-        enable: () => enabled++,
-      };
+      class TestInstrumentation extends InstrumentationBase {
+        constructor() {
+          super("test-instrumentation", "1.0.0", {});
+        }
+
+        protected init(): void {}
+      }
+      const instrumentationEntry = new TestInstrumentation();
       const instrumentation = hexclaveInstrumentation(makeRealApp(), {
-        instrumentations: [instrumentationEntry, { notAnInstrumentation: true }],
+        instrumentations: [instrumentationEntry],
       });
       await instrumentation.register();
-      expect(received).toEqual([fakeProvider]);
-      expect(enabled).toBe(1);
-      // The non-matching entry is skipped with one warning naming its index.
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(String(warnSpy.mock.calls[0]?.[0])).toContain("instrumentations[1]");
+      expect(otelSpy).toHaveBeenCalledWith([instrumentationEntry]);
     } finally {
-      bridgeSpy.mockRestore();
-      warnSpy.mockRestore();
-    }
-  });
-
-  it("register() still enables instrumentation entries (without overriding their provider) when the bridge backed off", async () => {
-    const bridgeSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_registerLibrarySpanBridge").mockImplementation(async () => null);
-    try {
-      const received: unknown[] = [];
-      let enabled = 0;
-      const instrumentationEntry = {
-        setTracerProvider: (provider: unknown) => received.push(provider),
-        enable: () => enabled++,
-      };
-      const instrumentation = hexclaveInstrumentation(makeRealApp(), { instrumentations: [instrumentationEntry] });
-      await instrumentation.register();
-      expect(received).toEqual([]);
-      expect(enabled).toBe(1);
-    } finally {
-      bridgeSpy.mockRestore();
+      otelSpy.mockRestore();
     }
   });
 

@@ -1,5 +1,6 @@
 import type { RequestLike } from "../lib/hexclave-app/common";
 import type { Span } from "../lib/hexclave-app/apps/implementations/event-tracker";
+import { createErrorScope, getActiveErrorScope, runWithErrorScopeAsync } from "../lib/hexclave-app/apps/implementations/error-scope";
 import type { StackServerApp } from "../lib/hexclave-app/apps/interfaces/server-app";
 import type { ServerUser } from "../lib/hexclave-app/users";
 
@@ -11,7 +12,7 @@ import type { ServerUser } from "../lib/hexclave-app/users";
  * handler in a `withSpan(type, { request }, …)` span — which joins the backend
  * span to the caller's active browser operation via `traceparent` and stamps
  * refresh-token/replay correlation from the session plus the
- * `x-hexclave-span-context` header the browser SDK attaches automatically.
+ * `baggage` header the browser SDK attaches automatically.
  * Consumers of an adapter never pass `{ request }` themselves.
  */
 
@@ -92,15 +93,20 @@ export async function runAdapterSpan<T>(
   fn: (span: Span | null) => Promise<T>,
 ): Promise<T> {
   if (info.telemetry === false) {
-    return await fn(null);
+    return await runWithRequestErrorScope(async () => await fn(null));
   }
   const custom = typeof info.telemetry === "object" ? info.telemetry : undefined;
   const data = { ...info.data, ...custom?.data ?? {} };
-  return await app.withSpan(
+  return await runWithRequestErrorScope(async () => await app.withSpan(
     info.defaultSpanType,
     { ...info.link, data, ...info.startedAtMs !== undefined ? { startedAtMs: info.startedAtMs } : {} },
     (span) => fn(span),
-  );
+  ));
+}
+
+async function runWithRequestErrorScope<T>(fn: () => Promise<T>): Promise<T> {
+  const scope = createErrorScope(getActiveErrorScope()?.snapshot());
+  return await runWithErrorScopeAsync(scope, fn);
 }
 
 /**
@@ -192,6 +198,7 @@ export async function runGuardedRoute(
   const hexclave = createRequestContext(app, info.requestInput);
   return await runRequestSpan(app, hexclave, info, async () => {
     const user = await hexclave.getUser();
+    if (user !== null) getActiveErrorScope()?.setUser({ id: user.id });
     if (info.required === true && user === null) {
       const rejection = await resolveUnauthorized(
         info.unauthorized,
@@ -213,6 +220,7 @@ export async function runGuardedCall<T>(
   const hexclave = createRequestContext(app, info.requestInput);
   return await runRequestSpan(app, hexclave, info, async () => {
     const user = await hexclave.getUser();
+    if (user !== null) getActiveErrorScope()?.setUser({ id: user.id });
     if (info.required === true && user === null) {
       throw await resolveUnauthorized(
         info.unauthorized,

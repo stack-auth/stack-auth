@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, formatTraceparent, generateW3cSpanId, generateW3cTraceId, getTelemetryResourceError, isW3cSpanId, isW3cTraceId, parseTraceparent, snapshotTelemetryResource, truncateUtf8Bytes, uuidToW3cSpanId, uuidToW3cTraceId } from "./analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, generateW3cSpanId, generateW3cTraceId, getTelemetryResourceError, isW3cSpanId, isW3cTraceId, snapshotTelemetryResource, truncateUtf8Bytes, uuidToW3cSpanId, uuidToW3cTraceId } from "./analytics-wire";
 
 describe("telemetry resource", () => {
   it("accepts the explicit service identity and bounded primitive attributes", () => {
@@ -90,7 +90,6 @@ describe("wire type lists", () => {
     expect(SYSTEM_EVENT_TYPES).toContain("$keystroke");
     expect(SYSTEM_EVENT_TYPES).toContain("$error");
     expect(SYSTEM_EVENT_TYPES).toContain("$log");
-    expect(CLIENT_SYSTEM_SPAN_TYPES).toContain("$http-client");
   });
 });
 
@@ -122,39 +121,4 @@ describe("W3C trace context", () => {
     expect(isW3cTraceId("A".repeat(32))).toBe(false);
   });
 
-  it("round-trips a traceparent, preserving the sampled flag in both directions", () => {
-    for (const sampled of [true, false]) {
-      const context = { traceId: generateW3cTraceId(), spanId: generateW3cSpanId(), sampled };
-      const parsed = parseTraceparent(formatTraceparent(context));
-      expect(parsed).toEqual(context);
-    }
-    expect(formatTraceparent({ traceId: "a".repeat(32), spanId: "b".repeat(16), sampled: true }))
-      .toBe(`00-${"a".repeat(32)}-${"b".repeat(16)}-01`);
-  });
-
-  it("rejects malformed traceparents and the forbidden ff version", () => {
-    const valid = `00-${"a".repeat(32)}-${"b".repeat(16)}-01`;
-    expect(parseTraceparent(valid)).not.toBeNull();
-    expect(parseTraceparent(`ff-${"a".repeat(32)}-${"b".repeat(16)}-01`)).toBeNull();
-    expect(parseTraceparent(`00-${"0".repeat(32)}-${"b".repeat(16)}-01`)).toBeNull();
-    expect(parseTraceparent(`00-${"a".repeat(32)}-${"0".repeat(16)}-01`)).toBeNull();
-    expect(parseTraceparent(`00-${"a".repeat(31)}-${"b".repeat(16)}-01`)).toBeNull();
-    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}`)).toBeNull();
-    expect(parseTraceparent("")).toBeNull();
-    expect(parseTraceparent(undefined)).toBeNull();
-    expect(parseTraceparent(42)).toBeNull();
-  });
-
-  it("accepts an unknown future version and trailing fields (forward compatibility)", () => {
-    // The spec requires parsing the first three fields identically and ignoring
-    // anything after them, so a newer sender must not break this tier.
-    const parsed = parseTraceparent(`01-${"a".repeat(32)}-${"b".repeat(16)}-01-extra`);
-    expect(parsed).toEqual({ traceId: "a".repeat(32), spanId: "b".repeat(16), sampled: true });
-  });
-
-  it("treats reserved traceFlags bits as set-but-ignored", () => {
-    // 0xfe has every bit but `sampled`; 0xff has all of them.
-    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}-fe`)?.sampled).toBe(false);
-    expect(parseTraceparent(`00-${"a".repeat(32)}-${"b".repeat(16)}-ff`)?.sampled).toBe(true);
-  });
 });

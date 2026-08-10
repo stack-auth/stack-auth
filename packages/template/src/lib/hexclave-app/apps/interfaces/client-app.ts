@@ -11,9 +11,12 @@ import type { ParentRef, Span, StartSpanOptions, TrackOptions } from "../impleme
 // Type-only, and from analytics-config (not session-replay): a value import of
 // the recorder module here would defeat the lazy analytics loading.
 import type { AnalyticsOptions, AnalyticsOptionsJson } from "../implementations/analytics-config";
-import type { ObservabilityOptions } from "../implementations/observability-config";
+import type { ObservabilityOptions, ObservabilityOptionsJson } from "../implementations/observability-config";
 import type { TelemetryOptions } from "../implementations/telemetry-config";
 import type { Logger } from "../implementations/logs";
+import type { CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScope } from "./error-capture";
+
+export type { CapturedErrorEvent, CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorAttachmentInput, ErrorAttachmentMetadata, ErrorAttachmentTransport, ErrorAttachmentType, ErrorAttachmentUploadRequest, ErrorAttachmentUploadResult, ErrorBeforeSend, ErrorEventHint, ErrorEventProcessor, ErrorEventId, ErrorLevel, ErrorProcessorDecision, ErrorProcessorResult, ErrorScope, ErrorScopeData, PendingErrorAttachment } from "./error-capture";
 
 /** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
@@ -79,9 +82,14 @@ export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends 
   redirectMethod?: RedirectMethod,
   devTool?: boolean | "auto",
   noAutomaticPrefetch?: boolean,
+  // Serialized so a deserialized app stays inert (fromClientJson skips
+  // registration side effects when false); participates in the checkString like
+  // every other field, so two apps sharing a uniqueIdentifier but disagreeing
+  // on inertness conflict loudly instead of silently reusing one of them.
+  automaticSideEffects?: boolean,
   inheritsFrom?: undefined,
   analytics?: AnalyticsOptionsJson,
-  observability?: ObservabilityOptions,
+  observability?: ObservabilityOptionsJson,
   // Only the `resource` half of TelemetryOptions crosses the serialization boundary:
   // `telemetryOptionsToJson` drops `waitUntil`, since a runtime hook can't survive
   // being serialized into the client payload and re-hydrated on the other side.
@@ -148,32 +156,65 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     cancelSubscription(options: { productId: string, subscriptionId?: string } | { productId: string, subscriptionId?: string, teamId: string }): Promise<void>,
 
     /**
-     * Tracks a custom analytics event. Buffered and sent in batches. The
-     * returned promise resolves when the batch carrying the event is
-     * acknowledged (up to one flush interval later — call `flush()` to send
-     * immediately). Invalid input and unavailable analytics reject instead of
+     * Tracks a custom analytics event as a named OpenTelemetry LogRecord. In
+     * managed-provider mode the returned promise resolves after the provider
+     * force-flushes; existing-provider mode acknowledges synchronous provider
+     * acceptance because that provider owns delivery. Invalid input and unavailable analytics reject instead of
      * silently dropping the event; fire-and-forget use is safe because the SDK
      * observes rejected promises internally.
      */
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
 
     /**
+     * Captures a handled or unhandled exception through the same `$error`
+     * pipeline used by automatic integrations. The returned UUID is placed in
+     * the event payload before delivery, so callers can correlate it with
+     * backend records even while the transport is asynchronous.
+     */
+    captureException(error: unknown, options?: CaptureExceptionOptions): ErrorEventId,
+
+    /** Captures a message as a first-class error event and returns its event UUID. */
+    captureMessage(message: string, options?: CaptureMessageOptions): ErrorEventId,
+
+    /** Captures a normalized event/exception chain and returns its event UUID. */
+    captureEvent(event: CaptureEvent): ErrorEventId,
+
+    /** Returns the most recently attempted error event ID, if any. Delivery may still drop it later. */
+    lastEventId(): ErrorEventId | undefined,
+
+    /**
+     * Runs work with an isolated error scope. Scope fields apply to captures
+     * made inside the callback and are propagated through the active OTel
+     * context when the runtime provides an async context manager. The return
+     * type is preserved: synchronous callbacks stay synchronous and async
+     * callbacks return their own Promise.
+     */
+    withErrorScope<T>(fn: (scope: ErrorScope) => T): T,
+
+    /**
+     * Async counterpart for runtimes where callers need an explicit
+     * promise-chain boundary. Server/framework adapters use the same
+     * AsyncLocalStorage-backed runner internally; this method makes that
+     * guarantee available to generic server jobs and route code too.
+     */
+    withErrorScopeAsync<T>(fn: (scope: ErrorScope) => Promise<T>): Promise<T>,
+
+    /**
      * Native structured logging: `logger.trace/debug/info/warn/error(message, data?)`
-     * records a `$log` event in the analytics events table (the same place
-     * automatic console capture writes to). Fire-and-forget and guaranteed never to throw into your code:
+     * emits an OpenTelemetry LogRecord through the configured LoggerProvider
+     * (the same path automatic console capture uses). Fire-and-forget and guaranteed never to throw into your code:
      * invalid structured data is dropped with a console warning, and
      * environments without a delivery path warn once and drop. Messages are
      * truncated to 8KB; `data` follows the same rules as event data. Logs
-     * carry the same ambient context as events (current page view, enclosing
-     * `withSpan()` frames).
+     * use standard OTel trace/span context correlation plus namespaced
+     * Hexclave replay/page attributes.
      */
     readonly logger: Logger,
 
     /**
-     * Starts a custom span (a time interval). The span is written immediately
-     * as an open interval and re-written when data changes or it ends — a span
-     * that is never ended (e.g. the tab closed) stays visible as an open
-     * interval. Invalid input throws synchronously; when the ENVIRONMENT makes
+     * Starts a custom span through the active OTel Tracer. The provider owns
+     * recording, sampling, processing, and export. Invalid input throws
+     * synchronously; when the ENVIRONMENT makes
      * telemetry impossible (e.g. during server-side rendering on a client
      * app), an inert no-op span is returned instead — all its methods are safe
      * to call and `spanContext()` keeps the identity it would have had — so
@@ -217,7 +258,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     /**
      * The cross-tier propagation headers — the standard `traceparent` plus
-     * `x-hexclave-span-context` — for a request the SDK cannot attach them to
+     * `baggage` — for a request the SDK cannot attach them to
      * itself. `fetch` to same-origin (and
      * `observability.spanPropagation.allowedOrigins`) already gets them
      * automatically, so this is the escape hatch for other transports (XHR,
@@ -225,7 +266,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      *
      * `traceparent` carries the hierarchy for a head-sampled enclosing span, so
      * the receiving tier joins the same trace without naming a parent the
-     * flusher may drop. `x-hexclave-span-context` carries non-hierarchical
+     * flusher may drop. `baggage` carries non-hierarchical
      * correlation only (per-tab replay segment, current page view). Returns `{}`
      * when there is nothing to propagate (analytics off, non-browser).
      *

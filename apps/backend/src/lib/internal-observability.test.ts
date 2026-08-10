@@ -2,10 +2,9 @@ import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { isTracingSuppressed } from "@opentelemetry/core";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { isTelemetryIngestionPath, runWithInternalRequestObservability } from "./internal-observability";
 import { resolveCustomerRequestObservability } from "./customer-request-observability";
-import { encodeSpanContextHeader, SPAN_CONTEXT_HEADER } from "@hexclave/shared/dist/utils/span-context-codec";
 
 const state = vi.hoisted(() => {
   const setData = vi.fn(async () => {});
@@ -43,9 +42,21 @@ describe("internal backend observability", () => {
     context.disable();
   });
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it.each([
     "/api/latest/analytics/events/batch",
     "/api/v1/analytics/events/batch",
+    "/api/latest/analytics/envelope",
+    "/api/v1/analytics/envelope",
+    "/api/latest/analytics/otlp/v1/traces",
+    "/api/v1/analytics/otlp/v1/traces",
+    "/api/latest/analytics/otlp/v1/logs",
+    "/api/v1/analytics/otlp/v1/logs",
+    "/api/latest/analytics/otlp/v1/metrics",
+    "/api/v1/analytics/otlp/v1/metrics",
     "/api/latest/session-replays/batch",
     "/api/v1/session-replays/batch",
   ])("recognizes the exact recursive ingestion path %s", (pathname) => {
@@ -67,18 +78,23 @@ describe("internal backend observability", () => {
     expect(state.startSpan).not.toHaveBeenCalled();
   });
 
-  it("roots the internal request trace instead of adopting the incoming W3C parent", async () => {
+  it("parents internal requests under the incoming sampled W3C client span", async () => {
     const request = new NextRequest("http://localhost:8102/api/latest/users?secret=never-record-this", {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
+        "x-hexclave-project-id": "internal",
       },
     });
     const response = await runWithInternalRequestObservability(request, "request-2", async () => new Response(null, { status: 503 }));
 
     expect(response.status).toBe(503);
     expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", {
-      root: true,
+      parent: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        spanId: "fedcba9876543210",
+        traceFlags: 1,
+      },
       data: {
         request_id: "request-2",
         method: "GET",
@@ -94,7 +110,7 @@ describe("internal backend observability", () => {
       method: "GET",
       headers: {
         traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01",
-        [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({ projectId: "customer-project" }),
+        "x-hexclave-project-id": "customer-project",
       },
     });
     await runWithInternalRequestObservability(request, "request-3", async () => {
@@ -116,12 +132,12 @@ describe("internal backend observability", () => {
     });
   });
 
-  it("links an internal-dashboard client span without relying on ambient parent resolution", async () => {
+  it("parents an internal-dashboard client span without adding a cross-project link", async () => {
     const request = new NextRequest("http://localhost:8102/api/latest/users", {
       method: "GET",
       headers: {
         traceparent: "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
-        [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({ projectId: "internal" }),
+        "x-hexclave-project-id": "internal",
       },
     });
     await runWithInternalRequestObservability(request, "request-internal", async () => {
@@ -135,10 +151,86 @@ describe("internal backend observability", () => {
       return new Response(null, { status: 200 });
     });
 
+    expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", expect.objectContaining({
+      parent: {
+        traceId: "cccccccccccccccccccccccccccccccc",
+        spanId: "dddddddddddddddd",
+        traceFlags: 1,
+      },
+    }));
+    expect(state.addTrustedBackendSpanLink).not.toHaveBeenCalled();
+  });
+
+  it("does not force an internal request to become a root when the wire has no parent", async () => {
+    const request = new NextRequest("http://localhost:8102/api/latest/internal/issues/reconciler", {
+      method: "GET",
+      headers: {
+        "x-hexclave-project-id": "internal",
+      },
+    });
+
+    await runWithInternalRequestObservability(request, "request-ambient", async () => new Response(null, { status: 200 }));
+
+    // The SDK now inherits an already-active Next/OTel server span when one
+    // exists, and only creates a true root when no ambient span exists either.
+    expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", {
+      data: {
+        request_id: "request-ambient",
+        method: "GET",
+        path: "/api/latest/internal/issues/reconciler",
+      },
+    });
+  });
+
+  it("preserves an unsampled internal parent so parent-based sampling can drop the request", async () => {
+    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+      method: "GET",
+      headers: {
+        traceparent: "00-0123456789abcdef0123456789abcdef-fedcba9876543210-00",
+        "x-hexclave-project-id": "internal",
+      },
+    });
+
+    await runWithInternalRequestObservability(request, "request-unsampled", async () => new Response(null, { status: 200 }));
+
+    expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", {
+      parent: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        spanId: "fedcba9876543210",
+        traceFlags: 0,
+      },
+      data: {
+        request_id: "request-unsampled",
+        method: "GET",
+        path: "/api/latest/users",
+      },
+    });
+  });
+
+  it("keeps customer requests as rooted internal spans with a verified link", async () => {
+    const request = new NextRequest("http://localhost:8102/api/latest/users", {
+      method: "GET",
+      headers: {
+        traceparent: "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01",
+        "x-hexclave-project-id": "customer-project",
+      },
+    });
+    await runWithInternalRequestObservability(request, "request-customer", async () => {
+      resolveCustomerRequestObservability({
+        projectId: "customer-project",
+        branchId: "main",
+        userId: "user",
+        refreshTokenId: "refresh",
+        headers: request.headers,
+      });
+      return new Response(null, { status: 200 });
+    });
+
+    expect(state.startSpan).toHaveBeenCalledWith("hexclave.api.request", expect.objectContaining({ root: true }));
     expect(state.addTrustedBackendSpanLink).toHaveBeenCalledWith({
       traceId: "cccccccccccccccccccccccccccccccc",
       spanId: "dddddddddddddddd",
-      linkedProjectId: "internal",
+      linkedProjectId: "customer-project",
       linkedBranchId: "main",
     });
   });
@@ -148,7 +240,7 @@ describe("internal backend observability", () => {
       method: "GET",
       headers: {
         traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
-        [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({ projectId: "customer-project" }),
+        "x-hexclave-project-id": "customer-project",
       },
     });
 

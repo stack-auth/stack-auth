@@ -8,7 +8,7 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
 export type MeteredPlanItemId =
@@ -23,6 +23,15 @@ export type AnalyticsPlanItemId =
 type PlanItemDebit = {
   itemId: MeteredPlanItemId,
   quantity: number,
+  /**
+   * Stable identity for retryable ingestion. Both fields must describe the
+   * same logical debit on every retry; they become the stored row identity and
+   * timestamp instead of generating a new transaction.
+   */
+  idempotency?: {
+    key: string,
+    createdAt: Date,
+  },
 };
 
 type PlanItemQuantityChange = {
@@ -38,6 +47,12 @@ type PlanItemQuantityChange = {
 };
 
 const inFlightPlanQuantityReads = new Map<string, Promise<Map<AnalyticsPlanItemId, number>>>();
+
+function deterministicPlanChangeId(parts: readonly string[]): string {
+  const hex = createHash("sha256").update(parts.join("\0")).digest("hex").slice(0, 32);
+  const variantNibble = ((Number.parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variantNibble}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
 
 async function getBillingContext(billingTeamId: string, itemIds: readonly AnalyticsPlanItemId[]) {
   const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
@@ -126,15 +141,34 @@ export async function tryDecreasePlanItemQuantities(
         quantity: debit.quantity,
       });
     }
+    if (debit.idempotency != null) {
+      if (debit.idempotency.key.length === 0) {
+        throw new HexclaveAssertionError("Plan item debit idempotency key must not be empty", {
+          itemId: debit.itemId,
+        });
+      }
+      if (!Number.isFinite(debit.idempotency.createdAt.getTime())) {
+        throw new HexclaveAssertionError("Plan item debit idempotency timestamp must be a valid date", {
+          itemId: debit.itemId,
+        });
+      }
+    }
   }
   if (nonZeroDebits.length === 0) {
     return { insufficientItemId: null };
   }
 
   const { tenancy, prisma } = await getBillingContext(billingTeamId, nonZeroDebits.map(({ itemId }) => itemId));
-  const createdAt = new Date();
   const changes: PlanItemQuantityChange[] = nonZeroDebits.map((debit) => ({
-    id: randomUUID(),
+    id: debit.idempotency == null
+      ? randomUUID()
+      : deterministicPlanChangeId([
+        "hexclave-plan-debit-v1",
+        tenancy.id,
+        billingTeamId,
+        debit.itemId,
+        debit.idempotency.key,
+      ]),
     tenancyId: tenancy.id,
     customerId: billingTeamId,
     customerType: typedToUppercase("team"),
@@ -142,7 +176,7 @@ export async function tryDecreasePlanItemQuantities(
     quantity: -debit.quantity,
     description: null,
     expiresAt: null,
-    createdAt,
+    createdAt: debit.idempotency?.createdAt ?? new Date(),
   }));
 
   // Bulldozer owns the current balance. Its conditional batch endpoint applies

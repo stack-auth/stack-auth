@@ -143,7 +143,7 @@ export const SYSTEM_EVENT_TYPES = [
 ] as const;
 export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
 
-export const CLIENT_SYSTEM_SPAN_TYPES = ["$page-view", "$away", "$offline", "$http-client"] as const;
+export const CLIENT_SYSTEM_SPAN_TYPES = ["$page-view", "$away", "$offline"] as const;
 export type ClientSystemSpanType = typeof CLIENT_SYSTEM_SPAN_TYPES[number];
 
 export const SERVER_SYSTEM_SPAN_TYPES = ["$lib-span"] as const;
@@ -161,11 +161,7 @@ function describeSystemEvent(type: SystemEventType): TelemetrySignalDescriptor {
 
 function describeSystemSpan(type: ClientSystemSpanType | ServerSystemSpanType): TelemetrySignalDescriptor {
   const analyticsOwned = ANALYTICS_SPAN_TYPES.has(type);
-  const writableOrigins: readonly TelemetryWriterOrigin[] = type === "$lib-span"
-    ? ["server"]
-    : type === "$http-client"
-      ? ["client", "server"]
-      : ["client"];
+  const writableOrigins: readonly TelemetryWriterOrigin[] = type === "$lib-span" ? ["server"] : ["client"];
   return {
     kind: "span",
     lens: analyticsOwned ? "analytics" : "observability",
@@ -223,6 +219,17 @@ export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
 // They ride on the SDK wire so operation names can live in `span_type` without
 // losing the distinction between customer-authored and auto-instrumented work.
 export const TELEMETRY_SCOPE_NAME_MAX_BYTES = 1_024;
+// Companion to scope_name: the OTel tracer/instrumentation version string.
+export const TELEMETRY_SCOPE_VERSION_MAX_BYTES = 1_024;
+// First-class OpenTelemetry span kind / status columns. Kept out of opaque
+// `data` so ClickHouse filters and the traces UI can use typed LowCardinality
+// columns instead of JSON extraction. `internal` / `unset` are the schema
+// defaults and are omitted on the wire when that is what the producer means.
+export const TELEMETRY_SPAN_KINDS = ["internal", "server", "client", "producer", "consumer"] as const;
+export type TelemetrySpanKind = (typeof TELEMETRY_SPAN_KINDS)[number];
+export const TELEMETRY_SPAN_STATUS_CODES = ["unset", "ok", "error"] as const;
+export type TelemetrySpanStatusCode = (typeof TELEMETRY_SPAN_STATUS_CODES)[number];
+export const TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES = 1_024;
 // Cap on a `$log` event's message (the human-readable text; structured
 // attributes ride in `data` under the normal item-data cap). Shared so the SDK
 // truncates to exactly what the route accepts instead of 400ing the batch.
@@ -291,7 +298,6 @@ export type LogLevel = typeof LOG_LEVELS[number];
 export const TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const PAGE_VIEW_SPAN_TYPE = "$page-view";
-export const HTTP_CLIENT_SPAN_TYPE = "$http-client";
 export const LIB_SPAN_TYPE = "$lib-span";
 
 // ---------------------------------------------------------------------------
@@ -372,38 +378,4 @@ export function generateW3cSpanId(): string {
   let id = randomHex(8);
   while (id === ALL_ZERO_SPAN_ID) id = randomHex(8);
   return id;
-}
-
-export type W3cTraceContext = {
-  traceId: string,
-  spanId: string,
-  /** The `sampled` flag from traceFlags. */
-  sampled: boolean,
-};
-
-/**
- * Formats a W3C `traceparent`, preserving the caller's sampling decision.
- */
-export function formatTraceparent(context: W3cTraceContext): string {
-  return `00-${context.traceId}-${context.spanId}-${context.sampled ? "01" : "00"}`;
-}
-
-/**
- * Parses a `traceparent`, returning null for anything unusable.
- *
- * Version `ff` is invalid per spec. Unknown future versions are accepted for
- * forward compatibility: the spec requires parsing the first three fields the
- * same way and ignoring extra trailing ones, so a v01 header still yields a
- * usable trace context here.
- */
-export function parseTraceparent(value: unknown): W3cTraceContext | null {
-  if (typeof value !== "string") return null;
-  const parts = value.trim().toLowerCase().split("-");
-  if (parts.length < 4) return null;
-  const [version, traceId, spanId, flags] = parts;
-  if (!/^[0-9a-f]{2}$/.test(version) || version === "ff") return null;
-  if (!isW3cTraceId(traceId) || !isW3cSpanId(spanId)) return null;
-  if (!/^[0-9a-f]{2}$/.test(flags)) return null;
-  // Bit 0 of traceFlags is `sampled`; every other bit is reserved and ignored.
-  return { traceId, spanId, sampled: (Number.parseInt(flags, 16) & 0x01) === 0x01 };
 }

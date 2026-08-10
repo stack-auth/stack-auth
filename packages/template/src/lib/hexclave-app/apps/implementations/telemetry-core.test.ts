@@ -89,6 +89,16 @@ describe("resolveSpanParent", () => {
     });
   });
 
+  it("preserves opaque tracestate from the selected parent", () => {
+    const parent = { ...ctx(), traceState: "vendor=value" };
+    expect(resolved(resolveSpanParent({ ambient: [parent] }))).toEqual({
+      traceId: parent.traceId,
+      parentSpanId: parent.spanId,
+      traceState: "vendor=value",
+      links: [],
+    });
+  });
+
   it("an explicit parent beats ambient entirely (a span has exactly one parent)", () => {
     const ambient = ctx();
     const explicit = ctx();

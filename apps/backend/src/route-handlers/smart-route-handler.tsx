@@ -13,6 +13,7 @@ import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
+import { createSafeParsedRequestContext, createSafeRequestContext, createSafeSmartRequestContext, safeRequestPath } from "@/lib/safe-request-context";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -77,19 +78,14 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
         attributes: {
           "stack.request.request-id": requestId,
           "stack.request.method": req.method,
-          "stack.request.url": req.url,
+          "stack.request.url": safeRequestPath(req.url),
           "stack.process.id": processId,
           "stack.process.concurrent-requests": concurrentRequestsInProcess,
         },
       }, async (span) => {
-        // Set Sentry scope to include request details
-        Sentry.setContext("stack-request", {
-          requestId: requestId,
-          method: req.method,
-          url: req.url,
-          query: Object.fromEntries(req.nextUrl.searchParams),
-          headers: Object.fromEntries(req.headers),
-        });
+        // Keep request diagnostics useful without putting credentials or arbitrary request data on the scope.
+        const safeRequestContext = createSafeRequestContext({ requestId, method: req.method, url: req.url, headers: req.headers });
+        Sentry.setContext("stack-request", safeRequestContext);
 
         // During development, don't trash the console with logs
         const disableExtendedLogging = getNodeEnvironment().includes('dev');
@@ -161,8 +157,9 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           recordRequestStats(req.method, req.nextUrl.pathname, time);
 
           if ([301, 302].includes(res.status)) {
-            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
+            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, path: safeRequestPath(req.url) });
           }
+          Sentry.setContext("stack-request", { ...safeRequestContext, status: res.status });
           if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
           return res;
         } catch (e) {
@@ -170,11 +167,11 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           try {
             statusError = catchError(e, requestId);
           } catch (e) {
-            if (!disableExtendedLogging) console.log(`[    EXC] [${requestId}] ${req.method} ${req.url}: Non-error caught (such as a redirect), will be re-thrown. Digest: ${(e as any)?.digest}`);
+            if (!disableExtendedLogging) console.log(`[    EXC] [${requestId}] ${req.method} ${safeRequestPath(req.url)}: Non-error caught (such as a redirect). Digest: ${(e as any)?.digest}`);
             throw e;
           }
 
-          if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${req.url}: ${statusError.message}`);
+          if (!disableExtendedLogging) console.log(`[    ERR] [${requestId}] ${req.method} ${safeRequestPath(req.url)}: ${statusError.message}`);
 
           if (!isCommonError(statusError)) {
             // HACK: Log a nicified version of the error instead of statusError to get around buggy Next.js pretty-printing
@@ -190,6 +187,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
               ...statusError.getHeaders(),
             },
           });
+          Sentry.setContext("stack-request", { ...safeRequestContext, status: res.status });
           return res;
         } finally {
           hasRequestFinished = true;
@@ -297,7 +295,7 @@ export function createSmartRouteHandler<
     const handler = reqsParsed[0][1];
 
     if (shouldSetContext) {
-      Sentry.setContext("stack-parsed-smart-request", smartReq as any);
+      Sentry.setContext("stack-parsed-smart-request", createSafeParsedRequestContext(smartReq));
     }
 
     let smartRes = await traceSpan({
@@ -307,8 +305,7 @@ export function createSmartRouteHandler<
         "stack.smart-request.project.id": fullReq.auth?.project.id ?? "<none>",
         "stack.smart-request.project.display_name": fullReq.auth?.project.display_name ?? "<none>",
         "stack.smart-request.user.id": fullReq.auth?.user?.id ?? "<none>",
-        "stack.smart-request.user.display-name": fullReq.auth?.user?.display_name ?? "<none>",
-        "stack.smart-request.user.primary-email": fullReq.auth?.user?.primary_email ?? "<none>",
+        "stack.smart-request.user.authenticated": fullReq.auth?.user != null,
         "stack.smart-request.access-type": fullReq.auth?.type ?? "<none>",
         "stack.smart-request.client-version.platform": fullReq.clientVersion?.platform ?? "<none>",
         "stack.smart-request.client-version.version": fullReq.clientVersion?.version ?? "<none>",
@@ -327,7 +324,7 @@ export function createSmartRouteHandler<
     const bodyBuffer = await req.arrayBuffer();
     const smartRequest = await createSmartRequest(req, bodyBuffer, options);
 
-    Sentry.setContext("stack-full-smart-request", smartRequest);
+    Sentry.setContext("stack-full-smart-request", createSafeSmartRequestContext(smartRequest, requestId));
 
     const smartRes = await invoke(req, requestId, smartRequest, true);
 

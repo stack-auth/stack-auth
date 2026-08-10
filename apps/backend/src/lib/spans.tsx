@@ -1,5 +1,14 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { HTTP_CLIENT_SPAN_TYPE, uuidToW3cSpanId, uuidToW3cTraceId, type TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import {
+  classifyTelemetrySignal,
+  TELEMETRY_SPAN_KINDS,
+  TELEMETRY_SPAN_STATUS_CODES,
+  uuidToW3cSpanId,
+  uuidToW3cTraceId,
+  type TelemetryResource,
+  type TelemetrySpanKind,
+  type TelemetrySpanStatusCode,
+} from "@hexclave/shared/dist/utils/analytics-wire";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 import { buildTelemetryResourceFields } from "./telemetry-resource";
 
@@ -29,20 +38,37 @@ export type SpanInsertRow = {
   trace_id: string,
   span_id: string,
   span_type: string,
+  /** Server-derived billing classification; clients and OTLP attributes cannot set it. */
+  billing_item: "analytics_spans" | null,
   started_at: Date,
   ended_at: Date | null,
   /** null = this span IS the trace root; the trace_roots MV keys off exactly this. */
   parent_span_id: string | null,
+  trace_state?: string,
+  trace_flags?: number,
+  start_time_unix_nano?: string,
+  end_time_unix_nano?: string,
   data: string,
-  kind: "internal" | "server" | "client" | "producer" | "consumer",
+  kind: TelemetrySpanKind,
+  status_code: TelemetrySpanStatusCode,
+  status_message: string | null,
   service_namespace: string | null,
-  service_name: string,
+  service_name: string | null,
   service_version: string | null,
   service_instance_id: string | null,
   deployment_environment_name: string | null,
   resource_attributes: string,
+  resource_dropped_attributes?: number,
+  resource_schema_url?: string,
   scope_name?: string | null,
   scope_version?: string | null,
+  scope_attributes?: string,
+  scope_dropped_attributes?: number,
+  scope_schema_url?: string,
+  attributes?: string,
+  dropped_attributes?: number,
+  dropped_events?: number,
+  dropped_links?: number,
   // Always 'sdk' on this path: every row uses the normal authenticated SDK
   // ingestion architecture. This includes Hexclave backend telemetry, which is
   // owned by the internal project and is explicitly unmetered by the route.
@@ -58,7 +84,7 @@ export type SpanInsertRow = {
   session_replay_segment_id: string | null,
   /** CORRELATION: which `$page-view` span this row happened on, when known. */
   page_view_span_id: string | null,
-  version: number,
+  version: number | string,
 };
 
 export async function insertSpans(
@@ -98,7 +124,7 @@ export function monotoneEndSpanVersion(spanEndedAt: Date): number {
 /**
  * One span as it arrives on the wire from the SDK (inside the analytics events
  * batch): either a user-defined custom span, a client-minted system autocapture
- * span ($page-view/$away/$offline/$http-client), or a server-SDK library
+ * span ($page-view/$away/$offline), or a server-SDK library
  * operation carrying its OTel tracer in `scope_name`.
  *
  * Identity is W3C and arrives COMPLETE: the SDK owns `trace_id`, `span_id` and
@@ -118,6 +144,13 @@ export type BatchSpanWireItem = {
   updated_at_ms: number,
   /** Server-authenticated OTel instrumentation scope; absent for native custom/system spans. */
   scope_name?: string | null,
+  /** OTel tracer/instrumentation version accompanying `scope_name`. */
+  scope_version?: string | null,
+  /** OpenTelemetry span kind; omitted legacy values mean "internal". */
+  kind?: TelemetrySpanKind | null,
+  /** OpenTelemetry status; omitted means "unset". */
+  status_code?: TelemetrySpanStatusCode | null,
+  status_message?: string | null,
   page_view_span_id?: string | null,
   links?: {
     trace_id: string,
@@ -126,6 +159,24 @@ export type BatchSpanWireItem = {
     linked_branch_id?: string,
   }[] | null,
 };
+
+const SPAN_KIND_SET: ReadonlySet<TelemetrySpanKind> = new Set(TELEMETRY_SPAN_KINDS);
+const SPAN_STATUS_CODE_SET: ReadonlySet<TelemetrySpanStatusCode> = new Set(TELEMETRY_SPAN_STATUS_CODES);
+
+function resolveBatchSpanKind(span: BatchSpanWireItem): TelemetrySpanKind {
+  if (span.kind != null && SPAN_KIND_SET.has(span.kind)) {
+    return span.kind;
+  }
+  // The released batch format predates an explicit OTel kind field.
+  return "internal";
+}
+
+function resolveBatchSpanStatusCode(span: BatchSpanWireItem): TelemetrySpanStatusCode {
+  if (span.status_code != null && SPAN_STATUS_CODE_SET.has(span.status_code)) {
+    return span.status_code;
+  }
+  return "unset";
+}
 
 /**
  * One row of `analytics_internal.span_links` — a non-hierarchical reference from
@@ -142,6 +193,10 @@ export type SpanLinkInsertRow = {
   linked_span_id: string,
   linked_project_id: string,
   linked_branch_id: string,
+  linked_trace_state?: string | null,
+  linked_trace_flags?: number,
+  attributes?: string,
+  dropped_attributes?: number,
 };
 
 /**
@@ -228,15 +283,21 @@ export function buildBatchSpanRows(opts: {
       span_id: span.span_id,
       parent_span_id: span.parent_span_id,
       span_type: span.span_type,
+      billing_item: span.scope_name == null
+        && classifyTelemetrySignal(span.span_type, "span").billingItem === "analytics_spans"
+        ? "analytics_spans"
+        : null,
       started_at: new Date(span.started_at_ms),
       ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
       data: JSON.stringify(stripLoneSurrogates(span.data)),
-      // The SDK wire format predates an explicit OpenTelemetry span kind.
-      // HTTP autocapture is nevertheless unambiguously a client operation;
-      // persisting it as such keeps service-level workload metrics honest.
-      kind: span.span_type === HTTP_CLIENT_SPAN_TYPE ? "client" : "internal",
+      // Typed OTel columns — not JSON `data`. Library spans put copies in
+      // `data` for local sampling, but ClickHouse filters and the traces UI
+      // read these columns. Never promote similarly-named fields from opaque data.
+      kind: resolveBatchSpanKind(span),
+      status_code: resolveBatchSpanStatusCode(span),
+      status_message: span.status_message ?? null,
       scope_name: span.scope_name ?? null,
-      scope_version: null,
+      scope_version: span.scope_version ?? null,
       ...buildTelemetryResourceFields(opts.resource),
       producer: "sdk" as const,
       project_id: opts.projectId,
@@ -276,13 +337,24 @@ export function buildBatchSpanLinkRows(opts: {
   })));
 }
 
-export async function insertSpanLinks(client: ClickHouseClient, rows: SpanLinkInsertRow[]): Promise<void> {
+export async function insertSpanLinks(
+  client: ClickHouseClient,
+  rows: SpanLinkInsertRow[],
+  options?: { deduplicationToken?: string },
+): Promise<void> {
   if (rows.length === 0) return;
   await client.insert({
     table: "analytics_internal.span_links",
     values: rows,
     format: "JSONEachRow",
-    clickhouse_settings: { date_time_input_format: "best_effort", async_insert: 1, wait_for_async_insert: 1 },
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+      async_insert: options?.deduplicationToken == null ? 1 : 0,
+      wait_for_async_insert: 1,
+      ...options?.deduplicationToken == null
+        ? {}
+        : { insert_deduplication_token: options.deduplicationToken },
+    },
   });
 }
 
@@ -314,10 +386,13 @@ export async function insertSessionReplaySpans(
     trace_id: traceId,
     data: "{}",
     kind: "internal" as const,
+    status_code: "unset" as const,
+    status_message: null,
     scope_name: null,
     scope_version: null,
     ...buildTelemetryResourceFields(opts.resource),
     producer: "sdk" as const,
+    billing_item: null,
     project_id: opts.projectId,
     branch_id: opts.branchId,
     user_id: opts.projectUserId,

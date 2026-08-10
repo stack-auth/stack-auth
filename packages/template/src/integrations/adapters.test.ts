@@ -4,6 +4,7 @@ import { createHexclaveConvex } from "./convex";
 import { createHexclaveElysia, type ElysiaLikeForPlugin } from "./elysia";
 import { createHexclaveORPC } from "./orpc";
 import { createHexclaveTRPC } from "./trpc";
+import { getActiveErrorScope } from "../lib/hexclave-app/apps/implementations/error-scope";
 
 const FAKE_USER = { id: "user-1", displayName: "Test" };
 
@@ -139,6 +140,29 @@ describe("adapter-core", () => {
       }, async () => Response.json({ ok: true }));
       expect(response.status).toBe(200);
       expect(withSpan).not.toHaveBeenCalled();
+    });
+
+    it("isolates asynchronous request scopes and enriches them with the authenticated user", async () => {
+      const first = makeApp({ user: { id: "user-a" } });
+      const second = makeApp({ user: { id: "user-b" } });
+      const observe = async (app: AdapterServerApp, tag: string) => await runGuardedCall(app, {
+        ...guardInfo,
+        requestInput: makeRequest(),
+        surface: "server action",
+      }, async () => {
+        getActiveErrorScope()?.setTag("request", tag);
+        await new Promise<void>((resolve) => setTimeout(resolve, 5));
+        return getActiveErrorScope()?.snapshot();
+      });
+
+      const [firstScope, secondScope] = await Promise.all([
+        observe(first.app, "a"),
+        observe(second.app, "b"),
+      ]);
+
+      expect(firstScope).toMatchObject({ user: { id: "user-a" }, tags: { request: "a" } });
+      expect(secondScope).toMatchObject({ user: { id: "user-b" }, tags: { request: "b" } });
+      expect(getActiveErrorScope()).toBeNull();
     });
   });
 });

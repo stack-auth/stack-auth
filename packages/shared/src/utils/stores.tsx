@@ -231,11 +231,11 @@ export class AsyncStore<T> implements ReadonlyAsyncStore<T> {
   }
 }
 
-// Concurrency tests for setAsync <-> storeLock coordination. These pin down the invariants that
-// the SDK's sign-out flow relies on (see the comment inside setAsync); they intentionally use the
-// global storeLock singleton, just like production code does. The tests in this file run
-// sequentially, so bumping the global write generation here cannot interfere with other tests.
-import.meta.vitest?.test("AsyncStore.setAsync commits normally when no write-locked mutation intervenes", async ({ expect }) => {
+// Concurrency tests for setAsync's update-counter semantics: a fetch result only commits when no
+// newer update happened since setAsync was CALLED. (These tests used to also pin coordination
+// with a global storeLock, but that lock was deliberately removed — see the "Remove global
+// storeLock" commit — so only the counter invariants remain to be tested.)
+import.meta.vitest?.test("AsyncStore.setAsync commits normally when no newer update intervenes", async ({ expect }) => {
   const store = new AsyncStore<string>();
   expect(store.get().status).toBe("pending");
   expect(await store.setAsync(Promise.resolve("value"))).toBe(true);
@@ -251,71 +251,6 @@ import.meta.vitest?.test("AsyncStore.setAsync propagates fetch rejections as rej
   const error = new Error("fetch failed");
   expect(await store.setAsync(Promise.reject(error))).toBe(true);
   expect(store.get()).toEqual({ status: "error", error });
-});
-
-import.meta.vitest?.test("AsyncStore.setAsync does not block write-lock acquisition while the fetch is in flight", async ({ expect }) => {
-  const store = new AsyncStore<string>();
-  let resolveFetch!: (value: string) => void;
-  const setAsyncPromise = store.setAsync(new Promise<string>((resolve) => {
-    resolveFetch = resolve;
-  }));
-
-  // Before the fix, setAsync held a global read lock for the whole duration of the fetch, so this
-  // write-lock acquisition would starve until the fetch resolved (in production: until a network
-  // call with retries drained). Now it must complete while the fetch is still pending. We guard
-  // with a timeout so a regression fails the test instead of hanging it forever.
-  const writerPromise = storeLock.withWriteLock(async () => "writer-ran");
-  const timeout = new Promise<"timed-out">((resolve) => setTimeout(() => resolve("timed-out"), 1000));
-  expect(await Promise.race([writerPromise, timeout])).toBe("writer-ran");
-
-  resolveFetch("value");
-  // the writer that ran above counts as a mutation, so this pre-writer fetch must now be discarded
-  expect(await setAsyncPromise).toBe(false);
-});
-
-import.meta.vitest?.test("AsyncStore.setAsync discards a fetch that started before a write-locked mutation", async ({ expect }) => {
-  // Case 1: fetch resolves AFTER the mutation completed
-  const store1 = new AsyncStore<string>();
-  let resolveFetch1!: (value: string) => void;
-  const setAsyncPromise1 = store1.setAsync(new Promise<string>((resolve) => {
-    resolveFetch1 = resolve;
-  }));
-  await storeLock.withWriteLock(async () => {
-    // simulates sign-out: session revoked, token store cleared
-  });
-  resolveFetch1("stale-value");
-  expect(await setAsyncPromise1).toBe(false);
-  // the stale value must never become observable state
-  expect(store1.get().status).toBe("pending");
-
-  // Case 2: fetch resolves WHILE the mutation is still active; the commit must wait for the
-  // writer to finish (no interleaving with the critical section) and then be discarded.
-  const store2 = new AsyncStore<string>();
-  let resolveFetch2!: (value: string) => void;
-  const setAsyncPromise2 = store2.setAsync(new Promise<string>((resolve) => {
-    resolveFetch2 = resolve;
-  }));
-  await storeLock.withWriteLock(async () => {
-    resolveFetch2("stale-value");
-    // yield a few microtask/macrotask ticks so the commit path would have had a chance to run if
-    // it (incorrectly) didn't wait for the write lock
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
-    expect(store2.get().status).toBe("pending");
-  });
-  expect(await setAsyncPromise2).toBe(false);
-  expect(store2.get().status).toBe("pending");
-});
-
-import.meta.vitest?.test("AsyncStore.setAsync started during a write-locked mutation may still commit afterwards", async ({ expect }) => {
-  // Refreshes triggered from within the mutation itself (eg. cache invalidation during sign-out
-  // committing the signed-out state) share the writer's generation and must still commit.
-  const store = new AsyncStore<string>();
-  let setAsyncPromise!: Promise<boolean>;
-  await storeLock.withWriteLock(async () => {
-    setAsyncPromise = store.setAsync(Promise.resolve("post-mutation-value"));
-  });
-  expect(await setAsyncPromise).toBe(true);
-  expect(store.get()).toEqual({ status: "ok", data: "post-mutation-value" });
 });
 
 import.meta.vitest?.test("AsyncStore.set during an in-flight setAsync wins over the older fetch result", async ({ expect }) => {

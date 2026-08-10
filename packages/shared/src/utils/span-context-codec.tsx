@@ -1,127 +1,137 @@
+import { propagation, ROOT_CONTEXT } from "@opentelemetry/api";
+import { W3CBaggagePropagator } from "@opentelemetry/core";
 import { isW3cSpanId, TELEMETRY_UUID_RE } from "./analytics-wire";
-import { decodeBase64Url, encodeBase64Url } from "./bytes";
-
-// Codec for the `x-hexclave-span-context` cross-tier propagation header.
-//
-// Lives in @hexclave/shared (not the SDK template) because BOTH sides of the
-// wire need it: the SDKs encode/decode it for customer apps, and the Hexclave
-// backend decodes it in parseAuth to attribute its own OpenTelemetry
-// self-instrumentation spans to the calling session. Keeping one codec is the
-// only way the two cannot drift.
-//
-// This header carries NON-HIERARCHICAL correlation only. Span hierarchy travels
-// in the standard `traceparent` header alongside it, so there is deliberately no
-// parent-chain field here: two carriers for the same fact could disagree, and
-// `traceparent` is the one every other tracing tool already understands. The
-// header NAME is kept as-is because it is already baked into customer CORS
-// allowlists and the public docs.
-//
-// Trust model (enforced by CONSUMERS, restated here because the codec is where
-// people look first): the header is CLIENT-CONTROLLED. Every id in it is an
-// untrusted label — fine for best-effort telemetry, never for authz/billing/
-// security. Only the refresh token (server-derived from the session), userId,
-// project, and branch are trusted. Invalid/oversized/unknown-version headers
-// are ignored, never surfaced as an error.
-
-/** The single header carrying the client's ambient span context. */
-export const SPAN_CONTEXT_HEADER = "x-hexclave-span-context";
-
-/** Wire format is `${VERSION}.${base64url(json)}` so we can evolve the payload. */
-const SPAN_CONTEXT_VERSION = "v1";
-
-/** Reject absurd header values before we spend work decoding them. */
-const MAX_HEADER_LENGTH = 4096;
 
 /**
- * The client's ambient CORRELATION context. `projectId` lets the receiver ignore a
- * header that belongs to a different Hexclave project.
+ * Hexclave correlation carried as standard W3C baggage.
  *
- * Nothing here is ancestry: the replay/segment ids are database uuids, and
- * `pageViewSpanId` names which page the user was on rather than an enclosing span.
- * The receiver stamps them onto its own rows as scalar columns.
+ * These values are untrusted application context. Consumers may use them to
+ * correlate telemetry, but never for authentication, authorization, billing,
+ * or any other security decision. Tenancy comes from the authenticated request,
+ * not from baggage.
  */
 export type SpanPropagationContext = {
-  projectId: string,
+  /** @deprecated Tenancy is authenticated out of band and is never propagated. */
+  projectId?: string,
   sessionReplayId?: string,
   sessionReplaySegmentId?: string,
-  /** The sender's current `$page-view` span, as a W3C span id (16 hex), so backend
-   * telemetry can be grouped by the page the user was on. Untrusted label, like
-   * the replay/segment ids. */
   pageViewSpanId?: string,
 };
+
+export const BAGGAGE_HEADER = "baggage";
+
+export const HEXCLAVE_SESSION_REPLAY_ID_BAGGAGE_KEY = "hexclave.session_replay.id";
+export const HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY = "hexclave.session_replay.segment.id";
+export const HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY = "hexclave.page_view.span_id";
+
+const HEXCLAVE_BAGGAGE_KEYS = new Set([
+  HEXCLAVE_SESSION_REPLAY_ID_BAGGAGE_KEY,
+  HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY,
+  HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY,
+]);
+const MAX_BAGGAGE_HEADER_LENGTH = 8192;
+
+const baggagePropagator = new W3CBaggagePropagator();
 
 /** Header bag shape shared by browser `Headers` and node request-like objects. */
 type RequestLikeHeaders = { get: (name: string) => string | null } | Record<string, string | null>;
 
-/**
- * Reads one header (case-insensitive) from either a `Headers`-like object or a
- * plain node-style header record. Lives here because the propagation path needs
- * the same tolerant lookup for `traceparent` as for our own header, and both
- * tiers read both.
- */
 export function readRequestHeader(headers: RequestLikeHeaders, name: string): string | null {
-  if (typeof (headers as { get?: unknown }).get === "function") {
-    return (headers as { get: (name: string) => string | null }).get(name);
+  if (typeof headers.get === "function") {
+    return headers.get(name);
   }
   const lower = name.toLowerCase();
-  for (const [key, value] of Object.entries(headers as Record<string, string | null>)) {
+  for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === lower) return value;
   }
   return null;
 }
 
-/** Reads the span-context header from a request's headers (case-insensitive). */
-export function readSpanContextHeader(headers: RequestLikeHeaders): string | null {
-  return readRequestHeader(headers, SPAN_CONTEXT_HEADER);
+export function readBaggageHeader(headers: RequestLikeHeaders): string | null {
+  return readRequestHeader(headers, BAGGAGE_HEADER);
 }
 
-/** Serializes a context into the `x-hexclave-span-context` header value. */
-export function encodeSpanContextHeader(context: SpanPropagationContext): string {
-  const payload: Record<string, unknown> = { projectId: context.projectId };
-  if (context.sessionReplayId) payload.sessionReplayId = context.sessionReplayId;
-  if (context.sessionReplaySegmentId) payload.sessionReplaySegmentId = context.sessionReplaySegmentId;
-  if (context.pageViewSpanId) payload.pageViewSpanId = context.pageViewSpanId;
-  const json = JSON.stringify(payload);
-  return `${SPAN_CONTEXT_VERSION}.${encodeBase64Url(new TextEncoder().encode(json))}`;
-}
 
 /**
- * Parses a header value back into a context. Returns null for anything missing,
- * oversized, wrong-version, non-decodable, or structurally invalid — a bad header
- * must never throw into the request path. Individual fields are dropped (not
- * fatal) when they fail id validation, so a partially-corrupt header still
- * yields whatever ids are well-formed.
+ * Serializes only the correlation keys Hexclave owns. The OTel propagator
+ * handles W3C escaping and validation; unrelated caller baggage is merged by
+ * the higher-level composite propagation path instead of entering this model.
  */
-export function decodeSpanContextHeader(headerValue: string | null | undefined): SpanPropagationContext | null {
-  if (typeof headerValue !== "string" || headerValue.length === 0 || headerValue.length > MAX_HEADER_LENGTH) {
-    return null;
+export function encodeCorrelationBaggage(context: SpanPropagationContext): string | null {
+  let baggage = propagation.createBaggage();
+  if (context.sessionReplayId !== undefined) {
+    baggage = baggage.setEntry(HEXCLAVE_SESSION_REPLAY_ID_BAGGAGE_KEY, { value: context.sessionReplayId });
   }
-  const dot = headerValue.indexOf(".");
-  if (dot === -1) return null;
-  if (headerValue.slice(0, dot) !== SPAN_CONTEXT_VERSION) return null;
+  if (context.sessionReplaySegmentId !== undefined) {
+    baggage = baggage.setEntry(HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY, { value: context.sessionReplaySegmentId });
+  }
+  if (context.pageViewSpanId !== undefined) {
+    baggage = baggage.setEntry(HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY, { value: context.pageViewSpanId });
+  }
+  if (baggage.getAllEntries().length === 0) return null;
 
-  let parsed: unknown;
+  const baggageContext = propagation.setBaggage(ROOT_CONTEXT, baggage);
+  const carrier: Record<string, string> = {};
+  baggagePropagator.inject(baggageContext, carrier, {
+    set(target, key, value) {
+      target[key] = value;
+    },
+  });
+  return carrier[BAGGAGE_HEADER] ?? null;
+}
+
+function parseBaggageMember(member: string): { key: string, value: string } | null {
+  const keyValue = member.trim().split(";", 1)[0];
+  const equals = keyValue.indexOf("=");
+  if (equals <= 0) return null;
   try {
-    const json = new TextDecoder().decode(decodeBase64Url(headerValue.slice(dot + 1)));
-    parsed = JSON.parse(json);
+    return {
+      key: decodeURIComponent(keyValue.slice(0, equals).trim()),
+      value: decodeURIComponent(keyValue.slice(equals + 1).trim()),
+    };
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+}
 
-  const obj = parsed as Record<string, unknown>;
-  if (typeof obj.projectId !== "string" || obj.projectId.length === 0) return null;
+/** Adds or replaces Hexclave's namespaced entries while preserving caller baggage. */
+export function mergeCorrelationBaggage(
+  existingHeader: string | null,
+  context: SpanPropagationContext,
+): string | null {
+  const correlationHeader = encodeCorrelationBaggage(context);
+  if (correlationHeader === null) return existingHeader;
+  const unrelatedMembers = existingHeader?.split(",").filter((member) => {
+    const parsed = parseBaggageMember(member);
+    return parsed === null || !HEXCLAVE_BAGGAGE_KEYS.has(parsed.key);
+  }) ?? [];
+  const merged = [...unrelatedMembers, correlationHeader].join(",");
+  return merged.length <= MAX_BAGGAGE_HEADER_LENGTH ? merged : null;
+}
 
-  const context: SpanPropagationContext = { projectId: obj.projectId };
-  if (typeof obj.sessionReplayId === "string" && TELEMETRY_UUID_RE.test(obj.sessionReplayId)) {
-    context.sessionReplayId = obj.sessionReplayId;
+/**
+ * Extracts only well-formed Hexclave keys from W3C baggage. Invalid Hexclave
+ * entries are ignored without affecting unrelated baggage or request handling.
+ */
+export function decodeCorrelationBaggage(headerValue: string | null | undefined): SpanPropagationContext | null {
+  if (headerValue == null || headerValue.length === 0) return null;
+  const context: SpanPropagationContext = {};
+  const entries = new Map<string, string>();
+  for (const member of headerValue.split(",")) {
+    const parsed = parseBaggageMember(member);
+    if (parsed !== null && HEXCLAVE_BAGGAGE_KEYS.has(parsed.key)) entries.set(parsed.key, parsed.value);
   }
-  if (typeof obj.sessionReplaySegmentId === "string" && TELEMETRY_UUID_RE.test(obj.sessionReplaySegmentId)) {
-    context.sessionReplaySegmentId = obj.sessionReplaySegmentId;
+  const sessionReplayId = entries.get(HEXCLAVE_SESSION_REPLAY_ID_BAGGAGE_KEY);
+  if (sessionReplayId !== undefined && TELEMETRY_UUID_RE.test(sessionReplayId)) {
+    context.sessionReplayId = sessionReplayId;
   }
-  // A SPAN id, not a database uuid — validated against the W3C shape.
-  if (isW3cSpanId(obj.pageViewSpanId)) {
-    context.pageViewSpanId = obj.pageViewSpanId;
+  const sessionReplaySegmentId = entries.get(HEXCLAVE_SESSION_REPLAY_SEGMENT_ID_BAGGAGE_KEY);
+  if (sessionReplaySegmentId !== undefined && TELEMETRY_UUID_RE.test(sessionReplaySegmentId)) {
+    context.sessionReplaySegmentId = sessionReplaySegmentId;
   }
-  return context;
+  const pageViewSpanId = entries.get(HEXCLAVE_PAGE_VIEW_SPAN_ID_BAGGAGE_KEY);
+  if (isW3cSpanId(pageViewSpanId)) {
+    context.pageViewSpanId = pageViewSpanId;
+  }
+  return Object.keys(context).length === 0 ? null : context;
 }

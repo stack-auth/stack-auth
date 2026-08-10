@@ -5,6 +5,7 @@ import {
   getEventStorageTable,
   normalizeBatchEvents,
 } from "./analytics-telemetry-writers";
+import { createErrorIngestProtocolProjection } from "./error-ingest/error-ingest-protocol-adapter";
 
 /**
  * Bidirectional drift guard between the hand-built insert rows and the ClickHouse
@@ -129,7 +130,7 @@ describe("error grouping normalization", () => {
     expect(normalized.logOccurrences[0]).toMatchObject({ error_envelope: expect.any(String) });
   });
 
-  it("keeps one manual-capture identity coherent across envelope, occurrence and issue projections", () => {
+  it("keeps one manual-capture identity coherent across envelope, occurrence, issue, and outcome projections", () => {
     const eventId = "0123456789abcdef0123456789abcdef";
     const normalized = normalizeBatchEvents([{
       event_type: "$error",
@@ -153,6 +154,20 @@ describe("error grouping normalization", () => {
       handled: false,
       count: 1,
     });
+
+    const outcome = createErrorIngestProtocolProjection(DRIFT_GUARD_BATCH_ID, [{
+      itemId: "event:0",
+      itemType: "event",
+      eventId,
+      status: "accepted",
+    }]);
+    expect(outcome.items[0]).toMatchObject({ itemId: "event:0", eventId, status: "accepted" });
+    expect(outcome.idempotencyKey).toBe(createErrorIngestProtocolProjection(DRIFT_GUARD_BATCH_ID, [{
+      itemId: "event:0",
+      itemType: "event",
+      eventId,
+      status: "accepted",
+    }]).idempotencyKey);
   });
 });
 

@@ -57,6 +57,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: TRACE_ROOTS_TABLE_SQL }),
     client.command({ query: TRACE_SERVICES_TABLE_SQL }),
     client.command({ query: ISSUE_OCCURRENCE_ROLLUP_TABLE_SQL }),
+    client.command({ query: OTEL_METRICS_TABLE_BASE_SQL }),
   ]);
 
   await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
@@ -74,6 +75,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: SPAN_LINKS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: TRACE_ROOTS_SCHEMA_UPGRADE_SQL }),
     client.command({ query: TRACE_SERVICES_SCHEMA_UPGRADE_SQL }),
+    client.command({ query: OTEL_METRICS_SCHEMA_UPGRADE_SQL }),
   ]);
 
   // After the upgrades so it can never race an ADD COLUMN on the same table.
@@ -104,6 +106,7 @@ export async function runClickhouseMigrations() {
     // time — i.e. they get a fresh 90-day lease rather than expiring early.
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_roots", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "trace_services", ttlDays: TELEMETRY_TTL_DAYS }),
+    ensureTableTtl(client, { database: "analytics_internal", table: "otel_metrics", ttlDays: TELEMETRY_TTL_DAYS }),
     ensureTableTtl(client, { database: "analytics_internal", table: "span_writes", ttlDays: SPAN_WRITES_TTL_DAYS }),
     ensureSkipIndex(client, {
       database: "analytics_internal",
@@ -253,20 +256,20 @@ async function clickhouseTableExists(
 /**
  * ============================ PRE-RELEASE ONLY ============================
  *
- * The spans subsystem (spans, span_links and the derived read models built from
- * them) has not shipped. Rather than detect each dev/staging schema vintage and
- * migrate it — engine changes, partition-key changes, renamed columns, stale
+ * The spans subsystem (spans, span_events, span_links and the derived read
+ * models built from them) has not shipped. Rather than detect each dev/staging
+ * schema vintage and migrate it — engine changes, partition-key changes, renamed columns, stale
  * materialized-view SELECTs, each needing its own probe and copy-and-swap — the
  * whole subsystem is fingerprinted and rebuilt from scratch whenever the
- * canonical schema changes. `spans` is the only table here holding
- * non-derivable rows, and losing dev/staging spans is already the accepted
- * trade for `trace_roots`.
+ * canonical schema changes. `spans` and `span_events` hold the non-derivable
+ * trace signal, and losing dev/staging traces is already the accepted trade
+ * for this unreleased subsystem.
  *
  * DELETE THIS the moment the spans schema ships. After GA a layout change needs
  * a real migration; dropping a customer's telemetry because a column moved
  * would be catastrophic, and the only thing standing between the two is this
- * comment. `events` / `logs` / `span_events` are deliberately NOT in scope —
- * they use the forward-compatible ADD COLUMN path and keep their rows.
+ * comment. Released `events` / `logs` are deliberately NOT in scope — they use
+ * the forward-compatible ADD COLUMN path and keep their rows.
  *
  * ==========================================================================
  */
@@ -275,7 +278,7 @@ const SPANS_SUBSYSTEM_FINGERPRINT_TABLE = "analytics_internal.spans_schema_finge
 // Dependents first: a materialized view must go before the table it reads, and
 // a table cannot be dropped while an MV still targets it.
 const SPANS_SUBSYSTEM_MATERIALIZED_VIEWS = ["trace_roots_mv", "trace_services_mv", "span_writes_mv"] as const;
-const SPANS_SUBSYSTEM_TABLES = ["trace_roots", "trace_services", "span_writes", "span_links", "spans"] as const;
+const SPANS_SUBSYSTEM_TABLES = ["trace_roots", "trace_services", "span_writes", "span_links", "span_events", "spans"] as const;
 export const SPANS_TRACE_MODEL_VERSION = "session-hierarchy-w3c-v1";
 
 /**
@@ -292,6 +295,7 @@ export function computeSpansSubsystemFingerprint(traceModelVersion = SPANS_TRACE
     // session-wide trace ids that would otherwise survive this migration.
     traceModelVersion,
     SPANS_TABLE_BASE_SQL,
+    SPAN_EVENTS_TABLE_BASE_SQL,
     SPAN_LINKS_TABLE_SQL,
     TRACE_ROOTS_TABLE_SQL,
     TRACE_SERVICES_TABLE_SQL,
@@ -598,7 +602,7 @@ export type ClickhouseColumn = {
 export const TELEMETRY_TTL_DAYS = 90;
 export const SPAN_WRITES_TTL_DAYS = 400;
 export const TELEMETRY_INSERT_DEDUPLICATION_WINDOW = 10_000;
-export const TELEMETRY_INSERT_TABLES = ["events", "logs", "spans"] as const;
+export const TELEMETRY_INSERT_TABLES = ["events", "logs", "spans", "span_events", "span_links", "otel_metrics"] as const;
 
 export function buildTelemetryInsertDeduplicationSettingSql(
   table: typeof TELEMETRY_INSERT_TABLES[number],
@@ -823,16 +827,39 @@ export const ERROR_ENVELOPE_COLUMNS = [
 
 export const ERROR_ENVELOPE_COLUMN_NAMES = ERROR_ENVELOPE_COLUMNS.map((column) => column.name);
 
-// Logs and error occurrences share one log-shaped physical table. `$log` rows
-// carry the plain event shape; `$error` rows additionally carry the grouping
-// columns above.
+// Logs and error occurrences share one log-shaped physical table. The new log
+// shape is OTel-first: `body`, `attributes`, and the raw OTLP fields carry the
+// LogRecord; `data` remains the structured application/error payload needed by
+// issue details. `message` is not part of a fresh logs schema. Existing
+// development tables may still physically contain it; it is intentionally left
+// in place and omitted from the new public view and insert contract.
 //
 // Appended AFTER `created_at` (the last EVENTS_COLUMNS entry) rather than
-// slotted in beside the other error-ish fields: buildColumnUpgradeSql positions
-// each ADD COLUMN after its declared predecessor, so appending is the only
-// placement where a freshly-created table and a table grown by ALTER end up
-// with identical physical column order.
-export const LOGS_COLUMNS = [...EVENTS_COLUMNS, ...ERROR_GROUPING_COLUMNS, ...ERROR_ENVELOPE_COLUMNS] as const satisfies readonly ClickhouseColumn[];
+// slotted in beside the other error-ish fields: this keeps the new OTel columns
+// in the same relative order on fresh and upgraded tables. An upgraded table
+// may still have the omitted legacy `message` column earlier in its physical
+// order; explicit views and named inserts keep that difference invisible.
+export const OTEL_LOG_COLUMNS = [
+  { name: "time_unix_nano", type: "String", default: "''" },
+  { name: "observed_time_unix_nano", type: "String", default: "''" },
+  { name: "severity_number", type: "UInt8", default: "0" },
+  { name: "severity_text", type: "LowCardinality(String)", default: "''" },
+  { name: "otel_event_name", type: "String", default: "''" },
+  { name: "body", type: "String", default: "''" },
+  { name: "attributes", type: "String", default: "'{}'" },
+  { name: "dropped_attributes", type: "UInt64", default: "0" },
+  { name: "trace_flags", type: "UInt32", default: "0" },
+  { name: "resource_dropped_attributes", type: "UInt64", default: "0" },
+  { name: "resource_schema_url", type: "String", default: "''" },
+  { name: "scope_name", type: "LowCardinality(Nullable(String))", default: "NULL" },
+  { name: "scope_version", type: "Nullable(String)", default: "NULL" },
+  { name: "scope_attributes", type: "String", default: "'{}'" },
+  { name: "scope_dropped_attributes", type: "UInt64", default: "0" },
+  { name: "scope_schema_url", type: "String", default: "''" },
+] as const satisfies readonly ClickhouseColumn[];
+
+const LOGS_EVENT_COLUMNS = EVENTS_COLUMNS.filter((column) => column.name !== "message");
+export const LOGS_COLUMNS = [...LOGS_EVENT_COLUMNS, ...ERROR_GROUPING_COLUMNS, ...ERROR_ENVELOPE_COLUMNS, ...OTEL_LOG_COLUMNS] as const satisfies readonly ClickhouseColumn[];
 export type LogColumnName = (typeof LOGS_COLUMNS)[number]["name"];
 
 // Bloom filter on the SCALAR `issue_hash` — the column every issue query
@@ -861,13 +888,26 @@ TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`, [
 const LOGS_TABLE_BASE_SQL = buildLogsCreateTableSql("analytics_internal.logs");
 const LOGS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.logs", LOGS_COLUMNS);
 
-export const SPAN_EVENTS_COLUMNS = EVENTS_COLUMNS;
+// Span events use the existing event-shaped columns so trace detail queries stay
+// backwards compatible, and append the complete OTLP event representation. The
+// tagged `attributes` JSON preserves AnyValue types (including int64 vs string
+// and bytes), while `event_at` remains the product-query projection.
+export const SPAN_EVENTS_COLUMNS = [
+  ...EVENTS_COLUMNS,
+  { name: "event_ordinal", type: "UInt32", default: "0" },
+  { name: "time_unix_nano", type: "UInt64", default: "0" },
+  { name: "attributes", type: "String", default: "'{}'" },
+  { name: "dropped_attributes", type: "UInt32", default: "0" },
+] as const satisfies readonly ClickhouseColumn[];
 export type SpanEventColumnName = (typeof SPAN_EVENTS_COLUMNS)[number]["name"];
-const SPAN_EVENTS_TABLE_BASE_SQL = buildCreateTableSql("analytics_internal.span_events", SPAN_EVENTS_COLUMNS, `
-ENGINE MergeTree
+export function buildSpanEventsCreateTableSql(fullTableName: string): string {
+  return buildCreateTableSql(fullTableName, SPAN_EVENTS_COLUMNS, `
+ENGINE ReplacingMergeTree
 PARTITION BY toYYYYMM(event_at)
-ORDER BY (project_id, branch_id, event_at)
+ORDER BY (project_id, branch_id, ifNull(trace_id, ''), ifNull(span_id, ''), event_ordinal, event_at, event_type)
 TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}`);
+}
+const SPAN_EVENTS_TABLE_BASE_SQL = buildSpanEventsCreateTableSql("analytics_internal.span_events");
 const SPAN_EVENTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.span_events", SPAN_EVENTS_COLUMNS);
 
 // Drops the never-released log/tracing columns that an intermediate revision of
@@ -931,7 +971,7 @@ CREATE OR REPLACE VIEW default.logs
 SQL SECURITY DEFINER
 AS
 SELECT
-  ${buildViewSelectList(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)}
+  ${buildViewSelectList(LOGS_COLUMNS, [...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES])}
 FROM analytics_internal.logs
 WHERE event_type = '$log';
 `;
@@ -1200,9 +1240,14 @@ export const SPANS_COLUMNS = [
   { name: "trace_id", type: "String" },
   { name: "span_id", type: "String" },
   { name: "span_type", type: "LowCardinality(String)" },
+  { name: "billing_item", type: "LowCardinality(Nullable(String))" },
   { name: "started_at", type: "DateTime64(3, 'UTC')" },
   { name: "ended_at", type: "Nullable(DateTime64(3, 'UTC'))" },
   { name: "parent_span_id", type: "Nullable(String)" },
+  { name: "trace_state", type: "String", default: "''" },
+  { name: "trace_flags", type: "UInt32", default: "0" },
+  { name: "start_time_unix_nano", type: "UInt64", default: "0" },
+  { name: "end_time_unix_nano", type: "UInt64", default: "0" },
   { name: "kind", type: "LowCardinality(String)", default: "'internal'" },
   { name: "status_code", type: "LowCardinality(String)", default: "'unset'" },
   { name: "status_message", type: "Nullable(String)" },
@@ -1212,8 +1257,17 @@ export const SPANS_COLUMNS = [
   { name: "service_instance_id", type: "Nullable(String)" },
   { name: "deployment_environment_name", type: "LowCardinality(Nullable(String))" },
   { name: "resource_attributes", type: "String", default: "'{}'" },
+  { name: "resource_dropped_attributes", type: "UInt32", default: "0" },
+  { name: "resource_schema_url", type: "String", default: "''" },
   { name: "scope_name", type: "LowCardinality(Nullable(String))" },
   { name: "scope_version", type: "Nullable(String)" },
+  { name: "scope_attributes", type: "String", default: "'{}'" },
+  { name: "scope_dropped_attributes", type: "UInt32", default: "0" },
+  { name: "scope_schema_url", type: "String", default: "''" },
+  { name: "attributes", type: "String", default: "'{}'" },
+  { name: "dropped_attributes", type: "UInt32", default: "0" },
+  { name: "dropped_events", type: "UInt32", default: "0" },
+  { name: "dropped_links", type: "UInt32", default: "0" },
   { name: "data", type: "String", default: "'{}'" },
   { name: "producer", type: "LowCardinality(String)", default: "'sdk'" },
   { name: "project_id", type: "String" },
@@ -1271,12 +1325,74 @@ export function buildSpansCreateTableSql(fullTableName: string): string {
 
 const SPANS_TABLE_BASE_SQL = buildSpansCreateTableSql("analytics_internal.spans");
 
+// Native OTLP Metrics are stored as one row per data point. The raw point JSON
+// is the lossless contract for type-specific fields; the surrounding columns
+// keep the identity, time, temporality, resource/scope, and exemplar fields
+// queryable without re-parsing the entire payload for every read. The point
+// identity is stable across retries, while ReplacingMergeTree(created_at)
+// permits a later write at the same metric timestamp to supersede an earlier
+// ambiguous delivery.
+export const OTEL_METRICS_COLUMNS = [
+  { name: "project_id", type: "String" },
+  { name: "branch_id", type: "String" },
+  { name: "metric_name", type: "String" },
+  { name: "metric_description", type: "String", default: "''" },
+  { name: "metric_unit", type: "String", default: "''" },
+  { name: "metric_type", type: "LowCardinality(String)" },
+  { name: "aggregation_temporality", type: "UInt8", default: "0" },
+  { name: "is_monotonic", type: "UInt8", default: "0" },
+  { name: "metric_metadata", type: "String", default: "'{}'" },
+  { name: "resource_attributes", type: "String", default: "'{}'" },
+  { name: "resource_dropped_attributes", type: "UInt32", default: "0" },
+  { name: "resource_schema_url", type: "String", default: "''" },
+  { name: "scope_name", type: "LowCardinality(Nullable(String))" },
+  { name: "scope_version", type: "Nullable(String)" },
+  { name: "scope_attributes", type: "String", default: "'{}'" },
+  { name: "scope_dropped_attributes", type: "UInt32", default: "0" },
+  { name: "scope_schema_url", type: "String", default: "''" },
+  { name: "attributes", type: "String", default: "'{}'" },
+  { name: "data_point", type: "String", default: "'{}'" },
+  { name: "start_time_unix_nano", type: "Nullable(UInt64)" },
+  { name: "time_unix_nano", type: "UInt64" },
+  { name: "point_flags", type: "UInt32", default: "0" },
+  { name: "exemplar_trace_id", type: "Nullable(String)" },
+  { name: "exemplar_span_id", type: "Nullable(String)" },
+  { name: "point_id", type: "String" },
+  { name: "producer", type: "LowCardinality(String)", default: "'sdk'" },
+  { name: "runtime", type: "LowCardinality(String)" },
+  { name: "user_id", type: "Nullable(String)" },
+  { name: "team_id", type: "Nullable(String)" },
+  { name: "refresh_token_id", type: "Nullable(String)" },
+  { name: "created_at", type: "DateTime64(3, 'UTC')", default: "now64(3)" },
+] as const satisfies readonly ClickhouseColumn[];
+
+export type OtelMetricsColumnName = (typeof OTEL_METRICS_COLUMNS)[number]["name"];
+
+const OTEL_METRICS_TABLE_ENGINE_SQL = `
+ENGINE ReplacingMergeTree(created_at)
+PARTITION BY toYYYYMM(toDateTime(time_unix_nano / 1000000000))
+ORDER BY (project_id, branch_id, point_id)
+TTL ${buildRetentionTtlSql(TELEMETRY_TTL_DAYS)}
+SETTINGS non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`;
+
+export function buildOtelMetricsCreateTableSql(fullTableName: string): string {
+  return buildCreateTableSql(fullTableName, OTEL_METRICS_COLUMNS, OTEL_METRICS_TABLE_ENGINE_SQL);
+}
+
+const OTEL_METRICS_TABLE_BASE_SQL = buildOtelMetricsCreateTableSql("analytics_internal.otel_metrics");
+const OTEL_METRICS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.otel_metrics", OTEL_METRICS_COLUMNS);
+
+// `otel_kind` was part of an unreleased intermediate schema. It is deliberately
+// not in the canonical column list anymore: `kind` is the OTel-compatible string
+// representation we actually query and expose. We do not drop the old physical
+// column from already-upgraded development tables; that would be a needless
+// mutation boundary for data that is not part of the released contract. Explicit
+// view column lists keep it invisible, while fresh tables never create it.
 const SPANS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.spans", SPANS_COLUMNS);
 
-// linked_trace_state/linked_trace_flags/dropped_attributes are retained
-// physically for pre-release continuity but no writer populates them anymore
-// (the trace-protocol concepts they mirrored were cut from the product model);
-// the explicit DEFAULTs let insert rows omit them entirely.
+// Link trace state, flags, attributes, and dropped counts are canonical OTLP
+// fields. Defaults keep the released legacy batch adapter source-compatible;
+// the OTLP writer always populates them.
 export const SPAN_LINKS_COLUMNS = [
   { name: "project_id", type: "String" },
   { name: "branch_id", type: "String" },
@@ -1379,35 +1495,15 @@ const TRACE_ROOTS_TABLE_SQL = buildTraceRootsCreateTableSql("analytics_internal.
 
 const TRACE_ROOTS_SCHEMA_UPGRADE_SQL = buildColumnUpgradeSql("analytics_internal.trace_roots", TRACE_ROOTS_COLUMNS);
 
-// Next runs middleware in a detached context, CORS preflights have no incoming
-// traceparent, and startResponse can run after the request context is gone.
-// Those spans are physically unparented but are framework lifecycle fragments,
-// not useful trace-inbox entries. Keep them in spans for diagnostics without
-// presenting them as independent traces.
-//
-// `$http-client` is deliberately NOT excluded any more. It used to be, because a
-// client fetch could never be a root (server-composed session ancestry always sat
-// above it), so an unparented one meant something had gone wrong. Under W3C a
-// browser fetch IS one of the four root activities — the fetch plus every backend
-// span it triggered IS the trace — so excluding it would make those traces
-// completely invisible in the inbox while their rows sat in `spans`. A fetch made
-// INSIDE a withSpan still has a parent and never reaches this predicate.
-export const TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL = `
-span_type != '$http-client'
-  AND NOT (
-  coalesce(scope_name, '') = 'next.js'
-  AND (kind = 'internal' OR span_type = 'OPTIONS')
-)
-`.trim();
-
-// The SELECT feeding trace_roots, shared by the materialized view and the
-// one-shot backfill so the two can never disagree about what a visible root is.
+// The trace-root index is deliberately a neutral projection: every span with
+// no parent is a physical root. Framework-noise policy belongs to the OTel SDK
+// at span creation, where it can participate in sampling and never requires a
+// ClickHouse backfill or a policy-specific materialized-view migration.
 export const TRACE_ROOTS_SOURCE_SELECT_SQL = `
 SELECT
   ${buildViewSelectList(TRACE_ROOTS_COLUMNS)}
 FROM analytics_internal.spans
 WHERE parent_span_id IS NULL
-  AND ${TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL}
 `;
 
 const TRACE_ROOTS_MV_SQL = `
@@ -1504,14 +1600,11 @@ TTL ${buildRetentionTtlSql(SPAN_WRITES_TTL_DAYS)};
 
 const SPAN_WRITES_TABLE_SQL = buildSpanWritesCreateTableSql("analytics_internal");
 
-// Meters only customer-authored, non-system SDK writes. Hexclave's backend also uses the SDK, but
-// its app is fixed to the internal project with an unlimited dogfood quota, so
-// no backend request span can affect a customer's balance. `$`-prefixed system
-// spans stay free because the SDK mints them automatically and the interaction
-// is already metered via its event counterpart. Auto-instrumented library spans
-// now use their operation as span_type and are identified by a non-null OTel
-// scope_name, so they remain free too. This filter must stay in
-// lockstep with the accept-time debit in the events/batch route.
+// Billing classification is stamped by authenticated ingestion code rather than
+// inferred from a span name or instrumentation scope. This keeps the immutable
+// usage ledger aligned across the legacy adapter and canonical OTLP ingestion,
+// and prevents resource/span attributes supplied by an exporter from selecting
+// a billable product item.
 export function buildSpanWritesMvSql(database: string): string {
   return `
 CREATE MATERIALIZED VIEW IF NOT EXISTS ${database}.span_writes_mv
@@ -1519,7 +1612,7 @@ TO ${database}.span_writes
 AS
 SELECT project_id, created_at
 FROM ${database}.spans
-WHERE producer = 'sdk' AND scope_name IS NULL AND NOT startsWith(span_type, '$');
+WHERE producer = 'sdk' AND billing_item = 'analytics_spans';
 `;
 }
 
@@ -1538,9 +1631,14 @@ SELECT
   replaceAll(lower(toString(rt.id)), '-', '') AS trace_id,
   right(replaceAll(lower(toString(rt.id)), '-', ''), 16) AS span_id,
   CAST('$refresh-token', 'LowCardinality(String)') AS span_type,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS billing_item,
   rt.created_at AS started_at,
   rt.expires_at AS ended_at,
   CAST(NULL, 'Nullable(String)') AS parent_span_id,
+  CAST('', 'String') AS trace_state,
+  CAST(0, 'UInt32') AS trace_flags,
+  CAST(toUnixTimestamp64Milli(rt.created_at) * 1000000, 'UInt64') AS start_time_unix_nano,
+  CAST(toUnixTimestamp64Milli(rt.expires_at) * 1000000, 'UInt64') AS end_time_unix_nano,
   CAST('internal', 'LowCardinality(String)') AS kind,
   CAST('unset', 'LowCardinality(String)') AS status_code,
   CAST(NULL, 'Nullable(String)') AS status_message,
@@ -1550,8 +1648,17 @@ SELECT
   CAST(NULL, 'Nullable(String)') AS service_instance_id,
   CAST(NULL, 'LowCardinality(Nullable(String))') AS deployment_environment_name,
   CAST('{}', 'String') AS resource_attributes,
+  CAST(0, 'UInt32') AS resource_dropped_attributes,
+  CAST('', 'String') AS resource_schema_url,
   CAST(NULL, 'LowCardinality(Nullable(String))') AS scope_name,
   CAST(NULL, 'Nullable(String)') AS scope_version,
+  CAST('{}', 'String') AS scope_attributes,
+  CAST(0, 'UInt32') AS scope_dropped_attributes,
+  CAST('', 'String') AS scope_schema_url,
+  CAST('{}', 'String') AS attributes,
+  CAST(0, 'UInt32') AS dropped_attributes,
+  CAST(0, 'UInt32') AS dropped_events,
+  CAST(0, 'UInt32') AS dropped_links,
   CAST('{}', 'String') AS data,
   CAST('sdk', 'LowCardinality(String)') AS producer,
   rt.project_id AS project_id,
@@ -1571,9 +1678,14 @@ export const REFRESH_TOKEN_SPAN_SELECT_ALIASES: readonly string[] = [
   "trace_id",
   "span_id",
   "span_type",
+  "billing_item",
   "started_at",
   "ended_at",
   "parent_span_id",
+  "trace_state",
+  "trace_flags",
+  "start_time_unix_nano",
+  "end_time_unix_nano",
   "kind",
   "status_code",
   "status_message",
@@ -1583,8 +1695,17 @@ export const REFRESH_TOKEN_SPAN_SELECT_ALIASES: readonly string[] = [
   "service_instance_id",
   "deployment_environment_name",
   "resource_attributes",
+  "resource_dropped_attributes",
+  "resource_schema_url",
   "scope_name",
   "scope_version",
+  "scope_attributes",
+  "scope_dropped_attributes",
+  "scope_schema_url",
+  "attributes",
+  "dropped_attributes",
+  "dropped_events",
+  "dropped_links",
   "data",
   "producer",
   "project_id",
@@ -1633,7 +1754,6 @@ AS
 SELECT
   ${buildViewSelectList(TRACE_ROOTS_COLUMNS, ["version"])}
 FROM analytics_internal.trace_roots FINAL
-WHERE ${TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL}
 
 UNION ALL
 
@@ -2097,7 +2217,7 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── spans ──
   `ALTER TABLE default.spans COMMENT COLUMN trace_id 'Identity shared by every span in one trace: 32 lowercase hex characters (W3C trace id). Authenticated browser telemetry uses one trace per refresh-token session, including replay, page, client request, and backend descendants'`,
   `ALTER TABLE default.spans COMMENT COLUMN span_id 'Span identity: 16 lowercase hex characters (W3C span id), unique within its trace rather than globally — always match on (trace_id, span_id)'`,
-  `ALTER TABLE default.spans COMMENT COLUMN span_type 'What kind of operation the span represents: system types like \$page-view, \$http-client, \$away, \$offline, a customer-defined span name, or an auto-instrumented library operation name'`,
+  `ALTER TABLE default.spans COMMENT COLUMN span_type 'The OpenTelemetry span name, including customer-defined and auto-instrumented operations'`,
   `ALTER TABLE default.spans COMMENT COLUMN started_at 'When the span started (UTC)'`,
   `ALTER TABLE default.spans COMMENT COLUMN ended_at 'When the span ended (UTC). NULL while it is still open'`,
   `ALTER TABLE default.spans COMMENT COLUMN parent_span_id 'The immediate parent span within the same trace. NULL means this span IS the trace root'`,

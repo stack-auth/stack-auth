@@ -913,16 +913,12 @@ import.meta.vitest?.test("migrateConfigOverride moves saved queries from Analyti
     warehouse: { queryFolders },
   });
 
-  // Dot-notation overrides keep their flat key form; only the renamed segment
-  // changes, so the override still targets exactly one leaf.
   expect(migrateConfigOverride("environment", {
     "analytics.queryFolders.favorites.displayName": "Favorites",
   })).toEqual({
     "warehouse.queryFolders.favorites.displayName": "Favorites",
   });
 
-  // A config that already carries a warehouse override wins: the stale
-  // analytics section is dropped rather than clobbering the migrated one.
   expect(migrateConfigOverride("environment", {
     analytics: { queryFolders },
     warehouse: { queryFolders: {} },
@@ -930,7 +926,6 @@ import.meta.vitest?.test("migrateConfigOverride moves saved queries from Analyti
     warehouse: { queryFolders: {} },
   });
 
-  // Branch level is not environment-or-higher, so nothing is renamed there.
   expect(migrateConfigOverride("branch", {
     analytics: { queryFolders },
   })).toEqual({

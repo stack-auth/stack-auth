@@ -8,5 +8,7 @@ export default createJsLibraryTsupConfig({ barrelFiles: [
   "src/integrations/orpc.ts",
   "src/integrations/elysia.ts",
   "src/integrations/next.ts", // THIS_LINE_PLATFORM next
+  "src/integrations/otel.ts",
+  "src/integrations/otel-browser.ts",
   "src/integrations/tanstack-start.ts", // THIS_LINE_PLATFORM tanstack-start
 ] });

@@ -15,7 +15,6 @@ describe("telemetry taxonomy", () => {
     expect(classifyTelemetrySignal("$page-view", "span")).toMatchObject({ kind: "span", lens: "analytics" });
     expect(classifyTelemetrySignal("$log", "event")).toMatchObject({ kind: "log", lens: "observability" });
     expect(classifyTelemetrySignal("$error", "event")).toMatchObject({ kind: "error", lens: "observability" });
-    expect(classifyTelemetrySignal("$http-client", "span")).toMatchObject({ kind: "span", lens: "observability" });
     expect(classifyTelemetrySignal("db.query", "span", "server")).toMatchObject({
       kind: "span",
       lens: "observability",
@@ -23,7 +22,6 @@ describe("telemetry taxonomy", () => {
       billingItem: "analytics_spans",
     });
     expect(classifyTelemetrySignal("checkout.completed", "event").billingItem).toBe("analytics_events");
-    expect(classifyTelemetrySignal("$http-client", "span").billingItem).toBeNull();
   });
 
   it("describes every accepted system wire signal exactly once per wire kind", () => {
@@ -43,7 +41,6 @@ describe("telemetry taxonomy", () => {
     expect(canWriteTelemetrySignal("$click", "event", "client")).toBe(true);
     expect(canWriteTelemetrySignal("$click", "event", "server")).toBe(false);
     expect(canWriteTelemetrySignal("$log", "event", "server")).toBe(true);
-    expect(canWriteTelemetrySignal("$http-client", "span", "server")).toBe(true);
     expect(canWriteTelemetrySignal("$lib-span", "span", "client")).toBe(false);
     expect(canWriteTelemetrySignal("checkout.completed", "event", "server")).toBe(true);
     expect(canWriteTelemetrySignal("db.query", "span", "server")).toBe(true);

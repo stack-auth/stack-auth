@@ -1,12 +1,9 @@
 // @vitest-environment jsdom
 
-import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { computeErrorFingerprint } from "./error-capture";
-import { EventTracker } from "./event-tracker";
 import { createLogger, installConsoleCapture, type LogEmitItem } from "./logs";
 
-const TEST_RESOURCE = { service: { name: "test-client" } } as const;
 
 describe("createLogger", () => {
   it("stamps the level verbatim, defaults origin to 'logger', and passes structured data through", () => {
@@ -194,8 +191,9 @@ describe("installConsoleCapture", () => {
     originalSpy.mockRestore();
   });
 
-  it("stamps the $error-pipeline fingerprint on console.error(err) calls", () => {
+  it("promotes console.error(err) to the handled error pipeline and keeps the log context", () => {
     const emitted: LogEmitItem[] = [];
+    const captured: Error[] = [];
     const logger = createLogger({
       emit: (item) => {
         emitted.push(item);
@@ -203,7 +201,13 @@ describe("installConsoleCapture", () => {
       },
     });
     const originalSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const uninstall = installConsoleCapture({ levels: ["error"], logger, projectId: "internal", serviceName: "dashboard" });
+    const uninstall = installConsoleCapture({
+      levels: ["error"],
+      logger,
+      projectId: "internal",
+      serviceName: "dashboard",
+      captureError: (error) => captured.push(error),
+    });
 
     const error = new Error("payment declined");
     console.error("checkout blew up", error);
@@ -211,6 +215,7 @@ describe("installConsoleCapture", () => {
     expect(emitted[0].data?.error_name).toBe("Error");
     // Identical inputs ⇒ identical hash as the $error capture path would compute.
     expect(emitted[0].data?.error_fingerprint).toBe(computeErrorFingerprint("Error", error.message, error.stack ?? null));
+    expect(captured).toEqual([error]);
 
     uninstall();
     originalSpy.mockRestore();
@@ -342,102 +347,3 @@ describe("installConsoleCapture", () => {
 
 // ---------------------------------------------------------------------------
 // Tracker integration: $log / $error on the client event path
-// ---------------------------------------------------------------------------
-
-async function advancePastFlush() {
-  await vi.advanceTimersByTimeAsync(10_000);
-  await Promise.resolve();
-}
-
-type SentEvent = {
-  event_type: string,
-  event_at_ms: number,
-  data: Record<string, unknown>,
-  message?: string,
-  level?: string,
-  /** The ENCLOSING span, W3C-style; absent when the event had none. */
-  trace_id?: string,
-  span_id?: string,
-  page_view_span_id?: string,
-};
-
-function parseEvents(sentBodies: string[]): SentEvent[] {
-  return sentBodies.flatMap((body) => {
-    const payload = JSON.parse(body) as { events?: SentEvent[] };
-    return payload.events ?? [];
-  });
-}
-
-describe("EventTracker $log / $error", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("ships $log events with the wire fields, page correlation, and the ambient enclosing span", async () => {
-    vi.useFakeTimers();
-    const sentBodies: string[] = [];
-    const tracker = new EventTracker({
-      projectId: "internal",
-      resource: TEST_RESOURCE,
-      sendBatch: async (body) => {
-        sentBodies.push(body);
-        return Result.ok(new Response());
-      },
-    });
-    try {
-      tracker.start();
-      const span = tracker.startSpan("checkout");
-      tracker.setGlobalSpan(span);
-      const promise = tracker.trackLogEvent({ message: "hello logs", level: "info" }, { step: 1 });
-      await advancePastFlush();
-      await promise;
-
-      const log = parseEvents(sentBodies).find((event) => event.event_type === "$log");
-      if (log == null) throw new Error("no $log event captured");
-      expect(log.message).toBe("hello logs");
-      expect(log.level).toBe("info");
-      expect(log.data).toEqual({ step: 1 });
-      // HIERARCHY: the global span is the nearest ambient context, so it is the
-      // log's enclosing span — one scalar pair, not a chain.
-      expect(log.trace_id).toBe(span.traceId);
-      expect(log.span_id).toBe(span.spanId);
-      // CORRELATION: which page it happened on, alongside (not inside) the trace.
-      expect(typeof log.page_view_span_id).toBe("string");
-    } finally {
-      tracker.stop();
-    }
-  });
-
-  it("ships $error events as fire-and-forget system events stamped with the page view", async () => {
-    vi.useFakeTimers();
-    const sentBodies: string[] = [];
-    const tracker = new EventTracker({
-      projectId: "internal",
-      resource: TEST_RESOURCE,
-      sendBatch: async (body) => {
-        sentBodies.push(body);
-        return Result.ok(new Response());
-      },
-    });
-    try {
-      tracker.start();
-      const eventAtMs = Date.now() - 1234;
-      // eventAtMs is the pre-load adoption path (errors captured before the
-      // lazily-loaded tracker module arrived keep their real timestamps).
-      tracker.trackErrorEvent({ message: "boom", mechanism_type: "global.onerror", handled: false }, { eventAtMs });
-      await advancePastFlush();
-
-      const error = parseEvents(sentBodies).find((event) => event.event_type === "$error");
-      if (error == null) throw new Error("no $error event captured");
-      expect(error.data.message).toBe("boom");
-      expect(error.data.mechanism_type).toBe("global.onerror");
-      expect(error.event_at_ms).toBe(eventAtMs);
-      expect(typeof error.page_view_span_id).toBe("string");
-      // System events never carry the extra $log wire fields.
-      expect(error.message).toBeUndefined();
-      expect(error.level).toBeUndefined();
-    } finally {
-      tracker.stop();
-    }
-  });
-});

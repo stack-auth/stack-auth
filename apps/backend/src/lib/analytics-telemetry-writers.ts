@@ -239,6 +239,39 @@ function buildErrorGroupingFields(event: BatchEventWireItem, context: Pick<Batch
 }
 
 /**
+ * Compatibility projection for one canonical OTel error LogRecord. The OTel
+ * receiver uses this seam so issue grouping remains one implementation while
+ * canonical serialization/storage stays independent of the legacy batch wire.
+ */
+export function normalizeErrorOccurrence(
+  event: BatchEventWireItem,
+  context: {
+    runtime: BatchSignalContext["runtime"],
+    serviceName: string | null,
+    deploymentEnvironmentName: string | null,
+    groupingConfig?: GroupingRuntimeConfig,
+  },
+  batchId: string,
+  ordinal: number,
+): { columns: Record<string, unknown>, issueInput: IssueMaterializationInput } {
+  if (event.event_type !== "$error") throw new Error("normalizeErrorOccurrence requires a $error event");
+  const errorFields = buildErrorGroupingFields(event, context, resolveGroupingConfig(context.groupingConfig));
+  const issueInput = collectIssueInputs([{
+    event,
+    grouping: errorFields.grouping,
+    occurrenceId: computeOccurrenceId(batchId, ordinal),
+  }], context)[0];
+  return {
+    columns: {
+      occurrence_id: computeOccurrenceId(batchId, ordinal),
+      batch_id: batchId,
+      ...errorFields.columns,
+    },
+    issueInput,
+  };
+}
+
+/**
  * The columns every event-shaped row carries, i.e. exactly `EVENTS_COLUMNS`.
  *
  * Split from the logs-only fields below so the TYPE of a product-event row does
@@ -294,11 +327,11 @@ function buildLogRow(
     // the reconciler needs to ask "which batches have no ledger row?", which
     // requires the batch id itself, not a digest of it.
     batch_id: batchId,
-    message: event.event_type === "$log" ? stripLoneSurrogates(scrubBatchMessage(requireLogMessage(event))) : "",
+    body: JSON.stringify(event.event_type === "$log"
+      ? { type: "string", value: stripLoneSurrogates(scrubBatchMessage(requireLogMessage(event))) }
+      : { type: "null", value: null }),
+    data: stripLoneSurrogates(event.data),
     level: event.event_type === "$log" ? event.level : "",
-    // Non-error logs have no envelope. The column is written explicitly rather
-    // than left to its ClickHouse default so a fresh table and one grown by
-    // ALTER produce identical rows.
     error_envelope: "{}",
     ...errorFields?.columns ?? {},
   };

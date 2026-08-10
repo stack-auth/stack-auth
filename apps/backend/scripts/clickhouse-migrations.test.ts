@@ -3,20 +3,22 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   ERRORS_VIEW_SQL,
-  ERROR_ENVELOPE_COLUMN_NAMES,
   ERROR_GROUPING_COLUMNS,
   ERROR_GROUPING_COLUMN_NAMES,
+  ERROR_ENVELOPE_COLUMN_NAMES,
   EVENTS_COLUMNS,
   EVENTS_EVENT_TYPE_INDEX_DEFINITION_SQL,
   EVENTS_EVENT_TYPE_INDEX_NAME,
   EVENTS_LEGACY_COLUMNS_TO_DROP,
   LOGS_COLUMNS,
+  OTEL_LOG_COLUMNS,
   LOGS_ISSUE_HASH_INDEX_DEFINITION_SQL,
   LOGS_ISSUE_HASH_INDEX_NAME,
   LOGS_VIEW_SQL,
   REFRESH_TOKEN_SPAN_SELECT_ALIASES,
   REFRESH_TOKEN_SPAN_SELECT_SQL,
   SPANS_COLUMNS,
+  OTEL_METRICS_COLUMNS,
   SPANS_TRACE_MODEL_VERSION,
   SPANS_VIEW_SQL,
   SPAN_LINKS_COLUMNS,
@@ -28,7 +30,6 @@ import {
   TRACE_ROOTS_COLUMNS,
   TRACE_ROOTS_SOURCE_SELECT_SQL,
   TRACE_ROOTS_VIEW_SQL,
-  TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL,
   TRACE_SERVICES_COLUMNS,
   TRACE_SERVICES_SOURCE_SELECT_SQL,
   buildColumnUpgradeSql,
@@ -38,10 +39,12 @@ import {
   buildIssueOccurrenceRollupCreateTableSql,
   buildIssueOccurrenceRollupMvSql,
   buildLogsCreateTableSql,
+  buildSpanEventsCreateTableSql,
   buildSpanLinksCreateTableSql,
   buildSpanWritesCreateTableSql,
   buildSpanWritesMvSql,
   buildSpansCreateTableSql,
+  buildOtelMetricsCreateTableSql,
   buildTelemetryInsertDeduplicationSettingSql,
   buildTraceRootsCreateTableSql,
   buildTraceServicesCreateTableSql,
@@ -87,24 +90,21 @@ describe("spans subsystem fingerprint", () => {
 
 describe("derived read models", () => {
   test("the trace inbox is fed by the scalar-parent root test", () => {
-    // This predicate is the ONLY definition of "trace root" in the system, and the
-    // materialized view fires on INSERT — so if it ever references a column that
-    // does not exist, span ingestion breaks rather than deployment.
+    // The parent-null test is the ONLY definition of "trace root" in the
+    // derived index, and the materialized view fires on INSERT — so if it ever
+    // references a column that does not exist, span ingestion breaks rather
+    // than deployment.
     expect(TRACE_ROOTS_SOURCE_SELECT_SQL).toContain("WHERE parent_span_id IS NULL");
   });
 
-  test("the trace inbox does not promote an orphaned client bridge above its session root", () => {
-    expect(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL).toContain("span_type != '$http-client'");
-  });
-
-  test("the trace inbox excludes detached Next lifecycle fragments without rewriting their ancestry", () => {
-    expect(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL).toContain("coalesce(scope_name, '') = 'next.js'");
-    expect(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL).toContain("kind = 'internal'");
-    expect(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL).toContain("span_type = 'OPTIONS'");
-    expect(TRACE_ROOTS_SOURCE_SELECT_SQL).toContain(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL);
-    // Existing pre-release tables already contain these rows, so the public
-    // view must enforce the policy as well as the materialized-view source.
-    expect(TRACE_ROOTS_VIEW_SQL).toContain(TRACE_ROOTS_VISIBLE_ROOT_PREDICATE_SQL);
+  test("the trace inbox remains a neutral parentless-span projection", () => {
+    expect(TRACE_ROOTS_SOURCE_SELECT_SQL).toContain("WHERE parent_span_id IS NULL");
+    for (const sql of [TRACE_ROOTS_SOURCE_SELECT_SQL, TRACE_ROOTS_VIEW_SQL]) {
+      expect(sql).not.toContain("coalesce(scope_name");
+      expect(sql).not.toContain("JSONExtractString(data, 'http.target')");
+      expect(sql).not.toContain("_next/static");
+      expect(sql).not.toContain("span_type = 'OPTIONS'");
+    }
   });
 
   test("the trace inbox unions the virtual session root with physical unparented operations", () => {
@@ -113,10 +113,11 @@ describe("derived read models", () => {
     expect(TRACE_ROOTS_VIEW_SQL).toContain(REFRESH_TOKEN_SPAN_SELECT_SQL);
   });
 
-  test("span usage excludes auto-instrumented operation names by scope", () => {
+  test("span usage follows the server-derived billing classification", () => {
     const sql = buildSpanWritesMvSql("analytics_internal");
-    expect(sql).toContain("scope_name IS NULL");
-    expect(sql).toContain("NOT startsWith(span_type, '$')");
+    expect(sql).toContain("billing_item = 'analytics_spans'");
+    expect(sql).not.toContain("scope_name IS NULL");
+    expect(sql).not.toContain("startsWith(span_type");
   });
 
   test("trace_roots carries the page-view correlation the inbox groups by", () => {
@@ -153,16 +154,12 @@ describe("derived read models", () => {
 });
 
 describe("error grouping columns on analytics_internal.logs", () => {
-  test("logs carries the grouping and envelope columns appended after created_at, and nothing else does", () => {
-    // Appended (not interleaved) is the whole reason a table grown by
-    // buildColumnUpgradeSql lands on the same physical order as a fresh one —
-    // each ADD COLUMN names its predecessor, and `created_at` is the last
-    // EVENTS_COLUMNS entry. Asserted end-to-end against a real server below.
-    expect(names(LOGS_COLUMNS)).toEqual([
-      ...names(EVENTS_COLUMNS),
-      ...ERROR_GROUPING_COLUMN_NAMES,
-      ...ERROR_ENVELOPE_COLUMN_NAMES,
-    ]);
+  test("logs carries grouping and canonical OTel columns without the legacy message field", () => {
+    // Fresh logs tables keep the structured `data` payload and omit only the
+    // old human-readable `message` field. OTel columns are appended after the
+    // event-shaped tenancy/correlation fields; public views define the stable
+    // contract even when an upgraded table retains extra physical columns.
+    expect(names(LOGS_COLUMNS)).toEqual([...names(EVENTS_COLUMNS).filter((name) => name !== "message"), ...ERROR_GROUPING_COLUMN_NAMES, ...ERROR_ENVELOPE_COLUMN_NAMES, ...names(OTEL_LOG_COLUMNS)]);
     expect(names(EVENTS_COLUMNS).at(-1)).toBe("created_at");
 
     // The other two telemetry destinations keep the plain event shape. Errors
@@ -199,15 +196,14 @@ describe("error grouping columns on analytics_internal.logs", () => {
       expect(ERRORS_VIEW_SQL).toContain(`\n  ${name}`);
       expect(LOGS_VIEW_SQL).not.toContain(`\n  ${name}`);
     }
-    // The two views must otherwise stay identical in shape — the difference is
-    // the grouping columns and the event_type predicate, nothing else. The
-    // envelope column is public on both: it is the error payload the issue API
-    // reads back, not an issue-grouping internal.
+    // The public log view exposes the canonical OTel fields in addition to the
+    // released event projection; only issue-grouping internals are hidden.
     expect(ERRORS_VIEW_SQL).toContain("WHERE event_type = '$error'");
     expect(LOGS_VIEW_SQL).toContain("WHERE event_type = '$log'");
     expect(selectColumnNames(LOGS_COLUMNS, ERROR_GROUPING_COLUMN_NAMES)).toEqual([
-      ...names(EVENTS_COLUMNS),
+      ...names(EVENTS_COLUMNS).filter((name) => name !== "message"),
       ...ERROR_ENVELOPE_COLUMN_NAMES,
+      ...names(OTEL_LOG_COLUMNS),
     ]);
   });
 
@@ -344,7 +340,21 @@ describe("telemetry table physical layout", () => {
       `ALTER TABLE analytics_internal.events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.logs MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
       `ALTER TABLE analytics_internal.spans MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.span_events MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.span_links MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
+      `ALTER TABLE analytics_internal.otel_metrics MODIFY SETTING non_replicated_deduplication_window = ${TELEMETRY_INSERT_DEDUPLICATION_WINDOW}`,
     ]);
+  });
+
+  test("native OTLP metrics preserve point identity across retries", () => {
+    const sql = buildOtelMetricsCreateTableSql("analytics_internal.otel_metrics");
+    expect(names(OTEL_METRICS_COLUMNS)).toContain("metric_name");
+    expect(names(OTEL_METRICS_COLUMNS)).toContain("data_point");
+    expect(names(OTEL_METRICS_COLUMNS)).toContain("exemplar_trace_id");
+    expect(sql).toContain("ENGINE ReplacingMergeTree(created_at)");
+    expect(sql).toContain("ORDER BY (project_id, branch_id, point_id)");
+    expect(sql).toContain("PARTITION BY toYYYYMM(toDateTime(time_unix_nano / 1000000000))");
+    expect(sql).toContain(`TTL toDateTime(created_at) + INTERVAL ${TELEMETRY_TTL_DAYS} DAY DELETE`);
   });
 
   test("span_links dedupe retried exports via ReplacingMergeTree over the full identity key", () => {
@@ -353,6 +363,12 @@ describe("telemetry table physical layout", () => {
     expect(sql).toContain("ORDER BY (project_id, branch_id, trace_id, owner_span_id, linked_project_id, linked_branch_id, linked_trace_id, linked_span_id)");
     expect(sql).toContain("linked_project_id String DEFAULT project_id");
     expect(sql).toContain("linked_branch_id String DEFAULT branch_id");
+  });
+
+  test("span_events converge retried OTLP exports on their canonical event identity", () => {
+    const sql = buildSpanEventsCreateTableSql("analytics_internal.span_events");
+    expect(sql).toContain("ENGINE ReplacingMergeTree");
+    expect(sql).toContain("ifNull(trace_id, ''), ifNull(span_id, ''), event_ordinal, event_at, event_type");
   });
 
   test("telemetry tables declare the retention TTL in their CREATE statements", () => {
@@ -369,13 +385,11 @@ describe("telemetry table physical layout", () => {
     expect(SPAN_WRITES_TTL_DAYS).toBeGreaterThan(TELEMETRY_TTL_DAYS);
   });
 
-  test("the billing view zero-rates auto-instrumented and system spans", () => {
-    // The exact WHERE clause is billing-critical: dropping the producer
-    // condition would meter Hexclave's own self-instrumentation writes against
-    // the customer, dropping scope_name would meter auto-instrumented library
-    // work, and dropping the $-prefix condition would meter free system
-    // autocapture spans. Also covered end-to-end by the integration test below.
-    expect(buildSpanWritesMvSql("analytics_internal")).toContain("WHERE producer = 'sdk' AND scope_name IS NULL AND NOT startsWith(span_type, '$')");
+  test("the billing view trusts only the authenticated ingestion classification", () => {
+    // The exact WHERE clause is billing-critical: producer is stamped by the
+    // route and billing_item is derived there from the accepted signal rather
+    // than inferred later from user-controlled names or OTel scopes.
+    expect(buildSpanWritesMvSql("analytics_internal")).toContain("WHERE producer = 'sdk' AND billing_item = 'analytics_spans'");
   });
 });
 
@@ -453,7 +467,7 @@ describe("clickhouse upgrade helpers (integration)", () => {
   const toClickhouseDateTime = (date: Date) => date.toISOString().replace("T", " ").replace("Z", "");
 
 
-  test("the span_writes billing view meters only non-$ SDK spans", async () => {
+  test("the span_writes billing view meters only classified SDK spans", async () => {
     await client.command({ query: buildSpansCreateTableSql(`${testDatabase}.spans`) });
     await client.command({ query: buildSpanWritesCreateTableSql(testDatabase) });
     await client.command({ query: buildSpanWritesMvSql(testDatabase) });
@@ -461,10 +475,11 @@ describe("clickhouse upgrade helpers (integration)", () => {
     const startedAt = toClickhouseDateTime(new Date());
     await client.command({
       query: `
-        INSERT INTO ${testDatabase}.spans (trace_id, span_id, span_type, producer, started_at, project_id, branch_id, version) VALUES
-        ('trace-b1', 'span-b1', 'checkout-flow', 'sdk', '${startedAt}', 'billed-project', 'b', 1),
-        ('trace-b2', 'span-b2', '$page-view', 'sdk', '${startedAt}', 'billed-project', 'b', 1),
-        ('trace-b3', 'span-b3', 'handler', 'hexclave-backend', '${startedAt}', 'billed-project', 'b', 1)
+        INSERT INTO ${testDatabase}.spans (trace_id, span_id, span_type, billing_item, producer, started_at, project_id, branch_id, version) VALUES
+        ('trace-b1', 'span-b1', 'checkout-flow', 'analytics_spans', 'sdk', '${startedAt}', 'billed-project', 'b', 1),
+        ('trace-b2', 'span-b2', '$page-view', NULL, 'sdk', '${startedAt}', 'billed-project', 'b', 1),
+        ('trace-b3', 'span-b3', 'handler', NULL, 'hexclave-backend', '${startedAt}', 'billed-project', 'b', 1),
+        ('trace-b4', 'span-b4', 'spoofed', 'analytics_spans', 'hexclave-backend', '${startedAt}', 'billed-project', 'b', 1)
       `,
     });
 
@@ -473,8 +488,8 @@ describe("clickhouse upgrade helpers (integration)", () => {
       format: "JSONEachRow",
     });
     const ledgerRows = await resultSet.json<{ project_id: string }>();
-    // Exactly one billable write: the custom SDK span. The $-prefixed system
-    // span and the backend self-instrumentation span are zero-rated.
+    // Exactly one billable write: both the SDK producer and the server-derived
+    // item classification are required.
     expect(ledgerRows).toEqual([{ project_id: "billed-project" }]);
   });
 
@@ -678,11 +693,12 @@ describe("clickhouse upgrade helpers (integration)", () => {
     expect(await countMutations(table)).toBe(0);
   });
 
-  test("a pre-grouping logs table upgrades to exactly the freshly-created shape", async () => {
+  test("a pre-grouping logs table receives the new columns without dropping old physical columns", async () => {
     const upgraded = "logs_grouping_upgrade_probe";
     const fresh = "logs_grouping_fresh_probe";
     // The vintage that predates the grouping columns: `logs` was a byte-for-byte
-    // alias of the events shape.
+    // alias of the events shape. The additive upgrade must preserve those old
+    // physical columns while fresh tables use the OTel-first log shape.
     await client.command({
       query: `
         CREATE TABLE ${testDatabase}.${upgraded} (
@@ -700,16 +716,25 @@ describe("clickhouse upgrade helpers (integration)", () => {
     await client.command({ query: buildColumnUpgradeSql(`${testDatabase}.${upgraded}`, LOGS_COLUMNS) });
     await client.command({ query: buildLogsCreateTableSql(`${testDatabase}.${fresh}`) });
 
-    // Physical order, not just membership: the ALTER path and the CREATE path
-    // must converge, or a positional INSERT would mis-pair same-typed columns.
-    expect(await getColumnNames(upgraded)).toEqual(names(LOGS_COLUMNS));
-    expect(await getColumnNames(upgraded)).toEqual(await getColumnNames(fresh));
+    // The fresh table's order is the public insert/view contract. The upgraded
+    // table keeps old message/data columns because this migration deliberately
+    // does not backfill or rewrite historical parts.
+    expect(await getColumnNames(upgraded)).toEqual([
+      ...names(EVENTS_COLUMNS),
+      ...ERROR_GROUPING_COLUMN_NAMES,
+      ...ERROR_ENVELOPE_COLUMN_NAMES,
+      ...names(OTEL_LOG_COLUMNS),
+    ]);
+    expect(await getColumnNames(fresh)).toEqual(names(LOGS_COLUMNS));
+    expect(await getColumnNames(fresh)).not.toContain("message");
+    expect(await getColumnNames(fresh)).toContain("data");
+    expect(await getColumnNames(fresh)).toContain("body");
 
     // The pre-existing row survives and reads back as the empty defaults rather
     // than NULL — this is what lets `issue_hash != ''` be the one and only
     // "grouped?" predicate.
     const resultSet = await client.query({
-      query: `SELECT occurrence_id, batch_id, issue_hash, issue_hashes, issue_variant, grouping_degraded, error_frames FROM ${testDatabase}.${upgraded}`,
+      query: `SELECT occurrence_id, batch_id, issue_hash, issue_hashes, issue_variant, issue_grouping_provenance, grouping_degraded, error_frames, error_envelope FROM ${testDatabase}.${upgraded}`,
       format: "JSONEachRow",
     });
     expect(await resultSet.json()).toEqual([{
@@ -718,8 +743,10 @@ describe("clickhouse upgrade helpers (integration)", () => {
       issue_hash: "",
       issue_hashes: [],
       issue_variant: "",
+      issue_grouping_provenance: "[]",
       grouping_degraded: 0,
       error_frames: "",
+      error_envelope: "{}",
     }]);
   });
 

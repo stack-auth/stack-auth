@@ -1,4 +1,5 @@
 import { HexclaveClientInterface, KnownError, KnownErrors } from "@hexclave/shared";
+import { TraceFlags } from "@opentelemetry/api";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
@@ -37,7 +38,7 @@ import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withB
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
 import { BROWSER_ACTION_QUERY_PARAM } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
-import { generateW3cSpanId, uuidToW3cSpanId, uuidToW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
+import { uuidToW3cSpanId, uuidToW3cTraceId } from "@hexclave/shared/dist/utils/analytics-wire";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
@@ -65,6 +66,7 @@ import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
 import { scopePasskeyAuthenticationToHostname, scopePasskeyRegistrationToHostname } from "../../passkey-rp-id";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
+import type { CaptureEvent, CaptureExceptionOptions, CaptureMessageOptions, ErrorEventId, ErrorScopeData, ErrorScope } from "../interfaces/error-capture";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 // NOTE: no value import of ./event-tracker or ./session-replay here — the
@@ -73,19 +75,21 @@ import { TokenObject, clientVersion, createCache, createCacheBySession, createEm
 import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveSpanParent, withSpanImpl, type ParentRef, type Span, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
 import { ClientAnalytics } from "./client-analytics";
 import { normalizeErrorCaptureOptions } from "./error-capture";
-import { createLogger, installConsoleCapture, type LogEmitItem, type Logger } from "./logs";
+import { createErrorAttachmentTransport } from "./error-attachments";
+import { createLogger, type LogEmitItem, type Logger } from "./logs";
+import { emitHexclaveOtelLog } from "./otel-log-facade";
+import { generateOtelSpanId } from "./otel-context";
 import { normalizeNetworkCaptureOptions, type NetworkCaptureConfig } from "./network-capture";
 import { createInertSpanHandle } from "./span-handle";
-import { buildPropagationHeaderValues, installFetchSpanPropagation, trustedDomainsToPropagationOrigins, type SpanPropagationContext } from "./span-propagation";
-import { installXhrSpanPropagation } from "./xhr-instrumentation";
+import { buildPropagationHeaderValues, trustedDomainsToPropagationOrigins, type SpanPropagationContext } from "./span-propagation";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./analytics-config";
 import { createAnonymousAnalyticsTokenStore } from "./analytics-session";
-import { DEFAULT_CONSOLE_CAPTURE_LEVELS, normalizeTraceSampleRate, ObservabilityOptions } from "./observability-config";
+import { createErrorScope, getActiveErrorScope, runWithErrorScope, runWithErrorScopeAsync } from "./error-scope";
+import { DEFAULT_CONSOLE_CAPTURE_LEVELS, normalizeTraceSampleRate, observabilityOptionsToJson, ObservabilityOptions } from "./observability-config";
 import { resolveTelemetryResource, snapshotTelemetryOptions, TelemetryOptions, TelemetryResource, telemetryOptionsToJson } from "./telemetry-config";
-import { isTraceSampled } from "./trace-sampling";
 
 export function stripBrowserActionQueryParam() {
   let stripAttemptsRemaining = 20;
@@ -127,6 +131,9 @@ export function shouldIgnoreTelemetryDeliveryUrl(url: string, analyticsBaseUrl: 
   const basePath = analyticsBase.pathname.replace(/\/+$/, "");
   return [
     `${basePath}/api/v1/analytics/events/batch`,
+    `${basePath}/api/v1/analytics/otlp/v1/traces`,
+    `${basePath}/api/v1/analytics/otlp/v1/logs`,
+    `${basePath}/api/v1/analytics/otlp/v1/metrics`,
     `${basePath}/api/v1/session-replays/batch`,
   ].includes(target.pathname);
 }
@@ -394,9 +401,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // construction (immutable for the app's lifetime) from the caller's explicit
   // `telemetry.resource`, or inferred when they gave none.
   protected readonly _telemetryResource: TelemetryResource;
-  // Normalized ObservabilityOptions.network ($http-client capture) — validated at
-  // construction; shared by the browser wrappers and (on subclasses) the
-  // server outbound-fetch instrumentation.
+  // Normalized ObservabilityOptions.network policy consumed by official OTel
+  // browser and Node HTTP instrumentations.
   protected readonly _networkCaptureConfig: NetworkCaptureConfig;
   // One deterministic healthy-trace rate shared by propagation and every
   // environment's final analytics flusher.
@@ -405,6 +411,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   // + session recorder). Non-null exactly when browser analytics is active for
   // this app — subclasses use that as the browser/server telemetry dispatch.
   protected _clientAnalytics: ClientAnalytics | null = null;
+  private _lastErrorEventId: ErrorEventId | undefined;
   private _anonymousAnalyticsTokenStore: Store<TokenObject> | null = null;
   private _anonymousAnalyticsSignUpInProgress: Promise<InternalSession> | null = null;
   private _pendingSignOut: Promise<void> | null = null;
@@ -857,23 +864,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
     }
 
-    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, analytics, and
-    // development overlays cannot affect the containing page. Explicit SDK calls remain functional and retain their
-    // documented side effects.
-    if (resolvedOptions.automaticSideEffects === false) {
-      return;
-    }
-
+    // Custom dashboards can disable automatic initialization so URL parameters, browser storage, global handlers,
+    // and development overlays cannot affect the containing page. The telemetry facade is still initialized so
+    // explicit capture calls remain functional; it defers provider registration/load until the first call.
     this._initializeAutomaticSideEffects(resolvedOptions);
   }
 
   private _initializeAutomaticSideEffects(resolvedOptions: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>) {
-    if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
+    const automaticSideEffects = resolvedOptions.automaticSideEffects !== false;
+    if (automaticSideEffects && isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();
     }
 
-    if (this._uniqueIdentifier !== undefined) {
+    if (automaticSideEffects && this._uniqueIdentifier !== undefined) {
       this._initUniqueIdentifier();
     }
 
@@ -892,16 +896,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       ...getSessionReplayOptions(this._analyticsOptions),
       enabled: analyticsEnabled && getSessionReplayOptions(this._analyticsOptions).enabled,
     };
-    if ((analyticsEnabled || observabilityEnabled) && isBrowserLike()) {
+    const browserTelemetryEnvironment = automaticSideEffects ? isBrowserLike() : typeof window !== "undefined";
+    if ((analyticsEnabled || observabilityEnabled) && browserTelemetryEnvironment) {
       // The facade is constructed eagerly (it mints the per-tab segment id the
       // propagation wrapper below needs immediately), but the tracker/recorder
       // modules themselves load lazily — see ClientAnalytics.
       this._clientAnalytics = new ClientAnalytics({
         projectId: this.projectId,
         resource: telemetryResource ?? throwErr("Telemetry resource was validated above"),
-        sendEventBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await this._getAnalyticsSession(), opts);
-        },
         sendReplayBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await this._getAnalyticsSession(), opts);
         },
@@ -910,6 +912,37 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
           const refreshTokenId = tokens?.accessToken.payload.refresh_token_id
             ?? throwErr("Analytics session did not provide the refresh-token id required for trace parenting");
+          return {
+            traceId: uuidToW3cTraceId(refreshTokenId),
+            spanId: uuidToW3cSpanId(refreshTokenId),
+          };
+        },
+        getCachedSessionRootContext: () => {
+          // BrowserTracing starts its page-load transaction before application
+          // bootstrap. Keep the same invariant for the lazy Hexclave tracker:
+          // use any cached token that has not expired yet. This lookup is only
+          // for trace ancestry, not for an API request: rejecting a token
+          // merely because it is older than the normal refresh window leaves
+          // the browser HTTP instrumentation with no parent during bootstrap.
+          // The normal async path still refreshes it before authenticated work
+          // that needs a likely-valid access token.
+          // Auth callback and nested handoff URLs are a deliberate exception:
+          // their cookie may still belong to the session being replaced, so
+          // fail closed until the existing async auth-resolution path finishes.
+          if (!isBrowserLike()) return null;
+          const currentUrl = new URL(window.location.href);
+          const authTransitionInFlight = currentUrl.searchParams.has(nestedCrossDomainAuthQueryParams.refreshTokenId)
+            || (
+              (this._isOAuthCallbackUrlHosted() || this._currentUrlLooksLikeNestedCrossDomainOAuthCallback())
+              && (this._currentUrlLooksLikeHexclaveOAuthCallback() || this._currentUrlLooksLikeOAuthCallbackError())
+            );
+          if (authTransitionInFlight) return null;
+          const tokenStore = this._getOrCreateTokenStore(createBrowserCookieHelper());
+          const session = this._getSessionFromTokenStore(tokenStore);
+          if (session.isKnownToBeInvalid()) return null;
+          const accessToken = session.getAccessTokenIfNotExpiredYet(0, null);
+          if (accessToken === null) return null;
+          const refreshTokenId = accessToken.payload.refresh_token_id;
           return {
             traceId: uuidToW3cTraceId(refreshTokenId),
             spanId: uuidToW3cSpanId(refreshTokenId),
@@ -925,70 +958,51 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         integritySignals: this._analyticsOptions?.integritySignals === true,
         networkCapture: this._networkCaptureConfig,
         traceSampleRate: this._traceSampleRate,
-        shouldIgnoreFetchUrl: (url) => this._shouldIgnoreOwnApiFetchUrl(url),
         errorCapture: normalizeErrorCaptureOptions(this._observabilityOptions?.errorCapture),
         release: telemetryResource?.service.version ?? null,
         environment: telemetryResource?.deploymentEnvironmentName ?? null,
         sdkVersion: clientVersion,
+        analyticsBaseUrl: (this._interface.options.getAnalyticsBaseUrl ?? this._interface.options.getBaseUrl)(),
+        openTelemetryProvider: observabilityEnabled
+          ? this._observabilityOptions?.openTelemetry?.provider ?? "managed"
+          : "disabled",
+        automaticSideEffects,
+        consoleCaptureLevels: this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS,
+        emitLog: (item) => this._emitLog(item),
+        onErrorEventId: (eventId) => this._recordErrorEventId(eventId),
+        errorAttachmentTransport: this._observabilityOptions?.errorCapture?.attachmentTransport ?? createErrorAttachmentTransport({
+          sendRequest: async (path, request) => await this._interface.sendClientRequest(
+            path,
+            request,
+            await this._getAnalyticsSession(),
+            "client",
+            this._interface.getAnalyticsApiUrl(),
+            { maxAttempts: 1, skipDiagnostics: true },
+          ),
+        }),
+        onAttachmentPending: this._observabilityOptions?.errorCapture?.onAttachmentPending,
+        getOtlpRequestHeaders: async () => {
+          const session = await this._getAnalyticsSession();
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, null)
+            ?? throwErr("Analytics session did not provide credentials required for browser OTLP export");
+          const interfaceOptions = this._interface.options;
+          return {
+            "x-hexclave-project-id": this.projectId,
+            "x-hexclave-access-type": "client",
+            "x-hexclave-client-version": clientVersion,
+            "x-hexclave-access-token": tokens.accessToken.token,
+            ...tokens.refreshToken === null ? {} : { "x-hexclave-refresh-token": tokens.refreshToken.token },
+            "x-hexclave-allow-anonymous-user": "true",
+            ..."publishableClientKey" in interfaceOptions && interfaceOptions.publishableClientKey
+              ? { "x-hexclave-publishable-client-key": interfaceOptions.publishableClientKey }
+              : {},
+            ...interfaceOptions.extraRequestHeaders,
+          };
+        },
       });
     }
 
-    // Automatic console mirroring into `$log` events (warn+error by default —
-    // see DEFAULT_CONSOLE_CAPTURE_LEVELS). Now that this is on by default, it
-    // installs ONLY where this app actually has a delivery path: here that
-    // means an active browser analytics facade (enabled + browser + a
-    // refreshable client session — notably NOT owner-session admin apps, which
-    // would steal the global console and drop everything). The server subclass
-    // installs its own capture against the server telemetry buffer. The patch
-    // handler dispatches lazily through `this.logger`, so installing
-    // mid-construction is safe — and our own constructor-time warns are
-    // skipped by the "Hexclave" prefix rule anyway.
-    const captureConsoleLevels = this._observabilityOptions?.logs?.captureConsole ?? DEFAULT_CONSOLE_CAPTURE_LEVELS;
-    if (observabilityEnabled && captureConsoleLevels.length > 0 && this._clientAnalytics !== null) {
-      installConsoleCapture({
-        levels: captureConsoleLevels,
-        // A dedicated origin:"console" logger (not this.logger): console items
-        // must never trigger the lazy analytics load (they queue in the
-        // facade's bounded pre-load buffer instead) — see LogEmitItem.origin.
-        logger: createLogger({ emit: (item) => this._emitLog(item), origin: "console" }),
-        projectId: this.projectId,
-        serviceName: telemetryResource?.service.name ?? throwErr("Telemetry resource was validated above"),
-      });
-    }
-
-    // Cross-tier request instrumentation: the fetch + XHR wrappers do two
-    // independent things per outgoing request — attach the span-context header
-    // to same-origin (or allowlisted) targets so a server
-    // `withSpan({ request })` parents under this tab's client session
-    // (controlled by observability.spanPropagation), and open one `$http-client`
-    // span per request as the cross-tier bridge node (controlled by
-    // observability.network). Gated on active browser analytics (the facade is the
-    // current per-tab id source, which reflects sign-out rotation). Installed
-    // at CONSTRUCTION time — before the lazy analytics modules load — so the
-    // very first instrumented requests already carry the segment identity and
-    // get bridge spans; the propagation modules are tiny and pull no
-    // autocapture code. Multiple app instances share one fail-closed wrapper.
-    if (observabilityEnabled && isBrowserLike() && this._clientAnalytics) {
-      const clientAnalytics = this._clientAnalytics;
-      const propagationEnabled = this._observabilityOptions?.spanPropagation?.enabled !== false;
-      const wrapperOptions = {
-        // spanPropagation.enabled only silences the HEADER; $http-client span
-        // capture (network.enabled) is a separate knob handled inside
-        // beginHttpRequestSpan.
-        getContext: () => (propagationEnabled ? this._getSpanPropagationContext() : null),
-        getSelfOrigin: () => (typeof window !== "undefined" ? window.location.origin : null),
-        // Read through the policy method on every request: the trusted-domain
-        // half resolves asynchronously after the first read, and a snapshot
-        // taken at construction would never pick it up.
-        getAllowedOrigins: () => this._getPropagationOriginPolicy().allowedOrigins,
-        getAllowLocalhostOrigins: () => this._getPropagationOriginPolicy().allowLocalhost,
-        beginRequestSpan: (info: Parameters<ClientAnalytics["beginHttpRequestSpan"]>[0]) => clientAnalytics.beginHttpRequestSpan(info),
-      };
-      installFetchSpanPropagation(wrapperOptions);
-      // Same provider object for the XHR patch, so both transports share one
-      // policy and one span factory.
-      installXhrSpanPropagation(wrapperOptions);
-    }
+    if (!automaticSideEffects) return;
 
     if (
       isBrowserLike()
@@ -1752,6 +1766,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const config = await this._getTrustedRedirectConfig();
         this._trustedPropagationOrigins = trustedDomainsToPropagationOrigins(config.trustedDomains);
         this._trustedPropagationAllowLocalhost = config.allowLocalhost;
+        this._clientAnalytics?.updateOtelPropagationPolicy();
       } catch (error) {
         // Errors are handled HERE (warn + permanent fail-closed) rather than
         // rethrown: the stored promise is a fire-and-forget latch nobody
@@ -4493,7 +4508,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
     // Clear analytics buffers before sign-out to prevent cross-user event leakage
-    this._clientAnalytics?.clearBuffer();
+    await this._clientAnalytics?.clearBuffer();
     // Then rotate the per-tab id (one fresh id, set on both trackers so they stay
     // in sync). Without this, a same-tab sign-in as a different user would inherit
     // the previous user's session_replay_segment_id and let their telemetry be
@@ -4567,16 +4582,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   /**
-   * The environment-specific `$log` sink behind `app.logger`. Browser: rides
-   * the tracker event path (with pre-load adoption). Non-browser client apps
-   * have no delivery path — "unavailable" makes the logger warn once. The
-   * server subclass overrides this with the server telemetry buffer.
+   * The browser OTel LogRecord sink behind `app.logger`. Non-browser client
+   * apps have no provider/export path, so "unavailable" warns once. The server
+   * subclass installs or uses the Node provider instead.
    */
   protected _emitLog(item: LogEmitItem): "ok" | "unavailable" {
     if (this._observabilityOptions?.enabled === false || this._clientAnalytics === null) return "unavailable";
-    // Fire-and-forget is the logger contract; the promise is pre-caught and
-    // delivery failures already warn inside the tracker's flush path.
-    this._clientAnalytics.trackLogEvent(item).catch(() => {});
+    emitHexclaveOtelLog(item, clientVersion);
     return "ok";
   }
 
@@ -4593,6 +4605,57 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const resolved = resolveSpanParent({ explicit: options?.parent, ambient: [] });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     return rejectedPreCaught("telemetry is unavailable in this environment");
+  }
+
+  captureException(error: unknown, options?: CaptureExceptionOptions): ErrorEventId {
+    const eventId = this._captureManualException(error, options, getActiveErrorScope()?.snapshot());
+    this._recordErrorEventId(eventId);
+    return eventId;
+  }
+
+  captureMessage(message: string, options?: CaptureMessageOptions): ErrorEventId {
+    const eventId = this._captureManualMessage(message, options, getActiveErrorScope()?.snapshot());
+    this._recordErrorEventId(eventId);
+    return eventId;
+  }
+
+  captureEvent(event: CaptureEvent): ErrorEventId {
+    const eventId = this._captureManualEvent(event, getActiveErrorScope()?.snapshot());
+    this._recordErrorEventId(eventId);
+    return eventId;
+  }
+
+  lastEventId(): ErrorEventId | undefined {
+    return this._lastErrorEventId;
+  }
+
+  protected _recordErrorEventId(eventId: ErrorEventId): void {
+    this._lastErrorEventId = eventId;
+  }
+
+  withErrorScope<T>(fn: (scope: ErrorScope) => T): T {
+    const scope = createErrorScope(getActiveErrorScope()?.snapshot());
+    return runWithErrorScope(scope, () => fn(scope));
+  }
+
+  withErrorScopeAsync<T>(fn: (scope: ErrorScope) => Promise<T>): Promise<T> {
+    const scope = createErrorScope(getActiveErrorScope()?.snapshot());
+    return runWithErrorScopeAsync(scope, async () => await fn(scope));
+  }
+
+  protected _captureManualException(error: unknown, options: CaptureExceptionOptions | undefined, scope: ErrorScopeData | undefined): ErrorEventId {
+    if (this._clientAnalytics === null) throw new Error("Hexclave error capture is unavailable before client observability starts");
+    return this._clientAnalytics.captureException(error, options, scope);
+  }
+
+  protected _captureManualMessage(message: string, options: CaptureMessageOptions | undefined, scope: ErrorScopeData | undefined): ErrorEventId {
+    if (this._clientAnalytics === null) throw new Error("Hexclave error capture is unavailable before client observability starts");
+    return this._clientAnalytics.captureMessage(message, options, scope);
+  }
+
+  protected _captureManualEvent(event: CaptureEvent, scope: ErrorScopeData | undefined): ErrorEventId {
+    if (this._clientAnalytics === null) throw new Error("Hexclave error capture is unavailable before client observability starts");
+    return this._clientAnalytics.captureEvent(event, scope);
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {
@@ -4613,7 +4676,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     return createInertSpanHandle({
       traceId: resolved.traceId,
-      spanId: generateW3cSpanId(),
+      spanId: generateOtelSpanId(),
       spanType,
       startedAtMs: options?.startedAtMs ?? Date.now(),
       parentSpanId: resolved.parentSpanId,
@@ -4642,7 +4705,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   /**
-   * Analytics and replay uploads must not produce `$http-client` spans: each
+   * Analytics and replay uploads must not produce HTTP client spans: each
    * such span would need another analytics upload, creating a self-sustaining
    * flush loop. Other SDK calls propagate the active browser operation to
    * backend instrumentation.
@@ -4666,12 +4729,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * current page view. Deliberately free of hierarchy — that rides `traceparent`,
    * built separately in getSpanPropagationHeaders.
    *
-   * The `projectId` is stated even with nothing else to correlate (the early-boot
-   * window before the first `$page-view` span, which is exactly when a browser
-   * makes its auth requests): it is what lets the receiver tell whether the
-   * `traceparent` it got names a span visible in this project, and therefore
-   * whether its own span may hang under it. `buildPropagationHeaderValues`
-   * decides whether such a bare claim is worth a header.
+   * Tenancy is deliberately absent: the receiver derives it from authenticated
+   * request state, while an external W3C parent is valid even when its row lives
+   * in another OTel backend.
    */
   protected _getSpanPropagationContext(): SpanPropagationContext | null {
     const tracker = this._clientAnalytics;
@@ -4679,7 +4739,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const segmentId = tracker.getSessionReplaySegmentId();
     const pageViewSpanId = tracker.getCurrentPageViewSpanId();
     return {
-      projectId: this.projectId,
       ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
       ...pageViewSpanId != null ? { pageViewSpanId } : {},
     };
@@ -4688,7 +4747,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   /**
    * Both propagation headers for a manually-instrumented transport. `parent` pins
    * the trace explicitly; otherwise the nearest ambient span supplies it, falling
-   * back to the current `$page-view` so a hand-rolled transport lands in the same
+   * back to the current `$page-view` so a manually instrumented transport lands in the same
    * trace the auto-instrumented one would. `root: true` suppresses `traceparent`
    * entirely — with no span to name, there is no hierarchy to state, and inventing
    * a trace id here would fabricate a parent span that never exists.
@@ -4703,13 +4762,23 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       root: options?.root,
     });
     const parent = resolved !== null && !("error" in resolved) && resolved.parentSpanId !== null
-      ? { traceId: resolved.traceId, spanId: resolved.parentSpanId }
+      ? {
+        traceId: resolved.traceId,
+        spanId: resolved.parentSpanId,
+        traceFlags: resolved.traceFlags ?? TraceFlags.SAMPLED,
+        ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
+      }
       : null;
-    const propagatableParent = parent !== null && isTraceSampled(parent.traceId, this._traceSampleRate)
+    const propagatableParent = parent !== null && (parent.traceFlags & TraceFlags.SAMPLED) !== 0
       ? parent
       : null;
     return buildPropagationHeaderValues({
-      traceparent: propagatableParent === null ? null : { ...propagatableParent, sampled: true },
+      traceparent: propagatableParent === null ? null : {
+        traceId: propagatableParent.traceId,
+        spanId: propagatableParent.spanId,
+        sampled: true,
+        ...propagatableParent.traceState === undefined ? {} : { traceState: propagatableParent.traceState },
+      },
       context,
     });
   }
@@ -4919,7 +4988,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           devTool: this._options.devTool,
           automaticSideEffects: this._options.automaticSideEffects,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
-          observability: this._observabilityOptions,
+          observability: observabilityOptionsToJson(this._observabilityOptions),
           telemetry: telemetryOptionsToJson(this._telemetryOptions),
         };
       },

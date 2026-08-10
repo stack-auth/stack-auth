@@ -31,7 +31,7 @@ if (postHogKey.length > 5) {
 
 // Cross-tier tracing note: the Hexclave SDK (src/hexclave/client.tsx) now owns
 // the browser span lifecycle, the W3C `traceparent`, and the
-// `x-hexclave-span-context` header on API calls — Sentry no longer participates
+// W3C `baggage` header on API calls — Sentry no longer participates
 // in tracing at all (no propagateTraceparent/tracePropagationTargets, no
 // transaction export, no dev no-op-transport keep-alive). Sentry stays
 // initialized as an error-reporting/replay backstop only while the native

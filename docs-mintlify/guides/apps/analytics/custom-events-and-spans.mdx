@@ -11,7 +11,7 @@ Hexclave's shared telemetry foundation accepts both product facts and code inter
 - **`startSpan` / `withSpan`**: record an interval, like a checkout flow or a background job
 - **Automatic parenting**: your telemetry nests under any enclosing span without manual wiring, and inherits its trace
 - **Standards-based**: span identity is [W3C trace context](https://www.w3.org/TR/trace-context/) — the same `trace_id`/`span_id`/`parent_span_id` model OpenTelemetry uses, so Hexclave traces interoperate with any OTel-compatible tooling you already run
-- **Queryable**: product events appear in **Analytics -> Events**; spans appear in **Analytics -> Observability -> Traces**; both remain queryable in **Analytics -> Explore -> Queries**
+- **Queryable**: product events appear in **Analytics -> Events**; spans appear in **Observability -> Traces**; both remain queryable in **Analytics -> Explore -> Queries**
 
 Custom events and spans require the Analytics app to be enabled (**Apps -> Analytics** in your dashboard). Their SDK switches remain independent: `analytics.enabled` controls events, while `observability.enabled` controls spans. Events and custom spans also use independent usage items.
 
@@ -36,11 +36,11 @@ $refresh-token
 └─ $session-replay
    └─ $session-replay-segment
       └─ $page-view
-         └─ $http-client
+         └─ OTel HTTP client span
             └─ backend request and database spans
 ```
 
-When replay capture is disabled, `$page-view` sits directly under `$refresh-token`. Everything that happens while a page is open belongs below that page: `$away`/`$offline`, auto-captured events, logs, your own spans, and every `$http-client` request, including the backend and database work continued through `traceparent`.
+When replay capture is disabled, `$page-view` sits directly under `$refresh-token`. Everything that happens while a page is open belongs below that page: `$away`/`$offline`, auto-captured events, logs, your own spans, and HTTP client requests, including backend and database work continued through `traceparent`.
 
 A backend request without an accepted `traceparent`, or explicitly independent work started with `root: true`, still starts its own ordinary W3C trace.
 
@@ -65,7 +65,7 @@ import { hexclaveClientApp } from "./hexclave";
 hexclaveClientApp.trackEvent("item-added", { sku: "T-100", quantity: 2 });
 ```
 
-Events are buffered and sent in batches (every 10 seconds in the browser, or sooner when the buffer fills). The returned promise resolves when the batch carrying the event is acknowledged — which can be up to one flush interval later — and rejects on invalid input, unavailable analytics, or send failure. The SDK observes that rejection internally, so fire-and-forget calls do not produce unhandled-rejection noise; callers that await the same promise still receive the error. Call `hexclaveClientApp.flush()` to send everything immediately instead of awaiting individual calls.
+Events are named OpenTelemetry LogRecords. In the default managed-provider mode, the returned promise resolves after the managed provider force-flushes the export and rejects on invalid input, unavailable analytics, or send failure. With `existing-provider`, the application owns exporter delivery, so the promise acknowledges synchronous provider acceptance. The SDK observes rejections internally, so fire-and-forget calls do not produce unhandled-rejection noise; callers that await the same promise still receive the error.
 
 Events work even for signed-out visitors: batches are attributed to an anonymous user until they sign in.
 
@@ -91,7 +91,7 @@ const span = hexclaveClientApp.startSpan("onboarding", { data: { plan: "team" } 
 await span.end();
 ```
 
-A span is written immediately as an open interval and re-written whenever its data changes or it ends. A span that is never ended (for example, the tab closed) stays visible as an open interval — that's a feature, not data loss.
+A span is a real OpenTelemetry span. The active provider owns sampling, processing, and OTLP export; end spans so their completed interval can be exported.
 
 ### The span handle
 

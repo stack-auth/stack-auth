@@ -8,6 +8,7 @@ import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { initPerfStats } from "./lib/dev-perf-stats";
 import { isNodeTelemetrySuppressed, registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
 import { registerErrorSink } from "@hexclave/shared/dist/utils/errors";
+import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 
 let instrumentation: ReturnType<typeof hexclaveInstrumentation> | null = null;
 
@@ -19,6 +20,9 @@ function getBackendInstrumentation() {
       new PrismaInstrumentation(),
       ...getNodeAutoInstrumentations({
         "@opentelemetry/instrumentation-http": {
+          enabled: false,
+        },
+        "@opentelemetry/instrumentation-undici": {
           enabled: false,
         },
       }),
@@ -75,7 +79,7 @@ function registerCapturedErrorTelemetrySink(): void {
       // original error has already been logged by the console sink, and
       // reporting a telemetry failure through `captureError` is the recursion
       // this latch exists to prevent.
-      instrumented.captureHandledError(error, { location }).catch(() => {});
+      ignoreUnhandledRejection(instrumented.captureHandledError(error, { location }));
     } finally {
       emittingCapturedError = false;
     }

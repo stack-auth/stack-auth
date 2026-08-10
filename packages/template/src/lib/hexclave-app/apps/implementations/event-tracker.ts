@@ -1,20 +1,19 @@
+import { createTraceState, metrics, ROOT_CONTEXT, SpanKind, trace as otelTrace, TraceFlags, type Context } from "@opentelemetry/api";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { CLICKMAP_ROOT_ID, DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
 import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { Result } from "@hexclave/shared/dist/utils/results";
-import { generateW3cSpanId, generateW3cTraceId, uuidToW3cSpanId, type ClientSystemSpanType, type SystemEventType } from "@hexclave/shared/dist/utils/analytics-wire";
-import { createSpanCore, createSpanHandle, type SpanCore } from "./span-handle";
-import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
-import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./telemetry-transport";
+import { uuidToW3cSpanId, type ClientSystemSpanType, type SystemEventType } from "@hexclave/shared/dist/utils/analytics-wire";
+import { createOtelSpanFacade } from "./otel-span-facade";
+import { emitHexclaveOtelEvent } from "./otel-log-facade";
+import { assertValidSpanStartInput, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveSpanParent, type Span, type SpanContext, type StartSpanOptions, type TrackOptions } from "./telemetry-core";
+import { generateUuid } from "./telemetry-transport";
 import type { TelemetryResource } from "./telemetry-config";
-import { getAmbientSpanContexts } from "./span-context";
-import { beginHttpClientSpanCore, HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP, normalizeNetworkCaptureOptions, sanitizeHttpClientUrl, shouldCaptureNetworkRequest, type HttpRequestSpanHandle, type NetworkCaptureConfig } from "./network-capture";
+import { buildAmbientSessionContext, getActiveOtelSpanContext } from "./otel-context";
 // Runtime-safe: span-propagation only imports TYPES from the telemetry modules.
-import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, type RequestSpanInfo, type SpanPropagationContext } from "./span-propagation";
-import { startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
-import { getKeptTraceIds, isTraceSampled } from "./trace-sampling";
+import { buildFetchInitWithSpanContext, buildPropagationHeaderValues, type SpanPropagationContext } from "./span-propagation";
+import { OtlpWebVitalsMetricRecorder, startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
 
 // The environment-independent core of the custom telemetry API (types,
 // validation, parent resolution, withSpanImpl) moved to telemetry-core.ts so
@@ -33,7 +32,6 @@ export {
   type ParentRef,
   type Span,
   type SpanContext,
-  type SpanUpdateRow,
   type StartSpanOptions,
   type TrackOptions,
 } from "./telemetry-core";
@@ -41,21 +39,8 @@ export {
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
-// Circuit breaker (see the _breakerOpenUntilMs field): N identical network
-// failures in a row ⇒ assume a deterministic blocker (ad blocker, proxy) and
-// stop sending for the cooldown; a quota 429 opens it for the server's
-// Retry-After. Status-0-style failures get few strikes on purpose — they
-// virtually never heal within a page's lifetime.
-const BREAKER_NETWORK_FAILURE_THRESHOLD = 3;
-const BREAKER_NETWORK_COOLDOWN_MS = 5 * 60_000;
-const BREAKER_DEFAULT_RETRY_AFTER_MS = 60_000;
 // See _capLiveSpanRegistries.
 export const LIVE_SPAN_REGISTRY_SOFT_CAP = 1000;
-
-type Settler = {
-  resolve: () => void,
-  reject: (error: unknown) => void,
-};
 
 function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
   if (value == null || typeof value !== "object") {
@@ -155,7 +140,9 @@ export type KeystrokeCaptureOptions = {
 export type EventTrackerDeps = {
   projectId: string,
   resource: TelemetryResource,
-  sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
+  clientVersion?: string,
+  /** Present only when Hexclave owns the active LoggerProvider. */
+  forceFlushOtel?: () => Promise<void>,
   // Per-tab id shared with the SessionRecorder so analytics events and replay
   // chunks from the same tab carry the same session_replay_segment_id. Falls
   // back to a fresh uuid when constructed standalone (e.g. in tests).
@@ -181,18 +168,6 @@ export type EventTrackerDeps = {
   // them must be a deliberate customer decision
   // (AnalyticsOptions.integritySignals), not default autocapture.
   integritySignals?: boolean,
-  // Recursion guard for $http-client capture: analytics and session-replay
-  // batch uploads would otherwise enqueue another span for the next batch
-  // forever. Normal SDK API/auth calls are captured for cross-tier tracing.
-  // URL-based rather than a re-entrancy flag, so timer and keepalive sends are
-  // covered too.
-  shouldIgnoreFetchUrl?: (url: string) => boolean,
-  // Normalized ObservabilityOptions.network (sampling + origin/URL filters for
-  // $http-client spans). Defaults to capture-everything when omitted.
-  networkCapture?: NetworkCaptureConfig,
-  // Healthy traces are sampled once from the complete flush snapshot. Defaults
-  // to 1 for direct EventTracker construction in tests and internal callers.
-  traceSampleRate?: number,
 };
 
 type TrackedEvent = {
@@ -208,12 +183,12 @@ type TrackedEvent = {
   // trace with.
   trace_id?: string,
   span_id?: string,
+  trace_flags?: number,
+  trace_state?: string,
   // CORRELATION, not ancestry: the `$page-view` span the event happened on.
   page_view_span_id?: string,
   // `$log`-only wire fields (route-enforced: REQUIRED on $log items, forbidden
   // on every other event type).
-  message?: string,
-  level?: string,
 };
 
 /**
@@ -227,6 +202,7 @@ type TrackedEvent = {
 type SystemSpanHandle = {
   readonly traceId: string,
   readonly spanId: string,
+  readonly traceFlags: number,
   readonly spanType: string,
   isEnded: () => boolean,
   /** Shallow-merges into the span's data and re-writes the row. */
@@ -320,7 +296,6 @@ function hashTextLocal(text: string): number {
 export class EventTracker {
   private _started = false;
   private _cancelled = false;
-  private _disabled = false;
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
@@ -338,13 +313,6 @@ export class EventTracker {
   private _originalPushState: History["pushState"] | null = null;
   private _originalReplaceState: History["replaceState"] | null = null;
 
-  // Custom-span updates awaiting the next flush, latest row per span id (a span
-  // touched N times within one flush window costs one wire row). Settlers from
-  // superseded rows are carried over so every returned promise still settles
-  // with the batch that actually carries the span's latest state.
-  private _spanUpdates = new Map<string, { row: SpanUpdateRow, settlers: Settler[] }>();
-  // Settlers for buffered custom events (system events are fire-and-forget).
-  private _eventSettlers = new Map<TrackedEvent, Settler>();
   // Spans registered via setGlobalSpan — ambient parents for all subsequent
   // custom events and spans until cleared (end() auto-clears).
   private _globalSpans = new Set<Span>();
@@ -353,26 +321,18 @@ export class EventTracker {
   private _liveSpanControls = new Set<{ markInert: () => void }>();
   // See _capLiveSpanRegistries.
   private _warnedLiveSpanRegistryCap = false;
-  // Batch sends currently on the wire; flush() awaits these.
-  private _inFlight = new Set<Promise<void>>();
-
-  // Circuit breaker against deterministic delivery blockers. Ad blockers and
-  // corporate proxies fail every send the same way — retrying each flush
-  // interval just burns network and console noise — and a quota 429 tells us
-  // exactly how long to stay away. While the breaker is open, _flush drains
-  // buffers WITHOUT touching the network (memory stays bounded, settlers
-  // reject). A network-failure breaker also closes early when the browser
-  // reports connectivity returned.
-  private _consecutiveNetworkFailures = 0;
-  private _breakerOpenUntilMs = 0;
-  private _breakerOnlineListener: (() => void) | null = null;
 
   // The $page-view span everything on the current page nests under. Replaced on
   // every navigation; null before start / after teardown.
   private _pageViewSpan: SystemSpanHandle | null = null;
+  // Memoized getAmbientOtelContext result: it sits on the context manager's
+  // hot path (read on every span start / instrumented fetch), so the Context
+  // is rebuilt only when the ambient anchor or tab segment identity changes.
+  private _ambientOtelContextCache: { anchorKey: string, sessionReplaySegmentId: string, context: Context } | null = null;
   private _maxScrollDepthPx = 0;
   private _maxScrollDepthRatio = 0;
   private _webVitals: WebVitalsCollector | null = null;
+  private readonly _webVitalsMetricRecorder: OtlpWebVitalsMetricRecorder;
   // Which $page-view span the vitals belong to (only ever the tab's initial one).
   private _webVitalsSpanId: string | null = null;
   private _recentClicks: { x: number, y: number, atMs: number }[] = [];
@@ -403,22 +363,15 @@ export class EventTracker {
   private _lastSelectionChangedAtMs: number | null = null;
   private _lastVisibilityChangeAtMs: number | null = null;
 
-  // $http-client volume control: normalized config, a per-page-view span
-  // counter (reset in _capturePageView), and the warn-once flag for the cap.
-  private readonly _networkCapture: NetworkCaptureConfig;
-  private readonly _traceSampleRate: number;
   private readonly _keystrokeCapture: KeystrokeCaptureOptions;
-  private _httpClientSpanCount = 0;
-  private _warnedHttpClientSpanCap = false;
 
   constructor(deps: EventTrackerDeps) {
     this._deps = deps;
     this._sessionReplaySegmentId = deps.sessionReplaySegmentId ?? generateUuid();
     this._sessionRootContext = deps.sessionRootContext ?? null;
     this._sessionReplayEnabled = deps.sessionReplayEnabled === true;
-    this._networkCapture = deps.networkCapture ?? normalizeNetworkCaptureOptions(undefined);
-    this._traceSampleRate = deps.traceSampleRate ?? 1;
     this._keystrokeCapture = deps.keystrokeCapture ?? { enabled: false, maskAllInputs: true };
+    this._webVitalsMetricRecorder = new OtlpWebVitalsMetricRecorder(metrics.getMeter("@hexclave/browser-web-vitals", "1"));
   }
 
   start() {
@@ -458,11 +411,11 @@ export class EventTracker {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
-    // Close all open intervals so the final flush carries their ends.
+    // End live spans before the provider's final lifecycle flush.
     this._flushPendingKeystrokes();
     this._endPageViewSpan();
     this._endOpenPresenceSpans();
-    runAsynchronously(() => this._flush({ keepalive: true }));
+    this._flushInBackground({ keepalive: true });
     this._teardown();
   }
 
@@ -475,22 +428,15 @@ export class EventTracker {
     this._disconnectDeadClickMutationObserverIfIdle();
   }
 
-  // Rejects every pending custom-event/span promise, drops buffered span rows,
-  // and inert-ifies all live
+  // Rejects every pending custom-event promise and ends live spans before the
+  // authenticated browser identity rotates.
   // span handles. Called on sign-out (paired with the segment-id rotation): a
   // span started under user A must never be re-written under user B's session.
   private _settleAllPending(reason: string) {
-    const error = new Error(`Hexclave analytics: ${reason}`);
-    for (const settler of this._eventSettlers.values()) {
-      settler.reject(error);
-    }
-    this._eventSettlers.clear();
-    for (const entry of this._spanUpdates.values()) {
-      for (const settler of entry.settlers) {
-        settler.reject(error);
-      }
-    }
-    this._spanUpdates.clear();
+    // System events that still need local classification are discarded on an
+    // identity change. Public events already entered the active OTel provider
+    // synchronously and are isolated by its flush/replace lifecycle.
+    void reason;
     for (const control of this._liveSpanControls) {
       control.markInert();
     }
@@ -513,7 +459,7 @@ export class EventTracker {
     // under the old identity, so the ongoing page needs fresh spans under the
     // new segment. Page views are span-only; rotation just restarts the
     // `$page-view` interval under the new identity (same as restore).
-    if (this._deps.productAnalyticsEnabled !== false && this._started && !this._cancelled && !this._disabled) {
+    if (this._deps.productAnalyticsEnabled !== false && this._started && !this._cancelled) {
       this._capturePageView("rotation");
       this._restartPresenceSpans();
     }
@@ -543,7 +489,6 @@ export class EventTracker {
       && this._deps.productAnalyticsEnabled !== false
       && this._started
       && !this._cancelled
-      && !this._disabled
     ) {
       this._capturePageView("rotation");
       this._restartPresenceSpans();
@@ -578,9 +523,52 @@ export class EventTracker {
   }
 
   /**
-   * Buffers a custom analytics event. The returned promise resolves when the
-   * batch carrying the event is acknowledged and rejects on definitive send
-   * failure. Invalid input and disabled telemetry reject explicitly.
+   * The OTel Context the managed browser SDK uses as its context manager's
+   * BASE (see AmbientBaseStackContextManager): the ambient anchor plus the
+   * same correlation baggage a public startSpan() would stamp. This is what
+   * parents spans started outside any explicit `context.with(...)` frame —
+   * most importantly the official fetch/XHR instrumentation's request spans —
+   * into the session trace, instead of letting them mint parentless one-span
+   * traces in the inbox.
+   *
+   * Anchor precedence:
+   * - the LIVE `$page-view` span: everything on the page nests under it;
+   * - no page view yet (product analytics disabled, or the instant before the
+   *   first capture): the refresh-token session root, so bootstrap requests
+   *   like users/me still join the session trace as direct session children;
+   * - an ENDED page view: null. Navigation replaces the span in the same
+   *   synchronous block (_capturePageView), so the only observable ended
+   *   state is the sign-out window between inert-ification and rotation — and
+   *   a fetch racing that window must not stitch the previous user's session
+   *   trace id into a span that exports under the next user's credentials.
+   *   The session root is deliberately NOT a fallback here for that reason.
+   */
+  getAmbientOtelContext(): Context | null {
+    const livePageView = this._pageViewSpan !== null && !this._pageViewSpan.isEnded() ? this._currentPageViewContext() : null;
+    // `_pageViewSpan === null` distinguishes "no page view YET" (session-root
+    // fallback applies) from an ENDED one (sign-out window, no fallback) —
+    // but teardown also nulls the handle, so a stopped tracker must not
+    // resurrect the session anchor either.
+    const anchor = livePageView ?? (this._pageViewSpan === null && !this._cancelled ? this._sessionRootContext : null);
+    if (anchor === null) return null;
+    const anchorKey = `${anchor.traceId}/${anchor.spanId}`;
+    const cache = this._ambientOtelContextCache;
+    if (cache !== null && cache.anchorKey === anchorKey && cache.sessionReplaySegmentId === this._sessionReplaySegmentId) {
+      return cache.context;
+    }
+    const ambient = buildAmbientSessionContext({
+      anchor,
+      sessionReplaySegmentId: this._sessionReplaySegmentId,
+      ...livePageView === null ? {} : { pageViewSpanId: livePageView.spanId },
+    });
+    this._ambientOtelContextCache = { anchorKey, sessionReplaySegmentId: this._sessionReplaySegmentId, context: ambient };
+    return ambient;
+  }
+
+  /**
+   * Emits a custom analytics event through the active OTel LoggerProvider. In
+   * managed mode the returned promise resolves after a provider flush; an
+   * existing-provider integration owns its own export lifecycle.
    *
    * `internalOptions.eventAtMs` is the adoption path for events captured before
    * this lazily-loaded module arrived (ClientAnalytics buffers them with their
@@ -594,80 +582,23 @@ export class EventTracker {
     if (dataError) return rejectedPreCaught(dataError);
     const enclosing = this._resolveEnclosingSpan(options);
     if ("error" in enclosing) return rejectedPreCaught(enclosing.error);
-    if (this._disabled) {
-      return rejectedPreCaught("telemetry is disabled");
-    }
-
     const pageViewSpanId = this.getCurrentPageViewSpanId();
-    const event: TrackedEvent = {
+    this._emitTrackedEvent({
       event_type: eventType,
       event_at_ms: internalOptions?.eventAtMs ?? Date.now(),
       data: { ...data ?? {} },
-      ...enclosing.span !== null ? { trace_id: enclosing.span.traceId, span_id: enclosing.span.spanId } : {},
+      ...enclosing.span !== null ? {
+        trace_id: enclosing.span.traceId,
+        span_id: enclosing.span.spanId,
+        ...enclosing.span.traceFlags === undefined ? {} : { trace_flags: enclosing.span.traceFlags },
+        ...enclosing.span.traceState === undefined ? {} : { trace_state: enclosing.span.traceState },
+      } : {},
       ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
-    };
-    let settler!: Settler;
-    const promise = preCaught(new Promise<void>((resolve, reject) => {
-      settler = { resolve, reject };
-    }));
-    this._eventSettlers.set(event, settler);
-    this._pushEvent(event);
-    return promise;
+    });
+    return preCaught(this._deps.forceFlushOtel?.() ?? Promise.resolve());
   }
 
-  /**
-   * Buffers a `$log` event (app.logger / console capture). Same buffering,
-   * ambient parenting, page stamping and settling semantics as
-   * trackCustomEvent — minus the custom-name validation ($log is a system
-   * type) and plus the log wire fields. `options`/`internalOptions` exist for
-   * the facade's pre-load adoption path (pre-resolved parents + the real
-   * timestamp), mirroring trackCustomEvent's adoption contract.
-   */
-  trackLogEvent(log: { message: string, level: string }, data?: Record<string, unknown>, options?: TrackOptions, internalOptions?: { eventAtMs?: number }): Promise<void> {
-    const dataError = getCustomTelemetryDataError(data);
-    if (dataError) return rejectedPreCaught(dataError);
-    const enclosing = this._resolveEnclosingSpan(options);
-    if ("error" in enclosing) return rejectedPreCaught(enclosing.error);
-    if (this._disabled) {
-      return rejectedPreCaught("telemetry is disabled");
-    }
-
-    const pageViewSpanId = this.getCurrentPageViewSpanId();
-    const event: TrackedEvent = {
-      event_type: "$log",
-      event_at_ms: internalOptions?.eventAtMs ?? Date.now(),
-      data: { ...data ?? {} },
-      message: log.message,
-      level: log.level,
-      ...enclosing.span !== null ? { trace_id: enclosing.span.traceId, span_id: enclosing.span.spanId } : {},
-      ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
-    };
-    let settler!: Settler;
-    const promise = preCaught(new Promise<void>((resolve, reject) => {
-      settler = { resolve, reject };
-    }));
-    this._eventSettlers.set(event, settler);
-    this._pushEvent(event);
-    return promise;
-  }
-
-  /**
-   * Buffers a `$error` event from the global error-capture module.
-   * System-event semantics: fire-and-forget and no custom parent chain — the
-   * global handlers run at the top of the task where no ambient withSpan frame
-   * exists anyway (a failure INSIDE a span interval is recorded on the span's
-   * own `data.error` instead). `eventAtMs` is the adoption path for errors
-   * captured before this lazily-loaded module arrived.
-   */
-  trackErrorEvent(data: Record<string, unknown>, internalOptions?: { eventAtMs?: number }): void {
-    this._pushSystemEvent("$error", data, internalOptions);
-  }
-
-  /**
-   * Starts a custom span: the open interval is written on the next flush and
-   * re-written (versioned upsert) on setData/end. Invalid input and disabled
-   * telemetry throw instead of returning an inert handle.
-   */
+  /** Starts a custom span through the active OTel Tracer. */
   startSpan(spanType: string, options?: StartSpanOptions): Span {
     assertValidSpanStartInput(spanType, options);
     const resolved = resolveSpanParent({
@@ -680,48 +611,44 @@ export class EventTracker {
     if ("error" in resolved) {
       throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
-    if (this._disabled) {
-      throw new Error("Hexclave analytics: telemetry is disabled");
-    }
-
-    // Trace and parent are frozen at creation: they are identity, not state, so a
-    // later setGlobalSpan call can never re-parent an existing span (and every
-    // re-write of this span carries the same identity). The page correlation is
-    // frozen for the same reason: a span that outlives its page still reports the
-    // page it STARTED on.
     const pageViewSpanId = this.getCurrentPageViewSpanId();
-
-    // `handle` is assigned synchronously below; the closures can only fire after.
-    let handle!: { span: Span, markInert: () => void };
-    const control = { markInert: () => handle.markInert() };
-    handle = createSpanHandle({
-      traceId: resolved.traceId,
-      spanId: generateW3cSpanId(),
+    const parent = resolved.parentSpanId === null
+      ? undefined
+      : {
+        traceId: resolved.traceId,
+        spanId: resolved.parentSpanId,
+        ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
+        ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
+      };
+    let span!: Span;
+    const control = {
+      markInert: () => runAsynchronously(async () => await span.end(), { noErrorLogging: true }),
+    };
+    span = createOtelSpanFacade({
+      tracer: otelTrace.getTracer("@hexclave/sdk-browser"),
       spanType,
-      startedAtMs: options?.startedAtMs ?? Date.now(),
-      parentSpanId: resolved.parentSpanId,
-      links: resolved.links,
-      pageViewSpanId,
-      initialData: { ...options?.data ?? {} },
-      validateData: getCustomTelemetryDataError,
-      isSuppressed: () => this._disabled,
-      enqueueRow: (row) => this._enqueueSpanUpdate(row),
-      onEnded: () => {
-        this._globalSpans.delete(handle.span);
-        this._liveSpanControls.delete(control);
+      startOptions: {
+        ...options,
+        ...parent === undefined ? { root: true } : { parent, root: false },
+        links: resolved.links,
+      },
+      correlationAttributes: {
+        "hexclave.session_replay.segment.id": this._sessionReplaySegmentId,
+        ...pageViewSpanId === null ? {} : { "hexclave.page_view.span_id": pageViewSpanId },
       },
       capabilities: {
         trackEvent: (eventType, data, trackOptions) => this.trackCustomEvent(eventType, data, trackOptions),
-        startChildSpan: (childType, childOptions) => this.startSpan(childType, childOptions),
-        // The FROZEN page correlation rides along (not the current page): headers
-        // pinned to this span must describe this span's context exactly.
         getSpanPropagationHeaders: (span) => this._spanPropagationHeaders(span, pageViewSpanId),
         fetch: (span, input, init) => this._spanFetch(span, pageViewSpanId, input, init),
+        onEnded: () => {
+          this._globalSpans.delete(span);
+          this._liveSpanControls.delete(control);
+        },
       },
     });
     this._liveSpanControls.add(control);
     this._capLiveSpanRegistries();
-    return handle.span;
+    return span;
   }
 
   /**
@@ -739,109 +666,48 @@ export class EventTracker {
    * because these fire from lifecycle listeners with no ambient frame at all.
    */
   private _startSystemSpan(spanType: ClientSystemSpanType, opts?: { data?: Record<string, unknown>, parent?: SpanContext | null, pageViewSpanId?: string }): SystemSpanHandle {
-    // Same state machine as custom spans (versioning, data accumulation, inert
-    // switch) — but no data validation (callers are internal) and no public
-    // capabilities. `core` is assigned synchronously below; the control closure
-    // can only fire after.
-    let core!: SpanCore;
-    const control = { markInert: () => core.markInert() };
-    core = createSpanCore({
-      traceId: opts?.parent?.traceId ?? generateW3cTraceId(),
-      spanId: generateW3cSpanId(),
-      spanType,
-      startedAtMs: Date.now(),
-      parentSpanId: opts?.parent?.spanId ?? null,
-      pageViewSpanId: opts?.pageViewSpanId ?? null,
-      initialData: { ...opts?.data ?? {} },
-      validateData: null,
-      isSuppressed: () => this._disabled,
-      enqueueRow: (row) => this._enqueueSpanUpdate(row),
-      onEnded: () => this._liveSpanControls.delete(control),
-    });
-    this._liveSpanControls.add(control);
-    this._capLiveSpanRegistries();
-    return {
-      traceId: core.traceId,
-      spanId: core.spanId,
-      spanType,
-      isEnded: () => core.isEnded(),
-      setData: (data: Record<string, unknown>) => {
-        // The core rejects on an ended span; that pre-caught rejection is the
-        // fire-and-forget equivalent of the old silent no-op.
-        core.setData(data).catch(() => {});
+    const parentContext = opts?.parent == null
+      ? ROOT_CONTEXT
+      : otelTrace.setSpanContext(ROOT_CONTEXT, {
+        traceId: opts.parent.traceId,
+        spanId: opts.parent.spanId,
+        traceFlags: opts.parent.traceFlags ?? TraceFlags.SAMPLED,
+        isRemote: false,
+        ...opts.parent.traceState === undefined ? {} : { traceState: createTraceState(opts.parent.traceState) },
+      });
+    let accumulatedData = { ...opts?.data ?? {} };
+    const span = otelTrace.getTracer("@hexclave/sdk-browser-system").startSpan(spanType, {
+      kind: SpanKind.INTERNAL,
+      attributes: {
+        "hexclave.signal.type": "system_span",
+        "hexclave.data": JSON.stringify(accumulatedData),
+        ...opts?.pageViewSpanId === undefined ? {} : { "hexclave.page_view.span_id": opts.pageViewSpanId },
       },
-      end: (endedAtMs?: number) => {
-        core.end(endedAtMs).catch(() => {});
-      },
+    }, parentContext);
+    let ended = false;
+    const finish = (endedAtMs?: number) => {
+      if (ended) return;
+      ended = true;
+      span.end(endedAtMs);
+      this._liveSpanControls.delete(control);
     };
-  }
-
-  /**
-   * The `$http-client` span factory backing the fetch/XHR wrappers'
-   * `beginRequestSpan` hook. One span per outgoing request, on the system-span
-   * substrate: `page_view_span_id` stamping like other system spans, plus —
-   * unlike other system spans — AMBIENT parenting. A fetch issued inside
-   * `withSpan()` joins that span's trace; a bare fetch joins the current
-   * `$page-view`'s. Either way the backend work it triggers inherits the same
-   * trace through `traceparent`, so page → request → server → database is ONE
-   * tree. Only a fetch with no page view at all (the pre-load window, or a
-   * non-browser runtime) roots a trace of its own.
-   *
-   * Returns null when the request must not be recorded (disabled, SDK-own URL,
-   * filtered origin, per-page-view cap). Callers (the global wrappers) guard
-   * against throws; this method itself avoids throwing on the expected paths.
-   */
-  beginHttpRequestSpan(info: RequestSpanInfo): HttpRequestSpanHandle | null {
-    if (this._disabled) return null;
-    if (this._deps.shouldIgnoreFetchUrl?.(info.url) === true) return null;
-    const sanitizedUrl = sanitizeHttpClientUrl(info.url);
-    if (sanitizedUrl === null) return null;
-    // sanitizeHttpClientUrl parsed the same string successfully, so this
-    // cannot throw.
-    const target = new URL(info.url);
-    if (!shouldCaptureNetworkRequest(this._networkCapture, target)) return null;
-    if (this._httpClientSpanCount >= HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP) {
-      if (!this._warnedHttpClientSpanCap) {
-        // Warned once per tracker (not per page) so a polling page cannot spam
-        // the console across navigations.
-        this._warnedHttpClientSpanCap = true;
-        console.warn(`Hexclave analytics: more than ${HTTP_CLIENT_SPANS_PER_PAGE_VIEW_CAP} outgoing requests on one page view; further $http-client spans on this page are dropped`);
-      }
-      return null;
-    }
-    this._httpClientSpanCount += 1;
-
-    // Ambient parenting only (no explicit parent exists for auto-instrumentation),
-    // falling back to the page this request was made from. Contexts come from our
-    // own live handles, so an error should be impossible — but it must degrade to
-    // "own trace root", never break the caller's request.
-    const ambient = this._ambientSpanContexts();
-    const pageView = this._currentPageViewContext();
-    const resolved = resolveSpanParent({ ambient, fallbackParent: pageView });
-    const parent = "error" in resolved ? resolveSpanParent({ ambient: [] }) : resolved;
-    if ("error" in parent) {
-      throw new Error(`Hexclave analytics: ${parent.error}`);
-    }
-
-    // `control` is assigned synchronously below; onEnded can only fire after.
-    let control!: { markInert: () => void };
-    const handle = beginHttpClientSpanCore({
-      config: this._networkCapture,
-      sampled: isTraceSampled(parent.traceId, this._traceSampleRate),
-      sanitizedUrl,
-      method: info.method,
-      transport: info.transport,
-      traceId: parent.traceId,
-      parentSpanId: parent.parentSpanId,
-      pageViewSpanId: this.getCurrentPageViewSpanId(),
-      isSuppressed: () => this._disabled,
-      enqueueRow: (row) => this._enqueueSpanUpdate(row),
-      onEnded: () => this._liveSpanControls.delete(control),
-    });
-    control = { markInert: handle.markInert };
+    const control = { markInert: () => finish() };
     this._liveSpanControls.add(control);
     this._capLiveSpanRegistries();
-    return handle;
+    const spanContext = span.spanContext();
+    return {
+      traceId: spanContext.traceId,
+      spanId: spanContext.spanId,
+      traceFlags: spanContext.traceFlags,
+      spanType,
+      isEnded: () => ended,
+      setData: (data: Record<string, unknown>) => {
+        if (ended) return;
+        accumulatedData = { ...accumulatedData, ...data };
+        span.setAttribute("hexclave.data", JSON.stringify(accumulatedData));
+      },
+      end: finish,
+    };
   }
 
   /** The correlation context pinned to exactly `span`: its frozen page correlation
@@ -849,7 +715,6 @@ export class EventTracker {
    * `traceparent` built by _spanPropagationHeaders. */
   private _spanPropagationContext(pageViewSpanId: string | null): SpanPropagationContext {
     return {
-      projectId: this._deps.projectId,
       sessionReplaySegmentId: this._sessionReplaySegmentId,
       ...pageViewSpanId !== null ? { pageViewSpanId } : {},
     };
@@ -861,12 +726,10 @@ export class EventTracker {
    * row will survive a healthy flush.
    */
   private _spanPropagationHeaders(span: Span, pageViewSpanId: string | null): Record<string, string> {
-    const sampled = isTraceSampled(span.traceId, this._traceSampleRate);
     return buildPropagationHeaderValues({
-      traceparent: sampled ? {
-        ...span.spanContext(),
-        sampled: true,
-      } : null,
+      // createOtelSpanFacade injects the official active trace context after
+      // merging this correlation-only fallback.
+      traceparent: null,
       context: this._spanPropagationContext(pageViewSpanId),
     });
   }
@@ -955,7 +818,6 @@ export class EventTracker {
    */
   async flush(): Promise<void> {
     await this._flush({ keepalive: false });
-    await Promise.allSettled([...this._inFlight]);
   }
 
   private _ambientSpanContexts(): SpanContext[] {
@@ -963,11 +825,8 @@ export class EventTracker {
     for (const span of this._globalSpans) {
       if (!span.isEnded) contexts.push(span.spanContext());
     }
-    // Enclosing withSpan() frames, outermost first, after the globals. Exact
-    // primitive (ALS/AsyncContext) → the per-flow store, always. Sync-stack
-    // fallback → only prologue-open frames (provably same-flow); after an await
-    // in browsers, rebind via the span handle (`span.run` / `trackEvent` / …).
-    contexts.push(...getAmbientSpanContexts());
+    const activeOtelSpanContext = getActiveOtelSpanContext();
+    if (activeOtelSpanContext !== null) contexts.push(activeOtelSpanContext);
     return contexts;
   }
 
@@ -988,13 +847,18 @@ export class EventTracker {
       root: options?.root,
     });
     if ("error" in resolved) return resolved;
-    return { span: resolved.parentSpanId === null ? null : { traceId: resolved.traceId, spanId: resolved.parentSpanId } };
+    return { span: resolved.parentSpanId === null ? null : {
+      traceId: resolved.traceId,
+      spanId: resolved.parentSpanId,
+      ...resolved.traceFlags === undefined ? {} : { traceFlags: resolved.traceFlags },
+      ...resolved.traceState === undefined ? {} : { traceState: resolved.traceState },
+    } };
   }
 
   /** The current `$page-view` span's context, or null before the first page view. */
   private _currentPageViewContext(): SpanContext | null {
     const span = this._pageViewSpan;
-    return span === null ? null : { traceId: span.traceId, spanId: span.spanId };
+    return span === null ? null : { traceId: span.traceId, spanId: span.spanId, traceFlags: span.traceFlags };
   }
 
   /**
@@ -1032,45 +896,13 @@ export class EventTracker {
     return this._currentPageViewContext();
   }
 
-  /**
-   * Adoption path for span rows minted BEFORE this lazily-loaded module
-   * arrived: ClientAnalytics builds pre-load span handles on the shared state
-   * machine and routes their rows here once the tracker exists. Rows carry
-   * their own monotonic versions, so late delivery is safe for the
-   * ReplacingMergeTree upsert model.
-   */
-  enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
-    // Mirrors the suppression of tracker-owned handles: once telemetry is
-    // disabled, updates resolve without buffering.
-    if (this._disabled) return Promise.resolve();
-    return this._enqueueSpanUpdate(row);
-  }
-
-  private _enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
-    let settler!: Settler;
-    const promise = preCaught(new Promise<void>((resolve, reject) => {
-      settler = { resolve, reject };
-    }));
-    const previous = this._spanUpdates.get(row.span_id);
-    if (previous) {
-      this._approxBytes -= JSON.stringify(previous.row).length;
-    }
-    // Latest row per span id wins within a batch, but superseded rows' settlers
-    // ride along so their promises still settle with the batch that ships.
-    this._spanUpdates.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
-    this._approxBytes += JSON.stringify(row).length;
-    this._maybeTriggerSizeFlush();
-    return promise;
-  }
-
   private _maybeTriggerSizeFlush() {
-    if (this._events.length + this._spanUpdates.size >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-      runAsynchronously(() => this._flush({ keepalive: false }));
+    if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
+      this._flushInBackground({ keepalive: false });
     }
   }
 
   private _pushEvent(event: TrackedEvent) {
-    if (this._disabled) return;
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     this._maybeTriggerSizeFlush();
@@ -1100,7 +932,12 @@ export class EventTracker {
       // internalOptions for the rationale.
       event_at_ms: internalOptions?.eventAtMs ?? Date.now(),
       data,
-      ...enclosing !== null ? { trace_id: enclosing.traceId, span_id: enclosing.spanId } : {},
+      ...enclosing !== null ? {
+        trace_id: enclosing.traceId,
+        span_id: enclosing.spanId,
+        ...enclosing.traceFlags === undefined ? {} : { trace_flags: enclosing.traceFlags },
+        ...enclosing.traceState === undefined ? {} : { trace_state: enclosing.traceState },
+      } : {},
       ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
     });
   }
@@ -1157,9 +994,6 @@ export class EventTracker {
     // Rage bursts describe repeated interaction with one page. Carrying the
     // prior route's clicks into an SPA navigation creates false positives.
     this._recentClicks = [];
-    // The $http-client volume cap is per page view.
-    this._httpClientSpanCount = 0;
-
     // Web vitals are collected PER $page-view span: the tab's hard load gets
     // all five metrics ({ mode: "initial" }), while every later entry (SPA
     // push/replace/pop, bfcache restore, sign-out rotation) gets a soft-nav
@@ -1179,9 +1013,10 @@ export class EventTracker {
     }
     let collector: WebVitalsCollector | null = null;
     collector = startWebVitalsCollector(
-      () => {
+      (snapshot) => {
         if (collector !== null && !span.isEnded()) {
-          span.setData({ web_vitals: collector.snapshot() });
+          span.setData({ web_vitals: snapshot });
+          this._webVitalsMetricRecorder.record(snapshot);
         }
       },
       entryType === "initial"
@@ -1212,7 +1047,9 @@ export class EventTracker {
       scroll_depth_ratio: Math.round(this._maxScrollDepthRatio * 1000) / 1000,
     });
     if (this._webVitals !== null && this._webVitalsSpanId === span.spanId) {
-      span.setData({ web_vitals: this._webVitals.snapshot() });
+      const snapshot = this._webVitals.snapshot();
+      span.setData({ web_vitals: snapshot });
+      this._webVitalsMetricRecorder.record(snapshot);
       this._webVitals.disconnect();
       this._webVitals = null;
       this._webVitalsSpanId = null;
@@ -1406,7 +1243,12 @@ export class EventTracker {
         ...outbound ? { outbound: 1 } : {},
         ...download ? { download: 1 } : {},
       },
-      ...enclosing !== null ? { trace_id: enclosing.traceId, span_id: enclosing.spanId } : {},
+      ...enclosing !== null ? {
+        trace_id: enclosing.traceId,
+        span_id: enclosing.spanId,
+        ...enclosing.traceFlags === undefined ? {} : { trace_flags: enclosing.traceFlags },
+        ...enclosing.traceState === undefined ? {} : { trace_state: enclosing.traceState },
+      } : {},
       ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
     };
 
@@ -1927,14 +1769,14 @@ export class EventTracker {
     this._flushPendingKeystrokes();
     this._endPageViewSpan();
     this._endOpenPresenceSpans();
-    runAsynchronously(() => this._flush({ keepalive: true }));
+    this._flushInBackground({ keepalive: true });
   };
 
   private readonly _onVisibilityChangeFlush = () => {
     // A hidden tab is the last reliable moment to ship on mobile (pagehide may
     // never fire). The page may come back, so the $page-view span stays open.
     this._flushPendingKeystrokes();
-    runAsynchronously(() => this._flush({ keepalive: true }));
+    this._flushInBackground({ keepalive: true });
   };
 
   private _setupPageHideListeners() {
@@ -1963,10 +1805,6 @@ export class EventTracker {
       this._webVitals.disconnect();
       this._webVitals = null;
       this._webVitalsSpanId = null;
-    }
-    if (this._breakerOnlineListener !== null) {
-      window.removeEventListener("online", this._breakerOnlineListener);
-      this._breakerOnlineListener = null;
     }
     this._pageViewSpan = null;
     this._awaySpan = null;
@@ -1999,8 +1837,6 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
-    if (this._disabled) return;
-
     // A keepalive flush means the page is unloading — a click still awaiting
     // dead-click classification led to that unload, so it is alive by
     // definition and ships unmarked.
@@ -2011,170 +1847,52 @@ export class EventTracker {
 
     // Clicks still awaiting classification stay buffered so the sweep can
     // mark them dead in place; classification finishes well within one flush
-    // interval, so they ride the next flush at the latest. Span rows are never
-    // held back — the holdback exists only for dead-click classification.
+    // interval, so they ride the next flush at the latest.
     const bufferedEvents = this._events.filter((event) => !this._unclassifiedClicks.has(event));
-    const bufferedSpanEntries = [...this._spanUpdates.values()];
-    if (bufferedEvents.length === 0 && bufferedSpanEntries.length === 0) return;
+    if (bufferedEvents.length === 0) return;
     this._events = this._events.filter((event) => this._unclassifiedClicks.has(event));
-    this._spanUpdates.clear();
     this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
-
-    // Sampling belongs HERE, after producer updates have coalesced and before a
-    // transport payload exists. One decision therefore covers the complete
-    // event/span trace group in this flush instead of each producer rolling its
-    // own coin. Failed/slow traces are promoted by getKeptTraceIds.
-    const keptTraceIds = getKeptTraceIds(
-      bufferedEvents,
-      bufferedSpanEntries.map((entry) => entry.row),
-      this._traceSampleRate,
-    );
-    const keepEvent = (event: TrackedEvent) =>
-      event.trace_id === undefined || keptTraceIds.has(event.trace_id);
-    const events = bufferedEvents.filter(keepEvent);
-    const spanEntries = bufferedSpanEntries.filter((entry) => keptTraceIds.has(entry.row.trace_id));
-
-    // Snapshot the settlers of everything this batch carries. Sampled-out
-    // items resolve locally: sampling is a successful delivery policy decision,
-    // not a transport failure callers should retry.
-    const settlers: Settler[] = [];
-    for (const event of bufferedEvents) {
-      const settler = this._eventSettlers.get(event);
-      if (settler) {
-        this._eventSettlers.delete(event);
-        if (keepEvent(event)) settlers.push(settler);
-        else settler.resolve();
-      }
+    for (const event of bufferedEvents) this._emitTrackedEvent(event);
+    const flush = this._deps.forceFlushOtel?.() ?? Promise.resolve();
+    if (options.keepalive) {
+      registerTelemetryBackgroundTask(this._deps.registerBackgroundTask, flush, "EventTracker OTel flush");
     }
-    for (const entry of bufferedSpanEntries) {
-      if (keptTraceIds.has(entry.row.trace_id)) {
-        settlers.push(...entry.settlers);
-      } else {
-        for (const settler of entry.settlers) settler.resolve();
-        // Keep only the latest OPEN ancestor locally. If a later flush promotes
-        // this trace, its root/page-view row is still available and the error
-        // trace does not start at a dangling parent. Ended healthy work is
-        // discarded now; retaining whole long-lived browser traces would make
-        // sampling an unbounded memory buffer.
-        if (
-          entry.row.ended_at_ms === null
-          && this._spanUpdates.size < LIVE_SPAN_REGISTRY_SOFT_CAP
-        ) {
-          this._spanUpdates.set(entry.row.span_id, { row: entry.row, settlers: [] });
-          this._approxBytes += JSON.stringify(entry.row).length;
-        }
-      }
-    }
-    if (events.length === 0 && spanEntries.length === 0) return;
+    await flush;
+  }
 
-    // Breaker open: drain without touching the network. Buffers were already
-    // cleared above, so memory stays bounded no matter how long the blocker
-    // persists; awaiting callers see a rejection like any other send failure.
-    if (Date.now() < this._breakerOpenUntilMs) {
-      const breakerError = new Error("Hexclave analytics: delivery paused after repeated send failures (ad blocker, offline proxy, or quota)");
-      for (const settler of settlers) settler.reject(breakerError);
-      return;
-    }
+  /**
+   * Browser telemetry delivery is best-effort. A transport failure can happen
+   * while the page is unloading or the user is offline; it must not be
+   * re-reported as an uncaught application error (which would be captured and
+   * exported again through the same unavailable transport).
+   */
+  private _flushInBackground(options: { keepalive: boolean }): void {
+    runAsynchronously(() => this._flush(options), { noErrorLogging: true });
+  }
 
-    const nowMs = Date.now();
-
-    const batchId = generateUuid();
-    const payload = {
-      // Versions the BATCH BODY (shape of the envelope + rows), the same way
-      // the span-context header versions itself with its `v1.` prefix. The
-      // backend tolerates unknown fields today; a future route can dispatch on
-      // this instead of sniffing shapes.
-      schema_version: 3,
-      resource: this._deps.resource,
-      session_replay_segment_id: this._sessionReplaySegmentId,
-      batch_id: batchId,
-      sent_at_ms: nowMs,
-      events,
-      ...spanEntries.length > 0 ? { spans: spanEntries.map((entry) => entry.row) } : {},
-    };
-
-    const send = (async () => {
-      try {
-        const res = await this._deps.sendBatch(
-          JSON.stringify(payload),
-          { keepalive: options.keepalive },
-        );
-
-        if (res.status === "error") {
-          for (const settler of settlers) settler.reject(res.error);
-          if (isAnalyticsNotEnabledError(res.error)) {
-            this._disable();
-            return;
-          }
-          // Ad blockers commonly block analytics endpoints, causing network
-          // errors. These are expected and should not pollute the console.
-          if (isAdBlockerNetworkError(res.error)) {
-            this._recordBreakerNetworkFailure();
-            return;
-          }
-          console.warn("Hexclave analytics: EventTracker flush failed:", res.error);
-          return;
-        }
-
-        if (!res.data.ok) {
-          if (res.data.status === 429) {
-            // Quota exhausted: the server says exactly how long to stay away.
-            const retryAfterSec = Number(res.data.headers.get("retry-after"));
-            this._breakerOpenUntilMs = Date.now() + (Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : BREAKER_DEFAULT_RETRY_AFTER_MS);
-          }
-          const text = await res.data.text();
-          for (const settler of settlers) settler.reject(new Error(`EventTracker flush failed: ${res.data.status} ${text}`));
-          console.warn("Hexclave analytics: EventTracker flush failed:", res.data.status, text);
-          return;
-        }
-
-        this._consecutiveNetworkFailures = 0;
-        for (const settler of settlers) settler.resolve();
-      } catch (error) {
-        // _flush must never reject (public flush() and fire-and-forget callers
-        // don't expect telemetry failures to throw); the settlers carry it.
-        for (const settler of settlers) settler.reject(error);
-        console.warn("Hexclave analytics: EventTracker flush failed:", error);
-      }
-    })();
-
-    const tracked: Promise<void> = send.finally(() => {
-      this._inFlight.delete(tracked);
+  private _emitTrackedEvent(event: TrackedEvent): void {
+    emitHexclaveOtelEvent({
+      eventName: event.event_type,
+      data: event.data,
+      clientVersion: this._deps.clientVersion ?? "unknown",
+      timestamp: event.event_at_ms,
+      parent: event.trace_id === undefined || event.span_id === undefined ? null : {
+        traceId: event.trace_id,
+        spanId: event.span_id,
+        ...event.trace_flags === undefined ? {} : { traceFlags: event.trace_flags },
+        ...event.trace_state === undefined ? {} : { traceState: event.trace_state },
+      },
+      correlationAttributes: {
+        "hexclave.session_replay.segment.id": this._sessionReplaySegmentId,
+        ...event.page_view_span_id === undefined ? {} : { "hexclave.page_view.span_id": event.page_view_span_id },
+      },
     });
-    this._inFlight.add(tracked);
-    registerTelemetryBackgroundTask(this._deps.registerBackgroundTask, tracked, "EventTracker");
-    await tracked;
-  }
-
-  private _recordBreakerNetworkFailure() {
-    this._consecutiveNetworkFailures += 1;
-    if (this._consecutiveNetworkFailures < BREAKER_NETWORK_FAILURE_THRESHOLD) return;
-    this._breakerOpenUntilMs = Date.now() + BREAKER_NETWORK_COOLDOWN_MS;
-    // Connectivity returning is the one signal that a status-0 blocker might
-    // actually have healed (tethering flaps, captive portals) — close early.
-    if (this._breakerOnlineListener === null && typeof window !== "undefined") {
-      const listener = () => {
-        this._breakerOpenUntilMs = 0;
-        this._consecutiveNetworkFailures = 0;
-      };
-      this._breakerOnlineListener = listener;
-      window.addEventListener("online", listener);
-    }
-  }
-
-  private _disable() {
-    this._disabled = true;
-    if (this._flushTimer !== null) {
-      clearInterval(this._flushTimer);
-      this._flushTimer = null;
-    }
-    this._teardown();
   }
 
   private _tick() {
     if (this._cancelled) return;
-    if (this._events.length > 0 || this._spanUpdates.size > 0) {
-      runAsynchronously(() => this._flush({ keepalive: false }));
+    if (this._events.length > 0) {
+      this._flushInBackground({ keepalive: false });
     }
   }
 }

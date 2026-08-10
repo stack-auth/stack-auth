@@ -151,6 +151,12 @@ export const config = defineHexclaveConfig({
       analytics: {
         enabled: true,
       },
+      warehouse: {
+        enabled: true,
+      },
+      observability: {
+        enabled: true,
+      },
     },
   },
 });

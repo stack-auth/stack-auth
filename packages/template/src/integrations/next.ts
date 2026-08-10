@@ -1,5 +1,6 @@
 import { headers as rscHeaders } from "@hexclave/sc/force-react-server";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { RequestLike } from "../lib/hexclave-app/common";
 import { getServerAppInstrumentation } from "../lib/hexclave-app/apps/implementations/server-app-impl";
 import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, HexclaveRequestContext, runGuardedCall, runGuardedRoute, UnauthorizedFactory } from "./adapter-core";
@@ -83,16 +84,14 @@ export type HexclaveNextRequestErrorContext = {
 };
 
 export type HexclaveNextInstrumentation = {
-  // Async because claiming the OTel API global for the library-span bridge
-  // must finish before app code starts spans; Next.js awaits an async
-  // `register` export, so `export const register = instrumentation.register`
-  // keeps working unchanged.
+  // Async because provider/exporter registration must finish before app code
+  // starts spans. Next.js awaits an async instrumentation `register` export.
   register: () => Promise<void>,
   onRequestError: (error: unknown, request: HexclaveNextRequestErrorRequest, errorContext?: HexclaveNextRequestErrorContext) => Promise<void>,
   /**
    * Advanced collector/control-plane hook. Runs one callback with every
-   * SDK-native telemetry source suppressed in the hidden OTel bridge's exact
-   * async context, preventing self-ingestion feedback loops.
+   * SDK-native telemetry source suppressed in OTel's async context, preventing
+   * self-ingestion feedback loops.
    */
   runWithTelemetrySuppressed: <T>(fn: () => Promise<T>) => Promise<T>,
   /**
@@ -113,18 +112,14 @@ export type HexclaveNextInstrumentation = {
 
 export type HexclaveNextInstrumentationOptions = {
   /**
-   * OpenTelemetry instrumentation instances to wire into Hexclave's hidden
-   * library-span bridge, e.g. `[new PrismaInstrumentation()]`. Only needed
-   * for libraries that ship an instrumentation CLASS; libraries that emit
-   * spans through the global OTel API directly (Drizzle's OTel support, the
-   * Vercel AI SDK's `experimental_telemetry`) are captured with zero config
-   * once `register()` runs. Typed `unknown[]` on purpose: we duck-type the
-   * entries rather than depend on `@opentelemetry/instrumentation`.
+   * OpenTelemetry instrumentation instances registered with the managed OTel
+   * provider, e.g. `[new PrismaInstrumentation()]`. Libraries that emit spans
+   * through the global API directly need no entry here.
    */
-  instrumentations?: unknown[],
+  instrumentations?: Instrumentation[],
   /**
    * Whether bare telemetry and `onRequestError` should resolve the current
-   * Next.js request's session and correlation headers. Disable this when a
+   * Next.js request's session and W3C propagation headers. Disable this when a
    * control plane records its own telemetry into a separate internal project:
    * the incoming request belongs to a customer project, not the telemetry app.
    *
@@ -139,18 +134,6 @@ export type HexclaveNextInstrumentationOptions = {
    */
   isTelemetrySuppressed?: () => boolean,
 };
-
-/**
- * Duck-typed shape check for OTel instrumentation instances. Method-shorthand
- * members keep TypeScript's bivariant method checking, so real
- * instrumentations (whose setTracerProvider takes a TracerProvider) match.
- */
-function isOtelInstrumentationLike(value: unknown): value is { setTracerProvider(provider: unknown): void, enable(): void } {
-  if (typeof value !== "object" || value === null) return false;
-  // Guarded property access; the cast mirrors readSpanContextHeader's pattern.
-  const candidate = value as { setTracerProvider?: unknown, enable?: unknown };
-  return typeof candidate.setTracerProvider === "function" && typeof candidate.enable === "function";
-}
 
 // Memoizes the RequestLike wrapper per Headers instance from `next/headers`.
 // Next returns a stable Headers object per request scope, and the server app
@@ -190,7 +173,7 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
   if (typeof headers !== "object" || headers === null) return undefined;
   if (typeof (headers as { get?: unknown }).get === "function") {
     // Headers-shaped: matches RequestLike's `{ get }` variant directly. The
-    // cast mirrors readSpanContextHeader's guarded access pattern.
+    // cast mirrors readBaggageHeader's guarded access pattern.
     return { headers: headers as { get: (name: string) => string | null } };
   }
   const normalized: Record<string, string | null> = {};
@@ -217,8 +200,8 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * export const onRequestError = instrumentation.onRequestError;
  * ```
  *
- * `register()` installs the server-side outbound-fetch instrumentation
- * ($http-client spans + cross-tier header for allowlisted origins) and the
+ * `register()` installs the managed OTel provider, official Undici
+ * instrumentation, authenticated exporters, and the
  * uncaught-exception monitor (`$error` events via
  * `process.on("uncaughtExceptionMonitor")` — observation-only, never changes
  * crash behavior) — both also self-install at app construction now, so
@@ -230,12 +213,10 @@ function nextRequestToRequestLike(request: HexclaveNextRequestErrorRequest): Req
  * records every uncaught server-side error as a `$error` event linked (via
  * the request's headers) to the caller's client session.
  *
- * `register()` also claims the process-global OpenTelemetry API for the
- * hidden library-span bridge (ONLY if no other OTel provider is registered —
- * a user's own OTel setup always wins): spans any library emits through the
- * OTel global become native operation-named rows nested under the ambient
- * Hexclave request span, with their tracer stored as the instrumentation scope
- * and zero exporter/endpoint/collector config.
+ * `register()` installs Hexclave's managed OpenTelemetry Node SDK and
+ * authenticated OTLP exporter. A pre-existing global provider is an explicit
+ * conflict instead of a silent fallback; existing-provider applications wire
+ * the Hexclave exporter into their provider directly.
  * Libraries using the global API directly (Drizzle's OTel support, the
  * Vercel AI SDK's `experimental_telemetry`) need nothing at all; libraries
  * that ship an instrumentation CLASS plug in via the options:
@@ -274,32 +255,15 @@ export function hexclaveInstrumentation(app: AdapterServerApp, options?: Hexclav
       });
     },
     register: async () => {
-      instrumentation.installServerFetchInstrumentation();
+      instrumentation.ensureOpenTelemetryProvider();
       instrumentation.installServerErrorMonitor();
       instrumentation.setTelemetrySuppressionPredicate(options?.isTelemetrySuppressed ?? null);
       // From here on, bare telemetry calls (no `{ request }`) inside a Next
       // request scope attribute to the caller's session via `next/headers`.
       instrumentation.setAmbientRequestProvider(options?.requestAttribution === false ? null : resolveAmbientNextRequest);
-      // Claim the OTel API global (only if free) BEFORE wiring instrumentation
-      // entries, so their spans resolve to our provider from the first call.
-      const registration = await instrumentation.registerLibrarySpanBridge();
-      for (const [index, entry] of (options?.instrumentations ?? []).entries()) {
-        // This duck-typed pair of calls is exactly what
-        // @opentelemetry/instrumentation's registerInstrumentations() does
-        // with each entry; duck-typing keeps that package out of our
-        // dependency tree.
-        if (!isOtelInstrumentationLike(entry)) {
-          console.warn(`Hexclave analytics: instrumentations[${index}] does not look like an OpenTelemetry instrumentation (missing setTracerProvider()/enable()); ignoring it`);
-          continue;
-        }
-        if (registration !== null) {
-          entry.setTracerProvider(registration.provider);
-        }
-        // When the bridge backed off (the user runs their own OTel setup), we
-        // still enable the entry WITHOUT overriding its provider — it then
-        // resolves the user's global provider, which is what they'd expect.
-        entry.enable();
-      }
+      // Register the real provider/exporter before application code creates
+      // spans. Conflicting providers fail loudly inside this call.
+      await instrumentation.registerOpenTelemetry(options?.instrumentations ?? []);
     },
     onRequestError: async (error, request, errorContext) => {
       try {
@@ -364,7 +328,7 @@ export function createHexclaveNext(app: AdapterServerApp, factoryOptions?: Hexcl
      *
      * Server actions receive no `Request`; the ambient headers from
      * `next/headers` carry both the session cookies and the
-     * `x-hexclave-span-context` header (the browser SDK's patched fetch
+     * `baggage` header (the browser SDK's patched fetch
      * instruments React's action POSTs like any other same-origin request).
      */
     serverAction: <TArgs extends unknown[], TResult>(

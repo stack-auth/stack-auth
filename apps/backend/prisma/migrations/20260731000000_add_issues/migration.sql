@@ -1,17 +1,19 @@
--- Error tracking: issues, grouping hashes, the exactly-once materialization
--- ledger, ownership/activity/saved-search metadata, the alert surface and the
--- attachment ledger.
+-- Error tracking / release graph / ingest persistence — single pre-release
+-- migration. All of these tables are new (or empty) at first apply, so indexes
+-- and foreign-key validation are O(1). Intermediate follow-up migrations that
+-- only existed while this surface was under development are folded into the
+-- final CREATE shapes here (correct alert rule scope key, no IssueActivity
+-- actor FK, Issue/IssueHash columns present from day one).
 --
--- Every table here is new, so indexes and foreign-key validation are O(1).
--- Intermediate follow-up migrations that only existed while this surface was
--- under development are folded into the final CREATE shapes (correct alert
--- rule scope key, no IssueActivity actor FK, Issue/IssueHash columns present
--- from day one).
---
--- The Tenancy composite unique key that these scope foreign keys reference is
--- created concurrently by 20260726000000_add_releases, which orders before
--- this migration.
+-- The one non-O(1) step is the Tenancy composite unique index required by the
+-- new scope foreign keys. It is built concurrently outside the bookkeeping
+-- transaction so it does not take an ACCESS EXCLUSIVE lock on Tenancy.
 
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "Tenancy_id_projectId_branchId_key"
+  ON /* SCHEMA_NAME_SENTINEL */."Tenancy" ("id", "projectId", "branchId");
 
 -- SPLIT_STATEMENT_SENTINEL
 
@@ -27,6 +29,8 @@ CREATE TYPE "IssueSubjectType" AS ENUM ('USER', 'TEAM');
 CREATE TYPE "IssueAlertEventKind" AS ENUM ('NEW', 'REGRESSION', 'OCCURRENCE');
 CREATE TYPE "IssueAlertDeliveryState" AS ENUM ('CLAIMED', 'SUPPRESSED', 'ENQUEUED', 'DELIVERED', 'FAILED', 'DROPPED');
 CREATE TYPE "IssueAlertDeliveryOutcome" AS ENUM ('NONE', 'COOLDOWN_ACTIVE', 'WORKFLOW_ENQUEUED', 'WORKFLOW_DELIVERED', 'WORKFLOW_FAILED', 'WORKFLOW_DROPPED', 'INVALID_RULE');
+CREATE TYPE "ReleaseStatus" AS ENUM ('OPEN', 'ARCHIVED');
+CREATE TYPE "ReleaseArtifactStatus" AS ENUM ('REGISTERED', 'FINALIZED');
 
 -- CreateTable
 CREATE TABLE "Issue" (
@@ -133,6 +137,105 @@ CREATE TABLE "IssueCounter" (
     CONSTRAINT "IssueCounter_pkey" PRIMARY KEY ("tenancyId")
 );
 
+CREATE TABLE "Release" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "version" VARCHAR(250) NOT NULL,
+    "status" "ReleaseStatus" NOT NULL DEFAULT 'OPEN',
+    "ref" VARCHAR(250),
+    "url" TEXT,
+    "data" JSONB,
+    "dateAdded" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "dateStarted" TIMESTAMP(3),
+    "dateReleased" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Release_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseDeployment" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "deploymentKey" VARCHAR(256) NOT NULL,
+    "environment" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(64),
+    "url" TEXT,
+    "startedAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseDeployment_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseCommit" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "repository" VARCHAR(256) NOT NULL,
+    "commitSha" VARCHAR(128) NOT NULL,
+    "position" INTEGER NOT NULL,
+    "message" TEXT,
+    "authorName" VARCHAR(256),
+    "authorEmail" VARCHAR(320),
+    "committedAt" TIMESTAMP(3),
+    "url" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseCommit_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseArtifact" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseId" UUID NOT NULL,
+    "manifestSha256" VARCHAR(64) NOT NULL,
+    "dist" VARCHAR(64),
+    "environment" VARCHAR(255),
+    "status" "ReleaseArtifactStatus" NOT NULL DEFAULT 'REGISTERED',
+    "manifestObjectKey" TEXT,
+    "finalizedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseArtifact_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
+CREATE TABLE "ReleaseArtifactDebugId" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "releaseArtifactId" UUID NOT NULL,
+    "debugId" VARCHAR(36) NOT NULL,
+    "codeFile" TEXT NOT NULL,
+    "sourceMapFile" TEXT,
+    "sourceMapInline" BOOLEAN NOT NULL,
+    "bundleSha256" VARCHAR(64) NOT NULL,
+    "bundleBytes" INTEGER NOT NULL,
+    "sourceMapSha256" VARCHAR(64) NOT NULL,
+    "sourceMapBytes" INTEGER NOT NULL,
+    "sourceMapGzippedBytes" INTEGER NOT NULL,
+    "bundleObjectKey" TEXT,
+    "sourceMapObjectKey" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ReleaseArtifactDebugId_pkey" PRIMARY KEY ("tenancyId", "id")
+);
+
 CREATE TABLE "IssueAlertRule" (
     "tenancyId" UUID NOT NULL,
     "projectId" TEXT NOT NULL,
@@ -201,6 +304,27 @@ CREATE TABLE "IssueAlertDelivery" (
     CONSTRAINT "IssueAlertDelivery_keys_check" CHECK (length("deduplicationKey") > 0 AND length("cooldownKey") > 0),
     CONSTRAINT "IssueAlertDelivery_cooldown_check" CHECK ("cooldownDurationSeconds" BETWEEN 0 AND 2592000),
     CONSTRAINT "IssueAlertDelivery_attempts_check" CHECK ("attemptCount" >= 0 AND "replayCount" >= 0)
+);
+
+CREATE TABLE "ErrorIngestClientReport" (
+    "tenancyId" UUID NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "protocol" VARCHAR(32) NOT NULL,
+    "bucket" VARCHAR(64) NOT NULL,
+    "reason" VARCHAR(64) NOT NULL,
+    "category" VARCHAR(64) NOT NULL,
+    "quantity" INTEGER NOT NULL,
+    "idempotencyKey" VARCHAR(256) NOT NULL,
+    "reportedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ErrorIngestClientReport_pkey" PRIMARY KEY ("tenancyId", "id"),
+    CONSTRAINT "ErrorIngestClientReport_quantity_check" CHECK ("quantity" > 0 AND "quantity" <= 1000000000),
+    CONSTRAINT "ErrorIngestClientReport_text_check" CHECK (
+      length("protocol") > 0 AND length("bucket") > 0 AND length("reason") > 0 AND length("category") > 0 AND length("idempotencyKey") > 0
+    )
 );
 
 CREATE TABLE "ErrorAttachment" (
@@ -343,6 +467,20 @@ CREATE INDEX "IssueHash_tenancyId_state_idx" ON "IssueHash"("tenancyId", "state"
 CREATE INDEX "IssueMaterialization_appliedAt_idx" ON "IssueMaterialization"("appliedAt");
 CREATE UNIQUE INDEX "IssueRedirect_tenancyId_fromShortId_key" ON "IssueRedirect"("tenancyId", "fromShortId");
 
+CREATE UNIQUE INDEX "Release_tenancyId_version_key" ON "Release"("tenancyId", "version");
+CREATE INDEX "Release_scope_dateAdded_idx" ON "Release"("tenancyId", "projectId", "branchId", "dateAdded" DESC, "id" DESC);
+CREATE INDEX "Release_tenancyId_status_dateReleased_idx" ON "Release"("tenancyId", "status", "dateReleased");
+CREATE UNIQUE INDEX "ReleaseDeployment_tenancyId_deploymentKey_key" ON "ReleaseDeployment"("tenancyId", "deploymentKey");
+CREATE INDEX "ReleaseDeployment_release_environment_finishedAt_idx" ON "ReleaseDeployment"("tenancyId", "releaseId", "environment", "finishedAt");
+CREATE INDEX "ReleaseDeployment_environment_finishedAt_idx" ON "ReleaseDeployment"("tenancyId", "environment", "finishedAt");
+CREATE UNIQUE INDEX "ReleaseCommit_release_repository_sha_key" ON "ReleaseCommit"("tenancyId", "releaseId", "repository", "commitSha");
+CREATE UNIQUE INDEX "ReleaseCommit_release_position_key" ON "ReleaseCommit"("tenancyId", "releaseId", "position");
+CREATE INDEX "ReleaseCommit_repository_sha_idx" ON "ReleaseCommit"("tenancyId", "repository", "commitSha");
+CREATE UNIQUE INDEX "ReleaseArtifact_release_manifest_key" ON "ReleaseArtifact"("tenancyId", "releaseId", "manifestSha256");
+CREATE INDEX "ReleaseArtifact_release_environment_dist_idx" ON "ReleaseArtifact"("tenancyId", "releaseId", "environment", "dist", "createdAt");
+CREATE UNIQUE INDEX "ReleaseArtifactDebugId_artifact_debugId_key" ON "ReleaseArtifactDebugId"("tenancyId", "releaseArtifactId", "debugId");
+CREATE INDEX "ReleaseArtifactDebugId_tenancyId_debugId_idx" ON "ReleaseArtifactDebugId"("tenancyId", "debugId");
+
 CREATE UNIQUE INDEX "IssueAlertRule_tenancyId_id_scope_key"
   ON "IssueAlertRule" ("tenancyId", "id", "projectId", "branchId");
 CREATE UNIQUE INDEX "IssueAlertRule_scope_ruleKey_version_key"
@@ -363,6 +501,11 @@ CREATE INDEX "IssueAlertDelivery_scope_createdAt_idx"
   ON "IssueAlertDelivery" ("tenancyId", "projectId", "branchId", "createdAt");
 CREATE INDEX "IssueAlertDelivery_workflowEvent_idx"
   ON "IssueAlertDelivery" ("tenancyId", "workflowEventId");
+
+CREATE UNIQUE INDEX "ErrorIngestClientReport_scope_idempotency_key"
+  ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "idempotencyKey", "bucket", "reason", "category");
+CREATE INDEX "ErrorIngestClientReport_scope_reportedAt_idx"
+  ON "ErrorIngestClientReport" ("tenancyId", "projectId", "branchId", "reportedAt" DESC, "id" DESC);
 
 CREATE UNIQUE INDEX "ErrorAttachment_scope_idempotency_key"
   ON "ErrorAttachment" ("tenancyId", "projectId", "branchId", "idempotencyKey");
@@ -405,6 +548,36 @@ ALTER TABLE "IssueHash" ADD CONSTRAINT "IssueHash_tenancyId_fkey" FOREIGN KEY ("
 ALTER TABLE "IssueRedirect" ADD CONSTRAINT "IssueRedirect_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "IssueCounter" ADD CONSTRAINT "IssueCounter_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+ALTER TABLE "Release" ADD CONSTRAINT "Release_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Release" ADD CONSTRAINT "Release_projectId_fkey"
+  FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseDeployment" ADD CONSTRAINT "ReleaseDeployment_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseDeployment" ADD CONSTRAINT "ReleaseDeployment_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseCommit" ADD CONSTRAINT "ReleaseCommit_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseCommit" ADD CONSTRAINT "ReleaseCommit_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseArtifact" ADD CONSTRAINT "ReleaseArtifact_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseArtifact" ADD CONSTRAINT "ReleaseArtifact_release_fkey"
+  FOREIGN KEY ("tenancyId", "releaseId") REFERENCES "Release"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ReleaseArtifactDebugId" ADD CONSTRAINT "ReleaseArtifactDebugId_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy"("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReleaseArtifactDebugId" ADD CONSTRAINT "ReleaseArtifactDebugId_artifact_fkey"
+  FOREIGN KEY ("tenancyId", "releaseArtifactId") REFERENCES "ReleaseArtifact"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 ALTER TABLE "IssueAlertRule" ADD CONSTRAINT "IssueAlertRule_tenancy_scope_fkey"
   FOREIGN KEY ("tenancyId", "projectId", "branchId")
   REFERENCES "Tenancy" ("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -434,6 +607,12 @@ ALTER TABLE "IssueAlertDelivery" ADD CONSTRAINT "IssueAlertDelivery_issue_fkey"
 ALTER TABLE "IssueAlertDelivery" ADD CONSTRAINT "IssueAlertDelivery_cooldown_scope_fkey"
   FOREIGN KEY ("tenancyId", "cooldownKey", "projectId", "branchId")
   REFERENCES "IssueAlertCooldownClaim" ("tenancyId", "cooldownKey", "projectId", "branchId") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "ErrorIngestClientReport" ADD CONSTRAINT "ErrorIngestClientReport_tenancy_scope_fkey"
+  FOREIGN KEY ("tenancyId", "projectId", "branchId")
+  REFERENCES "Tenancy" ("id", "projectId", "branchId") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ErrorIngestClientReport" ADD CONSTRAINT "ErrorIngestClientReport_projectId_fkey"
+  FOREIGN KEY ("projectId") REFERENCES "Project" ("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ErrorAttachment" ADD CONSTRAINT "ErrorAttachment_tenancyId_projectId_branchId_fkey"
   FOREIGN KEY ("tenancyId", "projectId", "branchId")

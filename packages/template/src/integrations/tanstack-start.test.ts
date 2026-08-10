@@ -14,7 +14,7 @@ vi.mock("@hexclave/tanstack-start/tanstack-start-server-context", () => ({
 
 const REQUEST_HEADERS: Record<string, string | undefined> = {
   "cookie": "a=b",
-  "x-hexclave-span-context": "span-context-header",
+  "baggage": "span-context-header",
 };
 
 function enterServerRequestScope() {
@@ -44,7 +44,7 @@ describe("TanStack Start adapter: serverFn", () => {
     expect(withSpan.mock.calls[0][1]).toMatchObject({ data: { name: "getOrders" } });
     // The span links via a RequestLike built from the server context's headers.
     const request = (withSpan.mock.calls[0][1] as { request: { headers: { get: (name: string) => string | null } } }).request;
-    expect(request.headers.get("x-hexclave-span-context")).toBe("span-context-header");
+    expect(request.headers.get("baggage")).toBe("span-context-header");
     expect(request.headers.get("nonexistent")).toBeNull();
     // The user is resolved from the same ambient headers (cookie token store).
     expect(getUser).toHaveBeenCalledWith(expect.objectContaining({ tokenStore: request, or: "return-null" }));

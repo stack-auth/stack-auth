@@ -35,8 +35,8 @@ function getHexclaveNextInstrumentation(): Promise<HexclaveNextInstrumentation |
 
 export async function register() {
   const hexclaveNextInstrumentation = await getHexclaveNextInstrumentation();
-  // register() became async when it grew the library-span-bridge claim; Next
-  // awaits the exported register, so awaiting here keeps the bridge installed
+  // Next awaits the exported register, so awaiting here keeps the OTel provider
+  // and exporter installed
   // before any app code can emit spans.
   await hexclaveNextInstrumentation?.register();
 

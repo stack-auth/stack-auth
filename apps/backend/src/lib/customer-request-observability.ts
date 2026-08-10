@@ -1,12 +1,17 @@
-import { generateW3cSpanId, generateW3cTraceId, parseTraceparent } from "@hexclave/shared/dist/utils/analytics-wire";
-import { decodeSpanContextHeader, readSpanContextHeader } from "@hexclave/shared/dist/utils/span-context-codec";
+import { decodeCorrelationBaggage, readBaggageHeader } from "@hexclave/shared/dist/utils/span-context-codec";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { isSpanContextValid, ROOT_CONTEXT, trace, TraceFlags } from "@opentelemetry/api";
+import { W3CTraceContextPropagator } from "@opentelemetry/core";
+import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { NextRequest } from "next/server";
 import { getSharedClickhouseAdminClient } from "./clickhouse";
 import { insertSpans, type SpanInsertRow } from "./spans";
 import { isTelemetryIngestionPath } from "./telemetry-ingestion-paths";
+
+const idGenerator = new RandomIdGenerator();
+const traceContextPropagator = new W3CTraceContextPropagator();
 
 type CustomerRequestTenancy = {
   projectId: string,
@@ -19,19 +24,13 @@ type CustomerRequestTenancy = {
 };
 
 type CustomerRequestObservabilityHolder = {
-  /** Incoming W3C trace, before route authentication proves it is visible here. */
+  /** Incoming W3C trace supplied by any interoperable upstream tracer. */
   incomingTraceId: string | null,
-  /** Fresh trace used when this project cannot satisfy the incoming parent. */
+  /** Fresh trace used when there is no sampled incoming parent. */
   rootTraceId: string,
   spanId: string,
-  /** The span named by the incoming `traceparent`, before we know whose it is. */
+  /** The span named by the sampled incoming `traceparent`. */
   incomingParentSpanId: string | null,
-  /**
-   * Whether a caller in THIS project claimed the incoming trace (see
-   * `resolveCustomerRequestObservability`). Only then may the row inherit
-   * `incomingParentSpanId`.
-   */
-  incomingParentIsSameProject: boolean,
   startedAt: Date,
   method: string,
   tenancy: CustomerRequestTenancy | null,
@@ -83,27 +82,9 @@ export function resolveCustomerRequestObservability(options: {
     throw new Error("Customer request observability tenancy changed within one request");
   }
 
-  const propagated = options.headers === undefined
+  const labels = options.headers === undefined
     ? null
-    : decodeSpanContextHeader(readSpanContextHeader(options.headers));
-  const labels = propagated?.projectId === options.projectId ? propagated : null;
-
-  // The SAME project claim that gates the correlation labels also gates the
-  // HIERARCHY, and for a stronger reason. `traceparent` names a span id, not a
-  // project — and a project only ever sees its own rows. Inheriting a parent
-  // from a caller whose telemetry lives elsewhere (the Hexclave dashboard
-  // viewing a customer project, or a customer's own OTel backend that never
-  // writes to us) produces a row with a non-null parent that no span in this
-  // project can satisfy: `trace_roots` is `parent_span_id IS NULL`, so the row
-  // is not a root either, and it disappears from the traces UI entirely.
-  // Dropping only the parent while retaining the upstream trace id would create
-  // multiple unrelated roots in one trace (one per dashboard request). When the
-  // parent is unverifiable, this project must start a fresh trace as well. Never
-  // unset once verified: a second, header-less resolve call (the
-  // `$token-refresh` path in events.tsx) must not downgrade the first.
-  if (labels !== null && holder.incomingParentSpanId !== null) {
-    holder.incomingParentIsSameProject = true;
-  }
+    : decodeCorrelationBaggage(readBaggageHeader(options.headers));
 
   holder.tenancy = {
     projectId: options.projectId,
@@ -126,7 +107,6 @@ export function getVerifiedCustomerRequestLinkTarget(): VerifiedCustomerRequestL
   if (
     holder === undefined
     || holder.tenancy === null
-    || !holder.incomingParentIsSameProject
     || holder.incomingTraceId === null
     || holder.incomingParentSpanId === null
   ) return null;
@@ -145,12 +125,13 @@ function buildCustomerRequestSpan(
   endedAt: Date,
 ): SpanInsertRow {
   return {
-    trace_id: holder.incomingParentIsSameProject
-      ? holder.incomingTraceId ?? throwErr("A same-project incoming parent must carry an incoming trace id")
+    trace_id: holder.incomingParentSpanId !== null
+      ? holder.incomingTraceId ?? throwErr("An incoming parent must carry an incoming trace id")
       : holder.rootTraceId,
     span_id: holder.spanId,
-    parent_span_id: holder.incomingParentIsSameProject ? holder.incomingParentSpanId : null,
+    parent_span_id: holder.incomingParentSpanId,
     span_type: "hexclave.api.request",
+    billing_item: null,
     started_at: holder.startedAt,
     ended_at: endedAt,
     data: JSON.stringify({
@@ -158,6 +139,9 @@ function buildCustomerRequestSpan(
       status_code: response.status,
     }),
     kind: "server",
+    // Typed OTel status is independent of the numeric HTTP status in `data`.
+    status_code: response.status >= 400 ? "error" : "ok",
+    status_message: null,
     service_namespace: null,
     service_name: "hexclave-backend",
     service_version: null,
@@ -189,13 +173,12 @@ async function writeCustomerRequestSpan(row: SpanInsertRow): Promise<void> {
  * Preserves the incoming trace at the outer request boundary, then writes one
  * scrubbed request span into the authenticated customer project after the
  * response is known. The backend's detailed dogfood trace remains in `internal`;
- * this row is the safe bridge that makes the customer's `$http-client` and the
+ * this row is the safe bridge that makes the customer's HTTP client span and the
  * backend tier one trace without exposing SQL, headers, or internal attributes.
  *
- * The trace id and parent are inherited together only once a caller in the same
- * project claims them (see `resolveCustomerRequestObservability`). A
- * cross-project caller yields a fresh, visible root instead of either an orphan
- * or another disconnected root inside the caller's trace.
+ * Any sampled W3C parent is inherited, including a parent stored by another
+ * vendor. Trace readers must therefore treat a missing local parent as an
+ * external boundary instead of rewriting the trace.
  */
 export async function runWithCustomerRequestObservability(
   request: NextRequest,
@@ -204,17 +187,24 @@ export async function runWithCustomerRequestObservability(
 ): Promise<Response> {
   if (isTelemetryIngestionPath(request.nextUrl.pathname)) return await fn();
 
-  const parsedIncomingParent = parseTraceparent(request.headers.get("traceparent"));
+  const extractedContext = traceContextPropagator.extract(ROOT_CONTEXT, request.headers, {
+    keys: () => ["traceparent", "tracestate"],
+    get: (carrier, key) => carrier.get(key) ?? undefined,
+  });
+  const extractedSpanContext = trace.getSpanContext(extractedContext);
   // An unsampled W3C context does not promise that its parent was recorded.
   // Storing our child under it would recreate the exact missing-parent rows the
   // trace reader cannot resolve, so treat it like no incoming hierarchy.
-  const incomingParent = parsedIncomingParent?.sampled === true ? parsedIncomingParent : null;
+  const incomingParent = extractedSpanContext !== undefined
+    && isSpanContextValid(extractedSpanContext)
+    && (extractedSpanContext.traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED
+    ? extractedSpanContext
+    : null;
   const holder: CustomerRequestObservabilityHolder = {
     incomingTraceId: incomingParent?.traceId ?? null,
-    rootTraceId: generateW3cTraceId(),
-    spanId: generateW3cSpanId(),
+    rootTraceId: idGenerator.generateTraceId(),
+    spanId: idGenerator.generateSpanId(),
     incomingParentSpanId: incomingParent?.spanId ?? null,
-    incomingParentIsSameProject: false,
     startedAt: new Date(),
     method: request.method,
     tenancy: null,

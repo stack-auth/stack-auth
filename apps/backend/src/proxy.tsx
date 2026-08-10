@@ -43,11 +43,6 @@ const corsAllowedRequestHeaders = [
   'sentry-trace',
   'traceparent',
   'tracestate',
-  // The SDK's native cross-tier span context (see span-context-codec in
-  // @hexclave/shared). Without this, browser SDK calls to the Hexclave API
-  // from a different origin would fail CORS preflight once the fetch
-  // instrumentation attaches the header.
-  'x-hexclave-span-context',
 
   // Vercel
   'x-vercel-protection-bypass',

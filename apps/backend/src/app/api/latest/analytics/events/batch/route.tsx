@@ -1,5 +1,7 @@
 import { getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
+import { evaluateErrorIngestPolicy, persistErrorIngestClientReportProjection } from "@/lib/error-ingest";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
+import { createLegacyBatchProtocolProjection } from "@/lib/error-ingest/error-ingest-protocol-projections";
 import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { increasePlanItemQuantity, tryDecreasePlanItemQuantities, type MeteredPlanItemId } from "@/lib/plan-metering";
@@ -10,9 +12,9 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, HTTP_CLIENT_SPAN_TYPE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_NAME_RE, LOG_LEVELS, SERVER_SYSTEM_SPAN_TYPES, SYSTEM_EVENT_TYPES, TELEMETRY_MAX_LOG_MESSAGE_BYTES, TELEMETRY_SCOPE_NAME_MAX_BYTES, TELEMETRY_SCOPE_VERSION_MAX_BYTES, TELEMETRY_SPAN_KINDS, TELEMETRY_SPAN_STATUS_CODES, TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES, TELEMETRY_UUID_RE, W3C_SPAN_ID_RE, W3C_TRACE_ID_RE, canWriteTelemetrySignal, classifyTelemetrySignal, getTelemetryResourceError, isTelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
@@ -42,6 +44,44 @@ const W3C_SPAN_ID_ERROR = "must be 16 lowercase hex characters and not all-zero"
 const LOG_EVENT_TYPE = "$log";
 const ERROR_EVENT_TYPE = "$error";
 
+const errorIngestClientReportEntrySchema = yupObject({
+  reason: yupString().defined(),
+  category: yupString().defined(),
+  quantity: yupNumber().defined(),
+}).defined();
+
+const errorIngestClientReportSchema = yupObject({
+  discarded_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  rate_limited_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  filtered_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+  filtered_sampling_events: yupArray(errorIngestClientReportEntrySchema).defined(),
+}).defined();
+
+const errorIngestProtocolItemSchema = yupObject({
+  itemIndex: yupNumber().defined(),
+  itemId: yupString().defined(),
+  itemType: yupString().defined(),
+  eventId: yupString().optional(),
+  status: yupString().defined(),
+  reason: yupString().optional(),
+  canonicalItemId: yupString().optional(),
+  retryAfterMs: yupNumber().optional(),
+  category: yupString().defined(),
+  clientReportBucket: yupString().optional(),
+  clientReportReason: yupString().optional(),
+  rejectedByOtlp: yupBoolean().defined(),
+}).defined();
+
+const errorIngestCountsSchema = yupObject({
+  accepted: yupNumber().defined(),
+  filtered: yupNumber().defined(),
+  rate_limited: yupNumber().defined(),
+  rejected: yupNumber().defined(),
+  deduplicated: yupNumber().defined(),
+  dropped: yupNumber().defined(),
+  queued: yupNumber().defined(),
+}).defined();
+
 /**
  * Field-level contract for `$error` payloads.
  *
@@ -63,6 +103,7 @@ function isValidErrorEventData(value: unknown): boolean {
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
+
 // Links are a niche affordance; a low cap keeps one span from ballooning the batch
 // (and the span_links insert) while staying far above any plausible real use.
 const MAX_SPAN_LINKS = 32;
@@ -241,6 +282,19 @@ export const POST = createSmartRouteHandler({
             `scope_name must be a non-empty string of at most ${TELEMETRY_SCOPE_NAME_MAX_BYTES} UTF-8 bytes`,
             (value) => value === undefined || (value !== "" && Buffer.byteLength(value, "utf8") <= TELEMETRY_SCOPE_NAME_MAX_BYTES),
           ),
+          scope_version: yupString().optional().test(
+            "span-scope-version-size",
+            `scope_version must be a non-empty string of at most ${TELEMETRY_SCOPE_VERSION_MAX_BYTES} UTF-8 bytes`,
+            (value) => value === undefined || (value !== "" && Buffer.byteLength(value, "utf8") <= TELEMETRY_SCOPE_VERSION_MAX_BYTES),
+          ),
+          // First-class OTel columns remain separate from opaque product data.
+          kind: yupString().optional().oneOf([...TELEMETRY_SPAN_KINDS]),
+          status_code: yupString().optional().oneOf([...TELEMETRY_SPAN_STATUS_CODES]),
+          status_message: yupString().optional().test(
+            "span-status-message-size",
+            `status_message must be at most ${TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES} UTF-8 bytes`,
+            (value) => value === undefined || Buffer.byteLength(value, "utf8") <= TELEMETRY_SPAN_STATUS_MESSAGE_MAX_BYTES,
+          ),
           // See the event-level page_view_span_id above.
           page_view_span_id: yupString().optional().test("span-page-view-span-id", `page_view_span_id ${W3C_SPAN_ID_ERROR}`, (value) => value === undefined || isUsableW3cSpanId(value)),
           // Non-hierarchical references to other spans (see TrackOptions.links in
@@ -349,7 +403,11 @@ export const POST = createSmartRouteHandler({
         (span) => span == null
           || typeof span.span_type !== "string"
           || (canWriteTelemetrySignal(span.span_type, "span", origin)
-            && (span.scope_name === undefined || origin === "server")),
+            // Instrumentation scope (name + version) is server-only. Browsers
+            // may set kind/status on their own spans, but cannot label them as
+            // trusted library instrumentation.
+            && (span.scope_name === undefined || origin === "server")
+            && (span.scope_version === undefined || origin === "server")),
       );
       return eventsAllowed && spansAllowed;
     },
@@ -363,6 +421,15 @@ export const POST = createSmartRouteHandler({
       // though span insertion is now synchronous and observable by the caller.
       inserted: yupNumber().defined(),
       accepted_spans: yupNumber().defined(),
+      // Additive only: this branch is reserved for item-level normalization
+      // once the request schema stops rejecting the whole batch up front.
+      ingest: yupObject({
+        status: yupString().defined(),
+        counts: errorIngestCountsSchema,
+        outcomes: yupArray(errorIngestProtocolItemSchema).defined(),
+        client_report: errorIngestClientReportSchema,
+        idempotency_key: yupString().defined(),
+      }).defined().optional(),
     }).defined(),
   }),
   async handler({ auth, body }) {
@@ -375,10 +442,39 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.AnalyticsNotEnabled();
     }
 
-    const events = body.events ?? [];
-    const spans = body.spans ?? [];
+    let events = body.events ?? [];
+    let spans = body.spans ?? [];
     const tenancyId = auth.tenancy.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const projectId = auth.tenancy.project.id;
+    const branchId = auth.tenancy.branchId;
+
+    // Keep this rollout at the legacy batch seam. OTLP retains its existing
+    // request contract until it can expose the same item-level outcomes; this
+    // avoids silently changing a different protocol in the same change.
+    const policyDecision = evaluateErrorIngestPolicy({
+      config: auth.tenancy.config,
+      scope: { tenancyId, projectId, branchId },
+      items: [
+        ...events.map((event, index) => ({ itemId: `event:${index}`, itemType: "event" as const, data: event.data })),
+        ...spans.map((span, index) => ({ itemId: `span:${index}`, itemType: "span" as const, data: span.data })),
+      ],
+      nowMs: new Date().getTime(),
+    });
+    const acceptedEventIndexes = new Set(policyDecision.acceptedEventIndexes);
+    const acceptedSpanIndexes = new Set(policyDecision.acceptedSpanIndexes);
+    events = events
+      .map((event, index) => {
+        const scrubbedData = policyDecision.scrubbedData.get(`event:${index}`);
+        return scrubbedData === undefined ? event : { ...event, data: scrubbedData };
+      })
+      .filter((_event, index) => acceptedEventIndexes.has(index));
+    spans = spans
+      .map((span, index) => {
+        const scrubbedData = policyDecision.scrubbedData.get(`span:${index}`);
+        return scrubbedData === undefined ? span : { ...span, data: scrubbedData };
+      })
+      .filter((_span, index) => acceptedSpanIndexes.has(index));
 
     // Client auth is the browser tracker: identity comes from the session (user +
     // refresh token, always present) and batches are tied to a per-tab segment.
@@ -420,8 +516,6 @@ export const POST = createSmartRouteHandler({
       refreshTokenId = body.refresh_token_id ?? (auth.type === "admin" ? auth.refreshTokenId ?? null : null);
     }
 
-    const projectId = auth.tenancy.project.id;
-    const branchId = auth.tenancy.branchId;
     const hasExplicitLinkTarget = spans.some((span) =>
       (span.links ?? []).some((link) => link.linked_project_id !== undefined));
     if (hasExplicitLinkTarget && (auth.type === "client" || projectId !== "internal")) {
@@ -566,6 +660,7 @@ export const POST = createSmartRouteHandler({
         // The authenticated SDK path is always an SDK producer. Metering is
         // decided above; internal platform telemetry is explicitly unmetered.
         producer: "sdk",
+        groupingConfig: auth.tenancy.config.observability.errorGrouping,
       }, body.batch_id);
 
       // Each destination has its own stable deduplication token, so all
@@ -616,10 +711,45 @@ export const POST = createSmartRouteHandler({
       }));
     }
 
+    const protocolProjection = createLegacyBatchProtocolProjection(
+      body.batch_id,
+      events.length,
+      spans.length,
+      policyDecision.outcomes,
+    );
+    runAsynchronouslyAndWaitUntil(persistErrorIngestClientReportProjection(
+      {
+        tenancyId: auth.tenancy.id,
+        projectId: auth.tenancy.project.id,
+        branchId: auth.tenancy.branchId,
+      },
+      "legacy_batch",
+      protocolProjection,
+    ));
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: events.length, accepted_spans: spans.length },
+      body: {
+        inserted: events.length,
+        accepted_spans: spans.length,
+        ...(protocolProjection.status === "accepted" ? {} : {
+          ingest: {
+            status: protocolProjection.status,
+            counts: { ...protocolProjection.counts },
+            // Yup's JSON response schema models arrays as mutable values;
+            // materialize the adapter's readonly projection only at this
+            // serialization boundary without changing its source contract.
+            outcomes: [...protocolProjection.items],
+            client_report: {
+              discarded_events: [...protocolProjection.clientReport.discarded_events],
+              rate_limited_events: [...protocolProjection.clientReport.rate_limited_events],
+              filtered_events: [...protocolProjection.clientReport.filtered_events],
+              filtered_sampling_events: [...protocolProjection.clientReport.filtered_sampling_events],
+            },
+            idempotency_key: protocolProjection.idempotencyKey,
+          },
+        }),
+      },
     };
   },
 });

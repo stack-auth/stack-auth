@@ -15,7 +15,8 @@ Analytics is organized into these areas in the dashboard:
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
 - **Clickmaps**: Visualize where users click on your pages
 - **Explore**: Browse tables and run reusable ClickHouse SQL queries
-- **Observability**: A nested sub-app for Issues, Logs, Traces, Services, and Performance. Issues, Logs, and Traces are available now; Services and Performance are registered TODO surfaces.
+
+Observability is a separate app for Issues, Logs, Traces, Services, and Performance. Enable it independently when you need production diagnostics; it still shares correlation and ingestion foundations with Analytics.
 
 ## How Analytics Works
 
@@ -31,7 +32,7 @@ Hexclave collects both client-side and server-side analytics events:
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
 - **Session spans**: every sign-in session and replay recording is recorded as a span, with a span per recorded browser tab underneath — forming a tree your telemetry attaches to
 - **Custom events**: anything you record with `trackEvent`
-- **Observability signals**: network requests, errors, logs, and custom spans share correlation and ingestion but appear under the Observability sub-app — see [Errors & Logs](/guides/apps/analytics/errors-and-logs) and [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
+- **Observability signals**: network requests, errors, logs, and custom spans share correlation and ingestion but appear in the separate Observability app — see [Errors & Logs](/guides/apps/analytics/errors-and-logs) and [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans)
 
 ## Enabling the Analytics App
 
@@ -125,7 +126,7 @@ Use this view when you need to quickly answer "what just happened?" without writ
 
 ## Observability
 
-Open **Analytics -> Observability -> Logs** for structured logs and **Analytics -> Observability -> Traces** for the trace waterfall. Structural trace rows load first; full span attributes load only when a span is selected.
+Open **Observability -> Logs** for structured logs and **Observability -> Traces** for the trace waterfall. Structural trace rows load first; full span attributes load only when a span is selected.
 
 ## Queries
 

@@ -2349,68 +2349,6 @@ it("accepts a gzipped binary body containing custom events and spans", async ({ 
   `);
 });
 
-// ---------------------------------------------------------------------------
-// $http-client spans
-//
-// The `http_client_span_id` wire field is gone. It existed because a fetch had
-// to be spliced into a custom ancestry array as the item's "nearest known
-// ancestor"; under W3C a fetch is just a span, so it is referenced the same way
-// any other parent is — via `parent_span_id`, or by sharing its `trace_id` with
-// the backend spans it produced (the `traceparent` it sent on the wire).
-// ---------------------------------------------------------------------------
-
-it("accepts $http-client spans and stores their parent + page correlation verbatim", async ({ expect }) => {
-  await setupAnalyticsProject();
-  await Auth.Otp.signIn();
-
-  const sessionReplaySegmentId = randomUUID();
-  const traceId = generateW3cTraceId();
-  const pageViewSpanId = generateW3cSpanId();
-  const customParentId = generateW3cSpanId();
-  const httpClientSpanId = generateW3cSpanId();
-  const now = Date.now();
-  const res = await uploadTelemetryBatch({
-    session_replay_segment_id: sessionReplaySegmentId,
-    spans: [
-      makeCustomSpan({ trace_id: traceId, span_id: customParentId, parent_span_id: null, page_view_span_id: pageViewSpanId }),
-      {
-        trace_id: traceId,
-        span_id: httpClientSpanId,
-        parent_span_id: customParentId,
-        span_type: "$http-client",
-        started_at_ms: now - 500,
-        ended_at_ms: now - 400,
-        data: { method: "GET", url: "https://api.example.com/v1/items", status: 200 },
-        updated_at_ms: now,
-        page_view_span_id: pageViewSpanId,
-      },
-    ],
-  });
-  expect(res).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "accepted_spans": 2,
-        "inserted": 0,
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  const queryRes = await queryAnalyticsUntil({
-    query: "SELECT span_id, span_type, trace_id, parent_span_id, page_view_span_id FROM spans WHERE span_id = {spanId:String}",
-    params: { spanId: httpClientSpanId },
-  }, (r) => Array.isArray(r.body.result) && r.body.result.length === 1);
-  expect(queryRes?.body.result[0]).toEqual({
-    span_id: httpClientSpanId,
-    span_type: "$http-client",
-    trace_id: traceId,
-    parent_span_id: customParentId,
-    page_view_span_id: pageViewSpanId,
-  });
-});
-
-// ---------------------------------------------------------------------------
 // $log events (SDK logger) and $error events (global error capture)
 // ---------------------------------------------------------------------------
 
