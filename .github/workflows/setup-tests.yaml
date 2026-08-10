@@ -71,8 +71,10 @@ jobs:
           dev_log="$RUNNER_TEMP/hexclave-dev.untracked.log"
           (
             set +e
-            pnpm run dev >"$dev_log" 2>&1
-            echo "$?" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
+            set -o pipefail
+            pnpm run dev 2>&1 | tee "$dev_log"
+            dev_exit_code="${PIPESTATUS[0]}"
+            echo "$dev_exit_code" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
           ) &
           pnpm exec wait-on --timeout 120000 http://localhost:8102 tcp:localhost:8146
 
