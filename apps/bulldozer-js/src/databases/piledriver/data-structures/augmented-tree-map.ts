@@ -207,8 +207,9 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     if (options.position !== null) {
       try {
         positionValue = JSON.parse(options.position);
-      } catch {
-        throw new Error("Invalid tree verification position");
+      } catch (error) {
+        if (error instanceof SyntaxError) throw new Error("Invalid tree verification position");
+        throw error;
       }
     }
     const savedFrames: unknown[] = positionValue === null
@@ -297,10 +298,16 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
           augmentations.push(child.augmentation);
           size += child.size;
           entryCount += child.entryCount;
+          if (index > 0 && this.compareKeys(child.minKey, node.entries[index - 1][0]) <= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its previous parent entry" });
           if (this.compareKeys(child.maxKey, node.entries[index][0]) >= 0) issues.push({ code: "key_boundary", message: "A child key range crosses its parent entry" });
         }
         const value = await this.loadValue(node.entries[index][1]);
-        augmentations.push(await this.options.extractAugmentation(value, node.entries[index][0].key, node.entries[index][0].id));
+        const entryAugmentation = await this.options.extractAugmentation(value, node.entries[index][0].key, node.entries[index][0].id);
+        const persistedEntryAugmentation = (node.version ?? 0) >= 1 ? node.entryAugmentations?.[index] : undefined;
+        if (persistedEntryAugmentation !== undefined && !piledriverObjectEquals(persistedEntryAugmentation, entryAugmentation)) {
+          issues.push({ code: "entry_augmentation", message: "A persisted entry augmentation does not match its recomputation" });
+        }
+        augmentations.push(entryAugmentation);
       }
       const lastChild = frame.children[node.entries.length];
       if (frame.children.length > node.entries.length && lastChild !== undefined) {

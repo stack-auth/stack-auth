@@ -479,6 +479,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       async iterateEntries(options): Promise<LowLevelEntryPage> {
         return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.iterateEntries", attributes: { ...attributes, "bulldozer.low_level.limit": options.limit } }, async () => {
           if (!Number.isInteger(options.limit) || options.limit <= 0) throw new Error("iterateEntries limit must be a positive integer");
+          if (options.afterKey !== undefined && options.afterKey.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
           const range = db.getRange({
             ...(options.afterKey === undefined ? {} : { start: bufferFromArrayBuffer(options.afterKey), exclusiveStart: true }),
             limit: options.limit,

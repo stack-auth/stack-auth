@@ -153,17 +153,22 @@ describe("verification cursor", () => {
     };
     let continuation: string | undefined;
     const errors: string[] = [];
+    let done = false;
     for (let call = 0; call < 100; call++) {
       const response = await handleVerifyDataIntegrityRequest({
         ...(continuation === undefined ? {} : { continue: continuation }),
         step_count: 100,
       }, request => verifyDataIntegrity(db, request));
       errors.push(...response.errors.map(error => error.code));
-      if (response.done) break;
+      if (response.done) {
+        done = true;
+        break;
+      }
       continuation = response.next_cursor ?? undefined;
       if (continuation === undefined) throw new Error("Expected a verification continuation");
     }
     expect(hookCalls).toBeGreaterThan(0);
+    expect(done).toBe(true);
     expect(errors).toContain("hook_ran");
   });
 
@@ -196,7 +201,18 @@ describe("verification cursor", () => {
     }
     const hookDescriptor = db.listTables().find(table => table.tableId === tableStateEntry.tableId);
     if (hookDescriptor === undefined) throw new Error("Expected the hook table descriptor");
-    const missingTableId = Object.keys(serializedTables).find(tableId => tableId !== tableStateEntry.tableId && !(tableId in hookDescriptor.inputTableIds));
+    const hookInputTableIds = new Set<string>();
+    const collectInputs = (tableId: string) => {
+      const descriptor = db.listTables().find(table => table.tableId === tableId);
+      if (descriptor === undefined) return;
+      for (const inputTableId of Object.values(descriptor.inputTableIds)) {
+        if (hookInputTableIds.has(inputTableId)) continue;
+        hookInputTableIds.add(inputTableId);
+        collectInputs(inputTableId);
+      }
+    };
+    collectInputs(hookDescriptor.tableId);
+    const missingTableId = Object.keys(serializedTables).find(tableId => tableId !== tableStateEntry.tableId && !hookInputTableIds.has(tableId));
     if (missingTableId === undefined) throw new Error("Expected another serialized table");
     const incompleteTables = Object.fromEntries(Object.entries(serializedTables).filter(([tableId]) => tableId !== missingTableId));
     await debug.piledriverDatabase.setRootObject(debug.rootKey, {
@@ -205,21 +221,28 @@ describe("verification cursor", () => {
     });
     const response = await verifyDataIntegrity(db, { step_count: 1_000 });
     expect(response.success).toBe(false);
-    expect(response.errors.map(error => error.code)).toEqual(expect.arrayContaining(["table_set_mismatch", "missing_serialized_table"]));
+    expect(response.errors.map(error => error.code)).toEqual(expect.arrayContaining(["table_set_mismatch", "missing_serialized_table", "remaining_table_checked"]));
   });
 
   it("round-trips and rejects malformed or wrong-version cursors", async () => {
     const db = await createDatabase();
     await addSubscription(db);
     const response = await verifyDataIntegrity(db, { step_count: 1 });
-    expect(response.next_cursor).not.toBeNull();
-    expect(decodeVerificationCursor(response.next_cursor!)).toMatchObject({ version: 3, stepsTaken: 1 });
+    const cursor = response.next_cursor;
+    if (cursor === null) throw new Error("Expected a verification continuation");
+    const decodedCursor = decodeVerificationCursor(cursor);
+    expect(decodedCursor).toMatchObject({ version: 3, stepsTaken: 1 });
     expect(() => decodeVerificationCursor("not-a-cursor")).toThrow("Invalid verification cursor");
     const wrongVersion = Buffer.from(
-      JSON.stringify({ ...decodeVerificationCursor(response.next_cursor!), version: 999 }),
+      JSON.stringify({ ...decodedCursor, version: 999 }),
       "utf8",
     ).toString("base64url");
     expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 3");
+    const malformedPayload = Buffer.from(
+      JSON.stringify({ ...decodedCursor, tablePosition: { ...decodedCursor.tablePosition, groupKeyBase64: "not-base64" } }),
+      "utf8",
+    ).toString("base64url");
+    expect(() => decodeVerificationCursor(malformedPayload)).toThrow("Invalid verification cursor state");
   });
 
   it("honors step budgets and resumes to the same final work", async () => {

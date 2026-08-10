@@ -159,6 +159,14 @@ export function decodeVerificationCursor(value: string): VerificationCursor {
     || !Number.isSafeInteger(parsed.rootReferenceIndex)
     || parsed.rootReferenceIndex < 0
   ) throw new Error("Invalid verification cursor state");
+  try {
+    keyBytes(parsed.root.bufferBase64);
+    if (parsed.tablePosition.groupKeyBase64 !== null) parsePiledriverValue(keyBytes(parsed.tablePosition.groupKeyBase64));
+    if (parsed.tablePosition.rowSortKeyBase64 !== null) parsePiledriverValue(keyBytes(parsed.tablePosition.rowSortKeyBase64));
+    if (parsed.afterHeapKeyBase64 !== null) keyBytes(parsed.afterHeapKeyBase64);
+  } catch {
+    throw new Error("Invalid verification cursor state");
+  }
   deserializeDatabaseSeq(parsed.root.seq);
   return {
     version: CURSOR_VERSION,
@@ -504,10 +512,11 @@ export async function verifyDataIntegrity(
     resolvedRootObject = rootObject;
   }
   const snapshot = snapshotFromRoot(resolvedRootObject);
+  const context = snapshot === null ? { migrationIndex: 0, issues: [], tables: [] as ReturnType<typeof integrityState.getContext>["tables"] } : integrityState.getContext(snapshot);
   if (snapshot === null) {
     recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
+    cursor.phase = "heap-scan";
   } else {
-    const context = integrityState.getContext(snapshot);
     if (!cursor.rootChecked) {
       for (const error of validateRoot(resolvedRootObject, tables, context.migrationIndex)) recordIssue(error);
       for (const issue of context.issues) {
@@ -525,88 +534,89 @@ export async function verifyDataIntegrity(
       }
       cursor.rootChecked = true;
     }
-    let remaining = budget;
-    while (remaining > 0 && cursor.phase !== "done") {
-      const beforeRemaining = remaining;
-      const beforePosition = JSON.stringify({
+  }
+  let remaining = budget;
+  while (remaining > 0 && cursor.phase !== "done") {
+    const beforeRemaining = remaining;
+    const beforePosition = JSON.stringify({
+      phase: cursor.phase,
+      tablePosition: cursor.tablePosition,
+      afterHeapKeyBase64: cursor.afterHeapKeyBase64,
+    });
+    const assertProgress = () => {
+      const afterPosition = JSON.stringify({
         phase: cursor.phase,
         tablePosition: cursor.tablePosition,
         afterHeapKeyBase64: cursor.afterHeapKeyBase64,
       });
-      const assertProgress = () => {
-        const afterPosition = JSON.stringify({
-          phase: cursor.phase,
-          tablePosition: cursor.tablePosition,
-          afterHeapKeyBase64: cursor.afterHeapKeyBase64,
-        });
-        if (remaining === beforeRemaining && afterPosition === beforePosition) {
-          throw new Error(`Integrity verifier made no progress in phase ${cursor.phase} at ${afterPosition}`);
-        }
-      };
-      if (cursor.phase === "root") {
-        const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
-        if (cursor.rootReferenceIndex < rootRefs.length) {
-          const ref = rootRefs[cursor.rootReferenceIndex];
-          const result = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
-          if (result.buffer === null) recordIssue({ phase: "root", code: "dangling_heap_reference", message: "A pinned root heap reference is missing", context: { referencedKey: ref } });
-          cursor.rootReferenceIndex++;
-          remaining--;
-        } else {
-          cursor.phase = "tables";
-          cursor.tablePosition = nextTablePosition(context.tables[0]?.tableId ?? null);
-        }
+      if (remaining === beforeRemaining && afterPosition === beforePosition) {
+        throw new Error(`Integrity verifier made no progress in phase ${cursor.phase} at ${afterPosition}`);
+      }
+    };
+    if (cursor.phase === "root") {
+      const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
+      if (cursor.rootReferenceIndex < rootRefs.length) {
+        const ref = rootRefs[cursor.rootReferenceIndex];
+        const result = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
+        if (result.buffer === null) recordIssue({ phase: "root", code: "dangling_heap_reference", message: "A pinned root heap reference is missing", context: { referencedKey: ref } });
+        cursor.rootReferenceIndex++;
+        remaining--;
+      } else {
+        cursor.phase = "tables";
+        cursor.tablePosition = nextTablePosition(context.tables[0]?.tableId ?? null);
+      }
         assertProgress();
         continue;
+    }
+    if (cursor.phase === "tables") {
+      const target = context.tables.find(table => table.tableId === cursor.tablePosition.tableId);
+      if (target === undefined) {
+        cursor.phase = "heap-scan";
+        continue;
       }
-      if (cursor.phase === "tables") {
-        const target = context.tables.find(table => table.tableId === cursor.tablePosition.tableId);
-        if (target === undefined) {
-          cursor.phase = "heap-scan";
-          continue;
-        }
-        let result: {
+      let result: {
           issues: VerificationIssue[],
           skippedChecks: VerificationIssue[],
           stepsTaken: number,
           finished: boolean,
           position: TablePosition,
         };
-        if (!cursor.tablePosition.genericDone) {
-          result = await verifyGenericTable(target, cursor.tablePosition, remaining);
-        } else if (target.table.verifyDataIntegrity !== undefined) {
-          let hookResult: BulldozerTableVerificationResult;
-          try {
-            hookResult = await target.table.verifyDataIntegrity({
-              serializedTable: target.serializedTable,
-              inputTables: target.inputTables,
-              stepCount: remaining,
-              position: cursor.tablePosition.hookPosition,
-            });
-          } catch (error) {
-            if (!(error instanceof Error)) throw error;
-            hookResult = {
-              issues: [{ code: "invalid_table_structure", message: "A table-specific integrity checker could not read the persisted structure" }],
-              stepsTaken: Math.min(remaining, 1),
-              nextPosition: null,
-            };
-          }
-          result = {
-            issues: hookResult.issues.map(issue => ({ phase: "tables", ...issue })),
-            skippedChecks: [],
-            stepsTaken: hookResult.stepsTaken,
-            finished: hookResult.nextPosition === null,
-            position: { ...cursor.tablePosition, hookPosition: hookResult.nextPosition },
-          };
-        } else {
-          result = {
-            issues: [],
-            skippedChecks: [],
-            stepsTaken: 0,
-            finished: true,
-            position: cursor.tablePosition,
+      if (!cursor.tablePosition.genericDone) {
+        result = await verifyGenericTable(target, cursor.tablePosition, remaining);
+      } else if (target.table.verifyDataIntegrity !== undefined) {
+        let hookResult: BulldozerTableVerificationResult;
+        try {
+          hookResult = await target.table.verifyDataIntegrity({
+            serializedTable: target.serializedTable,
+            inputTables: target.inputTables,
+            stepCount: remaining,
+            position: cursor.tablePosition.hookPosition,
+          });
+        } catch (error) {
+          if (!(error instanceof Error)) throw error;
+          hookResult = {
+            issues: [{ code: "invalid_table_structure", message: "A table-specific integrity checker could not read the persisted structure" }],
+            stepsTaken: Math.min(remaining, 1),
+            nextPosition: null,
           };
         }
-        for (const error of result.issues) recordIssue(error);
+        result = {
+          issues: hookResult.issues.map(issue => ({ phase: "tables", ...issue })),
+          skippedChecks: [],
+          stepsTaken: hookResult.stepsTaken,
+          finished: hookResult.nextPosition === null,
+          position: { ...cursor.tablePosition, hookPosition: hookResult.nextPosition },
+        };
+      } else {
+        result = {
+          issues: [],
+          skippedChecks: [],
+          stepsTaken: 0,
+          finished: true,
+          position: cursor.tablePosition,
+        };
+      }
+      for (const error of result.issues) recordIssue(error);
         skippedChecks.push(...result.skippedChecks);
         remaining -= Math.min(result.stepsTaken, remaining);
         if (result.finished) {
@@ -625,52 +635,41 @@ export async function verifyDataIntegrity(
         } else cursor.tablePosition = result.position;
         assertProgress();
         continue;
-      }
-      const page = await integrityState.piledriverDatabase.iterateHeapEntries({
-        afterKey: cursor.afterHeapKeyBase64 === null ? undefined : keyBytes(cursor.afterHeapKeyBase64),
-        limit: Math.min(HEAP_PAGE_SIZE, remaining),
-      });
-      if (page.entries.length === 0) {
-        cursor.phase = "done";
-        break;
-      }
-      for (const entry of page.entries) {
-        const entryKey = keyBase64(entry.key);
-        cursor.afterHeapKeyBase64 = entryKey;
-        remaining--;
-        try {
-          await integrityState.piledriverDatabase.deserializeSerializedObject(entry.value);
-          for (const ref of collectSerializedHeapReferences(parsePiledriverValue(entry.value))) {
-            const referenced = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
-            if (referenced.buffer === null) recordIssue({ phase: "heap-scan", code: "dangling_heap_reference", message: "A heap reference points to a missing heap entry", context: { key: entryKey, referencedKey: ref } });
-          }
-        } catch (error) {
-          // Piledriver's deserializer rejects malformed persisted tags; that is a finding, not a service crash.
-          if (error instanceof Error) recordIssue({ phase: "heap-scan", code: "invalid_heap_entry", message: "A heap entry could not be deserialized", context: { key: entryKey } });
-          else throw error;
-        }
-        if (remaining === 0) break;
-      }
-      assertProgress();
     }
-    cursor.stepsTaken += budget - remaining;
-    cursor.errorCount += errors.length;
-    return {
-      success: errors.length === 0,
-      done: cursor.phase === "done",
-      next_cursor: cursor.phase === "done" ? null : encodeCursor(cursor),
-      steps_taken: budget - remaining,
-      errors,
-      errors_truncated: errorsTruncated,
-      skipped_checks: skippedChecks,
-    };
+    const page = await integrityState.piledriverDatabase.iterateHeapEntries({
+      afterKey: cursor.afterHeapKeyBase64 === null ? undefined : keyBytes(cursor.afterHeapKeyBase64),
+      limit: Math.min(HEAP_PAGE_SIZE, remaining),
+    });
+    if (page.entries.length === 0) {
+      cursor.phase = "done";
+      break;
+    }
+    for (const entry of page.entries) {
+      const entryKey = keyBase64(entry.key);
+      cursor.afterHeapKeyBase64 = entryKey;
+      remaining--;
+      try {
+        await integrityState.piledriverDatabase.deserializeSerializedObject(entry.value);
+        for (const ref of collectSerializedHeapReferences(parsePiledriverValue(entry.value))) {
+          const referenced = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
+          if (referenced.buffer === null) recordIssue({ phase: "heap-scan", code: "dangling_heap_reference", message: "A heap reference points to a missing heap entry", context: { key: entryKey, referencedKey: ref } });
+        }
+      } catch (error) {
+        // Piledriver's deserializer rejects malformed persisted tags; that is a finding, not a service crash.
+        if (error instanceof Error) recordIssue({ phase: "heap-scan", code: "invalid_heap_entry", message: "A heap entry could not be deserialized", context: { key: entryKey } });
+        else throw error;
+      }
+      if (remaining === 0) break;
+    }
+      assertProgress();
   }
-  cursor.phase = "done";
+  cursor.stepsTaken += budget - remaining;
+  cursor.errorCount += errors.length;
   return {
-    success: false,
-    done: true,
-    next_cursor: null,
-    steps_taken: 0,
+    success: errors.length === 0,
+    done: cursor.phase === "done",
+    next_cursor: cursor.phase === "done" ? null : encodeCursor(cursor),
+    steps_taken: budget - remaining,
     errors,
     errors_truncated: errorsTruncated,
     skipped_checks: skippedChecks,
