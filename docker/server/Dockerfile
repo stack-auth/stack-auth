@@ -49,9 +49,6 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # copy over the rest of the code for the build
 COPY --from=pruner /app/out/full/ .
 
-# Docs are required for backend OpenAPI/codegen
-COPY docs ./docs
-
 # Dashboard still needs standalone output for its Next.js build
 ENV NEXT_CONFIG_OUTPUT=standalone
 

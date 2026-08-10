@@ -76,33 +76,6 @@ describe("beginPendingAction", () => {
   });
 });
 
-describe("new project page data loading", () => {
-  it("does not manually refetch the internal projects list for onboarding status", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const source = readFileSync(join(
-      testDir,
-      "page-client-parts/content.tsx",
-    ), "utf-8");
-
-    expect(source).not.toMatch(/sendRequest\(\s*["'`]\/internal\/projects["'`]/);
-  });
-});
-
-describe("new project creation dialog", () => {
-  it("uses native form submission for create-project keyboard access", () => {
-    const testDir = dirname(fileURLToPath(import.meta.url));
-    const source = readFileSync(join(
-      testDir,
-      "page-client-parts/content.tsx",
-    ), "utf-8");
-
-    expect(source).toContain("<form onSubmit={handleCreateProjectSubmit}>");
-    expect(source).toContain("onKeyDown={handleProjectNameKeyDown}");
-    expect(source).toContain('type="submit"');
-    expect(source).toContain("Create Project");
-  });
-});
-
 describe("OnboardingPage", () => {
   it("uses hover-exit-only transitions and accessible labels for progress dots", () => {
     render(

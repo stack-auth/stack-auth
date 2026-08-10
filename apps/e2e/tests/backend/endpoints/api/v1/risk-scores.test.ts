@@ -141,7 +141,7 @@ describe("risk scores", () => {
   it("server responses include risk_scores while client responses omit them", async ({ expect }) => {
     await Project.createAndSwitch({ config: { credential_enabled: true } });
 
-    const signUpResult = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const signUpResult = await Auth.Password.signUpWithEmail();
 
     const serverUser = await readServerUser(signUpResult.userId);
     expectDerivedRiskScores(expect, serverUser.risk_scores.sign_up);
@@ -154,7 +154,7 @@ describe("risk scores", () => {
   it("client cannot update risk_scores", async ({ expect }) => {
     await Project.createAndSwitch({ config: { credential_enabled: true } });
 
-    const signUpResult = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const signUpResult = await Auth.Password.signUpWithEmail();
     const beforeUpdate = (await readServerUser(signUpResult.userId)).risk_scores.sign_up;
     const updateResponse = await niceBackendFetch("/api/v1/users/me", {
       method: "PATCH",
