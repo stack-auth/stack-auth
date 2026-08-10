@@ -288,6 +288,13 @@ export function BetterAuthDemo() {
         displayName: sdkUser.displayName,
       });
       setStatus("exchanged");
+    }, {
+      onError: error => {
+        if (active) {
+          setStatus("error");
+          setError(error instanceof Error ? error.message : "Better Auth exchange failed");
+        }
+      },
     });
     return () => {
       active = false;
