@@ -4,6 +4,7 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { node } from "@elysia/node";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { trace } from "@opentelemetry/api";
+import * as Sentry from "@sentry/node";
 import { Elysia } from "elysia";
 import { gunzipSync } from "node:zlib";
 import { createBackendRequest } from "./backend-request";
@@ -39,7 +40,8 @@ export const app = new Elysia({
   .onRequest(({ request }) => {
     requestStartTimes.set(request, performance.now());
     const pathname = new URL(request.url).pathname;
-    requestLogPaths.set(request, staticRequestLogPaths.has(pathname) ? pathname : "<unmatched>");
+    const staticRequestPath = staticRequestLogPaths.has(pathname) ? pathname : undefined;
+    requestLogPaths.set(request, staticRequestPath ?? "<unmatched>");
   })
   .mapResponse(({ request, responseValue }) => responseValue instanceof Response
     ? compressResponse(request, responseValue)
@@ -82,6 +84,7 @@ export const app = new Elysia({
   });
 
 async function dispatch(request: Request) {
+  const method = request.method.toUpperCase();
   const pipeline = await runRequestPipeline(request);
   if (pipeline.shortCircuitResponse != null) {
     return withResponseHeaders(pipeline.shortCircuitResponse, pipeline.corsHeadersInit);
@@ -106,15 +109,13 @@ async function dispatch(request: Request) {
   }
   requestLogPaths.set(request, match.normalizedPath);
 
-  const method = request.method.toUpperCase();
   // Sentry's Node HTTP integration owns the incoming request span. Elysia is not
   // one of Sentry's framework integrations, so attach the matched route pattern
   // here instead of registering a second OpenTelemetry provider through Elysia's
   // plugin. The normalized path is safe; the concrete path may contain customer IDs.
-  const requestSpan = trace.getActiveSpan();
-  requestSpan?.updateName(`${method} ${match.normalizedPath}`);
-  requestSpan?.setAttribute("http.request.method", method);
-  requestSpan?.setAttribute("http.route", match.normalizedPath);
+  if (isHttpMethod(method)) {
+    updateRequestSpanName(method, match.normalizedPath);
+  }
   const context: RequestContext = {
     abortSignal: request.signal,
     headers: pipeline.mergedHeaders,
@@ -175,6 +176,19 @@ async function dispatch(request: Request) {
     }
     return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
   });
+}
+
+function updateRequestSpanName(method: typeof httpMethodNames[number], normalizedPath: string) {
+  const requestSpan = trace.getActiveSpan();
+  if (requestSpan == null) {
+    return;
+  }
+  // Raw OpenTelemetry updateName() can be overwritten when Sentry finalizes an
+  // http.server span. This helper also marks the normalized, non-customer path as
+  // an authoritative custom name so the beforeSend scrubber can retain it.
+  Sentry.updateSpanName(requestSpan, `${method} ${normalizedPath}`);
+  requestSpan.setAttribute("http.request.method", method);
+  requestSpan.setAttribute("http.route", normalizedPath);
 }
 
 async function discardHeadResponseBody(method: string, response: Response): Promise<void> {
@@ -297,143 +311,136 @@ import.meta.vitest?.test("the observability debug page is publicly available", a
 });
 
 import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", async ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  const [notFound, methodNotAllowed, unknownMethod] = await Promise.all([
+    app.handle(new Request("http://localhost/api/latest/this-route-does-not-exist")),
+    app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
+      method: "POST",
+    })),
+    app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
+      method: "BREW",
+    })),
+  ]);
 
-  try {
-    const [notFound, methodNotAllowed, unknownMethod] = await Promise.all([
-      app.handle(new Request("http://localhost/api/latest/this-route-does-not-exist")),
-      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
-        method: "POST",
-      })),
-      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
-        method: "BREW",
-      })),
-    ]);
-
-    expect([
-      { status: notFound.status, allowOrigin: notFound.headers.get("access-control-allow-origin") },
-      { status: methodNotAllowed.status, allow: methodNotAllowed.headers.get("allow"), allowOrigin: methodNotAllowed.headers.get("access-control-allow-origin") },
-      { status: unknownMethod.status, allow: unknownMethod.headers.get("allow"), allowOrigin: unknownMethod.headers.get("access-control-allow-origin") },
-    ]).toMatchInlineSnapshot(`
-      [
-        {
-          "allowOrigin": "*",
-          "status": 404,
-        },
-        {
-          "allow": "GET, HEAD",
-          "allowOrigin": "*",
-          "status": 405,
-        },
-        {
-          "allow": null,
-          "allowOrigin": "*",
-          "status": 400,
-        },
-      ]
-    `);
-  } finally {
-    vi.unstubAllEnvs();
-  }
+  expect([
+    { status: notFound.status, allowOrigin: notFound.headers.get("access-control-allow-origin") },
+    { status: methodNotAllowed.status, allow: methodNotAllowed.headers.get("allow"), allowOrigin: methodNotAllowed.headers.get("access-control-allow-origin") },
+    { status: unknownMethod.status, allow: unknownMethod.headers.get("allow"), allowOrigin: unknownMethod.headers.get("access-control-allow-origin") },
+  ]).toMatchInlineSnapshot(`
+    [
+      {
+        "allowOrigin": "*",
+        "status": 404,
+      },
+      {
+        "allow": "GET, HEAD",
+        "allowOrigin": "*",
+        "status": 405,
+      },
+      {
+        "allow": null,
+        "allowOrigin": "*",
+        "status": 400,
+      },
+    ]
+  `);
 });
 
 import.meta.vitest?.test("non-API OPTIONS and unknown methods match Next while API OPTIONS keeps its CORS short-circuit", async ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  const [automaticOptions, unknownMethod, apiOptions] = await Promise.all([
+    app.handle(new Request("http://localhost/health", { method: "OPTIONS" })),
+    app.handle(new Request("http://localhost/health", { method: "BREW" })),
+    app.handle(new Request("http://localhost/api/latest/health-does-not-need-to-exist", { method: "OPTIONS" })),
+  ]);
 
-  try {
-    const [automaticOptions, unknownMethod, apiOptions] = await Promise.all([
-      app.handle(new Request("http://localhost/health", { method: "OPTIONS" })),
-      app.handle(new Request("http://localhost/health", { method: "BREW" })),
-      app.handle(new Request("http://localhost/api/latest/health-does-not-need-to-exist", { method: "OPTIONS" })),
-    ]);
-
-    expect({
-      automaticOptions: {
-        status: automaticOptions.status,
-        allow: automaticOptions.headers.get("allow"),
-        allowOrigin: automaticOptions.headers.get("access-control-allow-origin"),
-        body: await automaticOptions.text(),
+  expect({
+    automaticOptions: {
+      status: automaticOptions.status,
+      allow: automaticOptions.headers.get("allow"),
+      allowOrigin: automaticOptions.headers.get("access-control-allow-origin"),
+      body: await automaticOptions.text(),
+    },
+    unknownMethod: {
+      status: unknownMethod.status,
+      allow: unknownMethod.headers.get("allow"),
+      body: await unknownMethod.text(),
+    },
+    apiOptions: {
+      status: apiOptions.status,
+      allow: apiOptions.headers.get("allow"),
+      allowMethods: apiOptions.headers.get("access-control-allow-methods"),
+      allowOrigin: apiOptions.headers.get("access-control-allow-origin"),
+      body: await apiOptions.text(),
+    },
+  }).toMatchInlineSnapshot(`
+    {
+      "apiOptions": {
+        "allow": null,
+        "allowMethods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "allowOrigin": "*",
+        "body": "",
+        "status": 200,
       },
-      unknownMethod: {
-        status: unknownMethod.status,
-        allow: unknownMethod.headers.get("allow"),
-        body: await unknownMethod.text(),
+      "automaticOptions": {
+        "allow": "GET, HEAD, OPTIONS",
+        "allowOrigin": null,
+        "body": "",
+        "status": 204,
       },
-      apiOptions: {
-        status: apiOptions.status,
-        allow: apiOptions.headers.get("allow"),
-        allowMethods: apiOptions.headers.get("access-control-allow-methods"),
-        allowOrigin: apiOptions.headers.get("access-control-allow-origin"),
-        body: await apiOptions.text(),
+      "unknownMethod": {
+        "allow": null,
+        "body": "Bad Request",
+        "status": 400,
       },
-    }).toMatchInlineSnapshot(`
-      {
-        "apiOptions": {
-          "allow": null,
-          "allowMethods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-          "allowOrigin": "*",
-          "body": "",
-          "status": 200,
-        },
-        "automaticOptions": {
-          "allow": "GET, HEAD, OPTIONS",
-          "allowOrigin": null,
-          "body": "",
-          "status": 204,
-        },
-        "unknownMethod": {
-          "allow": null,
-          "body": "Bad Request",
-          "status": 400,
-        },
-      }
-    `);
-  } finally {
-    vi.unstubAllEnvs();
-  }
+    }
+  `);
 });
 
 import.meta.vitest?.test("global headers add a default cache-control only when the route set none", async ({ expect }) => {
-  const { vi } = import.meta.vitest!;
-  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  const [homePage, smartResponse] = await Promise.all([
+    // The home page is a raw Response with no cache-control of its own
+    // (unlike /api 404s, which the smart NotFoundHandler catch-all serves),
+    // so it must receive the default.
+    app.handle(new Request("http://localhost/")),
+    // Smart responses set their own cache-control; the default must not
+    // overwrite it.
+    app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler")),
+  ]);
 
-  try {
-    const [homePage, smartResponse] = await Promise.all([
-      // The home page is a raw Response with no cache-control of its own
-      // (unlike /api 404s, which the smart NotFoundHandler catch-all serves),
-      // so it must receive the default.
-      app.handle(new Request("http://localhost/")),
-      // Smart responses set their own cache-control; the default must not
-      // overwrite it.
-      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler")),
-    ]);
-
-    expect({
-      homePageCacheControl: homePage.headers.get("cache-control"),
-      smartResponseCacheControl: smartResponse.headers.get("cache-control"),
-    }).toEqual({
-      homePageCacheControl: "private, no-store",
-      smartResponseCacheControl: "no-store, max-age=0",
-    });
-  } finally {
-    vi.unstubAllEnvs();
-  }
+  expect({
+    homePageCacheControl: homePage.headers.get("cache-control"),
+    smartResponseCacheControl: smartResponse.headers.get("cache-control"),
+  }).toEqual({
+    homePageCacheControl: "private, no-store",
+    smartResponseCacheControl: "no-store, max-age=0",
+  });
 });
 
-import.meta.vitest?.test("uncaught dispatch errors use the global sanitized error boundary", async ({ expect }) => {
+import.meta.vitest?.test("uncaught /api/ dispatch errors use the global sanitized error boundary", async ({ expect }) => {
   const { vi } = import.meta.vitest!;
   vi.stubEnv("NODE_ENV", "production");
-  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
-  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
+  const request = new Request("http://localhost/api/v1");
+  const originalHeaders = request.headers;
+  let headersReadCount = 0;
+  let headerReadThrew = false;
+  // Simulate an unexpected internal failure escaping dispatch for an /api/ request.
+  // This depends on runRequestPipeline reading headers first; after the first throw,
+  // return them because response compression reads request headers after the error handler.
+  Object.defineProperty(request, "headers", {
+    get() {
+      headersReadCount++;
+      if (headersReadCount === 1) {
+        headerReadThrew = true;
+        throw new Error("unexpected request header access");
+      }
+      return originalHeaders;
+    },
+  });
 
   try {
-    const response = await app.handle(new Request("http://localhost/api/v1"));
+    const response = await app.handle(request);
 
+    expect(headerReadThrew).toBe(true);
+    expect(headersReadCount).toBeGreaterThan(1);
     expect({
       status: response.status,
       body: await response.text(),

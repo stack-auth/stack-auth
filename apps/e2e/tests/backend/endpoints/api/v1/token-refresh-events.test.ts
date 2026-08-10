@@ -148,7 +148,7 @@ it("password signup creates exactly one $token-refresh event", async ({ expect }
     config: { credential_enabled: true },
   });
   await InternalApiKey.createAndSetProjectKeys();
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
 
   const events = await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
   expect(events[0]).toMatchObject({
@@ -164,7 +164,7 @@ it("OTP signin (new user) creates exactly one $token-refresh event", async ({ ex
     config: { magic_link_enabled: true },
   });
   await InternalApiKey.createAndSetProjectKeys();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const events = await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
   expect(events[0]).toMatchObject({
@@ -230,7 +230,7 @@ it("password signin (existing user) creates exactly one additional $token-refres
   await InternalApiKey.createAndSetProjectKeys();
 
   // First, sign up
-  const { userId, password } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId, password } = await Auth.Password.signUpWithEmail();
 
   // Wait for the signup event to be recorded
   await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
@@ -305,7 +305,7 @@ it("session refresh endpoint creates exactly one additional $token-refresh event
   });
   await InternalApiKey.createAndSetProjectKeys();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
 
   // Refresh the session

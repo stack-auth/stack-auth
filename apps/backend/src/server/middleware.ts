@@ -1,12 +1,18 @@
 import apiVersions from "@/generated/api-versions.json";
 import routes from "@/generated/routes.json";
-import { SmartRouter } from "@/smart-router";
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { wait } from "@hexclave/shared/dist/utils/promises";
+import { RoutePatternIndex } from "./route-pattern-index";
 
-const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
-const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
-const devRateLimitMarks: number[] = [];
+const migrationRouteIndexes = new Map<string, RoutePatternIndex<(typeof routes)[number]>>();
+for (const version of apiVersions) {
+  if (version.migrationFolder == null) {
+    continue;
+  }
+  const migrationFolder = version.migrationFolder;
+  migrationRouteIndexes.set(migrationFolder, new RoutePatternIndex(
+    routes.filter((route) => (route.normalizedPath + "/").startsWith(migrationFolder + "/")),
+    (route) => route.normalizedPath,
+  ));
+}
 
 const corsAllowedRequestHeaders = [
   "content-type",
@@ -78,11 +84,9 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   // the previous contract so signed URLs, caches, and integrations relying on
   // canonicalization behave identically across old and new deployments. Existing e2e
   // tests fetch `/api/v1/` and assert a 200 because their fetch follows redirects — that
-  // held on Next (308→200) and holds again now. This runs before the artificial
-  // development delay and the OPTIONS short-circuit (Next redirected all methods,
-  // including OPTIONS), and redirecting early keeps the dev rate limiter from counting
-  // phantom duplicate paths. 308 (not 301/307) preserves the method and body, exactly
-  // what Next used.
+  // held on Next (308→200) and holds again now. This runs before the OPTIONS short-circuit
+  // (Next redirected all methods, including OPTIONS). A 308 (not 301/307) preserves the
+  // method and body, exactly as Next did.
   const canonicalPathname = getCanonicalPathname(url.pathname);
   if (canonicalPathname !== url.pathname) {
     return {
@@ -106,55 +110,9 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
 
   const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
   ensureForwardedForHeader(mergedHeaders, request);
-  const artificialDevelopmentBehaviorDisabled = isArtificialDevelopmentBehaviorDisabled(mergedHeaders);
-  const delay = +getEnvVariable("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
-  if (delay) {
-    if (getNodeEnvironment().includes("production")) {
-      throw new Error("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development");
-    }
-    if (!artificialDevelopmentBehaviorDisabled) {
-      await wait(delay);
-    }
-  }
 
   const isApiRequest = url.pathname.startsWith("/api/");
   const corsHeadersInit = getCorsHeadersInit(request);
-
-  if (isApiRequest && !artificialDevelopmentBehaviorDisabled && getNodeEnvironment() === "development" && request.method !== "OPTIONS" && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
-    const now = performance.now();
-    while (devRateLimitMarks.length > 0 && now - devRateLimitMarks[0] > DEV_RATE_LIMIT_WINDOW_MS) {
-      devRateLimitMarks.shift();
-    }
-    if (devRateLimitMarks.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
-      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitMarks[0]));
-      const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
-
-      const response = Response.json({
-        message: "Artificial development rate limit triggered. Wait before retrying.",
-      }, {
-        status: 429,
-      });
-
-      if (Math.random() < 0.5 && corsHeadersInit) {
-        for (const [key, value] of Object.entries(corsHeadersInit)) {
-          response.headers.set(key, value);
-        }
-      }
-
-      if (Math.random() < 0.5) {
-        response.headers.set("Retry-After", retryAfterSeconds.toString());
-      }
-
-      return {
-        corsHeadersInit,
-        dispatchPath: url.pathname,
-        mergedHeaders,
-        originalUrl: request.url,
-        shortCircuitResponse: response,
-      };
-    }
-    devRateLimitMarks.push(now);
-  }
 
   if (request.method === "OPTIONS" && isApiRequest) {
     return {
@@ -218,16 +176,12 @@ function mergeHexclaveHeaderAliases(headers: Headers) {
   return newRequestHeaders;
 }
 
-function isArtificialDevelopmentBehaviorDisabled(headers: Headers) {
-  return Boolean(headers.get("x-stack-disable-artificial-development-delay"));
-}
-
-import.meta.vitest?.test("Hexclave header aliases control artificial development behavior", ({ expect }) => {
+import.meta.vitest?.test("Hexclave header aliases merge into Stack headers", ({ expect }) => {
   const mergedHeaders = mergeHexclaveHeaderAliases(new Headers({
-    "x-hexclave-disable-artificial-development-delay": "true",
+    "x-hexclave-access-token": "test-access-token",
   }));
 
-  expect(isArtificialDevelopmentBehaviorDisabled(mergedHeaders)).toBe(true);
+  expect(mergedHeaders.get("x-stack-access-token")).toBe("test-access-token");
 });
 
 const clientIpForwardingHeaders = ["x-forwarded-for", "x-real-ip", "x-vercel-forwarded-for", "cf-connecting-ip"];
@@ -311,13 +265,13 @@ function getDispatchPath(originalPathname: string) {
     if ((pathname + "/").startsWith(version.servedRoute + "/")) {
       const nextPathname = pathname.replace(version.servedRoute, nextVersion.servedRoute);
       const migrationPathname = nextPathname.replace(nextVersion.servedRoute, nextVersion.migrationFolder);
-      for (const route of routes) {
-        if (nextVersion.migrationFolder && (route.normalizedPath + "/").startsWith(nextVersion.migrationFolder + "/")) {
-          if (SmartRouter.matchNormalizedPath(migrationPathname, route.normalizedPath)) {
-            pathname = migrationPathname;
-            break outer;
-          }
-        }
+      const migrationRouteIndex = migrationRouteIndexes.get(nextVersion.migrationFolder);
+      if (migrationRouteIndex == null) {
+        throw new Error(`No route index found for migration folder ${JSON.stringify(nextVersion.migrationFolder)}`);
+      }
+      if (migrationRouteIndex.hasMatch(migrationPathname)) {
+        pathname = migrationPathname;
+        break outer;
       }
       pathname = nextPathname;
     }

@@ -17,7 +17,7 @@ it("unsubscribe link should be sent and update notification preference", async (
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {
@@ -105,7 +105,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {
@@ -150,7 +150,7 @@ it("unsubscribe link should be included when template exports Marketing notifica
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
 
   // Create a draft with a template that exports Marketing notification category
   const marketingTemplate = `import { Container } from "@react-email/components";
@@ -222,7 +222,7 @@ it("unsubscribe link should NOT be included when template exports Transactional 
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+  const { userId } = await Auth.Password.signUpWithEmail();
 
   // Create a draft with a template that exports Transactional notification category
   // Using default theme so we can verify the theme doesn't add unsubscribe link for Transactional

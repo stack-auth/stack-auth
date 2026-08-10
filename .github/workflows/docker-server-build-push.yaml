@@ -6,12 +6,15 @@ on:
       - main
       - dev
 
+# Grouped per ref (not per sha) on purpose: this pushes the moving `dev`/`latest` image tags, so runs
+# must stay serialized, otherwise a slower run for an older commit can overwrite a newer commit's tag.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
   build-server:
+    timeout-minutes: 90
     name: Docker Build and Push Server
     runs-on: ubicloud-standard-8
     steps:

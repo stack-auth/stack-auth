@@ -120,4 +120,24 @@ describe("internal newly-created projects", () => {
     expect(excluded.body.filters.neon).toBe("exclude");
     expect(excluded.body.projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
   });
+
+  it("defaults to both development environments and excludes Neon projects", async ({ expect }) => {
+    const internalUserAuth = await signInAsInternalAdmin();
+    const { projectId } = await Project.createAndSwitch({
+      display_name: "Default Neon-created project",
+      description: "Created with Neon",
+    }, true);
+
+    backendContext.set({ projectKeys: InternalProjectKeys, userAuth: internalUserAuth });
+    const response = await niceBackendFetch(
+      `${BASE_PATH}?onboarding=both&min_users=0`,
+      { accessType: "client" },
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.filters).toMatchObject({
+      rde: "both",
+      neon: "exclude",
+    });
+    expect(response.body.projects.some((project: { id: string }) => project.id === projectId)).toBe(false);
+  });
 });
