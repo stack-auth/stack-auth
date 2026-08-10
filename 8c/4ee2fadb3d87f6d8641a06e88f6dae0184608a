@@ -1,0 +1,52 @@
+packages/shared/src/config/schema.ts
+  s_737ddf173f162d::t_d11304141bfce6 1233
+  s_737ddf173f162d::t_0453b0d0a145c1 807-821
+  s_737ddf173f162d::t_b858c375a74d82 901-940
+  s_737ddf173f162d::t_01c18bc57d8f44 486-487,504,647
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/queries/page-client.tsx
+  s_737ddf173f162d::t_71e44deca98891 32,353,355,415,430,451,465,485,839,841
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/queries/page.tsx
+  s_737ddf173f162d::t_f9f28d0814ada9 1,3-5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_737ddf173f162d::t_5cccba2d77e272 8,51-68,245,249
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page.tsx
+  s_737ddf173f162d::t_51d0a07ce3f652 1,3-5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/warehouse/queries/page-client.tsx
+  s_737ddf173f162d::t_f5974becd57ae4 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/warehouse/queries/page.tsx
+  s_737ddf173f162d::t_a6588604cb5df9 1-5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/warehouse/tables/page-client.tsx
+  s_737ddf173f162d::t_c23eef44231980 1-7
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/warehouse/tables/page.tsx
+  s_737ddf173f162d::t_5443512b726ac6 1-5
+apps/dashboard/src/components/commands/run-query.tsx
+  s_737ddf173f162d::t_ff0d3ba755d8d2 185,188,213,226,240
+apps/dashboard/src/lib/apps-frontend.test.tsx
+  s_737ddf173f162d::t_2208ceafd58168 2,79-80,82-91
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_737ddf173f162d::t_49b009c7208cc7 3,428-444,462
+apps/dashboard/src/lib/apps-utils.test.ts
+  s_737ddf173f162d::t_e8135258cb4663 4-12,14,16-17
+packages/shared/src/apps/apps-config.test.ts
+  s_737ddf173f162d::t_e1c8b7431a18ed 1-11
+packages/shared/src/apps/apps-config.ts
+  s_737ddf173f162d::t_af1ee5a367c357 171,175-180
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_737ddf173f162d::t_fe0217c0ff6bdd 293,309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8c4ee2fadb3d87f6d8641a06e88f6dae0184608a",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
