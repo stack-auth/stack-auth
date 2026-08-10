@@ -1,4 +1,5 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { deserializeDatabaseSeq, serializeDatabaseSeq } from "../databases/index.js";
 import type {
   BulldozerDatabase,
@@ -57,6 +58,35 @@ export type VerifyDataIntegrityResponse = {
   errors_truncated: boolean,
   skipped_checks: VerificationIssue[],
 };
+
+export async function handleVerifyDataIntegrityRequest(
+  body: unknown,
+  verify: (request: VerifyDataIntegrityRequest) => Promise<VerifyDataIntegrityResponse>,
+): Promise<VerifyDataIntegrityResponse> {
+  if (body !== undefined && (typeof body !== "object" || body === null || Array.isArray(body))) {
+    throw new StatusError(StatusError.BadRequest, "Expected JSON object body");
+  }
+  const requestBody = body === undefined ? {} : body;
+  const continuation = Reflect.get(requestBody, "continue");
+  if (continuation !== undefined && typeof continuation !== "string") {
+    throw new StatusError(StatusError.BadRequest, "continue must be a string");
+  }
+  const stepCount = Reflect.get(requestBody, "step_count");
+  if (stepCount !== undefined && (typeof stepCount !== "number" || !Number.isInteger(stepCount) || stepCount <= 0)) {
+    throw new StatusError(StatusError.BadRequest, "step_count must be a positive integer");
+  }
+  if (continuation !== undefined) {
+    try {
+      decodeVerificationCursor(continuation);
+    } catch (error) {
+      throw new StatusError(StatusError.BadRequest, error instanceof Error ? error.message : "Invalid verification cursor");
+    }
+  }
+  return await verify({
+    ...(continuation === undefined ? {} : { continue: continuation }),
+    ...(stepCount === undefined ? {} : { step_count: stepCount }),
+  });
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object"

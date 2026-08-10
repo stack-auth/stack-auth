@@ -22,17 +22,6 @@ type Segment = {
   length: number,
   baseIndex: number,
 };
-function isConcatChild(value: unknown): value is Child {
-  return typeof value === "object"
-    && value !== null
-    && !Array.isArray(value)
-    && "ref" in value
-    && typeof value.ref === "object"
-    && value.ref !== null
-    && isPiledriverHeapObjectSymbol in value.ref
-    && "size" in value
-    && typeof value.size === "number";
-}
 export type ConcatTreeListDiff<T extends PiledriverObject> = {
   missing: { id: string, value: T }[],
   added: { id: string, value: T }[],

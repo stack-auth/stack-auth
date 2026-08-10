@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { declareBulldozerDatabase } from "../databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./schema/index.js";
 import { subscription } from "./schema/schema-test-helpers.js";
 import { asHeapObject, collectSerializedHeapReferences, type PiledriverObject } from "../databases/piledriver/index.js";
-import { decodeVerificationCursor, verifyDataIntegrity, verifyGenericTable, type TablePosition } from "./verify-data-integrity.js";
+import { decodeVerificationCursor, handleVerifyDataIntegrityRequest, verifyDataIntegrity, verifyGenericTable, type TablePosition } from "./verify-data-integrity.js";
 
 async function createDatabase() {
   const schema = createPaymentsSchema();
@@ -87,6 +88,42 @@ async function runWithBudgets(db: Awaited<ReturnType<typeof createDatabase>>, bu
 }
 
 describe("verification cursor", () => {
+  async function expectBadRequest(body: unknown) {
+    try {
+      await handleVerifyDataIntegrityRequest(body, async () => {
+        throw new Error("verification should not run");
+      });
+      throw new Error("expected a bad request");
+    } catch (error) {
+      expect(StatusError.isStatusError(error)).toBe(true);
+      if (!StatusError.isStatusError(error)) throw error;
+      expect(error.statusCode).toBe(400);
+    }
+  }
+
+  it("maps malformed cursor and invalid step count to bad requests", async () => {
+    await expectBadRequest({ continue: "not-a-cursor" });
+    await expectBadRequest({ step_count: 0 });
+  });
+
+  it("maps a wrong-version cursor to a bad request", async () => {
+    const wrongVersion = Buffer.from(JSON.stringify({ version: 999 }), "utf8").toString("base64url");
+    await expectBadRequest({ continue: wrongVersion });
+  });
+
+  it("returns verification findings as a normal success response", async () => {
+    const finding = {
+      success: false,
+      done: true,
+      next_cursor: null,
+      steps_taken: 1,
+      errors: [{ phase: "heap-scan", code: "invalid_heap_entry", message: "bad entry" }],
+      errors_truncated: false,
+      skipped_checks: [],
+    };
+    await expect(handleVerifyDataIntegrityRequest({}, async () => finding)).resolves.toEqual(finding);
+  });
+
   it("round-trips and rejects malformed or wrong-version cursors", async () => {
     const db = await createDatabase();
     await addSubscription(db);

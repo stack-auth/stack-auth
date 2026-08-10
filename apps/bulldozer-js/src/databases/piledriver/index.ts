@@ -605,8 +605,6 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       }
     }
   };
-
-
   const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
     const seqs: DatabaseSeq[] = [];
     const object = deserializePiledriverObjectFromJsonableObject(JSON.parse(textDecoder.decode(buffer)), enclosingSeq, seqs);
@@ -638,7 +636,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       };
     },
     async getSerializedRootObject(key): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> {
-      return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
+      return await traceSpan("bulldozer-js.piledriver.getSerializedRootObject", async () => {
         const { buffer, seq: rootSeq } = await rootStore.get(key);
         if (buffer === null) throw new Error("Root object not found");
         return { buffer, seq: rootSeq };

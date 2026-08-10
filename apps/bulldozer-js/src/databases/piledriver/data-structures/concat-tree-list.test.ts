@@ -118,5 +118,4 @@ describe("ConcatTreeList", () => {
 
     expect(await arrayFrom(list)).toEqual([{ value: 1 }, { value: 2 }]);
   });
-
 });

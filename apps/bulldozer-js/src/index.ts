@@ -22,7 +22,7 @@ import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
-import { decodeVerificationCursor, verifyDataIntegrity } from "./payments/verify-data-integrity.js";
+import { handleVerifyDataIntegrityRequest, verifyDataIntegrity } from "./payments/verify-data-integrity.js";
 import { initSentry, resolveBulldozerSentryEnvironment } from "./sentry.js";
 
 const sentryEnabled = initSentry();
@@ -934,26 +934,7 @@ const app = new Elysia({ adapter: node() })
     return ok();
   }))
   .post("/internal/payments/verify-data-integrity", ({ body }) => handler("verify-data-integrity", async () => {
-    const request = body === undefined ? {} : readObjectBody(body);
-    const continuation = request.continue;
-    if (continuation !== undefined && typeof continuation !== "string") {
-      throw new StatusError(StatusError.BadRequest, "continue must be a string");
-    }
-    const stepCount = request.step_count;
-    if (stepCount !== undefined && (typeof stepCount !== "number" || !Number.isInteger(stepCount) || stepCount <= 0)) {
-      throw new StatusError(StatusError.BadRequest, "step_count must be a positive integer");
-    }
-    if (continuation !== undefined) {
-      try {
-        decodeVerificationCursor(continuation);
-      } catch (error) {
-        throw new StatusError(StatusError.BadRequest, error instanceof Error ? error.message : "Invalid verification cursor");
-      }
-    }
-    return await verifyDataIntegrity(bulldozerDb, {
-      ...(continuation === undefined ? {} : { continue: continuation }),
-      ...(stepCount === undefined ? {} : { step_count: stepCount }),
-    });
+    return await handleVerifyDataIntegrityRequest(body, request => verifyDataIntegrity(bulldozerDb, request));
   }))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
