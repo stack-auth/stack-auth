@@ -40,6 +40,7 @@ export type ApiUrlFailure = {
 
 export class ApiUrlsFailedError extends AggregateError {
   readonly urlFailures: readonly ApiUrlFailure[];
+  readonly digest?: unknown;
 
   constructor(urlFailures: readonly ApiUrlFailure[]) {
     const primaryFailure = urlFailures[0] ?? throwErr("ApiUrlsFailedError requires at least one URL failure");
@@ -50,6 +51,12 @@ export class ApiUrlsFailedError extends AggregateError {
     );
     this.name = "ApiUrlsFailedError";
     this.urlFailures = urlFailures;
+    if ("digest" in primaryFailure.error) {
+      Object.defineProperty(this, "digest", {
+        value: primaryFailure.error.digest,
+        enumerable: true,
+      });
+    }
   }
 }
 

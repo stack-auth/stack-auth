@@ -565,6 +565,19 @@ describe("_withFallback", () => {
     expect(log).toHaveLength(urls.length * 2);
   });
 
+  it("preserves framework error digests on the aggregate error", () => {
+    const dynamicError = Object.assign(new Error("Dynamic server usage"), {
+      digest: "DYNAMIC_SERVER_USAGE",
+    });
+
+    const error = new ApiUrlsFailedError([{
+      url: "http://primary.test/api/v1",
+      error: dynamicError,
+    }]);
+
+    expect(error.digest).toBe("DYNAMIC_SERVER_USAGE");
+  });
+
   it("bypasses fallback when apiUrlOverride is provided", async () => {
     const log: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
