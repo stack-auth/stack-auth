@@ -1,10 +1,10 @@
 import type { StackAdminApp } from "@hexclave/next";
 import { ServerUser } from '@hexclave/next';
-import { ActionDialog, Alert, Button, CopyField, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, Typography } from "@/components/ui";
+import { ActionDialog, Alert, Button, CopyField, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Spinner, Textarea, Typography } from "@/components/ui";
 import { generateImpersonateSnippet } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { useEffect, useMemo, useState } from "react";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { openBrowserActionInNewTab } from "@/lib/browser-actions";
 import { getTrustedOriginOptions, normalizeTrustedOrigin } from "@/lib/trusted-origins";
 import { Link } from './link';
@@ -70,6 +70,13 @@ export function ImpersonateUserDialog(props: {
   const [customOrigin, setCustomOrigin] = useState("");
   const [reason, setReason] = useState("");
   const [fallbackSnippet, setFallbackSnippet] = useState<string | null>(null);
+  const [fallbackSnippetLoading, setFallbackSnippetLoading] = useState(false);
+  const [fallbackSnippetError, setFallbackSnippetError] = useState<string | null>(null);
+  const snippetRequestGeneration = useRef(0);
+  const userRef = useRef(props.user);
+  const adminAppRef = useRef(props.adminApp);
+  userRef.current = props.user;
+  adminAppRef.current = props.adminApp;
   const canUseCustomOrigin = config.domains.allowLocalhost;
 
   useEffect(() => {
@@ -79,9 +86,42 @@ export function ImpersonateUserDialog(props: {
   useEffect(() => {
     if (!props.open) {
       setFallbackSnippet(null);
+      setFallbackSnippetError(null);
+      setFallbackSnippetLoading(false);
       setReason("");
+      return;
     }
-  }, [props.open]);
+    const requestGeneration = snippetRequestGeneration.current + 1;
+    snippetRequestGeneration.current = requestGeneration;
+    setFallbackSnippet(null);
+    setFallbackSnippetError(null);
+    setFallbackSnippetLoading(true);
+    runAsynchronously((async () => {
+      const expiresInMillis = 2 * 60 * 60 * 1000;
+      // Console fallback is generated as soon as the dialog opens, before a
+      // reason can be entered — reason is only attached to the browser-action path.
+      const session = await userRef.current.createSession({ expiresInMillis, isImpersonation: true });
+      const tokens = await session.getTokens();
+      if (snippetRequestGeneration.current === requestGeneration) {
+        setFallbackSnippet(generateImpersonateSnippet(
+          adminAppRef.current.projectId,
+          tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
+          new Date(Date.now() + expiresInMillis),
+        ));
+        setFallbackSnippetLoading(false);
+      }
+    })(), {
+      onError: (error) => {
+        if (snippetRequestGeneration.current === requestGeneration) {
+          setFallbackSnippetError(error.message);
+          setFallbackSnippetLoading(false);
+        }
+      },
+    });
+    return () => {
+      snippetRequestGeneration.current = requestGeneration + 1;
+    };
+  }, [props.open, props.user.id]);
 
   async function openBrowserAction() {
     const origin = normalizeTrustedOrigin(customOrigin.trim() || selectedOrigin);
@@ -101,21 +141,6 @@ export function ImpersonateUserDialog(props: {
     }
   }
 
-  async function createFallbackSnippet() {
-    const expiresInMillis = 2 * 60 * 60 * 1000;
-    const session = await props.user.createSession({
-      expiresInMillis,
-      isImpersonation: true,
-      reason: reason.trim() === "" ? undefined : reason.trim(),
-    });
-    const tokens = await session.getTokens();
-    setFallbackSnippet(generateImpersonateSnippet(
-      props.adminApp.projectId,
-      tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
-      new Date(Date.now() + expiresInMillis),
-    ));
-  }
-
   return (
     <ActionDialog
       open={props.open}
@@ -123,11 +148,6 @@ export function ImpersonateUserDialog(props: {
       title="Impersonate User"
       description="Open a trusted website with a short-lived impersonation action."
       cancelButton
-      okButton={origins.length > 0 || canUseCustomOrigin ? {
-        label: "Impersonate",
-        onClick: openBrowserAction,
-        props: { disabled: selectedOrigin === "" && customOrigin.trim() === "" },
-      } : undefined}
     >
       <div className="space-y-4">
         {origins.length === 0 && !canUseCustomOrigin ? (
@@ -139,22 +159,45 @@ export function ImpersonateUserDialog(props: {
             {origins.length > 0 && (
               <>
                 <Typography>Select the website where the impersonated session should open.</Typography>
-                <Select value={selectedOrigin} onValueChange={setSelectedOrigin}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a trusted website" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {origins.map((origin) => <SelectItem key={origin.id} value={origin.origin}>{origin.origin}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Select value={selectedOrigin} onValueChange={setSelectedOrigin}>
+                    <SelectTrigger className="min-w-0 flex-1">
+                      <SelectValue placeholder="Select a trusted website" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {origins.map((origin) => <SelectItem key={origin.id} value={origin.origin}>{origin.origin}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={async () => {
+                      await openBrowserAction();
+                    }}
+                    disabled={selectedOrigin === "" && customOrigin.trim() === ""}
+                  >
+                    Impersonate
+                  </Button>
+                </div>
               </>
             )}
             {canUseCustomOrigin && (
-              <Input
-                value={customOrigin}
-                onChange={(event) => setCustomOrigin(event.target.value)}
-                placeholder="Exact website address, e.g. http://localhost:5173"
-              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  className="min-w-0 flex-1"
+                  value={customOrigin}
+                  onChange={(event) => setCustomOrigin(event.target.value)}
+                  placeholder="Exact website address, e.g. http://localhost:5173"
+                />
+                {origins.length === 0 && (
+                  <Button
+                    onClick={async () => {
+                      await openBrowserAction();
+                    }}
+                    disabled={selectedOrigin === "" && customOrigin.trim() === ""}
+                  >
+                    Impersonate
+                  </Button>
+                )}
+              </div>
             )}
           </>
         )}
@@ -168,13 +211,28 @@ export function ImpersonateUserDialog(props: {
             rows={2}
           />
         </div>
-        {fallbackSnippet == null ? (
-          <Button variant="secondary" onClick={async () => await createFallbackSnippet()}>
-            Copy console snippet instead
-          </Button>
-        ) : (
+        <div className="flex items-center justify-center">
+          <div className="flex-1">
+            <Separator />
+          </div>
+          <div className="mx-2 text-sm text-muted-foreground">OR</div>
+          <div className="flex-1">
+            <Separator />
+          </div>
+        </div>
+        <Typography variant="secondary" className="text-sm">
+          Paste this snippet into the browser console on your app.
+        </Typography>
+        {fallbackSnippetLoading ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Spinner />
+            Generating console snippet…
+          </div>
+        ) : fallbackSnippetError != null ? (
+          <Alert variant="destructive">{fallbackSnippetError}</Alert>
+        ) : fallbackSnippet != null ? (
           <CopyField type="textarea" monospace height={100} value={fallbackSnippet} isSecret />
-        )}
+        ) : null}
       </div>
     </ActionDialog>
   );

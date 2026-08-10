@@ -1,4 +1,5 @@
 
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { it, localRedirectUrl, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -174,6 +175,51 @@ it("should fail when inner callback has invalid state", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("should complete a form_post (Apple-style) inner callback that arrives as a cookie-less cross-site POST", async ({ expect }) => {
+  const { authorizeResponse, innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
+  const cookie = updateCookiesFromResponse("", authorizeResponse);
+
+  // Apple uses response_mode=form_post, so the authorization response arrives as a
+  // cross-site POST, which browsers do not send SameSite=Lax cookies with.
+  const formPostResponse = await niceBackendFetch(innerCallbackUrl.pathname, {
+    method: "POST",
+    redirect: "manual",
+    rawContentType: "application/x-www-form-urlencoded",
+    rawBody: new TextEncoder().encode(innerCallbackUrl.searchParams.toString()),
+  });
+  expect(formPostResponse.status).toBe(303);
+  const bouncedUrl = new URL(formPostResponse.headers.get("location") ?? throwErr("missing form_post bounce location"), innerCallbackUrl);
+  expect(bouncedUrl.pathname).toBe(innerCallbackUrl.pathname);
+  expect(bouncedUrl.searchParams.get("state")).toBe(innerCallbackUrl.searchParams.get("state"));
+  expect(bouncedUrl.searchParams.get("code")).toBe(innerCallbackUrl.searchParams.get("code"));
+
+  // The bounce is a top-level GET navigation, which does carry the inner cookie.
+  const response = await niceBackendFetch(bouncedUrl, {
+    redirect: "manual",
+    headers: {
+      cookie,
+    },
+  });
+  expect(response.status).toBe(303);
+  const outerCallbackUrl = new URL(response.headers.get("location") ?? throwErr("missing outer callback location"));
+  expect(outerCallbackUrl.origin).toBe(new URL(localRedirectUrl).origin);
+  expect(outerCallbackUrl.searchParams.get("code")).toBeTruthy();
+});
+
+it("should not consume the OAuth state when a form_post inner callback is bounced", async ({ expect }) => {
+  const { innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
+  const formPost = async () => await niceBackendFetch(innerCallbackUrl.pathname, {
+    method: "POST",
+    redirect: "manual",
+    rawContentType: "application/x-www-form-urlencoded",
+    rawBody: new TextEncoder().encode(innerCallbackUrl.searchParams.toString()),
+  });
+  expect((await formPost()).status).toBe(303);
+  // Before the bounce existed, the cookie-less POST burned the single-use outer info, so
+  // the (re-)submitted callback failed with "Invalid OAuth state" instead.
+  expect((await formPost()).status).toBe(303);
 });
 
 it("should fail if an untrusted redirect URL is provided", async ({ expect }) => {

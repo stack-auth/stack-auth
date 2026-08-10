@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { logSignInAttemptInBackground } from "@/lib/compliance-events";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
@@ -15,8 +16,8 @@ import { KnownError, KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { deindent, extractScopes, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies } from "@/lib/runtime/headers";
+import { redirect } from "@/lib/runtime/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
 /**
@@ -89,6 +90,33 @@ function getFirstQueryString(value: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Apple (the only provider we support that uses `response_mode=form_post`) delivers its
+ * authorization response as a cross-site POST of an HTML form instead of a top-level GET
+ * redirect. Returns the form fields for such a request, or `null` for every other request
+ * shape, so the callback can bounce them into a same-origin GET.
+ */
+function getFormPostCallbackParams(req: { method: string, body: unknown, headers: Record<string, string[] | undefined> }): [string, string][] | null {
+  if (req.method !== "POST") return null;
+  if (req.headers["content-type"]?.[0]?.split(";")[0].trim() !== "application/x-www-form-urlencoded") return null;
+  if (typeof req.body !== "object" || req.body === null) return null;
+  const entries = Object.entries(req.body).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  // Only the authorization response itself is worth bouncing; anything without a state has
+  // no chance of succeeding on the GET path either, and shouldn't cause an extra roundtrip.
+  if (!entries.some(([key]) => key === "state")) return null;
+  return entries;
+}
+
+import.meta.vitest?.test("getFormPostCallbackParams only picks up form-encoded authorization responses", ({ expect }) => {
+  const formHeaders = { "content-type": ["application/x-www-form-urlencoded"] };
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: formHeaders })).toEqual([["code", "c"], ["state", "s"]]);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: { "content-type": ["application/x-www-form-urlencoded; charset=UTF-8"] } })).toEqual([["code", "c"], ["state", "s"]]);
+  expect(getFormPostCallbackParams({ method: "GET", body: undefined, headers: {} })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c", state: "s" }, headers: { "content-type": ["application/json"] } })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: { code: "c" }, headers: formHeaders })).toBe(null);
+  expect(getFormPostCallbackParams({ method: "POST", body: "state=s", headers: formHeaders })).toBe(null);
+});
+
 const shouldRedirectOAuthCallbackKnownError = (error: KnownError) => (
   KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
   || KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
@@ -115,6 +143,28 @@ const handler = createSmartRouteHandler({
   }),
   async handler({ params, query, body }, fullReq) {
     const apiUrl = getApiUrlForRequest(fullReq);
+
+    // Apple is the only provider that answers with `response_mode=form_post`: the
+    // browser lands here with a cross-site POST instead of the usual top-level GET.
+    // Browsers omit SameSite=Lax cookies on cross-site POSTs, so the inner CSRF
+    // cookie /authorize set would be missing — and because the single-use outer
+    // info is consumed below regardless, the retry that follows then failed with
+    // "Invalid OAuth state". Bounce the form parameters into a top-level GET on our
+    // own origin (which does receive Lax cookies) and handle it on the normal path.
+    const formPostParams = getFormPostCallbackParams(fullReq);
+    if (formPostParams) {
+      const target = new URL(fullReq.url);
+      target.search = new URLSearchParams([...target.searchParams, ...formPostParams]).toString();
+      return {
+        statusCode: 303,
+        bodyType: "json",
+        body: {},
+        headers: {
+          location: [target.pathname + target.search],
+        },
+      };
+    }
+
     const innerState = query.state ?? (body as any)?.state ?? "";
 
     let outerInfoDB;
@@ -215,6 +265,20 @@ const handler = createSmartRouteHandler({
           KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
           KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
         ) {
+          // Only sign-in/sign-up flows are compliance sign-in attempts; a "link" flow is an
+          // already-signed-in user connecting another provider, so its failures must not inflate
+          // failed sign-in counts (matches the success and conflict-failure paths below).
+          if (type !== "link") {
+            logSignInAttemptInBackground(tenancy, {
+              outcome: "failed",
+              method: "oauth",
+              failureReason: KnownErrors.OAuthProviderAccessDenied.isInstance(error)
+                ? "provider_denied"
+                : "provider_unavailable",
+              oauthProvider: params.provider_id,
+              userId: projectUserId ?? null,
+            });
+          }
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
         }
         throw error;
@@ -286,6 +350,23 @@ const handler = createSmartRouteHandler({
 
       const oauthResponse = new OAuthResponse();
       const oauthServer = createOAuthServer({ apiUrl });
+      const logOAuthSuccess = (userId: string) => {
+        if (type !== "link") {
+          logSignInAttemptInBackground(tenancy, {
+            outcome: "success",
+            method: "oauth",
+            oauthProvider: provider.id,
+            email: userInfo.email ?? null,
+            userId,
+          });
+        }
+      };
+      // The sign-in isn't actually complete until oauthServer.authorize() finishes: it calls
+      // OAuthModel.saveToken() *after* authenticateHandler.handle() returns, and that's where TOTP
+      // MFA is enforced and refresh tokens are persisted. So we defer the success event until after
+      // authorize() resolves — otherwise an MFA challenge or a token-persistence failure would be
+      // recorded as a successful sign-in in the Compliance Center.
+      const successfulSignInUserIdRef: { current: string | null } = { current: null };
       try {
         await oauthServer.authorize(
           oauthRequest,
@@ -340,11 +421,17 @@ const handler = createSmartRouteHandler({
                   // Check if user already exists with this OAuth account
                   if (oldAccount) {
                     await storeTokens(oldAccount.id);
+                    if (oldAccount.projectUserId == null) {
+                      throw new HexclaveAssertionError("Existing OAuth account is missing its project user ID.");
+                    }
+                    successfulSignInUserIdRef.current = oldAccount.projectUserId;
 
                     return {
                       id: oldAccount.projectUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -366,10 +453,13 @@ const handler = createSmartRouteHandler({
                     });
 
                     await storeTokens(oauthAccountId);
+                    successfulSignInUserIdRef.current = linkedUserId;
                     return {
                       id: linkedUserId,
                       newUser: false,
                       afterCallbackRedirectUrl,
+                      email: userInfo.email ?? null,
+                      oauthProvider: provider.id,
                     };
                   }
 
@@ -420,14 +510,33 @@ const handler = createSmartRouteHandler({
                   );
 
                   await storeTokens(oauthAccountId);
+                  successfulSignInUserIdRef.current = newUserId;
 
                   return {
                     id: newUserId,
                     newUser: true,
                     afterCallbackRedirectUrl,
+                    email: userInfo.email ?? null,
+                    oauthProvider: provider.id,
                   };
                 } catch (error) {
                   if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
+                    if (type !== "link") {
+                      const failureReason = KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
+                        ? "contact_channel_already_used"
+                        : KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
+                          ? "already_connected_to_another_user"
+                          : null;
+                      if (failureReason != null) {
+                        logSignInAttemptInBackground(tenancy, {
+                          outcome: "failed",
+                          method: "oauth",
+                          failureReason,
+                          oauthProvider: params.provider_id,
+                          userId: projectUserId ?? null,
+                        });
+                      }
+                    }
                     redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl, afterCallbackRedirectUrl });
                   }
                   throw error;
@@ -454,6 +563,10 @@ const handler = createSmartRouteHandler({
           throw new StatusError(400, "Invalid scope requested. Please check the scopes you are requesting.");
         }
         throw error;
+      }
+
+      if (successfulSignInUserIdRef.current != null) {
+        logOAuthSuccess(successfulSignInUserIdRef.current);
       }
 
       return oauthResponseToSmartResponse(oauthResponse);

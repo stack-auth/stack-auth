@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, ListMagnifyingGlassIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, ListMagnifyingGlassIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, ShieldWarningIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -494,6 +494,20 @@ export const ALL_APPS_FRONTEND = {
         <p>Audit Log keeps a timeline of sensitive admin actions in your project.</p>
         <p>See who started or revoked impersonation sessions, with optional reasons attached for support context.</p>
         <p>Enable it when you want an append-only trail; disable it any time without changing existing auth behavior.</p>
+      </>
+    ),
+  },
+  compliance: {
+    icon: ShieldWarningIcon,
+    href: "compliance",
+    navigationItems: [
+      { displayName: "Compliance Center", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Compliance Center surfaces authentication, access-denial, and restricted-user activity.</p>
+        <p>Review security posture and access assignments, then export the Compliance Center data for further analysis.</p>
       </>
     ),
   },
