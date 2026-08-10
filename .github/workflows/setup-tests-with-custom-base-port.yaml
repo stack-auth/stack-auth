@@ -75,6 +75,17 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
+
+      # Same mitigation as in setup-tests.yaml, see the comment there. The
+      # readiness gate only proves that 6902 and 6946 accept connections, but
+      # build-packages:watch afterwards does a full non-watch tsdown pass that
+      # rewrites packages/*/dist, which restarts watch-based dev tasks such as
+      # bulldozer-js and briefly takes their ports down tens of seconds later.
+      # That caused the ECONNREFUSED failures in run 31351708006, all within
+      # the first minute of the suite.
+      - name: Allow development watchers to settle
+        run: sleep 60
+
       - name: Run tests (first attempt)
         id: run-tests-first-attempt
         continue-on-error: ${{ (github.head_ref || github.ref_name) != 'main' && (github.head_ref || github.ref_name) != 'dev' }}
