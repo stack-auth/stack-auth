@@ -497,6 +497,7 @@ describe("StackClientApp cross-domain auth", () => {
         tokenStore: "cookie",
         redirectMethod: "none",
         noAutomaticPrefetch: true,
+        automaticSideEffects: false,
         devTool: false,
       });
       const getBrowserCookieTokenStore = Reflect.get(clientApp, "_getBrowserCookieTokenStore");
