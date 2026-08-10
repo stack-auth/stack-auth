@@ -65,7 +65,8 @@ describe("LMDB low-level database", () => {
         expect(rawValue).toBeTruthy();
         expect(Buffer.byteLength(rawValue as Buffer)).toBeLessThan(large.length);
       } finally {
-        rawRoot.close();
+        // lmdb-js close() is async; await so the outer rm() does not race mapped files.
+        await rawRoot.close();
       }
     } finally {
       await rm(path, { recursive: true, force: true });
@@ -85,15 +86,14 @@ describe("LMDB low-level database", () => {
       const db2 = declareLmdbLowLevelDatabase({ path, dbId: "sticky", compression: false });
       try {
         const store2 = db2.declareKvStore("root");
-        // Must not silently round-trip the plaintext after compression was enabled.
-        let decoded: string | null = null;
-        let threw = false;
-        try {
-          decoded = text((await store2.get(buffer("big"))).buffer);
-        } catch {
-          threw = true;
+        // With compression off, lmdb-js still returns the on-disk bytes (LZ4 framing) —
+        // it does not throw. Assert we get opaque compressed payload, not plaintext.
+        const value = (await store2.get(buffer("big"))).buffer;
+        if (value == null) {
+          throw new Error("expected on-disk compressed bytes, got null");
         }
-        expect(threw || decoded !== large).toBe(true);
+        expect(value.byteLength).toBeLessThan(large.length);
+        expect(text(value)).not.toBe(large);
       } finally {
         await db2.close();
       }
