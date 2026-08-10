@@ -4,7 +4,8 @@ import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implemen
 import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./schema/index.js";
 import { subscription } from "./schema/schema-test-helpers.js";
-import { decodeVerificationCursor, verifyDataIntegrity } from "./verify-data-integrity.js";
+import { asHeapObject, collectSerializedHeapReferences, type PiledriverObject } from "../databases/piledriver/index.js";
+import { decodeVerificationCursor, verifyDataIntegrity, verifyGenericTable, type TablePosition } from "./verify-data-integrity.js";
 
 async function createDatabase() {
   const schema = createPaymentsSchema();
@@ -85,6 +86,16 @@ describe("verification cursor", () => {
     expect(result.errors).toContainEqual(expect.objectContaining({ code: "dangling_heap_reference" }));
   });
 
+  it("reports an unparseable heap entry", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const piledriver = declarePiledriverDatabase(lowLevel);
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+    await db.applyRemainingMigrations();
+    await lowLevel.declareKvDump("heap").insertAll([new Uint8Array([0xff]).buffer]);
+    const result = await verifyDataIntegrity(db, { step_count: 1_000 });
+    expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_heap_entry" }));
+  });
+
   it("reports an inaccessible pinned root as a verification error", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
     const piledriver = declarePiledriverDatabase(lowLevel);
@@ -97,5 +108,124 @@ describe("verification cursor", () => {
     }]);
     const result = await verifyDataIntegrity(db, { step_count: 1_000 });
     expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
+  });
+});
+
+function fakePosition(overrides: Partial<TablePosition> = {}): TablePosition {
+  return {
+    tableId: "fake",
+    groupKeyBase64: null,
+    rowSortKeyBase64: null,
+    rowIdentifiers: [],
+    rowIdentifierCheckSkipped: false,
+    groupComplete: false,
+    genericDone: false,
+    hookPosition: null,
+    ...overrides,
+  };
+}
+
+function fakeTable(groups: Array<{ groupKey: PiledriverObject, rows: Array<{ groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject }> }>) {
+  let groupsListed = false;
+  return {
+    tableId: "fake",
+    serializedTable: {},
+    inputTables: {},
+    table: {
+      async *listGroups({ range }: { range: { gt?: PiledriverObject } }) {
+        if (groupsListed) return;
+        groupsListed = true;
+        for (const group of groups) {
+          if (range.gt !== undefined) continue;
+          yield { groupKey: group.groupKey };
+        }
+      },
+      async *listRowsInGroup({ groupKey }: { groupKey: PiledriverObject }) {
+        const group = groups.find(candidate => candidate.groupKey === groupKey);
+        for (const row of group?.rows ?? []) yield { ...row, rowData: {} };
+      },
+      compareGroupKeys({ a, b }: { a: PiledriverObject, b: PiledriverObject }) {
+        return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+      },
+      compareSortKeys({ a, b }: { a: PiledriverObject, b: PiledriverObject }) {
+        return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+      },
+    },
+  };
+}
+
+describe("generic table corruption checks", () => {
+  it("does not treat inline array contents as heap references", () => {
+    expect(collectSerializedHeapReferences(["array", [["array", ["heap-reference", "literal-value"]]]])).toEqual([]);
+  });
+
+  it("reports a violation in a later group", async () => {
+    let listed = false;
+    const table = {
+      tableId: "later-group",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups() {
+          if (listed) return;
+          listed = true;
+          yield { groupKey: "a" };
+        },
+        async *listRowsInGroup() {},
+        compareGroupKeys({ a, b }: { a: PiledriverObject, b: PiledriverObject }) {
+          return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+        },
+        compareSortKeys() {
+          return 0;
+        },
+      },
+    };
+    const result = await verifyGenericTable(table, fakePosition({
+      groupKeyBase64: Buffer.from(JSON.stringify("b"), "utf8").toString("base64url"),
+      groupComplete: true,
+    }), 10);
+    expect(result.issues.map(issue => issue.code)).toContain("group_order");
+  });
+
+  it("reports group, row, enclosing-group, duplicate-id, and heap-key violations", async () => {
+    const cases = [
+      fakeTable([{ groupKey: "g", rows: [
+        { groupKey: "wrong", rowIdentifier: "a", rowSortKey: "b" },
+        { groupKey: "g", rowIdentifier: "a", rowSortKey: "a" },
+      ] }]),
+    ];
+    const findings = [];
+    for (const target of cases) {
+      const result = await verifyGenericTable(target, fakePosition(), 100);
+      findings.push(...result.issues.map(issue => issue.code));
+    }
+    expect(findings).toMatchInlineSnapshot(`
+      [
+        "row_group_mismatch",
+        "row_order",
+        "duplicate_row_identifier",
+      ]
+    `);
+    const heapResult = await verifyGenericTable(
+      fakeTable([{ groupKey: asHeapObject({}), rows: [] }]),
+      fakePosition(),
+      1,
+    );
+    expect(heapResult.issues.map(issue => issue.code)).toMatchInlineSnapshot(`
+      [
+        "heap_group_key",
+      ]
+    `);
+  });
+
+  it("keeps duplicate tracking bounded and reports the skipped check", async () => {
+    const rows = Array.from({ length: 300 }, (_, index) => ({
+      groupKey: "g",
+      rowIdentifier: `row-${index}`,
+      rowSortKey: String(index).padStart(3, "0"),
+    }));
+    const result = await verifyGenericTable(fakeTable([{ groupKey: "g", rows }]), fakePosition(), 1_000);
+    expect(result.skippedChecks).toContainEqual(expect.objectContaining({ code: "duplicate_row_identifier_check_skipped" }));
+    expect(result.position.rowIdentifiers.length).toBeLessThanOrEqual(256);
   });
 });

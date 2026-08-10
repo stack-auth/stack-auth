@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { asHeapObject, type PiledriverObject } from "../index.js";
 import { ConcatTreeList } from "./concat-tree-list.js";
 
 async function arrayFrom<T>(iterable: AsyncIterable<T>) {
@@ -117,5 +118,54 @@ describe("ConcatTreeList", () => {
     );
 
     expect(await arrayFrom(list)).toEqual([{ value: 1 }, { value: 2 }]);
+  });
+
+  it("reports wrong sizes and unbalanced child heights", async () => {
+    const leaf: PiledriverObject = { type: "leaf", entries: [["a", 1]] };
+    const nested: PiledriverObject = { type: "node", children: [{ ref: asHeapObject(leaf), size: 1 }] };
+    const root: PiledriverObject = {
+      type: "node",
+      children: [
+        { ref: asHeapObject(leaf), size: 999 },
+        { ref: asHeapObject(nested), size: 1 },
+      ],
+    };
+    const list = ConcatTreeList.fromPiledriverObject({
+      type: "ConcatTreeList",
+      root: { ref: asHeapObject(root), size: 1 },
+    });
+    const result = await list.verifyDataIntegrity({ stepBudget: 100, position: null });
+    expect(result.issues.map(issue => issue.code)).toMatchInlineSnapshot(`
+      [
+        "size",
+        "node_occupancy",
+        "child_height",
+        "size",
+      ]
+    `);
+  });
+
+  it("preserves findings across one-node continuations", async () => {
+    const leaf: PiledriverObject = { type: "leaf", entries: [["a", 1]] };
+    const root: PiledriverObject = {
+      type: "node",
+      children: [
+        { ref: asHeapObject(leaf), size: 999 },
+        { ref: asHeapObject(leaf), size: 1 },
+      ],
+    };
+    const list = ConcatTreeList.fromPiledriverObject({
+      type: "ConcatTreeList",
+      root: { ref: asHeapObject(root), size: 2 },
+    });
+    const expected = await list.verifyDataIntegrity({ stepBudget: 100, position: null });
+    const actual: string[] = [];
+    let position: string | null = null;
+    do {
+      const result = await list.verifyDataIntegrity({ stepBudget: 1, position });
+      actual.push(...result.issues.map(issue => issue.code));
+      position = result.nextPosition;
+    } while (position !== null);
+    expect(actual).toEqual(expected.issues.map(issue => issue.code));
   });
 });

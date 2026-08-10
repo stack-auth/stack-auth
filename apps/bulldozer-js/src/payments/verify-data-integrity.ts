@@ -26,7 +26,7 @@ export type VerificationIssue = {
 };
 
 type VerificationPhase = "root" | "tables" | "heap-scan" | "done";
-type TablePosition = {
+export type TablePosition = {
   tableId: string | null,
   groupKeyBase64: string | null,
   rowSortKeyBase64: string | null,
@@ -250,10 +250,10 @@ function isHeapObject(value: PiledriverObject): boolean {
   return typeof value === "object" && value !== null && isPiledriverHeapObjectSymbol in value;
 }
 
-async function verifyGenericTable(
+export async function verifyGenericTable(
   target: {
     tableId: string,
-    table: BulldozerTableImplementation,
+    table: Pick<BulldozerTableImplementation, "listGroups" | "listRowsInGroup" | "compareGroupKeys" | "compareSortKeys">,
     serializedTable: PiledriverObject,
     inputTables: Record<string, BulldozerTableImplementationInputTable>,
   },
@@ -269,6 +269,8 @@ async function verifyGenericTable(
   let rowIdentifierCheckSkipped = position.rowIdentifierCheckSkipped;
   let groupComplete = position.groupComplete;
   let lastCompletedGroup = position.groupComplete ? decodePosition(position.groupKeyBase64) : null;
+  let cursorGroupKeyBase64 = position.groupKeyBase64;
+  let cursorGroupComplete = position.groupComplete;
   while (true) {
     if (groupComplete) {
       lastCompletedGroup = groupKey;
@@ -287,6 +289,14 @@ async function verifyGenericTable(
       inputTables: target.inputTables,
       range,
     })) {
+      if (lastCompletedGroup !== null && target.table.compareGroupKeys({
+        serializedTable: target.serializedTable,
+        inputTables: target.inputTables,
+        a: candidate.groupKey,
+        b: lastCompletedGroup,
+      }) <= 0) {
+        issues.push({ phase: "tables", code: "group_order", message: "Groups are not strictly ordered", context: { tableId: target.tableId } });
+      }
       if (groupKey === null || target.table.compareGroupKeys({
         serializedTable: target.serializedTable,
         inputTables: target.inputTables,
@@ -305,7 +315,9 @@ async function verifyGenericTable(
       finished: true,
     };
     const groupKeyBase64 = encodePosition(group.groupKey);
-    const newGroup = position.groupKeyBase64 !== groupKeyBase64 || position.groupComplete;
+    const newGroup = cursorGroupKeyBase64 !== groupKeyBase64 || cursorGroupComplete;
+    cursorGroupKeyBase64 = groupKeyBase64;
+    cursorGroupComplete = false;
     if (newGroup) {
       if (stepsTaken >= budget) return {
         issues,

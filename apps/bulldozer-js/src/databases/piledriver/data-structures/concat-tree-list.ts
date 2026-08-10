@@ -41,6 +41,9 @@ function isConcatNode<T extends PiledriverObject>(value: unknown): value is Node
   }
   return value.type === "node" && "children" in value && Array.isArray(value.children) && value.children.every(isConcatChild);
 }
+function isConcatRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 export type ConcatTreeIntegrityResult = {
   issues: { code: string, message: string }[],
   stepsTaken: number,
@@ -121,7 +124,41 @@ export class ConcatTreeList<T extends PiledriverObject> implements AsyncIterable
     if (root === null) return { issues, stepsTaken: 0, nextPosition: null };
     const rootNode = await root.ref.get();
     if (!isConcatNode<T>(rootNode)) return { issues: [{ code: "invalid_node", message: "A concat tree child does not contain a valid node" }], stepsTaken: 1, nextPosition: null };
-    const stack: Frame[] = [{ child: root, node: rootNode, path: [], nextChild: 0, children: [] }];
+    const parsedPosition: unknown = options.position === null ? null : JSON.parse(options.position);
+    const savedFrames: unknown[] = parsedPosition === null
+      ? []
+      : isConcatRecord(parsedPosition) && Array.isArray(parsedPosition.frames)
+        ? parsedPosition.frames
+        : (() => { throw new Error("Invalid concat tree verification position"); })();
+    const frameFrom = async (child: Child, node: Node<T>, path: number[], saved: unknown): Promise<Frame> => {
+      const savedRecord = isConcatRecord(saved) ? saved : {};
+      const nextChild = typeof savedRecord.nextChild === "number" && Number.isSafeInteger(savedRecord.nextChild)
+        ? savedRecord.nextChild
+        : 0;
+      const children = Array.isArray(savedRecord.children) && savedRecord.children.every(value => isConcatRecord(value)
+        && typeof value.height === "number"
+        && typeof value.size === "number")
+        ? savedRecord.children.map(value => ({ height: value.height, size: value.size }))
+        : [];
+      return { child, node, path, nextChild, children };
+    };
+    const stack: Frame[] = [await frameFrom(root, rootNode, [], savedFrames[0])];
+    for (let index = 1; index < savedFrames.length; index++) {
+      const saved = savedFrames[index];
+      if (!isConcatRecord(saved) || !Array.isArray(saved.path) || !saved.path.every(value => Number.isSafeInteger(value) && value >= 0)) {
+        throw new Error("Invalid concat tree verification position");
+      }
+      const parent = stack[stack.length - 1];
+      const childIndex = saved.path[saved.path.length - 1];
+      if (childIndex === undefined || parent.node.type !== "node" || childIndex >= parent.node.children.length) {
+        throw new Error("Invalid concat tree verification position");
+      }
+      parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
+      const child = parent.node.children[childIndex];
+      const value = await child.ref.get();
+      if (!isConcatNode<T>(value)) throw new Error("Invalid concat tree verification position");
+      stack.push(await frameFrom(child, value, saved.path, saved));
+    }
     let stepsTaken = 0;
     while (stack.length > 0) {
       const frame = stack[stack.length - 1];
@@ -137,7 +174,7 @@ export class ConcatTreeList<T extends PiledriverObject> implements AsyncIterable
         continue;
       }
       if (stepsTaken >= options.stepBudget) {
-        return { issues, stepsTaken, nextPosition: JSON.stringify({ path: frame.path, nextChild: frame.nextChild }) };
+        return { issues, stepsTaken, nextPosition: JSON.stringify({ frames: stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children })) }) };
       }
       stepsTaken++;
       const node = frame.node;
