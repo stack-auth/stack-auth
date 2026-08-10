@@ -11,7 +11,7 @@ import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
+import { traceSpan } from "@/utils/telemetry";
 import { setTimeout as waitForTimeout } from "node:timers/promises";
 import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
@@ -105,11 +105,8 @@ export function handleApiRequest(handler: (req: Request, options: any, requestId
         method: req.method,
         ...(normalizedPath == null ? {} : { route: normalizedPath }),
       });
-      const routeSpanName = isSpanAggregationEnabled() && normalizedPath != null
-        ? `${req.method} ${normalizedPath}`
-        : "handling API request";
       return await traceSpan({
-        description: routeSpanName,
+        description: "handling API request",
         attributes: {
           "stack.request.request-id": requestId,
           "stack.request.method": req.method,

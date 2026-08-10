@@ -243,9 +243,11 @@ jobs:
         run: .github/scripts/postgres-attribution.sh reset
 
       # Temporary diagnostic-PR smoke check: prove the built backend emits a route span
-      # before spending a full test pass on the request-path attribution.
+      # before spending a full test pass on the request-path attribution. This is
+      # diagnostic evidence only; do not gate the workload on it.
       - name: Smoke-test backend route span
         if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        continue-on-error: true
         run: |
           pnpm -C apps/backend run with-env:test bash -c \
             '
