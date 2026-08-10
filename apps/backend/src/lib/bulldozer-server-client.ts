@@ -122,9 +122,9 @@ export type BulldozerManualTransactionsPage = {
 };
 
 /**
- * Pages the global `payments-manual-transactions` stored table. Cursor is the
- * last `rowIdentifier` from the previous page (same as `txnId` today via
- * `rowIdField: "txnId"`, but the seek key is the identifier).
+ * Pages Bulldozer GET /v1/manual-transactions (identifier-ordered derived view).
+ * Cursor is the last `rowIdentifier` / sort key from the previous page (same as
+ * `txnId` today via `rowIdField: "txnId"`).
  */
 export async function fetchBulldozerManualTransactionsPage(options: {
   limit?: number,

@@ -1357,19 +1357,10 @@ export function defineStoredTable(options: {
   };
   const emptyMap = new AugmentedTreeMap(mapOptions);
 
-  // Stored tables are keyed by string rowIdentifier (unlike derived tables, whose
-  // ranges apply to rowSortKey). Used for identifier keyset pagination (manual-txn export).
-  // Note: this means null sort-key pushdown from identity/flatMap (gte/lte: null) throws
-  // instead of scanning — no current payments caller pages that way; reject changing the
-  // generic contract further without a dedicated sorted view + migration.
-  const stringRowIdentifierBound = (value: PiledriverObject | undefined, boundName: string): string | undefined => {
-    if (value === undefined) return undefined;
-    if (typeof value !== "string") {
-      throw new Error(`Stored table listRowsInGroup ${boundName} must be a string rowIdentifier`);
-    }
-    return value;
-  };
-
+  // Stored tables always use a null sort key (`compareSortKeys` is constantly 0).
+  // Range bounds are sort-key ranges — same contract as derived tables / timefold —
+  // so identity/flatMap pushdown of null bounds keeps working. Identifier-ordered
+  // pagination belongs on a derived sort table (see payments-manual-transactions-sorted).
   const serialize = (map: typeof emptyMap) => ({
     version: 1,
     map: map.toPiledriverObject(),
@@ -1392,15 +1383,11 @@ export function defineStoredTable(options: {
       yield { groupKey: null };
     },
     async * listRowsInGroup({ serializedTable, groupKey, range }) {
+      if (groupKey !== null || !isInRange(null, range, () => 0) || range.limit === 0) return;
       const map = deserialize(serializedTable);
-      if (groupKey !== null || range.limit === 0) return;
       for await (const [rowIdentifier, rowData] of map.entries({
         reverse: range.reverse,
         limit: range.limit,
-        gt: stringRowIdentifierBound(range.gt, "gt"),
-        gte: stringRowIdentifierBound(range.gte, "gte"),
-        lt: stringRowIdentifierBound(range.lt, "lt"),
-        lte: stringRowIdentifierBound(range.lte, "lte"),
       })) {
         yield { groupKey: null, rowIdentifier, rowSortKey: null, rowData };
       }

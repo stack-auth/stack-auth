@@ -909,13 +909,14 @@ async function readOutstandingItemGrants(options: { tenancyId: string, customerT
 
 async function listManualTransactions(options: { limit: number, cursor: string | undefined }): Promise<{ rows: ManualTransactionRow[], nextCursor: string | null }> {
   const { snapshot } = await bulldozerDb.getSnapshot();
-  // Fetch one extra row so we can tell whether another page exists without a second round-trip.
+  // Page the identifier-sorted derived table (sort key === rowIdentifier). Stored
+  // tables keep a null sort key, so Range stays sort-key-only everywhere.
   const range = options.cursor !== undefined
     ? { gt: options.cursor, limit: options.limit + 1 }
     : { limit: options.limit + 1 };
   const rows: ManualTransactionRow[] = [];
   let lastReturnedRowIdentifier: string | undefined = undefined;
-  for await (const row of snapshot.listRowsInGroup({ tableId: schema.manualTransactions, groupKey: null, range })) {
+  for await (const row of snapshot.listRowsInGroup({ tableId: schema.manualTransactionsSorted, groupKey: null, range })) {
     rows.push(row.rowData as unknown as ManualTransactionRow);
     // Stop after the peek row, but do not treat it as the page cursor — `gt` must
     // resume after the last *returned* rowIdentifier or we skip that row.
