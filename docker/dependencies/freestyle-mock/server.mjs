@@ -861,17 +861,22 @@ const bridgedFetch = async (input, init) => {
       ),
       bodyBase64: bodyBytes && encodeBase64(bodyBytes),
     });
-    const makeResponse = () => {
+    const makeResponse = (url = request.url) => {
       const responseBody = bridged.status === 204 ||
         bridged.status === 205 ||
         bridged.status === 304
         ? undefined
         : decodeBase64(bridged.bodyBase64);
-      return new Response(responseBody, {
+      const response = new Response(responseBody, {
         status: bridged.status,
         statusText: bridged.statusText,
         headers: bridged.headers,
       });
+      Object.defineProperty(response, "url", {
+        configurable: true,
+        value: url,
+      });
+      return response;
     };
     const location = bridged.headers?.location;
     if (
