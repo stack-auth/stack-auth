@@ -1,0 +1,23 @@
+apps/backend/src/app/api/latest/analytics/envelope/route.ts
+  s_737ddf173f162d::t_72531018c32b56 17-20,24,33-34,52-75,80,96-98,107,179-218,297,319
+packages/template/src/lib/hexclave-app/apps/implementations/otel-web-vitals.test.ts
+  s_737ddf173f162d::t_068d82094f62fc 1-43
+packages/template/src/lib/hexclave-app/apps/implementations/web-vitals.ts
+  s_737ddf173f162d::t_d5bd9d52e0f818 1-2,4,6-8,13-14,32-35,52-131,155-157,159,174-196,260,269,277,301,309,320,326-329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8f952951c2fed9957f3da51ed97cbb97837beb9d",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
