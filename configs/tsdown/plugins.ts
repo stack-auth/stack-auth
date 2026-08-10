@@ -11,20 +11,14 @@ export const createBasePlugin = (_options: {}): Rolldown.Plugin => {
 
   return {
     name: 'stackframe tsdown plugin (private)',
-    buildStart(options: Rolldown.NormalizedInputOptions) {
-      // Workspace builds run from the monorepo root, but Rolldown's per-config cwd is the package root.
-      const packageJson: unknown = JSON.parse(fs.readFileSync(`${options.cwd}/package.json`, 'utf-8'));
-      if (
-        typeof packageJson !== 'object'
-        || packageJson == null
-        || !('name' in packageJson)
-        || typeof packageJson.name !== 'string'
-        || !('version' in packageJson)
-        || typeof packageJson.version !== 'string'
-      ) {
-        throw new Error(`Expected ${options.cwd}/package.json to include string name and version fields.`);
+    buildStart({ cwd }: Rolldown.NormalizedInputOptions) {
+      // Workspace builds run tsdown from the monorepo root, so the process's cwd would stamp every
+      // package with the root package.json; Rolldown's per-config cwd is the package being built.
+      const { name, version }: { name?: unknown, version?: unknown } = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf-8'));
+      if (typeof name !== 'string' || typeof version !== 'string') {
+        throw new Error(`Expected ${cwd}/package.json to have a string name and version.`);
       }
-      packageVersionLabel = `js ${packageJson.name}@${packageJson.version}`;
+      packageVersionLabel = `js ${name}@${version}`;
     },
     transform(code: string, id: string) {
       if (!SOURCE_FILE_PATTERN.test(id)) {
