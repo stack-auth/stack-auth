@@ -223,6 +223,10 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       : isTreeRecord(positionValue) && Array.isArray(positionValue.frames)
         ? positionValue.frames
         : (() => { throw new Error("Invalid tree verification position"); })();
+    let stepsTaken = 0;
+    const framePosition = () => JSON.stringify({
+      frames: stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children })),
+    });
     const loadFrame = async (child: Child<MultiKey<Key, EntryId>, Augmentation>, path: number[], saved: unknown): Promise<Frame> => {
       const node = await this.node(child.ref);
       if (node === null) throw new Error("Missing persisted tree node");
@@ -248,6 +252,8 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         : [];
       return { child, node, path, nextChild, children: savedChildren };
     };
+    if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: JSON.stringify({ frames: savedFrames }) };
+    stepsTaken++;
     let frame = await loadFrame(this.root, [], savedFrames[0]);
     stack.push(frame);
     for (let index = 1; index < savedFrames.length; index++) {
@@ -259,23 +265,21 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       const childIndex = saved.path[saved.path.length - 1];
       if (childIndex === undefined || childIndex >= parent.node.children.length) throw new Error("Invalid tree verification position");
       parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
+      if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: framePosition() };
+      stepsTaken++;
       stack.push(await loadFrame(parent.node.children[childIndex], saved.path, saved));
     }
-    let stepsTaken = 0;
     while (stack.length > 0) {
+      if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: framePosition() };
       frame = stack[stack.length - 1];
       if (frame.nextChild < frame.node.children.length) {
         const childIndex = frame.nextChild;
         frame.nextChild++;
         const child = frame.node.children[childIndex];
+        stepsTaken++;
         stack.push(await loadFrame(child, [...frame.path, childIndex], undefined));
         continue;
       }
-      if (stepsTaken >= options.stepBudget) {
-        const frames = stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children }));
-        return { issues, stepsTaken, nextPosition: JSON.stringify({ frames }) };
-      }
-      stepsTaken++;
       const node = frame.node;
       const maxEntries = this.arity() - 1;
       if (frame.child.entryCount !== node.entries.length) issues.push({ code: "entry_count", message: "A tree child entry count does not match its node" });
