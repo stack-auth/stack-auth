@@ -200,8 +200,6 @@ jobs:
           log-output-if: true
       - name: Start run-email-queue in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
-        env:
-          HEXCLAVE_SPAN_AGGREGATION: "true"
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
@@ -211,8 +209,6 @@ jobs:
           log-output-if: true
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
-        env:
-          HEXCLAVE_SPAN_AGGREGATION: "true"
         with:
           run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
@@ -229,7 +225,15 @@ jobs:
         run: |
           .github/scripts/process-attribution.sh reset || true
           pnpm -C apps/backend run with-env:test bash -c \
-            'curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CRON_SECRET" "http://localhost:8102/api/latest/internal/span-aggregation?reset=true" >/dev/null' || true
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if ! curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true" >/dev/null
+              then
+                echo "Span aggregation reset failed (backend port ${backend_port})." >&2
+              fi
+            '
 
       - name: Reset PostgreSQL statement attribution
         continue-on-error: true
@@ -250,7 +254,17 @@ jobs:
         run: |
           .github/scripts/process-attribution.sh snapshot || true
           pnpm -C apps/backend run with-env:test bash -c \
-            'curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CRON_SECRET" "http://localhost:8102/api/latest/internal/span-aggregation?reset=true" || true'
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if response="$(curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+              then
+                printf "%s\n" "$response" | jq .
+              else
+                echo "Span aggregation snapshot failed (backend port ${backend_port})." >&2
+              fi
+            '
 
       # Temporary diagnostic-PR exception: keep the repeat passes enabled on this branch
       # so the span and process snapshots can be compared before this change merges.
@@ -270,7 +284,17 @@ jobs:
         run: |
           .github/scripts/process-attribution.sh snapshot || true
           pnpm -C apps/backend run with-env:test bash -c \
-            'curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CRON_SECRET" "http://localhost:8102/api/latest/internal/span-aggregation?reset=true" || true'
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if response="$(curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+              then
+                printf "%s\n" "$response" | jq .
+              else
+                echo "Span aggregation snapshot failed (backend port ${backend_port})." >&2
+              fi
+            '
 
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
@@ -288,7 +312,17 @@ jobs:
         run: |
           .github/scripts/process-attribution.sh snapshot || true
           pnpm -C apps/backend run with-env:test bash -c \
-            'curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CRON_SECRET" "http://localhost:8102/api/latest/internal/span-aggregation?reset=true" || true'
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if response="$(curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+              then
+                printf "%s\n" "$response" | jq .
+              else
+                echo "Span aggregation snapshot failed (backend port ${backend_port})." >&2
+              fi
+            '
 
       - name: Run perf tests
         if: matrix.freestyle-mode == 'mock'

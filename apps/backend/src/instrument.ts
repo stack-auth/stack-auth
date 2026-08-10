@@ -71,7 +71,7 @@ export function registerBackendInstrumentation() {
     normalizeDepth: sentryBaseConfig.normalizeDepth,
     maxValueLength: sentryBaseConfig.maxValueLength,
     debug: sentryBaseConfig.debug,
-    tracesSampleRate: plan.tracesSampleRate,
+    tracesSampleRate: spanAggregationEnabled ? 1 : plan.tracesSampleRate,
     openTelemetryInstrumentations,
     openTelemetrySpanProcessors,
     dsn: sentryDsn,
