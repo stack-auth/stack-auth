@@ -71,10 +71,8 @@ jobs:
           dev_log="$RUNNER_TEMP/hexclave-dev.untracked.log"
           (
             set +e
-            set -o pipefail
-            pnpm run dev 2>&1 | tee "$dev_log"
-            dev_exit_code="${PIPESTATUS[0]}"
-            echo "$dev_exit_code" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
+            pnpm run dev >"$dev_log" 2>&1
+            echo "$?" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
           ) &
           pnpm exec wait-on --timeout 120000 http://localhost:8102 tcp:localhost:8146
 
@@ -94,6 +92,22 @@ jobs:
       - name: Allow development watchers to settle
         run: sleep 60
 
+      # The cause of missing per-task output in some historical runs is still
+      # unexplained. Snapshot the log before tests so a future run shows
+      # whether the output was absent before testing began or disappeared
+      # later.
+      - name: Snapshot development service diagnostics before tests
+        run: |
+          dev_log="$RUNNER_TEMP/hexclave-dev.untracked.log"
+          if [[ -f "$dev_log" ]]; then
+            echo "Development service log size: $(wc -c < "$dev_log") bytes"
+            echo "Development service log lines: $(wc -l < "$dev_log")"
+            echo "Development service log excerpt (last 200 lines):"
+            tail -n 200 "$dev_log"
+          else
+            echo "Development service log does not exist yet"
+          fi
+
       - name: Run tests (first attempt)
         id: run-tests-first-attempt
         continue-on-error: ${{ (github.head_ref || github.ref_name) != 'main' && (github.head_ref || github.ref_name) != 'dev' }}
@@ -107,7 +121,8 @@ jobs:
       - name: Print development service diagnostics
         # Keep the stream log visible even when a retry turns a transient test
         # failure into a green job; that is when the first failure is easiest
-        # to diagnose.
+        # to diagnose. The log size and line count distinguish a genuinely
+        # sparse log from output that was only truncated in this step.
         if: ${{ always() }}
         run: |
           if [[ -f "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt" ]]; then
@@ -115,6 +130,8 @@ jobs:
           else
             echo "Development service command is still running; a child service may have exited"
           fi
+          echo "Development service log size: $(wc -c < "$RUNNER_TEMP/hexclave-dev.untracked.log") bytes"
+          echo "Development service log lines: $(wc -l < "$RUNNER_TEMP/hexclave-dev.untracked.log")"
           tail -n 2000 "$RUNNER_TEMP/hexclave-dev.untracked.log"
 
       - name: Upload development service logs
