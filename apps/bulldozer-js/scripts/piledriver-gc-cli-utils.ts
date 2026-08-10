@@ -4,7 +4,7 @@ export function parsePiledriverGcTimestamp(value: string) {
   const isEpochMillis = /^\d+$/.test(value);
   const isoMatch = isEpochMillis ? null : ISO_8601_WITH_TIMEZONE.exec(value);
   if (!isEpochMillis && isoMatch === null) {
-    throw new Error("GC cutoff must be an ISO-8601 timestamp with a timezone or non-negative epoch milliseconds");
+    throw new Error("GC cutoff must be YYYY-MM-DDTHH:mm:ss[.fraction]Z or ±HH:mm, or non-negative epoch milliseconds");
   }
   if (isoMatch !== null) {
     const year = Number(isoMatch[1]);
@@ -28,7 +28,7 @@ export function parsePiledriverGcTimestamp(value: string) {
   }
   const millis = isEpochMillis ? Number(value) : Date.parse(value);
   if (!Number.isSafeInteger(millis) || millis < 0 || Number.isNaN(new Date(millis).getTime())) {
-    throw new Error("GC cutoff must be an ISO-8601 timestamp with a timezone or non-negative epoch milliseconds representable by JavaScript Date");
+    throw new Error("GC cutoff must be YYYY-MM-DDTHH:mm:ss[.fraction]Z or ±HH:mm, or non-negative epoch milliseconds representable by JavaScript Date");
   }
   return millis;
 }

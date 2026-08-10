@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DatabaseSeq } from "../../index.js";
-import { LowLevelDatabase, LowLevelKvStore } from "../index.js";
+import { LowLevelDatabase, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./instant-availability.js";
 
 const textEncoder = new TextEncoder();
@@ -196,6 +196,80 @@ function createReorderingSetDatabase() {
   };
 }
 
+function createDelayedSetImmediateInsertDatabase() {
+  const committed = new Map<string, ArrayBuffer>();
+  committed.set("earlier", buffer("set"));
+  const initialSeq = ["delayed-set", "initial"] as unknown as DatabaseSeq;
+  let releaseSet!: () => void;
+  let setStarted = false;
+  const pendingSet = new Promise<void>(resolve => {
+    releaseSet = resolve;
+  });
+  const seqToPromise = new Map<DatabaseSeq, Promise<void>>([[initialSeq, Promise.resolve()]]);
+  const store: LowLevelKvStore & LowLevelKvDump = {
+    async get(key) {
+      return { buffer: committed.get(text(key)!)?.slice(0) ?? null, seq: initialSeq };
+    },
+    async listEntries(options) {
+      const startAfter = options?.startAfter === undefined ? undefined : text(options.startAfter);
+      if (startAfter === null) throw new Error("Expected a non-null pagination cursor");
+      const entries = [...committed.entries()]
+        .filter(([key]) => startAfter === undefined || key > startAfter)
+        .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+        .map(([key, value]) => ({ key: buffer(key), value: value.slice(0) }));
+      const limit = options?.limit ?? 1000;
+      return { entries: entries.slice(0, limit), hasMore: entries.length > limit };
+    },
+    async setAll(entries) {
+      setStarted = true;
+      const seq = ["delayed-set", "set"] as unknown as DatabaseSeq;
+      const available = pendingSet.then(() => {
+        for (const { key, value } of entries) committed.set(text(key)!, value.slice(0));
+      });
+      seqToPromise.set(seq, available);
+      return { seq };
+    },
+    async deleteAll(keys) {
+      setStarted = true;
+      const seq = ["delayed-set", "delete"] as unknown as DatabaseSeq;
+      const available = pendingSet.then(() => {
+        for (const key of keys) committed.delete(text(key)!);
+      });
+      seqToPromise.set(seq, available);
+      return { seq };
+    },
+    async insertAll(values, options) {
+      const keys = values.map((_, index) => buffer(`inserted-${index}`));
+      await seqToPromise.get(options?.requiresSeq ?? initialSeq);
+      for (const [index, key] of keys.entries()) committed.set(text(key)!, values[index].slice(0));
+      const seq = ["delayed-set", "insert"] as unknown as DatabaseSeq;
+      seqToPromise.set(seq, Promise.resolve());
+      return { keys, seq };
+    },
+    async compareAndSet() {
+      throw new Error("not implemented");
+    },
+  };
+  const db = {
+    getDebugInfo: () => ({ backend: "delayed-set-immediate-insert", committed, initialSeq }),
+    declareKvStore: () => store,
+    declareKvDump: () => store,
+    waitUntilAvailable: async seq => await seqToPromise.get(seq),
+    waitUntilDurable: async seq => await seqToPromise.get(seq),
+    waitUntilReplicated: async seq => await seqToPromise.get(seq),
+    combineSeqs: (...seqs) => seqs[seqs.length - 1] ?? initialSeq,
+    close: async () => {},
+    initialSeq,
+  } satisfies LowLevelDatabase;
+  return {
+    db,
+    waitForSetStarted: async () => {
+      while (!setStarted) await Promise.resolve();
+    },
+    releaseSet,
+  };
+}
+
 describe("instant-availability low-level database", () => {
   it("serves pending writes from memory before the wrapped database is available", async () => {
     const slow = createSlowSetDatabase();
@@ -234,6 +308,28 @@ describe("instant-availability low-level database", () => {
 
     slow.releaseSet();
     expect((await listing).entries.map(entry => [text(entry.key), text(entry.value)])).toEqual([["key", "pending"]]);
+  });
+
+  it("chains insertAll behind an earlier pending deleteAll before listing", async () => {
+    const delayed = createDelayedSetImmediateInsertDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(delayed.db, { dbId: "instant-insert-chain-test" });
+    const store = db.declareKvDump("store");
+    await store.deleteAll([buffer("earlier")]);
+    await delayed.waitForSetStarted();
+
+    const insert = store.insertAll([buffer("insert")]);
+    const listing = store.listEntries();
+    let listed = false;
+    const listedResult = listing.then(result => {
+      listed = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(listed).toBe(false);
+
+    delayed.releaseSet();
+    await insert;
+    expect((await listedResult).entries.map(entry => [text(entry.key), text(entry.value)])).toEqual([["inserted-0", "insert"]]);
   });
 
   it("does not block a range read on another store's pending write", async () => {

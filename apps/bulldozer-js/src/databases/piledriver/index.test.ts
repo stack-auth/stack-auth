@@ -226,6 +226,9 @@ describe("PiledriverDatabase", () => {
     const state = await lowLevel.declareKvStore("piledriver-gc-state-v3").get(new TextEncoder().encode("state").buffer);
     if (state.buffer === null) throw new Error("Expected initialized Piledriver GC state");
     const stateGeneration = Reflect.get(JSON.parse(new TextDecoder().decode(state.buffer)), "generation");
+    if (typeof stateGeneration !== "string" || stateGeneration.length === 0) {
+      throw new Error("Expected initialized Piledriver GC state to contain a generation");
+    }
     const metadata = await lowLevel.declareKvStore("piledriver-gc-reference-metadata-v3").listEntries();
     expect(metadata.entries).toHaveLength(2);
     expect(new Set(metadata.entries.map(entry => Reflect.get(

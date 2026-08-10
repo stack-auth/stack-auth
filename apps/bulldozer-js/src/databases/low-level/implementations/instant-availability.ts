@@ -243,7 +243,8 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const valuesForWrapped = values.map(cloneArrayBuffer);
-            const requiresSeq = await getUnderlyingSeq(insertOptions?.requiresSeq);
+            const previousWriteSeq = lastWriteSeq;
+            const requiresSeq = await chainRequiresSeq(previousWriteSeq, await getUnderlyingSeq(insertOptions?.requiresSeq));
             const { keys, seq: underlyingInsertSeq } = await wrappedStore.insertAll(valuesForWrapped, { requiresSeq });
             const seq = createSeq(Promise.resolve(underlyingInsertSeq));
             lastWriteSeq = seq;

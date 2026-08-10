@@ -106,7 +106,8 @@ describe("Bulldozer", () => {
     const piledriver = {
       ...underlying,
       async collectGarbage(cutoffTimestampMillis: number, maxObjects?: number) {
-        markCollectionStarted?.();
+        if (markCollectionStarted === undefined) throw new Error("Collection-start signal was not initialized");
+        markCollectionStarted();
         await collectionGate;
         return await underlying.collectGarbage(cutoffTimestampMillis, maxObjects);
       },
@@ -120,10 +121,8 @@ describe("Bulldozer", () => {
     const collection = db.collectPiledriverGarbage(0);
     await collectionStarted;
     const closing = db.close();
-    expect(await Promise.race([
-      closing.then(() => "closed"),
-      Promise.resolve("pending"),
-    ])).toBe("pending");
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(markCollectionStarted).toBeDefined();
     expect(closeCalls).toBe(0);
 
     if (releaseCollection === undefined) throw new Error("Collection gate was not initialized");
