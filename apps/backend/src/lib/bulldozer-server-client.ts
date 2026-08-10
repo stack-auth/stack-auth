@@ -71,39 +71,39 @@ export async function fetchBulldozerServerJson<T>(options: {
   path: string,
   body?: unknown,
 }): Promise<T> {
-  let response: Response | undefined;
-  for (let attempt = 0; attempt < BULLDOZER_FETCH_MAX_ATTEMPTS; attempt++) {
-    try {
-      response = await fetch(`${getBulldozerServerBaseUrl()}${options.path}`, {
-        method: options.method,
-        headers: {
-          "content-type": "application/json",
-          "authorization": `Bearer ${getEnvVariable("HEXCLAVE_BULLDOZER_SERVER_SECRET")}`,
-        },
-        ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
-      });
-      break;
-    } catch (error) {
-      if (!isRetriableBulldozerFetchError(error) || attempt === BULLDOZER_FETCH_MAX_ATTEMPTS - 1) {
-        throw error;
+  let attempt = 0;
+  let firstRetryError: unknown;
+  const response = await (async (): Promise<Response> => {
+    while (true) {
+      attempt++;
+      try {
+        const response = await fetch(`${getBulldozerServerBaseUrl()}${options.path}`, {
+          method: options.method,
+          headers: {
+            "content-type": "application/json",
+            "authorization": `Bearer ${getEnvVariable("HEXCLAVE_BULLDOZER_SERVER_SECRET")}`,
+          },
+          ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
+        });
+
+        if (attempt > 1) {
+          captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Bulldozer server request recovered after connect-phase failures", {
+            cause: firstRetryError,
+            attempts: attempt,
+            method: options.method,
+            path: options.path,
+          }));
+        }
+        return response;
+      } catch (error) {
+        if (!isRetriableBulldozerFetchError(error) || attempt >= BULLDOZER_FETCH_MAX_ATTEMPTS) {
+          throw error;
+        }
+        firstRetryError ??= error;
+        await new Promise((resolve) => setTimeout(resolve, BULLDOZER_FETCH_RETRY_DELAYS_MS[attempt - 1]));
       }
-
-      captureError("bulldozer-server-connect-retry", new HexclaveAssertionError("Retrying a bulldozer server request after a connect-phase failure", {
-        cause: error,
-        attempt: attempt + 1,
-        method: options.method,
-        path: options.path,
-      }));
-      await new Promise((resolve) => setTimeout(resolve, BULLDOZER_FETCH_RETRY_DELAYS_MS[attempt]));
     }
-  }
-
-  if (response === undefined) {
-    throw new HexclaveAssertionError("Bulldozer server request did not produce a response", {
-      method: options.method,
-      path: options.path,
-    });
-  }
+  })();
 
   if (!response.ok) {
     const responseText = await response.text();

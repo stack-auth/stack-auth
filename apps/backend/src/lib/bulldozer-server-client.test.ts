@@ -1,9 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchBulldozerServerJson, isRetriableBulldozerFetchError } from "./bulldozer-server-client";
 
 function errorWithCode(code: string): Error & { code: string } {
   return Object.assign(new Error(code), { code });
 }
+
+beforeEach(() => {
+  vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_SECRET", "test-secret");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 describe("isRetriableBulldozerFetchError", () => {
   it("accepts nested connect-phase errors", () => {
@@ -45,7 +55,6 @@ describe("fetchBulldozerServerJson", () => {
 
     await expect(resultPromise).resolves.toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 
   it("does not retry an HTTP error", async () => {
