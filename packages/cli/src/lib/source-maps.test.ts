@@ -5,7 +5,16 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prepareArtifacts, registerSourceMapsCommand } from "../commands/source-maps.js";
+import {
+  createSourceMapManifest,
+  createSourceMapUploadPlan,
+  prepareArtifacts,
+  registerSourceMapsCommand,
+  SourceMapUploadHttpError,
+  SourceMapUploadProtocolError,
+  uploadPreparedSourceMaps,
+  type SourceMapUploadRequest,
+} from "../commands/source-maps.js";
 import { CliError } from "./errors.js";
 import {
   appendDebugIdSnippet,
@@ -300,6 +309,10 @@ describe("readInlineSourceMap", () => {
     expect(readInlineSourceMap("x\n//# sourceMappingURL=data:application/json,%7B%22version%22%3A3%7D\n")).toBe("{\"version\":3}");
     expect(readInlineSourceMap("x\n//# sourceMappingURL=a.js.map\n")).toBeNull();
   });
+
+  it("rejects malformed percent encoding with a typed CLI error", () => {
+    expect(() => readInlineSourceMap("x\n//# sourceMappingURL=data:application/json,%ZZ\n")).toThrow(CliError);
+  });
 });
 
 describe("deriveDebugId", () => {
@@ -357,6 +370,12 @@ describe("prepareSourceMapForUpload", () => {
   it("rejects something that is not a source map", () => {
     expect(() => prepareSourceMapForUpload({ version: 3 }, DEBUG_ID_A, options)).toThrow(CliError);
     expect(() => prepareSourceMapForUpload("nope", DEBUG_ID_A, options)).toThrow(CliError);
+    expect(() => prepareSourceMapForUpload({ version: 2, mappings: "AAAA" }, DEBUG_ID_A, options)).toThrow(/version 3/);
+  });
+
+  it("rejects a source-map debug ID that conflicts with the bundle metadata", () => {
+    expect(() => prepareSourceMapForUpload({ version: 3, mappings: "AAAA", debug_id: DEBUG_ID_B }, DEBUG_ID_A, options))
+      .toThrow(/does not match bundle debug id/);
   });
 });
 
@@ -473,6 +492,98 @@ describe("prepareArtifacts (the whole --dry-run path)", () => {
     expect(second.artifacts[0].debugId).toBe(first.artifacts[0].debugId);
     expect(fs.readFileSync(bundlePath, "utf-8")).toBe(afterFirst);
   });
+
+  it("rejects conflicting duplicate debug IDs before rewriting any bundle", () => {
+    const dir = makeTempDir();
+    const firstPath = writeFile(dir, "static/a.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "a.js.map"), DEBUG_ID_A));
+    const secondPath = writeFile(dir, "static/b.js", appendDebugIdSnippet(FIXTURE_BUNDLE.replace("minified-chunk.js.map", "b.js.map"), DEBUG_ID_A));
+    writeFile(dir, "static/a.js.map", FIXTURE_MAP_TEXT);
+    writeFile(dir, "static/b.js.map", FIXTURE_MAP_TEXT);
+    const beforeFirst = fs.readFileSync(firstPath, "utf-8");
+    const beforeSecond = fs.readFileSync(secondPath, "utf-8");
+
+    expect(() => prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }))
+      .toThrow(/Duplicate debug ID/);
+    expect(fs.readFileSync(firstPath, "utf-8")).toBe(beforeFirst);
+    expect(fs.readFileSync(secondPath, "utf-8")).toBe(beforeSecond);
+  });
+
+  it("does not partially rewrite earlier bundles when a later map is invalid", () => {
+    const dir = makeTempDir();
+    const validPath = writeFile(dir, "static/a.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "a.js.map"));
+    writeFile(dir, "static/a.js.map", FIXTURE_MAP_TEXT);
+    writeFile(dir, "static/z.js", "console.log(1)\n//# sourceMappingURL=z.js.map\n");
+    writeFile(dir, "static/z.js.map", "not-json");
+    const before = fs.readFileSync(validPath, "utf-8");
+
+    expect(() => prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }))
+      .toThrow(/not valid JSON/);
+    expect(fs.readFileSync(validPath, "utf-8")).toBe(before);
+  });
+
+  it("emits deterministic release and debug-ID metadata without absolute paths", () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const result = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: true });
+    const manifest = createSourceMapManifest(result.artifacts, "release-2026-08-06", "production", {
+      projectId: "project-test",
+      dist: "web",
+    });
+
+    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest.projectId).toBe("project-test");
+    expect(manifest.release).toBe("release-2026-08-06");
+    expect(manifest.dist).toBe("web");
+    expect(manifest.environment).toBe("production");
+    expect(manifest.artifacts[0]?.codeFile).toBe("main.js");
+    expect(manifest.artifacts[0]?.sourceMapFile).toBe("main.js.map");
+    expect(manifest.artifacts[0]?.bundleSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(manifest)).not.toContain(dir);
+  });
+
+  it("creates a stable project-scoped upload plan and rejects a distribution without a release", () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: true }).artifacts;
+    const requestInput = {
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://app.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      getAuthHeaders: async () => ({}),
+      release: "release-2026-08-06",
+      dist: "web",
+      environment: "production",
+      artifacts,
+    };
+    const first = createSourceMapUploadPlan(requestInput);
+    const second = createSourceMapUploadPlan({ ...requestInput, artifacts: [...artifacts].reverse() });
+    expect(first.manifestJson).toBe(second.manifestJson);
+    expect(first.manifestSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.manifest.projectId).toBe("project-test");
+    expect(() => createSourceMapUploadPlan({ ...requestInput, release: null, dist: "web" })).toThrow(/Distribution.*release/);
+  });
+
+  it("rejects traversal and duplicate code-file identities before upload", () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifact = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: true }).artifacts
+      .find((candidate) => candidate.bundleRelativePath === "main.js");
+    if (artifact == null) throw new Error("fixture did not produce an artifact");
+
+    expect(() => createSourceMapManifest([{ ...artifact, bundleRelativePath: "../main.js" }], null, null))
+      .toThrow(/relative|\.\./i);
+    expect(() => createSourceMapManifest([
+      artifact,
+      { ...artifact, debugId: DEBUG_ID_B },
+    ], null, null)).toThrow(/Duplicate artifact path/);
+  });
 });
 
 describe("hexclave sourcemaps upload — command wiring", () => {
@@ -516,5 +627,250 @@ describe("hexclave sourcemaps upload — command wiring", () => {
     writeFile(dir, ".next/static/chunks/main.js", "console.log(1)\n");
     writeFile(dir, ".next/app-build-manifest.json", JSON.stringify({ pages: { "/": [{ src: "a.js", integrity: "sha384-abc" }] } }));
     await expect(run(["sourcemaps", "upload", path.join(dir, ".next"), "--dry-run"])).rejects.toThrow(/subresource integrity/i);
+  });
+
+  it("registers, uploads each prepared object, and finalizes with stable idempotency headers", async () => {
+    const dir = makeTempDir();
+    const bundlePath = writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }).artifacts;
+    const artifact = artifacts.at(0);
+    if (artifact === undefined) throw new Error("fixture did not produce an artifact");
+    const auth = {
+      apiUrl: "https://api.example.com",
+      dashboardUrl: "https://app.example.com",
+      publishableClientKey: "pck_test",
+      projectId: "project-test",
+      secretServerKey: "ssk_test",
+    };
+    const requestInput = {
+      auth,
+      getAuthHeaders: async () => ({
+        "x-stack-access-type": "server",
+        "x-stack-project-id": "project-test",
+        "x-stack-secret-server-key": "ssk_test",
+      }),
+      release: "release-2026-08-06",
+      dist: "web",
+      environment: "production",
+      artifacts,
+    };
+    const plan = createSourceMapUploadPlan(requestInput);
+    const fetchCalls: Array<{ input: string | URL | Request, init: RequestInit | undefined }> = [];
+    const responses: Response[] = [
+      new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "registered",
+        finalize_path: "/api/latest/source-maps/artifacts/finalize",
+        artifacts: [{
+          debug_id: artifact.debugId,
+          code_file: artifact.bundleRelativePath,
+          source_map_file: artifact.sourceMapRelativePath,
+          bundle_object_key: "bundles/bundle.js",
+          bundle_upload_url: "https://storage.example/bundle",
+          source_map_object_key: "maps/map.json.gz",
+          source_map_upload_url: "https://storage.example/map",
+          already_finalized: false,
+        }],
+      }), { status: 201 }),
+      new Response(null, { status: 200 }),
+      new Response(null, { status: 200 }),
+      new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "finalized",
+        uploaded: [artifact.debugId],
+        already_uploaded: [],
+      }), { status: 200 }),
+    ];
+    const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>(async (input, init) => {
+      fetchCalls.push({ input, init });
+      const response = responses.shift();
+      if (response === undefined) throw new Error("unexpected fetch call");
+      return response;
+    });
+    const request: SourceMapUploadRequest = {
+      ...requestInput,
+      plan,
+      transport: { fetch: fetchMock, sleep: async () => undefined },
+    };
+
+    const result = await uploadPreparedSourceMaps(request);
+
+    expect(result).toEqual({ uploaded: [artifact.debugId], alreadyUploaded: [], storageNotConfigured: false });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(String(fetchCalls[0]?.input)).toBe("https://api.example.com/api/latest/source-maps/artifacts");
+    const registrationHeaders = new Headers(fetchCalls[0]?.init?.headers);
+    expect(registrationHeaders.get("idempotency-key")).toBe(plan.manifestSha256);
+    expect(registrationHeaders.get("x-stack-secret-server-key")).toBe("ssk_test");
+    expect(String(fetchCalls[1]?.input)).toBe("https://storage.example/bundle");
+    expect(String(fetchCalls[2]?.input)).toBe("https://storage.example/map");
+    const bundleHeaders = new Headers(fetchCalls[1]?.init?.headers);
+    expect(bundleHeaders.get("content-type")).toBe("application/javascript");
+    expect(bundleHeaders.get("content-length")).toBe(String(artifact.bundleBytes));
+    expect(bundleHeaders.get("x-stack-secret-server-key")).toBeNull();
+    const mapHeaders = new Headers(fetchCalls[2]?.init?.headers);
+    expect(mapHeaders.get("content-type")).toBe("application/json");
+    expect(mapHeaders.get("content-encoding")).toBe("gzip");
+    expect(mapHeaders.get("content-length")).toBe(String(artifact.sourceMapGzipped.length));
+    const uploadedBundle = new Uint8Array(await new Response(fetchCalls[1]?.init?.body).arrayBuffer());
+    expect(uploadedBundle.byteLength).toBe(artifact.bundleBytes);
+    expect(new TextDecoder().decode(uploadedBundle)).toContain(artifact.debugId);
+    const uploadedMap = new Uint8Array(await new Response(fetchCalls[2]?.init?.body).arrayBuffer());
+    expect(Array.from(uploadedMap)).toEqual(Array.from(artifact.sourceMapGzipped));
+    expect(String(fetchCalls[3]?.input)).toBe("https://api.example.com/api/latest/source-maps/artifacts/finalize");
+  });
+
+  it("does not retry a permanent object-storage rejection and exposes a typed HTTP failure", async () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }).artifacts;
+    const artifact = artifacts.at(0);
+    if (artifact === undefined) throw new Error("fixture did not produce an artifact");
+    const requestInput = {
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://app.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      getAuthHeaders: async () => ({ "x-stack-secret-server-key": "ssk_test" }),
+      release: "v1",
+      dist: null,
+      environment: null,
+      artifacts,
+    };
+    const plan = createSourceMapUploadPlan(requestInput);
+    const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "registered",
+        finalize_path: "/api/latest/source-maps/artifacts/finalize",
+        artifacts: [{
+          debug_id: artifact.debugId,
+          code_file: artifact.bundleRelativePath,
+          source_map_file: artifact.sourceMapRelativePath,
+          bundle_object_key: "bundles/bundle.js",
+          bundle_upload_url: "https://storage.example/bundle",
+          source_map_object_key: "maps/map.json.gz",
+          source_map_upload_url: "https://storage.example/map",
+          already_finalized: false,
+        }],
+      }), { status: 201 }))
+      .mockResolvedValueOnce(new Response("payload too large", { status: 413 }));
+    const request: SourceMapUploadRequest = {
+      ...requestInput,
+      plan,
+      transport: { fetch: fetchMock, sleep: async () => undefined },
+    };
+
+    await expect(uploadPreparedSourceMaps(request)).rejects.toMatchObject({
+      name: "SourceMapUploadHttpError",
+      status: 413,
+      operation: `bundle ${artifact.bundleRelativePath}`,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a malformed registration response before uploading any object", async () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }).artifacts;
+    const requestInput = {
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://app.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      getAuthHeaders: async () => ({}),
+      release: "v1",
+      dist: null,
+      environment: null,
+      artifacts,
+    };
+    const plan = createSourceMapUploadPlan(requestInput);
+    const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>().mockResolvedValue(new Response(JSON.stringify({
+      manifest_sha256: plan.manifestSha256,
+      status: "registered",
+      finalize_path: "/api/latest/source-maps/artifacts/finalize",
+      artifacts: [],
+    }), { status: 201 }));
+
+    await expect(uploadPreparedSourceMaps({
+      ...requestInput,
+      plan,
+      transport: { fetch: fetchMock, sleep: async () => undefined },
+    })).rejects.toBeInstanceOf(SourceMapUploadProtocolError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-upload an already-finalized manifest", async () => {
+    const dir = makeTempDir();
+    writeFile(dir, "static/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, "static/main.js.map", FIXTURE_MAP_TEXT);
+    const artifacts = prepareArtifacts(collectArtifacts([path.join(dir, "static")]), { repoRoot: dir, dryRun: false }).artifacts;
+    const artifact = artifacts.at(0);
+    if (artifact === undefined) throw new Error("fixture did not produce an artifact");
+    const requestInput = {
+      auth: {
+        apiUrl: "https://api.example.com",
+        dashboardUrl: "https://app.example.com",
+        publishableClientKey: "pck_test",
+        projectId: "project-test",
+        secretServerKey: "ssk_test",
+      },
+      getAuthHeaders: async () => ({}),
+      release: "v1",
+      dist: null,
+      environment: null,
+      artifacts,
+    };
+    const plan = createSourceMapUploadPlan(requestInput);
+    const fetchMock = vi.fn<[string | URL | Request, RequestInit?], Promise<Response>>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "already_registered",
+        finalize_path: "/api/latest/source-maps/artifacts/finalize",
+        artifacts: [{
+          debug_id: artifact.debugId,
+          code_file: artifact.bundleRelativePath,
+          source_map_file: artifact.sourceMapRelativePath,
+          bundle_object_key: "bundles/bundle.js",
+          bundle_upload_url: "https://storage.example/bundle",
+          source_map_object_key: "maps/map.json.gz",
+          source_map_upload_url: "https://storage.example/map",
+          already_finalized: true,
+        }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        manifest_sha256: plan.manifestSha256,
+        status: "already_finalized",
+        uploaded: [],
+        already_uploaded: [artifact.debugId],
+      }), { status: 200 }));
+
+    const result = await uploadPreparedSourceMaps({
+      ...requestInput,
+      plan,
+      transport: { fetch: fetchMock, sleep: async () => undefined },
+    });
+
+    expect(result.uploaded).toEqual([]);
+    expect(result.alreadyUploaded).toEqual([artifact.debugId]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails before auth when the project is not configured", async () => {
+    const dir = makeTempDir();
+    const bundlePath = writeFile(dir, ".next/static/chunks/main.js", FIXTURE_BUNDLE.replace("minified-chunk.js.map", "main.js.map"));
+    writeFile(dir, ".next/static/chunks/main.js.map", FIXTURE_MAP_TEXT);
+    const before = fs.readFileSync(bundlePath, "utf-8");
+
+    await expect(run(["sourcemaps", "upload", path.join(dir, ".next")])).rejects.toThrow(/No project ID provided/);
+    expect(fs.readFileSync(bundlePath, "utf-8")).toBe(before);
   });
 });

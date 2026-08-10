@@ -35,6 +35,18 @@ const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "cache"]);
 
 const DEBUG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * Returns whether a value is a canonical lower-case UUID debug id.
+ *
+ * Sentry normalizes debug ids before indexing them, while Symbolicator uses
+ * the exact id to select a JavaScript module. Keeping the CLI manifest
+ * canonical prevents two spellings of one artifact becoming two records in a
+ * future artifact registry.
+ */
+export function isDebugId(value: string): boolean {
+  return DEBUG_ID_RE.test(value);
+}
+
 // The marker the injected snippet writes into the bundle, and the thing
 // `determineDebugIdFromBundleSource` scrapes back out. Same idea as Sentry's
 // `sentry-dbid-<uuid>`; the distinct prefix lets both SDKs coexist in one app.
@@ -50,7 +62,7 @@ const SNIPPET_END_MARKER = "// hexclave:debug-id-injection:end";
 export const NEXT_SERVER_SOURCE_MAPS_CONFIG_HINT = "experimental: { serverSourceMaps: true }";
 
 function assertDebugId(debugId: string): void {
-  if (!DEBUG_ID_RE.test(debugId)) {
+  if (!isDebugId(debugId)) {
     throw new CliError(`Invalid debug id ${JSON.stringify(debugId)} — expected a lowercase hyphenated UUID.`);
   }
 }
@@ -200,7 +212,11 @@ export function readInlineSourceMap(source: string): string | null {
   if (/;base64$/i.test(meta)) {
     return Buffer.from(payload, "base64").toString("utf-8");
   }
-  return decodeURIComponent(payload);
+  try {
+    return decodeURIComponent(payload);
+  } catch (error) {
+    throw new CliError(`Inline source map has invalid percent encoding: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export type DetermineSourceMapPathOptions = {
@@ -303,6 +319,48 @@ function asJsonObject(value: unknown, what: string): Record<string, unknown> {
   return result;
 }
 
+function validateSourceMapObject(map: Record<string, unknown>, what: string): void {
+  if (map.version !== 3) {
+    throw new CliError(`${what} must use source map version 3.`);
+  }
+  if (typeof map.mappings !== "string" && !Array.isArray(map.sections)) {
+    throw new CliError(`${what} has neither a \`mappings\` string nor a \`sections\` array — it is not a usable source map.`);
+  }
+  if (map.mappings !== undefined && typeof map.mappings !== "string") {
+    throw new CliError(`${what}.mappings must be a string.`);
+  }
+  if (map.sources !== undefined && (!Array.isArray(map.sources) || map.sources.some((source) => typeof source !== "string"))) {
+    throw new CliError(`${what}.sources must be an array of strings.`);
+  }
+  if (map.sourceRoot !== undefined && typeof map.sourceRoot !== "string") {
+    throw new CliError(`${what}.sourceRoot must be a string when present.`);
+  }
+  if (map.sections !== undefined) {
+    if (!Array.isArray(map.sections)) {
+      throw new CliError(`${what}.sections must be an array.`);
+    }
+    for (const [index, section] of map.sections.entries()) {
+      const sectionObject = asJsonObject(section, `${what}.sections[${index}]`);
+      if (typeof sectionObject.offset !== "object" || sectionObject.offset === null || Array.isArray(sectionObject.offset)) {
+        throw new CliError(`${what}.sections[${index}].offset must be an object.`);
+      }
+      const nestedMap = asJsonObject(sectionObject.map, `${what}.sections[${index}].map`);
+      validateSourceMapObject(nestedMap, `${what}.sections[${index}].map`);
+    }
+  }
+}
+
+function validateExistingDebugId(map: Record<string, unknown>, key: "debug_id" | "debugId", debugId: string): void {
+  const existing = map[key];
+  if (existing === undefined) return;
+  if (typeof existing !== "string" || !DEBUG_ID_RE.test(existing.toLowerCase())) {
+    throw new CliError(`Source map ${key} must be a lowercase hyphenated UUID when present.`);
+  }
+  if (existing.toLowerCase() !== debugId) {
+    throw new CliError(`Source map ${key} ${JSON.stringify(existing)} does not match bundle debug id ${debugId}.`);
+  }
+}
+
 /**
  * Writes the debug id into a source map and normalizes its `sources[]`,
  * returning the JSON text to upload.
@@ -320,9 +378,9 @@ function asJsonObject(value: unknown, what: string): Record<string, unknown> {
 export function prepareSourceMapForUpload(mapJson: unknown, debugId: string, options: PrepareSourceMapOptions): string {
   assertDebugId(debugId);
   const map = asJsonObject(mapJson, "Source map");
-  if (typeof map.mappings !== "string" && !Array.isArray(map.sections)) {
-    throw new CliError("Source map has neither a `mappings` string nor a `sections` array — it is not a usable source map.");
-  }
+  validateSourceMapObject(map, "Source map");
+  validateExistingDebugId(map, "debug_id", debugId);
+  validateExistingDebugId(map, "debugId", debugId);
   map.debug_id = debugId;
   map.debugId = debugId;
   normalizeSourcesInPlace(map, options);
@@ -363,6 +421,32 @@ const SYNTHETIC_ROOT_SEGMENT_RE = /^(?:_N_E|\[project\]|\[turbopack\]|\[next\]|\
 
 function toPosix(value: string): string {
   return value.split("\\").join("/");
+}
+
+/**
+ * Normalizes a path that is going into the upload manifest.
+ *
+ * Manifest paths are identifiers, not filesystem locations. They must be
+ * relative and must not contain traversal segments: accepting an absolute or
+ * ambiguous path would let a future zip/object-storage adapter disagree with
+ * the path the CLI displayed and the path Symbolicator indexes.
+ */
+export function normalizeArtifactRelativePath(value: string, label = "Artifact path"): string {
+  if (value.trim() === "") {
+    throw new CliError(`${label} must not be empty.`);
+  }
+  const posix = toPosix(value);
+  if (posix.startsWith("/") || /^[a-zA-Z]:\//.test(posix)) {
+    throw new CliError(`${label} must be relative to the scanned build directory (got ${JSON.stringify(value)}).`);
+  }
+  if (posix.split("/").some((segment) => segment === "..")) {
+    throw new CliError(`${label} must not contain \`..\` path segments (got ${JSON.stringify(value)}).`);
+  }
+  const normalized = path.posix.normalize(posix).replace(/^\.\//, "");
+  if (normalized === "" || normalized === ".") {
+    throw new CliError(`${label} must identify a file (got ${JSON.stringify(value)}).`);
+  }
+  return normalized;
 }
 
 function isAbsoluteLike(value: string): boolean {
