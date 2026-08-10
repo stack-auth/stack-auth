@@ -19,6 +19,9 @@
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "Tenancy_id_projectId_branchId_key"
   ON /* SCHEMA_NAME_SENTINEL */."Tenancy" ("id", "projectId", "branchId");
+
+-- SPLIT_STATEMENT_SENTINEL
+
 CREATE TYPE "ReleaseStatus" AS ENUM ('OPEN', 'ARCHIVED');
 CREATE TYPE "ReleaseArtifactStatus" AS ENUM ('REGISTERED', 'FINALIZED');
 
