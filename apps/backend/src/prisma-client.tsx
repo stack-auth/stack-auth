@@ -408,22 +408,30 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
+export function isRetryableTransactionError(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    const retryablePrismaErrorCodes = [
+      "P2028", // Serializable/repeatable read conflict
+      "P2034", // Transaction already closed (eg. timeout)
+    ];
+    return retryablePrismaErrorCodes.includes(e.code);
+  }
+
+  // The adapter package is not a direct backend dependency, so classify its stable error shape instead of using instanceof.
+  // PrismaPg exposes serialization conflicts as an Error named DriverAdapterError with a structured cause.kind.
+  if (!(e instanceof Error) || e.name !== "DriverAdapterError") {
+    return false;
+  }
+  const { cause } = e;
+  return typeof cause === "object" && cause !== null && "kind" in cause && cause.kind === "TransactionWriteConflict";
+}
+
 /**
  * @deprecated Prisma transactions are slow and lock the database. Use rawQuery with CTEs instead. Ask Konsti if you're confused or think you need transactions.
  */
 export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable", timeout?: number } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
-
-  const isRetryablePrismaError = (e: unknown) => {
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      return [
-        "P2028", // Serializable/repeatable read conflict
-        "P2034", // Transaction already closed (eg. timeout)
-      ];
-    }
-    return false;
-  };
 
   return await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
@@ -440,7 +448,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
                 // to other (nested) transactions failing
                 // however, we make an exception for "Transaction already closed", as those are (annoyingly) thrown on
                 // the actual query, not the $transaction function itself
-                if (isRetryablePrismaError(e)) {
+                if (isRetryableTransactionError(e)) {
                   throw new TransactionErrorThatShouldBeRetried(e);
                 }
                 throw new TransactionErrorThatShouldNotBeRetried(e);
@@ -466,7 +474,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
             if (e instanceof TransactionErrorThatShouldNotBeRetried) {
               throw e.cause;
             }
-            if (isRetryablePrismaError(e)) {
+            if (isRetryableTransactionError(e)) {
               return Result.error(e);
             }
             throw e;
