@@ -1,4 +1,5 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   constants as perfConstants,
@@ -265,15 +266,19 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
   return diagnostics;
 }
 
+const CPU_PROFILE_SAMPLING_INTERVAL_US = 5_000;
+const CPU_PROFILE_WINDOW_MS = 3 * 60 * 1000;
 let cpuProfileSession: inspector.Session | undefined;
+let cpuProfileStopTimer: NodeJS.Timeout | undefined;
+let completedCpuProfile: string | null = null;
 
-function inspectorPost<T>(session: inspector.Session, method: string): Promise<T> {
+function inspectorPost<T>(session: inspector.Session, method: string, params?: object): Promise<T> {
   return new Promise((resolve, reject) => {
-    session.post(method, (error, params) => {
+    session.post(method, params ?? {}, (error, response) => {
       if (error != null) {
         reject(error);
       } else {
-        resolve(params as T);
+        resolve(response as T);
       }
     });
   });
@@ -285,8 +290,16 @@ export async function startBackendCpuProfile(): Promise<boolean> {
   session.connect();
   try {
     await inspectorPost(session, "Profiler.enable");
+    await inspectorPost(session, "Profiler.setSamplingInterval", {
+      interval: CPU_PROFILE_SAMPLING_INTERVAL_US,
+    });
     await inspectorPost(session, "Profiler.start");
     cpuProfileSession = session;
+    completedCpuProfile = null;
+    cpuProfileStopTimer = setTimeout(() => {
+      runAsynchronously(stopBackendCpuProfile());
+    }, CPU_PROFILE_WINDOW_MS);
+    cpuProfileStopTimer.unref();
     return true;
   } catch (error) {
     session.disconnect();
@@ -296,12 +309,17 @@ export async function startBackendCpuProfile(): Promise<boolean> {
 
 export async function stopBackendCpuProfile(): Promise<string | null> {
   const session = cpuProfileSession;
-  if (session == null) return null;
+  if (session == null) return completedCpuProfile;
   cpuProfileSession = undefined;
+  if (cpuProfileStopTimer != null) {
+    clearTimeout(cpuProfileStopTimer);
+    cpuProfileStopTimer = undefined;
+  }
   try {
     const result = await inspectorPost<{ profile: unknown }>(session, "Profiler.stop");
     await inspectorPost(session, "Profiler.disable");
-    return JSON.stringify(result.profile);
+    completedCpuProfile = JSON.stringify(result.profile);
+    return completedCpuProfile;
   } finally {
     session.disconnect();
   }
