@@ -730,9 +730,17 @@ export function SettingsContent({ service, isHexclave }: {
   const fields: { label: string, value: string | null | undefined, fallback: string }[] = [
     { label: "Root directory", value: service.api?.root_directory, fallback: "./" },
     // A missing dockerfile_path means "Railpack build" only once a definition was actually
-    // synced — before that (port is null too) it just means "not synced yet".
-    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: service.api?.port != null ? "None (Railpack auto-detected build)" : "Not synced yet" },
-    { label: "Container port", value: service.api?.port?.toString(), fallback: "Not synced yet" },
+    // synced — before that (there are no ports either) it just means "not synced yet".
+    { label: "Dockerfile", value: service.api?.dockerfile_path, fallback: (service.api?.ports.length ?? 0) > 0 ? "None (Railpack auto-detected build)" : "Not synced yet" },
+    // Every port, with the public one called out: which port is exposed is the
+    // thing a reader most often comes here to check.
+    {
+      label: (service.api?.ports.length ?? 0) === 1 ? "Container port" : "Container ports",
+      value: service.api?.ports.length
+        ? service.api.ports.map((entry) => `${entry.port}${entry.public ? " (public)" : ""}${entry.transport === "tcp" ? " · tcp" : ""}`).join(", ")
+        : undefined,
+      fallback: "Not synced yet",
+    },
     { label: "Min instances", value: service.api?.min_instances?.toString(), fallback: "0 (scale to zero)" },
     // Mirrors the deploy-time default (`max_instances ?? Math.max(min_instances, 1)`): a
     // service that declares only `minInstances: 3` really does run with a max of 3, so a

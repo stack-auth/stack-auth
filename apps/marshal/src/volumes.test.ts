@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { flyVolumeName } from "./config.js";
 import { computeRevision } from "./revision.js";
-import { candidateVolumes, machineConfigForSlot, selectCanonicalVolume, specVolume, validateServiceSpec } from "./services.js";
+import { candidateVolumes, machineConfigForSlot, selectCanonicalVolume, specIsPublic, specVolume, validateServiceSpec } from "./services.js";
 import type { FlyVolume } from "./fly/client.js";
 
 const TEST_DATA_KEY = Buffer.from("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", "hex");
 
 function spec(config: Record<string, unknown>) {
   return {
-    config: { type: "server", min_instances: 0, max_instances: 1, port: 3000, ...config },
+    config: { type: "server", min_instances: 0, max_instances: 1, ports: [{ port: 3000 }], ...config },
     source: { image: "example/image" },
     env: {},
   };
@@ -36,7 +36,7 @@ describe("persistent volume spec validation", () => {
     // redeploy of every existing service.
     expect(computeRevision(validateServiceSpec(spec({})), TEST_DATA_KEY)).toBe(
       computeRevision({
-        config: { type: "server", visibility: "private", transport: "http", min_instances: 0, max_instances: 1, port: 3000 },
+        config: { type: "server", min_instances: 0, max_instances: 1, ports: [{ port: 3000, public: false, transport: "http" }] },
         source: { image: "example/image" },
         env: {},
       }, TEST_DATA_KEY),
@@ -177,23 +177,20 @@ describe("machine autostop policy", () => {
   });
 });
 
-describe("visibility spec validation", () => {
-  it("defaults to private, accepts public, and includes visibility in the revision", () => {
+describe("public ingress spec validation", () => {
+  it("is private until a port says otherwise, and that changes the revision", () => {
     const privateSpec = validateServiceSpec(spec({}));
-    const publicSpec = validateServiceSpec(spec({ visibility: "public" }));
-    expect(privateSpec.config.visibility).toBe("private");
-    expect(publicSpec.config.visibility).toBe("public");
+    const publicSpec = validateServiceSpec(spec({ ports: [{ port: 3000, public: true }] }));
+    expect(specIsPublic(privateSpec)).toBe(false);
+    expect(specIsPublic(publicSpec)).toBe(true);
+    // Ingress is machine-visible config, so flipping it must roll the fleet.
     expect(computeRevision(privateSpec, TEST_DATA_KEY)).not.toBe(computeRevision(publicSpec, TEST_DATA_KEY));
-  });
-
-  it("rejects unsupported visibility values", () => {
-    expect(() => validateServiceSpec(spec({ visibility: "unlisted" }))).toThrow(/config\.visibility/);
   });
 });
 
 describe("service type spec validation", () => {
   it("requires a known type", () => {
-    expect(() => validateServiceSpec({ ...spec({}), config: { min_instances: 0, max_instances: 1, port: 3000 } }))
+    expect(() => validateServiceSpec({ ...spec({}), config: { min_instances: 0, max_instances: 1, ports: [{ port: 3000 }] } }))
       .toThrow(/config\.type must be "server" or "serverless"/);
     expect(() => validateServiceSpec(spec({ type: "container" }))).toThrow(/config\.type must be "server" or "serverless"/);
   });

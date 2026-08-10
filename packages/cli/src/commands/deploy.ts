@@ -1,3 +1,4 @@
+import { deploymentServiceIsPublic } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
@@ -178,7 +179,9 @@ export function collectPublicUrls(deploySet: string[], services: Map<string, Eva
     const result = results.get(serviceId) ?? (() => {
       throw new CliError(`Internal error: no deploy result for service ${JSON.stringify(serviceId)}.`);
     })();
-    return service.definition.transport === "http" && service.definition.visibility === "public" && result.status === "ready" && result.url !== null
+    // A public port is always HTTP (raw TCP cannot be public), so its presence
+    // is the whole condition for the service having a URL to report.
+    return deploymentServiceIsPublic(service.definition.ports) && result.status === "ready" && result.url !== null
       ? [{ serviceId, url: result.url }]
       : [];
   });
@@ -298,7 +301,7 @@ export async function deployService(options: {
   // a transient failure after the build is already READY must not turn the
   // successful deploy into an error and skip its transitive dependents.
   const url = typeof run.url === "string" ? run.url : null;
-  if (service.definition.visibility === "public" && url === null) {
+  if (deploymentServiceIsPublic(service.definition.ports) && url === null) {
     throw new CliError(`The deployment of public service ${JSON.stringify(serviceId)} finished successfully, but the runtime did not return its public URL.`);
   }
   log(`Deployment succeeded${url != null ? `: ${url}` : "."}`);

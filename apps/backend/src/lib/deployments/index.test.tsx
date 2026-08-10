@@ -67,9 +67,7 @@ describe("stored deployment environment", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
       type: "serverless",
-      visibility: "private",
-      transport: "http",
-      port: 3000,
+      ports: [{ port: 3000, public: false, transport: "http" }],
       minInstances: 0,
       maxInstances: 1,
       rootDirectory: null,
@@ -87,9 +85,7 @@ describe("stored deployment environment", () => {
     const definition = definitionFromServiceRow({
       serviceId: "api",
       type: "serverless",
-      visibility: "public",
-      transport: "http",
-      port: 3000,
+      ports: [{ port: 3000, public: true, transport: "http" }],
       minInstances: 0,
       maxInstances: 1,
       rootDirectory: null,
@@ -100,7 +96,7 @@ describe("stored deployment environment", () => {
       env: { SAFE: { value: "legacy" } },
     });
     expect(definition.env.SAFE).toEqual({ type: undefined, value: "legacy", key: undefined });
-    expect(definition.visibility).toBe("public");
+    expect(definition.ports).toEqual([{ port: 3000, public: true, transport: "http" }]);
   });
 });
 
@@ -108,9 +104,7 @@ describe("stored deployment volumes", () => {
   const baseRow = {
     serviceId: "api",
     type: "server",
-    visibility: "private",
-    transport: "http",
-    port: 3000,
+    ports: [{ port: 3000, public: false, transport: "http" }],
     minInstances: 0,
     maxInstances: 1,
     rootDirectory: null,
@@ -145,11 +139,9 @@ describe("stored deployment volumes", () => {
     );
     expect(withVolume.config).toEqual({
       type: "server",
-      visibility: "private",
-      transport: "http",
       min_instances: 0,
       max_instances: 1,
-      port: 3000,
+      ports: [{ port: 3000, public: false, transport: "http" }],
       persistent_volumes: { uploads: { path: "/data", size_gb: 10 } },
     });
 
@@ -168,9 +160,7 @@ describe("free-plan always-on gate", () => {
   const tenancy = { project: { id: "p1", ownerTeamId: "team1" } } as any;
   const service = (minInstances?: number) => ({
     type: "serverless" as const,
-    visibility: "private" as const,
-    transport: "http" as const,
-    port: 3000,
+    ports: [{ port: 3000, public: false, transport: "http" as const }],
     ...(minInstances === undefined ? {} : { min_instances: minInstances }),
     env: {},
   });

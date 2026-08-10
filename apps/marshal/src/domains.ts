@@ -3,7 +3,7 @@ import { badRequest, conflict, notFound } from "./errors.js";
 import { FlyApiError, flyClientForNamespaceOrg } from "./fly/client.js";
 import { appNameForService } from "./naming.js";
 import { ensurePublicIps, releasePublicIpsIfUnused } from "./public-networking.js";
-import { dnsRecordsForCertificate } from "./services.js";
+import { dnsRecordsForCertificate, specIsPublic } from "./services.js";
 import { claimDomain, readDomainClaim, readDomainClaimVersioned, readSpec, releaseDomainClaim, rewriteDomainClaim } from "./store.js";
 import type { DnsRecord } from "./types.js";
 
@@ -35,8 +35,10 @@ export async function attachDomain(ns: string, hostname: string, serviceKey: str
   if (stored === null) {
     throw notFound(`service ${JSON.stringify(serviceKey)} not found in namespace ${JSON.stringify(ns)}`);
   }
-  if (stored.spec.config.transport !== "http") {
-    throw badRequest("custom domains are only supported for HTTP services");
+  // A domain terminates TLS and routes HTTP, so there must be an HTTP port to
+  // route to.
+  if (!stored.spec.config.ports.some((entry) => entry.transport === "http")) {
+    throw badRequest("custom domains need an HTTP port to route to; this service declares none");
   }
 
   const existingClaim = await readDomainClaimVersioned(hostname);
@@ -154,5 +156,5 @@ async function releaseServicePublicIpsIfUnused(ns: string, serviceKey: string): 
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
   const appName = appNameForService(config.envId, ns, serviceKey);
   const spec = await readSpec(ns, serviceKey);
-  await releasePublicIpsIfUnused(fly, appName, spec?.spec.config.visibility === "public");
+  await releasePublicIpsIfUnused(fly, appName, spec !== null && specIsPublic(spec.spec));
 }

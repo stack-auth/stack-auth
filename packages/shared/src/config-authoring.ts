@@ -63,13 +63,13 @@ export type HexclaveDeploymentReference = { readonly [hexclaveDeploymentReferenc
 
 /** The outputs another service exposes to `service("id").<output>`. */
 export type HexclaveServiceOutputs = {
-  /** The public URL. Only resolves once the service is public or a custom domain verifies. */
+  /** The public URL. Only resolves once the service has a public port or a custom domain verifies. */
   url: HexclaveDeploymentReference,
-  /** The private-network URL — the normal way one service reaches another. */
+  /** The private-network URL, including the port. Needs exactly one HTTP port to be unambiguous. */
   internalUrl: HexclaveDeploymentReference,
-  /** The private-network host, for TCP services (pair with `internalPort`). */
+  /** The private-network host. Always available — pair it with an explicit port for a multi-port service. */
   internalHost: HexclaveDeploymentReference,
-  /** The Flycast-facing port: 80 for HTTP services, the service port for TCP. */
+  /** The private-network port. Needs the service to declare exactly one port. */
   internalPort: HexclaveDeploymentReference,
 };
 
@@ -99,13 +99,38 @@ export type HexclavePersistentVolume = {
   sizeGb: number,
 };
 
-type HexclaveServiceBase = {
-  /** "public" gives the service a platform URL even without a custom domain. Defaults to "private". */
-  visibility?: "public" | "private",
-  /** "tcp" services are private-only and are reached with `internalHost`/`internalPort`. Defaults to "http". */
-  transport?: "http" | "tcp",
-  /** The single port the container listens on. */
+/** One port the container listens on. */
+export type HexclavePort = {
+  /** The port number the container listens on. */
   port: number,
+  /**
+   * Exposes this port to the internet and gives the service a platform URL,
+   * even without a custom domain. Defaults to false.
+   *
+   * At most one port per service may be public: a hostname's 80/443 reach only
+   * one of them, so a second public port could never be served on the standard
+   * ports.
+   */
+  public?: boolean,
+  /**
+   * "tcp" is a raw port — no TLS termination, no HTTP routing — for databases
+   * and other daemons. TCP ports are private-only; reach them with
+   * `internalHost` and the port number. Defaults to "http".
+   */
+  transport?: "http" | "tcp",
+};
+
+type HexclaveServiceBase = {
+  /**
+   * The ports the container listens on, at least one. The service is public
+   * exactly when one of these is.
+   *
+   * Each port is reachable on the private network at its own number; the public
+   * one is additionally served on 80/443. Note that `internalUrl` and
+   * `internalPort` name a single port, so declaring several makes those
+   * references ambiguous — use `internalHost` with an explicit port instead.
+   */
+  ports: HexclavePort[],
   /** Source directory, relative to the config file. Defaults to the config file's own directory. */
   rootDirectory?: string,
   /** Dockerfile to build, relative to `rootDirectory`. Omit to auto-detect the build with Railpack. */

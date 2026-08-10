@@ -126,6 +126,10 @@ export function resolveNamespaceOrg(_ns: string): { orgSlug: string, token: stri
 
 // Runtime policy (deliberately NOT part of the service spec or the revision hash).
 export const MAX_INSTANCES_CAP = 5;
+// Each declared port becomes its own Fly services entry. A bound on the spec
+// rather than a platform limit: a container listening on more than this is far
+// likelier to be a config mistake than a real fleet.
+export const MAX_PORTS_PER_SERVICE = 10;
 // Fly volume bounds: 1 GB is the platform default/minimum, 500 GB the maximum.
 export const MIN_VOLUME_SIZE_GB = 1;
 export const MAX_VOLUME_SIZE_GB = 500;

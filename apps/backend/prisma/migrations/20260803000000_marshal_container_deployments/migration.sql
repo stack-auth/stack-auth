@@ -25,20 +25,106 @@ DROP COLUMN "vercelProjectId",
 ADD COLUMN "dockerfilePath" TEXT,
 ADD COLUMN "maxInstances" INTEGER,
 ADD COLUMN "minInstances" INTEGER,
-ADD COLUMN "port" INTEGER,
-ADD COLUMN "transport" TEXT NOT NULL DEFAULT 'http',
-ADD COLUMN "visibility" TEXT NOT NULL DEFAULT 'private',
+-- The ports the container listens on, as a JSON array of
+-- `{ port, public, transport }`. There is deliberately no service-level
+-- visibility column: a service is public exactly when one of its ports is, so
+-- the two can never drift apart. `transport` sits on the port for the same
+-- reason — a container speaking HTTP on one port and raw TCP on another is a
+-- normal thing to want, and a service-level protocol cannot express it.
+--
+-- `[]` on rows that predate a synced definition: displayable, not deployable.
+ADD COLUMN "ports" JSONB NOT NULL DEFAULT '[]',
 ADD COLUMN "provisionedAt" TIMESTAMP(3);
 
-ALTER TABLE "DeploymentService"
-ADD CONSTRAINT "DeploymentService_visibility_check"
-CHECK ("visibility" IN ('public', 'private'));
+-- The port rules, stated by the database because this column is the ONLY record
+-- of whether a service is public.
+--
+-- Each rule goes through its own IMMUTABLE function: a CHECK constraint may not
+-- contain a subquery, and walking a JSON array means one. Keeping them separate
+-- (rather than one big validator) is what keeps the violated constraint's NAME a
+-- useful diagnostic.
+--
+-- Every function returns the PASSING value for a non-array input, so that "ports
+-- is not an array" is reported by the single constraint that says so. Postgres
+-- evaluates a row's CHECK constraints in no particular order, and
+-- jsonb_array_elements on a non-array raises a hard error rather than returning
+-- false — without the guard, a scalar would surface as "cannot extract elements
+-- from a scalar" instead of a named violation.
+CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb) RETURNS boolean AS $fn$
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' THEN true ELSE NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(ports) AS entry
+    -- IS DISTINCT FROM, not <>: jsonb_typeof of an ABSENT key is NULL, and
+    -- `NULL <> 'number'` is NULL rather than true, which would let an entry
+    -- missing the key through the filter entirely.
+    WHERE jsonb_typeof(entry) IS DISTINCT FROM 'object'
+      OR jsonb_typeof(entry -> 'port') IS DISTINCT FROM 'number'
+      -- Ports are whole numbers: the ->> text of 3000.5 fails this, where a
+      -- cast to int would silently round it.
+      OR (entry ->> 'port') !~ '^[0-9]+$'
+      OR (entry ->> 'port')::bigint < 1
+      OR (entry ->> 'port')::bigint > 65535
+      OR jsonb_typeof(entry -> 'public') IS DISTINCT FROM 'boolean'
+      -- Spelled out rather than NOT IN, which yields NULL (not true) for a
+      -- missing transport and would let the entry through.
+      OR (entry ->> 'transport') IS NULL
+      OR (entry ->> 'transport') NOT IN ('http', 'tcp')
+  ) END;
+$fn$ LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_count"(ports jsonb) RETURNS bigint AS $fn$
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' THEN 0 ELSE (
+    SELECT count(*)
+    FROM jsonb_array_elements(ports) AS entry
+    WHERE (entry ->> 'public')::boolean
+  ) END;
+$fn$ LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_is_http"(ports jsonb) RETURNS boolean AS $fn$
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' THEN true ELSE NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(ports) AS entry
+    WHERE (entry ->> 'public')::boolean AND (entry ->> 'transport') <> 'http'
+  ) END;
+$fn$ LANGUAGE sql IMMUTABLE;
+
+-- Defers to the entries check for anything malformed, so an entry with no port
+-- at all is reported as a bad ENTRY rather than as a duplicate (constraints are
+-- evaluated in no particular order, and a missing port would otherwise collapse
+-- the distinct count).
+CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_are_distinct"(ports jsonb) RETURNS boolean AS $fn$
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN true ELSE (
+    SELECT count(DISTINCT entry ->> 'port') = jsonb_array_length(ports)
+    FROM jsonb_array_elements(ports) AS entry
+  ) END;
+$fn$ LANGUAGE sql IMMUTABLE;
 
 ALTER TABLE "DeploymentService"
-ADD CONSTRAINT "DeploymentService_transport_check"
-CHECK ("transport" IN ('http', 'tcp')),
-ADD CONSTRAINT "DeploymentService_tcp_private_check"
-CHECK ("transport" <> 'tcp' OR "visibility" = 'private');
+ADD CONSTRAINT "DeploymentService_ports_is_array_check"
+CHECK (jsonb_typeof("ports") = 'array');
+
+-- Each entry is an object with an integer port in range, a boolean `public`,
+-- and a known transport. Holds vacuously for the empty array.
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_ports_entries_check"
+CHECK ("hexclave_deployment_ports_entries_valid"("ports"));
+
+-- A hostname's 80/443 reach exactly one port, so a second public port could
+-- never be served on the standard ports.
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_one_public_port_check"
+CHECK ("hexclave_deployment_ports_public_count"("ports") <= 1);
+
+-- Raw TCP gets no TLS termination and no HTTP routing, so it cannot be the
+-- public one.
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_public_port_is_http_check"
+CHECK ("hexclave_deployment_ports_public_is_http"("ports"));
+
+-- One entry per port number.
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_ports_distinct_check"
+CHECK ("hexclave_deployment_ports_are_distinct"("ports"));
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",

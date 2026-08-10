@@ -79,14 +79,16 @@ export type MarshalEnvValue = { value: string } | { ref: string };
 
 export type MarshalServiceSpec = {
   config: {
-    visibility: "public" | "private",
-    transport: "http" | "tcp",
+    type: "server" | "serverless",
     min_instances: number,
     max_instances: number,
-    port: number,
-    // Persistent disk mounted into the container; absent = ephemeral
-    // filesystem. Marshal requires max_instances === 1 when it is set.
-    volume?: { path: string, size_gb: number },
+    // The ports the container listens on. There is no separate visibility:
+    // Marshal allocates public ingress exactly when a port asks for it, and
+    // re-validates that at most one does and that it is not raw TCP.
+    ports: { port: number, public: boolean, transport: "http" | "tcp" }[],
+    // Persistent disks keyed by volume id; absent = ephemeral filesystem.
+    // Marshal requires type "server" when one is set.
+    persistent_volumes?: Record<string, { path: string, size_gb: number }>,
   },
   // dockerfile_path is relative to the tarball root; absent = the builder
   // auto-detects the build with Railpack.

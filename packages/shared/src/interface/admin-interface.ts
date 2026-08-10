@@ -98,12 +98,11 @@ export type AdminDeploymentServiceJson = {
   // volume; "serverless" = scales between the bounds below and stops on
   // scale-down.
   type: "server" | "serverless",
-  visibility: "public" | "private",
-  transport: "http" | "tcp",
-  // Container definition (null on rows synced before the definition existed):
-  // the single port the container listens on, and the serverless scaling
-  // bounds (min 0 scales to zero).
-  port: number | null,
+  // The ports the container listens on. There is no separate visibility field:
+  // the service is public exactly when one of these is, and at most one may be.
+  // Empty on rows synced before the definition existed.
+  ports: { port: number, public?: boolean, transport?: "http" | "tcp" }[],
+  // Serverless scaling bounds (min 0 scales to zero); null on unsynced rows.
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,

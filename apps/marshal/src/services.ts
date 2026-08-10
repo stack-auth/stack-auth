@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { computeWebhookToken, type Builder } from "./builds.js";
-import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
+import { BUILD_TIMEOUT_SECONDS, MACHINE_GUEST, MAX_INSTANCES_CAP, MAX_PERSISTENT_VOLUMES_PER_SERVICE, MAX_PORTS_PER_SERVICE, MAX_UPLOAD_BYTES, MAX_VOLUME_ID_LENGTH, MAX_VOLUME_SIZE_GB, MIN_VOLUME_SIZE_GB, SOFT_CONCURRENCY_LIMIT, VOLUME_ID_REGEX, flyVolumeName, getConfig, resolveNamespaceOrg } from "./config.js";
 import { MarshalError, badRequest, conflict, notFound } from "./errors.js";
 import { FlyClient, flyClientForNamespaceOrg, type FlyCertificate, type FlyMachine, type FlyVolume } from "./fly/client.js";
 import { fetchAllLogs } from "./logs.js";
@@ -12,7 +12,7 @@ import { computeRevision } from "./revision.js";
 import { reconcilePublicIps } from "./public-networking.js";
 import { createBuild, deleteSpecConditionally, deleteUpload, deleteValidatedUpload, listBuilds, listDomainClaimsForService, listSpecKeys, readBuild, readBuildVersioned, readDomainClaimVersioned, readSpec, readSpecVersioned, readUpload, releaseDomainClaim, replaceBuild, statUpload, writeBuildLog, writeSpec, writeValidatedUpload } from "./store.js";
 import { validateSourceArchive } from "./source-archive.js";
-import type { DnsRecord, EnvValue, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
+import type { DnsRecord, EnvValue, PortConfig, ServiceDomainState, ServiceSpec, ServiceState, StoredBuild, StoredSpec, VolumeConfig } from "./types.js";
 import { ulid } from "./ulid.js";
 
 const ENV_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -52,19 +52,33 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   if (config === null) throw badRequest("config is required");
   const minInstances = config.min_instances;
   const maxInstances = config.max_instances;
-  const port = config.port;
   const serviceKind = config.type;
-  const visibility = config.visibility ?? "private";
-  const transport = config.transport ?? "http";
   if (serviceKind !== "server" && serviceKind !== "serverless") throw badRequest('config.type must be "server" or "serverless"');
-  if (visibility !== "public" && visibility !== "private") throw badRequest('config.visibility must be "public" or "private"');
-  if (transport !== "http" && transport !== "tcp") throw badRequest('config.transport must be "http" or "tcp"');
-  if (transport === "tcp" && visibility === "public") throw badRequest('config.visibility must be "private" when config.transport is "tcp"');
   if (typeof minInstances !== "number" || !Number.isInteger(minInstances) || minInstances < 0) throw badRequest("config.min_instances must be a non-negative integer");
   if (typeof maxInstances !== "number" || !Number.isInteger(maxInstances) || maxInstances < 1) throw badRequest("config.max_instances must be a positive integer");
   if (maxInstances < minInstances) throw badRequest("config.max_instances must be >= config.min_instances");
   if (maxInstances > MAX_INSTANCES_CAP) throw badRequest(`config.max_instances must be <= ${MAX_INSTANCES_CAP}`);
-  if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw badRequest("config.port must be a valid port number");
+
+  // Ports. Re-validated here rather than trusted from the backend: this is the
+  // boundary that turns a spec into Fly machine config, and a bad port list
+  // would otherwise reach the Fly API.
+  if (!Array.isArray(config.ports)) throw badRequest("config.ports must be an array");
+  if (config.ports.length === 0) throw badRequest("config.ports must declare at least one port");
+  if (config.ports.length > MAX_PORTS_PER_SERVICE) throw badRequest(`config.ports may declare at most ${MAX_PORTS_PER_SERVICE} ports`);
+  const ports: PortConfig[] = config.ports.map((portRaw) => {
+    const portRecord = asRecord(portRaw);
+    if (portRecord === null) throw badRequest("each config.ports entry must be an object");
+    const port = portRecord.port;
+    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw badRequest("each config.ports entry must have a valid port number");
+    const isPublic = portRecord.public ?? false;
+    if (typeof isPublic !== "boolean") throw badRequest("config.ports[].public must be a boolean");
+    const transport = portRecord.transport ?? "http";
+    if (transport !== "http" && transport !== "tcp") throw badRequest('config.ports[].transport must be "http" or "tcp"');
+    if (transport === "tcp" && isPublic) throw badRequest('a "tcp" port is private-only and cannot be public');
+    return { port, public: isPublic, transport };
+  });
+  if (new Set(ports.map((entry) => entry.port)).size !== ports.length) throw badRequest("config.ports must not declare the same port twice");
+  if (ports.filter((entry) => entry.public).length > 1) throw badRequest("config.ports may mark at most one port public");
   // A "server" is one suspending instance by definition. Reject rather than coerce: the
   // caller's stated bounds and its stated type would otherwise disagree in the stored spec.
   if (serviceKind === "server" && (minInstances !== 0 || maxInstances !== 1)) {
@@ -157,7 +171,7 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   return {
     // Key order is canonical here too (see the source note below). `persistent_volumes` is
     // only present when set; computeRevision mirrors that same conditional spread.
-    config: { type: serviceKind, visibility, transport, min_instances: minInstances, max_instances: maxInstances, port: port, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}) },
+    config: { type: serviceKind, min_instances: minInstances, max_instances: maxInstances, ports, ...(persistentVolumes !== undefined ? { persistent_volumes: persistentVolumes } : {}) },
     // Key order is fixed here on purpose: computeRevision hashes the JSON serialization of
     // this object, so construction must stay canonical.
     source: hasUploadId
@@ -206,20 +220,26 @@ async function resolveEnv(fly: FlyClient, ns: string, env: Record<string, EnvVal
         break;
       }
       case "internal_url": {
+        // Each port answers on its OWN number on the private network, so the URL
+        // carries the port. Only resolvable when exactly one HTTP port makes it
+        // unambiguous; the backend rejects the ambiguous case up front, and this
+        // blocks rather than guessing.
         const target = await targetSpec(targetKey);
-        if (target?.spec.config.transport !== "http") {
+        const httpPort = target === null ? null : soleHttpPort(target.spec.config.ports);
+        if (httpPort === null) {
           blockedRefs.push(value.ref);
         } else {
-          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}`);
+          resolved.set(key, `http://${internalHostForService(envId, ns, targetKey)}:${httpPort}`);
         }
         break;
       }
       case "internal_port": {
         const target = await targetSpec(targetKey);
-        if (target === null) {
+        const onlyPort = target === null || target.spec.config.ports.length !== 1 ? null : target.spec.config.ports[0].port;
+        if (onlyPort === null) {
           blockedRefs.push(value.ref);
         } else {
-          resolved.set(key, String(target.spec.config.transport === "http" ? 80 : target.spec.config.port));
+          resolved.set(key, String(onlyPort));
         }
         break;
       }
@@ -253,7 +273,7 @@ function certificateIsVerified(certificate: FlyCertificate): boolean {
 async function computeServiceUrl(fly: FlyClient, ns: string, key: string): Promise<string | null> {
   const { envId } = getConfig();
   const stored = await readSpec(ns, key);
-  if (stored?.spec.config.visibility === "public") {
+  if (stored !== null && specIsPublic(stored.spec)) {
     return `https://${appNameForService(envId, ns, key)}.fly.dev`;
   }
   const certificates = await fly.listCertificates(appNameForService(envId, ns, key));
@@ -306,9 +326,13 @@ export function machineConfigForSlot(options: {
       hexclave_slot: String(options.slot),
     },
     restart: { policy: "on-failure", max_retries: 2 },
-    services: [{
+    // One Fly services entry per declared port. Every port is reachable at its
+    // OWN number (that is what makes several ports addressable at all); the
+    // public one is additionally served on 80/443, which is what lets its
+    // fly.dev URL and any custom domain certificate work on the standard ports.
+    services: options.spec.config.ports.map((entry) => ({
       protocol: "tcp",
-      internal_port: options.spec.config.port,
+      internal_port: entry.port,
       // Pinned machines never autostop; the rest scale to zero and Fly Proxy autostarts
       // them on demand (only *existing* machines get autostarted, which is why the full
       // max_instances fleet is pre-created).
@@ -320,18 +344,19 @@ export function machineConfigForSlot(options: {
       // clean rootfs.
       autostop: pinned ? "off" : options.spec.config.type === "server" ? "suspend" : "stop",
       autostart: true,
-      ports: options.spec.config.transport === "http"
+      ports: entry.transport === "http"
         ? [
+          // Its own number, so a second HTTP port stays addressable privately.
+          { port: entry.port, handlers: ["http"] },
           // Port 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
-          { port: 80, handlers: ["http"] },
-          { port: 443, handlers: ["tls", "http"] },
+          ...(entry.public ? [{ port: 80, handlers: ["http"] }, { port: 443, handlers: ["tls", "http"] }] : []),
         ]
-        : [{ port: options.spec.config.port }],
+        : [{ port: entry.port }],
       concurrency: {
-        type: options.spec.config.transport === "http" ? "requests" : "connections",
+        type: entry.transport === "http" ? "requests" : "connections",
         soft_limit: SOFT_CONCURRENCY_LIMIT,
       },
-    }],
+    })),
   };
   // The config hash makes re-applies cheap no-ops and catches resolved-ref drift that the
   // revision (hashed over UNresolved env) deliberately ignores.
@@ -342,6 +367,20 @@ export function machineConfigForSlot(options: {
 // The spec's single persistent volume, or null. `persistent_volumes` is a record so the
 // volume ID is a first-class key, but validateServiceSpec caps it at one entry, so every
 // consumer wants exactly this.
+/** Whether the spec asks for public ingress — the replacement for the old service-level visibility. */
+export function specIsPublic(spec: ServiceSpec): boolean {
+  return spec.config.ports.some((entry) => entry.public);
+}
+
+/**
+ * The one HTTP port an `internal_url` can name, or null when the service leaves
+ * it ambiguous (several HTTP ports) or impossible (none).
+ */
+export function soleHttpPort(ports: PortConfig[]): number | null {
+  const httpPorts = ports.filter((entry) => entry.transport === "http");
+  return httpPorts.length === 1 ? httpPorts[0].port : null;
+}
+
 export function specVolume(spec: ServiceSpec): { volumeId: string, volume: VolumeConfig } | null {
   const entries = Object.entries(spec.config.persistent_volumes ?? {});
   if (entries.length === 0) return null;
@@ -435,7 +474,7 @@ async function applyMachines(fly: FlyClient, stored: StoredSpec, imageRef: strin
   await lease.assertOwned();
   await fly.ensureFlycastIp(appName, network);
   await lease.assertOwned();
-  await reconcilePublicIps(fly, appName, stored.spec.config.visibility);
+  await reconcilePublicIps(fly, appName, specIsPublic(stored.spec) ? "public" : "private");
 
   const specVolumeEntry = specVolume(stored.spec);
   const volumeId = specVolumeEntry === null
@@ -609,8 +648,10 @@ export async function applyServiceSpec(ns: string, key: string, spec: ServiceSpe
 async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceSpec, builder: Builder, lease: ReconciliationLeaseGuard): Promise<ApplyResult> {
   const config = getConfig();
   const fly = flyClientForNamespaceOrg(resolveNamespaceOrg(ns));
-  if (spec.config.transport === "tcp" && (await listDomainClaimsForService(ns, key)).length > 0) {
-    throw badRequest('a service with custom domains cannot use config.transport "tcp"; detach the domains first');
+  // A custom domain terminates TLS and routes HTTP, so the service needs an HTTP
+  // port to route to.
+  if (!spec.config.ports.some((entry) => entry.transport === "http") && (await listDomainClaimsForService(ns, key)).length > 0) {
+    throw badRequest("a service with custom domains must keep an HTTP port to route to; detach the domains first");
   }
   const revision = computeRevision(spec);
   const now = Date.now();
@@ -655,7 +696,7 @@ async function applyServiceSpecWithLease(ns: string, key: string, spec: ServiceS
     await lease.assertOwned();
     await fly.ensureFlycastIp(appName, network);
     await lease.assertOwned();
-    await reconcilePublicIps(fly, appName, stored.spec.config.visibility);
+    await reconcilePublicIps(fly, appName, specIsPublic(stored.spec) ? "public" : "private");
 
     // The record is written as "running" BEFORE the builder starts: completion (webhook or
     // mock) may land at any moment after startBuild, and a blind write here afterwards
@@ -1056,14 +1097,17 @@ export async function getServiceState(ns: string, key: string, preloadedSpec?: S
     target_revision: runningRevision === stored.revision && allAtTarget ? null : stored.revision,
     outputs: {
       internal_host: internalHostForService(config.envId, ns, key),
-      internal_port: String(stored.spec.config.transport === "http" ? 80 : stored.spec.config.port),
-      internal_url: stored.spec.config.transport === "http" ? `http://${internalHostForService(config.envId, ns, key)}` : null,
+      // Both name ONE port, so they are null when the service leaves it
+      // ambiguous — a caller that needs a specific port of a multi-port service
+      // uses internal_host and writes the number itself.
+      internal_port: stored.spec.config.ports.length === 1 ? String(stored.spec.config.ports[0].port) : null,
+      internal_url: ((httpPort) => httpPort === null ? null : `http://${internalHostForService(config.envId, ns, key)}:${httpPort}`)(soleHttpPort(stored.spec.config.ports)),
       // Keep a public service's platform URL stable even while custom domains are added or
       // removed. The backend prefers a verified custom domain for display, then falls back
       // to this value; private services continue to expose only a verified custom domain.
-      url: stored.spec.config.transport !== "http"
+      url: !stored.spec.config.ports.some((entry) => entry.transport === "http")
         ? null
-        : stored.spec.config.visibility === "public"
+        : specIsPublic(stored.spec)
           ? `https://${appName}.fly.dev`
           : verifiedHostnames.length > 0 ? `https://${verifiedHostnames[0]}` : null,
     },

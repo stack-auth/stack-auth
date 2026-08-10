@@ -33,7 +33,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
 import { readProjectSecretValue } from "@/lib/project-secrets";
-import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey } from "@hexclave/shared/dist/deployments";
+import { DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DeploymentEnvVarDefinition, DeploymentPortDefinition, DeploymentServiceDefinition, DeploymentServiceType, HEXCLAVE_OUTPUT_KEYS, HEXCLAVE_SERVICE_ID, SERVICE_OUTPUT_KEYS, ServiceOutputKey, deploymentServiceIsPublic, portTransport, soleDeploymentPort, soleHttpDeploymentPort } from "@hexclave/shared/dist/deployments";
 import { decryptWithKms, encryptWithKms } from "@hexclave/shared/dist/helpers/vault/server-side";
 import { PROJECT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/project-secrets";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -66,6 +66,33 @@ export function marshalNamespaceForTenancy(tenancy: Tenancy): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parses a DeploymentService row's stored `ports` JSON. Like `env`, the column
+ * is only ever written through the sync route (validated against
+ * deploymentServiceDefinitionSchema), so a malformed shape is an assertion
+ * failure rather than user error. An EMPTY array is legitimate: it is what a row
+ * that predates a synced definition holds.
+ */
+function parseStoredPorts(ports: Prisma.JsonValue, serviceId: string): DeploymentPortDefinition[] {
+  // Prisma types the column as never-undefined, but a partial `select` that
+  // omits it hands this function undefined at run time.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (ports === null || ports === undefined) return [];
+  if (!Array.isArray(ports)) {
+    throw new HexclaveAssertionError(`Stored ports of deployment service ${JSON.stringify(serviceId)} is not an array`, { ports });
+  }
+  return ports.map((entry) => {
+    if (!isRecord(entry) || typeof entry.port !== "number") {
+      throw new HexclaveAssertionError(`Stored port entry of deployment service ${JSON.stringify(serviceId)} has no numeric port`, { ports });
+    }
+    const transport = entry.transport ?? "http";
+    if (transport !== "http" && transport !== "tcp") {
+      throw new HexclaveAssertionError(`Stored port ${entry.port} of deployment service ${JSON.stringify(serviceId)} has invalid transport ${JSON.stringify(transport)}`, { ports });
+    }
+    return { port: entry.port, public: entry.public === true, transport };
+  });
 }
 
 /**
@@ -126,9 +153,7 @@ function parseStoredEnv(env: Prisma.JsonValue, serviceId: string): Record<string
 export function definitionFromServiceRow(row: {
   serviceId: string,
   type: string,
-  visibility: string,
-  transport: string,
-  port: number | null,
+  ports: Prisma.JsonValue,
   minInstances: number | null,
   maxInstances: number | null,
   rootDirectory: string | null,
@@ -138,25 +163,16 @@ export function definitionFromServiceRow(row: {
   volumeSizeGb: number | null,
   env: Prisma.JsonValue,
 }): DeploymentServiceDefinition {
-  if (row.visibility !== "public" && row.visibility !== "private") {
-    throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid visibility ${JSON.stringify(row.visibility)}.`);
-  }
-  if (row.transport !== "http" && row.transport !== "tcp") {
-    throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid transport ${JSON.stringify(row.transport)}.`);
-  }
   if (row.type !== "server" && row.type !== "serverless") {
     throw new HexclaveAssertionError(`Deployment service ${JSON.stringify(row.serviceId)} has invalid type ${JSON.stringify(row.type)}.`);
   }
   return {
     type: row.type,
-    visibility: row.visibility,
-    transport: row.transport,
-    // Rows that predate a synced definition have no port. The `0` placeholder is only ever
-    // reached by display-only callers (serviceToApiShape reads row.port directly, and the
-    // deploy route guards `row.port == null` before building a spec), so it never reaches
-    // Marshal — but note `0` is NOT a valid ServiceSpec port, so any future path that sends
-    // definitionFromServiceRow's output to Marshal must guard the null-port case first.
-    port: row.port ?? 0,
+    // Rows that predate a synced definition have an empty port list. Callers that
+    // build a runtime spec must reject that before it reaches Marshal (the deploy
+    // route guards it) — an empty array is not a deployable service, only a
+    // displayable one.
+    ports: parseStoredPorts(row.ports, row.serviceId),
     min_instances: row.minInstances ?? undefined,
     max_instances: row.maxInstances ?? undefined,
     root_directory: row.rootDirectory ?? undefined,
@@ -339,8 +355,10 @@ function assertNoVolumeIdConflicts(services: Record<string, DeploymentServiceDef
 export async function syncServiceDefinitions(prisma: PrismaClientTransaction, tenancy: Tenancy, services: Record<string, DeploymentServiceDefinition>, definitionSyncId: string): Promise<void> {
   await assertNoVolumeShrink(prisma, tenancy, services);
   const claimedVolumeIds = assertNoVolumeIdConflicts(services);
+  // A custom domain terminates TLS and routes HTTP, so it needs an HTTP port to
+  // route TO. A service that declares only TCP ports can never serve one.
   const tcpServiceIds = Object.entries(services)
-    .filter(([, definition]) => definition.transport === "tcp")
+    .filter(([, definition]) => definition.ports.every((entry) => portTransport(entry) === "tcp"))
     .map(([serviceId]) => serviceId);
   if (tcpServiceIds.length > 0) {
     const serviceWithDomain = await prisma.deploymentService.findFirst({
@@ -352,7 +370,7 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
       select: { serviceId: true },
     });
     if (serviceWithDomain !== null) {
-      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so it cannot use transport "tcp". Remove the domain first or keep transport: "http".`);
+      throw new StatusError(400, `Service ${JSON.stringify(serviceWithDomain.serviceId)} has a custom domain, so it must keep an HTTP port to route to. Remove the domain first, or give the service a port with transport: "http".`);
     }
   }
   // Release volume ids BEFORE any upsert writes them. The per-service upserts
@@ -394,10 +412,8 @@ export async function syncServiceDefinitions(prisma: PrismaClientTransaction, te
     const definitionColumns = {
       definitionSyncedAt: new Date(),
       definitionSyncId,
-      port: definition.port,
       type: definition.type,
-      visibility: definition.visibility,
-      transport: definition.transport,
+      ports: definition.ports,
       minInstances: definition.min_instances ?? null,
       maxInstances: definition.max_instances ?? null,
       rootDirectory: definition.root_directory ?? null,
@@ -628,7 +644,7 @@ export async function resolveEnvVars(options: {
   const { tenancy, prisma, serviceId, env, secretDefaults } = options;
   const existingServices = await prisma.deploymentService.findMany({
     where: { tenancyId: tenancy.id },
-    select: { serviceId: true, transport: true, port: true },
+    select: { serviceId: true, ports: true },
   });
   const existingServiceIds = new Set(existingServices.map((row) => row.serviceId));
   const existingServicesById = new Map(existingServices.map((row) => [row.serviceId, row]));
@@ -702,15 +718,26 @@ export async function resolveEnvVars(options: {
           throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
         }
         const target = existingServicesById.get(normalized.serviceId);
+        const targetPorts = target === undefined ? [] : parseStoredPorts(target.ports, normalized.serviceId);
+        // `internalPort` names ONE port, so it only resolves when the target
+        // leaves no doubt about which. The CLI rejects this at config-eval time
+        // with a better message; this is the boundary that makes it true.
         if (normalized.outputKey === "internalPort") {
-          if (target?.port == null) {
-            throw new StatusError(400, `The env var connection "${raw}" points to a service without a synced port. Sync the complete services export before deploying.`);
+          const port = soleDeploymentPort(targetPorts);
+          if (port === null) {
+            throw new StatusError(400, targetPorts.length === 0
+              ? `The env var connection "${raw}" points to a service with no synced ports. Sync the complete services export before deploying.`
+              : `The env var connection "${raw}" points to a service declaring ${targetPorts.length} ports (${targetPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Write the port number directly.`);
           }
-          resolvedEnv.set(envVarKey, { value: String(target.transport === "http" ? 80 : target.port) });
+          resolvedEnv.set(envVarKey, { value: String(port) });
           break;
         }
-        if (target?.transport === "tcp" && (normalized.outputKey === "url" || normalized.outputKey === "internalUrl")) {
-          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a TCP service. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and ${JSON.stringify(`${normalized.serviceId}.internalPort`)} instead.`);
+        // Likewise `internalUrl`, which additionally needs the port to be HTTP.
+        if (normalized.outputKey === "internalUrl" && soleHttpDeploymentPort(targetPorts) === null) {
+          throw new StatusError(400, `The env var connection "${raw}" needs exactly one HTTP port on ${JSON.stringify(normalized.serviceId)} to build a URL from, but it declares ${targetPorts.filter((entry) => portTransport(entry) === "http").length}. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
+        }
+        if (normalized.outputKey === "url" && targetPorts.length > 0 && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
+          throw new StatusError(400, `The env var connection "${raw}" requests a URL from a service that declares only TCP ports. Connect with ${JSON.stringify(`${normalized.serviceId}.internalHost`)} and an explicit port instead.`);
         }
         // Narrowed by the includes() check above; the map is `satisfies Record<ServiceOutputKey,…>`.
         const marshalOutputKey = SERVICE_OUTPUT_KEY_TO_MARSHAL[normalized.outputKey as ServiceOutputKey];
@@ -844,15 +871,15 @@ export function marshalSpecForDefinition(definition: DeploymentServiceDefinition
   return {
     config: {
       type: definition.type,
-      visibility: definition.visibility,
-      transport: definition.transport,
       min_instances: minInstances,
       // Default max to at least min: a definition with `minInstances` and no `maxInstances`
       // must not synthesize an invalid spec (max < min) that Marshal 400s after the upload is
       // already consumed. Validation (CLI + schema) also rejects it up front now, but this
       // keeps the spec self-consistent regardless.
       max_instances: isServer ? 1 : definition.max_instances ?? Math.max(minInstances, DEFAULT_MAX_INSTANCES),
-      port: definition.port,
+      // Passed through verbatim: the runtime derives its ingress from the ports
+      // themselves, so there is no separate visibility to keep in step.
+      ports: definition.ports.map((entry) => ({ port: entry.port, public: entry.public === true, transport: portTransport(entry) })),
       // Absent = ephemeral container filesystem. Marshal re-validates that a
       // volume implies type "server".
       ...(definition.persistent_volumes !== undefined && Object.keys(definition.persistent_volumes).length > 0
@@ -1136,9 +1163,9 @@ export type DnsRecord = MarshalDnsRecord;
 export type DeploymentServiceApiShape = {
   id: string,
   type: DeploymentServiceType,
-  visibility: "public" | "private",
-  transport: "http" | "tcp",
-  port: number | null,
+  // The declared ports. A service is public exactly when one of them is, so the
+  // dashboard reads publicness from here rather than from a separate field.
+  ports: DeploymentPortDefinition[],
   min_instances: number | null,
   max_instances: number | null,
   root_directory: string | null,
@@ -1399,19 +1426,23 @@ export async function serviceToApiShape(options: {
   // Verified custom domains remain the preferred user-facing URL. Public services fall back
   // to Marshal's stable Fly platform URL. Keep using the most recent successful run after a
   // later failed deploy: the previous machines (and their endpoint) can still be serving.
+  // A URL needs an HTTP port to route to; the PLATFORM url additionally needs a
+  // public one (a private service only gets a URL once its domain verifies).
+  const servesHttp = definition.ports.some((entry) => portTransport(entry) === "http");
+  const hasPublicPort = deploymentServiceIsPublic(definition.ports);
   const verifiedPrimary = row.domains.find((d) => d.isPrimary && d.verified) ?? row.domains.find((d) => d.verified);
-  const latestSuccessfulPublicUrl = definition.transport === "http" && definition.visibility === "public" && verifiedPrimary == null && latestRun?.serviceUrl == null
+  const latestSuccessfulPublicUrl = servesHttp && hasPublicPort && verifiedPrimary == null && latestRun?.serviceUrl == null
     ? (await prisma.deploymentRun.findFirst({
       where: { tenancyId: tenancy.id, deploymentServiceId: row.id, status: "READY", serviceUrl: { not: null } },
       orderBy: { createdAt: "desc" },
       select: { serviceUrl: true },
     }))?.serviceUrl ?? null
     : null;
-  const url = definition.transport !== "http"
+  const url = !servesHttp
     ? null
     : verifiedPrimary != null
       ? `https://${verifiedPrimary.hostname}`
-      : definition.visibility === "public" ? latestRun?.serviceUrl ?? latestSuccessfulPublicUrl : null;
+      : hasPublicPort ? latestRun?.serviceUrl ?? latestSuccessfulPublicUrl : null;
 
   // KNOWN GAP — `status`/`has_successful_deploy` are derived purely from the build record, so a
   // service whose image builds fine but crash-loops on boot still reports "deployed". Marshal
@@ -1457,9 +1488,7 @@ export async function serviceToApiShape(options: {
   return {
     id: row.serviceId,
     type: definition.type,
-    visibility: definition.visibility,
-    transport: definition.transport,
-    port: row.port,
+    ports: definition.ports,
     min_instances: row.minInstances,
     max_instances: row.maxInstances,
     root_directory: row.rootDirectory,

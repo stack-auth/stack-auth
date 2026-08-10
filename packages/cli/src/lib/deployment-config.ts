@@ -8,7 +8,7 @@
 //     services: ({ isDev, secret, service, hexclave }) => ({
 //       frontend: {
 //         type: "serverless",
-//         port: 3000,
+//         ports: [{ port: 3000, public: true }],
 //         maxInstances: 3,
 //         devCommand: "pnpm dev",
 //         env: {
@@ -19,8 +19,7 @@
 //       },
 //       database: {
 //         type: "server",
-//         port: 5432,
-//         transport: "tcp",
+//         ports: [{ port: 5432, transport: "tcp" }],
 //         persistentVolumes: { pgdata: { path: "/var/lib/postgresql/data", sizeGb: 10 } },
 //       },
 //     }),
@@ -47,11 +46,17 @@ import {
   HEXCLAVE_OUTPUT_KEYS,
   HEXCLAVE_SERVICE_ID,
   MAX_PERSISTENT_VOLUMES_PER_SERVICE,
+  MAX_PORTS_PER_SERVICE,
   MAX_VOLUME_ID_LENGTH,
   MAX_VOLUME_SIZE_GB,
   MIN_VOLUME_SIZE_GB,
   SERVICE_OUTPUT_KEYS,
+  deploymentServiceIsPublic,
+  portTransport,
+  soleDeploymentPort,
+  soleHttpDeploymentPort,
   type DeploymentEnvVarDefinition,
+  type DeploymentPortDefinition,
   type DeploymentServiceDefinition,
   type DeploymentServiceType,
   type DeploymentVolumeDefinition,
@@ -232,7 +237,7 @@ export type EvaluatedServices = {
 };
 
 const KNOWN_SERVICE_FIELDS = new Set([
-  "type", "visibility", "transport", "port", "minInstances", "maxInstances",
+  "type", "ports", "minInstances", "maxInstances",
   "rootDirectory", "dockerfilePath", "devCommand", "persistentVolumes", "env",
 ]);
 const KNOWN_VOLUME_FIELDS = new Set(["path", "sizeGb"]);
@@ -264,6 +269,78 @@ function readOptionalStringField(record: Record<string, unknown>, serviceId: str
  * service's own Fly app. It therefore identifies the disk within a service —
  * the same id under a different service is a DIFFERENT (empty) disk.
  */
+const KNOWN_PORT_FIELDS = new Set(["port", "public", "transport"]);
+
+/**
+ * Evaluates the `ports` array. There is no service-level visibility: a service
+ * is public exactly when one of its ports is, so the only thing to reconcile
+ * here is the port list itself.
+ */
+function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefinition[] {
+  if (portsRaw === undefined || portsRaw === null) {
+    throw new CliError(`deployment.services.${serviceId} has no \`ports\`. Every service must declare the ports its container listens on, e.g. \`ports: [{ port: 3000, public: true }]\`.`);
+  }
+  if (!Array.isArray(portsRaw)) {
+    throw new CliError(`deployment.services.${serviceId}.ports must be an array, e.g. \`ports: [{ port: 3000, public: true }]\` (got ${JSON.stringify(typeof portsRaw)}).`);
+  }
+  if (portsRaw.length === 0) {
+    throw new CliError(`deployment.services.${serviceId}.ports is empty. A service is only ready once a declared port accepts connections, so it must declare at least one.`);
+  }
+  if (portsRaw.length > MAX_PORTS_PER_SERVICE) {
+    throw new CliError(`deployment.services.${serviceId}.ports declares ${portsRaw.length} ports, but at most ${MAX_PORTS_PER_SERVICE} per service is supported.`);
+  }
+
+  const ports: DeploymentPortDefinition[] = [];
+  const seenPorts = new Set<number>();
+  for (const [index, portRaw] of portsRaw.entries()) {
+    const at = `deployment.services.${serviceId}.ports[${index}]`;
+    if (portRaw === null || typeof portRaw !== "object" || Array.isArray(portRaw)) {
+      throw new CliError(`${at} must be an object, e.g. \`{ port: 3000, public: true }\`.`);
+    }
+    const record = portRaw as Record<string, unknown>;
+    for (const field of Object.keys(record)) {
+      if (!KNOWN_PORT_FIELDS.has(field)) {
+        throw new CliError(`${at} has an unknown field ${JSON.stringify(field)}. Known fields: ${[...KNOWN_PORT_FIELDS].join(", ")}.`);
+      }
+    }
+
+    const port = record.port;
+    if (typeof port !== "number" || !Number.isInteger(port)) {
+      throw new CliError(`${at}.port is required and must be an integer, e.g. \`{ port: 3000 }\`.`);
+    }
+    if (port < 1 || port > 65535) {
+      throw new CliError(`${at}.port must be between 1 and 65535 (got ${port}).`);
+    }
+    if (seenPorts.has(port)) {
+      throw new CliError(`${at} declares port ${port}, which is already declared on deployment.services.${serviceId}. Each port may only appear once.`);
+    }
+    seenPorts.add(port);
+
+    if (record.public !== undefined && typeof record.public !== "boolean") {
+      throw new CliError(`${at}.public must be true or false (got ${JSON.stringify(record.public)}). It defaults to false — ports are private unless you say otherwise.`);
+    }
+    const isPublic = record.public === true;
+
+    const transport = record.transport ?? "http";
+    if (transport !== "http" && transport !== "tcp") {
+      throw new CliError(`${at}.transport must be "http" or "tcp" (got ${JSON.stringify(record.transport)}).`);
+    }
+    if (transport === "tcp" && isPublic) {
+      throw new CliError(`${at} is a "tcp" port, which is private-only: raw TCP gets no TLS termination and no HTTP routing, so it cannot be served on a public hostname. Drop \`public: true\` and connect with service(${JSON.stringify(serviceId)}).internalHost and port ${port}.`);
+    }
+
+    ports.push({ port, public: isPublic, transport });
+  }
+
+  // 80 and 443 reach exactly one port, so a second public port has nowhere to
+  // be served from.
+  const publicPorts = ports.filter((entry) => entry.public);
+  if (publicPorts.length > 1) {
+    throw new CliError(`deployment.services.${serviceId} marks ${publicPorts.length} ports public (${publicPorts.map((entry) => entry.port).join(", ")}), but a service may only expose one. Its platform URL and any custom domain serve a single port on 80/443 — keep one public and reach the rest privately with service(${JSON.stringify(serviceId)}).internalHost.`);
+  }
+  return ports;
+}
+
 function evaluatePersistentVolumes(serviceId: string, volumesRaw: unknown): Record<string, DeploymentVolumeDefinition> | undefined {
   if (volumesRaw === undefined || volumesRaw === null) return undefined;
   if (typeof volumesRaw !== "object" || Array.isArray(volumesRaw)) {
@@ -470,17 +547,7 @@ export function evaluateDeploymentConfig(options: {
         : `deployment.services.${serviceId}.type must be ${DEPLOYMENT_SERVICE_TYPES.map((knownType: string) => JSON.stringify(knownType)).join(" or ")} (got ${JSON.stringify(record.type)}).`);
     }
     const serviceType = record.type as DeploymentServiceType;
-    const visibility = readOptionalStringField(record, serviceId, "visibility") ?? "private";
-    if (visibility !== "public" && visibility !== "private") {
-      throw new CliError(`deployment.services.${serviceId}.visibility must be "public" or "private" (got ${JSON.stringify(visibility)}).`);
-    }
-    const transport = readOptionalStringField(record, serviceId, "transport") ?? "http";
-    if (transport !== "http" && transport !== "tcp") {
-      throw new CliError(`deployment.services.${serviceId}.transport must be "http" or "tcp" (got ${JSON.stringify(transport)}).`);
-    }
-    if (transport === "tcp" && visibility === "public") {
-      throw new CliError(`deployment.services.${serviceId} uses transport "tcp", which is private-only. Set visibility: "private" and connect with service(${JSON.stringify(serviceId)}).internalHost/internalPort.`);
-    }
+    const ports = evaluatePorts(serviceId, record.ports);
 
     const rootDirectoryRaw = readOptionalStringField(record, serviceId, "rootDirectory");
     const absoluteRootDirectory = path.resolve(configDirectory, rootDirectoryRaw ?? ".");
@@ -504,13 +571,6 @@ export function evaluateDeploymentConfig(options: {
       dockerfilePath = relativeDockerfilePath.split(path.sep).join("/");
     }
 
-    const port = readOptionalIntegerField(record, serviceId, "port");
-    if (port === undefined) {
-      throw new CliError(`deployment.services.${serviceId} has no \`port\`. Every service must declare the port its container listens on, e.g. \`port: 3000\`.`);
-    }
-    if (port < 1 || port > 65535) {
-      throw new CliError(`deployment.services.${serviceId}.port must be between 1 and 65535 (got ${port}).`);
-    }
     const minInstances = readOptionalIntegerField(record, serviceId, "minInstances");
     const maxInstances = readOptionalIntegerField(record, serviceId, "maxInstances");
     if (minInstances !== undefined && (minInstances < 0 || minInstances > 5)) {
@@ -552,9 +612,7 @@ export function evaluateDeploymentConfig(options: {
       serviceId,
       definition: {
         type: serviceType,
-        visibility,
-        transport,
-        port,
+        ports,
         min_instances: minInstances,
         max_instances: maxInstances,
         // Stored/displayed as a config-directory-relative posix path ("." for
@@ -600,9 +658,13 @@ export function evaluateDeploymentConfig(options: {
       throw new CliError(`service(${JSON.stringify(referencedServiceId)}) does not match any defined service. Available services: ${[...services.keys()].join(", ")}.`);
     }
   }
-  // Reject URL-shaped connections to raw TCP before uploading anything. The
-  // backend enforces this too, but config evaluation can name both services
-  // and the correct replacement immediately.
+  // Reject connections the target's ports cannot satisfy, before uploading
+  // anything. The backend enforces this too, but config evaluation can name
+  // both services and the correct replacement immediately.
+  //
+  // `internalUrl` and `internalPort` each name ONE port, so a service with
+  // several only breaks the reference, not itself — which is why this is
+  // checked here, against the referrer, rather than when the target is parsed.
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind !== "connection") continue;
@@ -610,8 +672,25 @@ export function evaluateDeploymentConfig(options: {
       if (targetServiceId === HEXCLAVE_SERVICE_ID) continue;
       const target = services.get(targetServiceId);
       if (target == null) throw new CliError(`Internal error: validated service reference ${JSON.stringify(value.reference)} has no target definition.`);
-      if (target.definition.transport === "tcp" && (outputKey === "url" || outputKey === "internalUrl")) {
-        throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} requests ${JSON.stringify(value.reference)} from a TCP service. Use service(${JSON.stringify(targetServiceId)}).internalHost and .internalPort as separate values instead.`);
+      const at = `deployment.services.${serviceId}.env.${envVarKey}`;
+      const targetPorts = target.definition.ports;
+      const describePorts = () => targetPorts.map((entry) => `${entry.port} (${portTransport(entry)}${entry.public ? ", public" : ""})`).join(", ");
+
+      // `url` deliberately does NOT require a public port: a private service
+      // still gets one once a custom domain verifies. What it does require is
+      // something HTTP to serve — a URL to a service that only speaks raw TCP
+      // could never resolve.
+      if (outputKey === "url" && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
+        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares only TCP ports, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
+      }
+      if (outputKey === "internalUrl" && soleHttpDeploymentPort(targetPorts) === null) {
+        const httpPorts = targetPorts.filter((entry) => portTransport(entry) === "http");
+        throw new CliError(httpPorts.length === 0
+          ? `${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares no HTTP port, so there is no URL to build. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`
+          : `${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares ${httpPorts.length} HTTP ports (${httpPorts.map((entry) => entry.port).join(", ")}), so which one the URL means is ambiguous. Use service(${JSON.stringify(targetServiceId)}).internalHost and write the port you want.`);
+      }
+      if (outputKey === "internalPort" && soleDeploymentPort(targetPorts) === null) {
+        throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares ${targetPorts.length} ports (${targetPorts.map((entry) => entry.port).join(", ")}), so which one it means is ambiguous. Write the port number you want directly.`);
       }
     }
   }

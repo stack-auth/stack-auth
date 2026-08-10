@@ -22,8 +22,8 @@ export const preMigration = async (sql: Sql) => {
   // A service that exists before volumes do — the state of every row in prod.
   const existingServiceId = randomUUID();
   await sql`
-    INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "port")
-    VALUES (${tenancyId}::uuid, ${existingServiceId}::uuid, NOW(), 'pre-existing-service', 3000)
+    INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "ports")
+    VALUES (${tenancyId}::uuid, ${existingServiceId}::uuid, NOW(), 'pre-existing-service', '[{"port": 3000, "public": false, "transport": "http"}]'::text::jsonb)
   `;
   return { tenancyId, existingServiceId };
 };
@@ -37,8 +37,8 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
 
   const insertService = async (serviceId: string, volumePath: string | null, volumeSizeGb: number | null) => {
     await sql`
-      INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "port", "volumePath", "volumeSizeGb")
-      VALUES (${context.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}, 3000, ${volumePath}, ${volumeSizeGb})
+      INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "ports", "volumePath", "volumeSizeGb")
+      VALUES (${context.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}, '[{"port": 3000, "public": false, "transport": "http"}]'::text::jsonb, ${volumePath}, ${volumeSizeGb})
     `;
   };
 

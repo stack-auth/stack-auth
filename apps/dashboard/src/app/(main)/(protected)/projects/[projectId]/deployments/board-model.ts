@@ -164,7 +164,11 @@ export function buildBoardServices(apiServices: AdminDeploymentServiceJson[], he
       x: 520 + Math.floor(index / 4) * 320,
       y: 96 + (index % 4) * 150,
       status: apiStatusToBoardStatus(apiService.status),
-      source: apiService.port != null ? `Container on port ${apiService.port}` : "Deployed with `hexclave deploy`",
+      // Names every port, marking the public one — the board node is where a
+      // reader checks what a service actually exposes.
+      source: apiService.ports.length > 0
+        ? `Container on ${apiService.ports.length === 1 ? "port" : "ports"} ${apiService.ports.map((entry) => `${entry.port}${entry.public ? " (public)" : ""}`).join(", ")}`
+        : "Deployed with `hexclave deploy`",
       domain: apiService.domains.find((d) => d.is_primary)?.hostname ?? hostnameOfUrl(apiService.url),
       envVars: apiService.env.map((envVar) => ({
         key: envVar.key,

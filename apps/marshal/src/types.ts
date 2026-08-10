@@ -28,17 +28,26 @@ export type VolumeConfig = {
 // "serverless" → scales between bounds, autostop "stop": every start is cold, no volume.
 export type ServiceKind = "server" | "serverless";
 
+// One port the container listens on. Each becomes its own entry in the machine's
+// Fly `services` array.
+//
+// `public` allocates Fly ingress and gives the service a built-in fly.dev URL.
+// At most one port per service may be public: a hostname's 80/443 reach exactly
+// one of them. A "tcp" port is raw — no TLS termination, no HTTP routing — so it
+// is private-only and reachable over Flycast at its own number.
+export type PortConfig = {
+  port: number,
+  public: boolean,
+  transport: "http" | "tcp",
+};
+
 export type ContainerConfig = {
   type: ServiceKind,
-  // Public allocates Fly ingress and guarantees a built-in fly.dev URL.
-  visibility: "public" | "private",
-  // TCP is private-only and exposes a raw Flycast port. HTTP receives the
-  // existing HTTP/TLS handlers and may be public or private.
-  transport: "http" | "tcp",
   min_instances: number,
   max_instances: number, // >= min_instances; v1 cap: 5. Always 0/1 for "server".
-  // The single port the container listens on. Readiness = port accepts connections.
-  port: number,
+  // At least one. Readiness = a declared port accepts connections. There is no
+  // service-level visibility: the service is public exactly when a port is.
+  ports: PortConfig[],
   // Absent = the container filesystem is entirely ephemeral. Keyed by VOLUME ID, which
   // names the Fly volume (see flyVolumeName): the id, not the service, identifies the
   // disk, so the same id under a different service moves the mount there. At most one

@@ -1720,13 +1720,15 @@ model DeploymentService {
   // column could be added to a table that already had rows; every writer sets
   // it explicitly.
   type          String @default("serverless")
-  // Container definition: the single port the container listens on, its
-  // application transport, and
-  // the serverless scaling bounds (1/1 = serverful). Null on unsynced rows.
-  port          Int?
-  // Public services receive a platform endpoint even without a custom domain.
-  visibility    String @default("private")
-  transport     String @default("http")
+  // The ports the container listens on, as a JSON array of
+  // `{ port, public, transport }` (see DeploymentPortDefinition). There is no
+  // separate visibility column: a service is public exactly when one of its
+  // ports is, so the two cannot drift apart. At most one port may be public and
+  // a "tcp" port may never be — both enforced by CHECK constraints as well as
+  // by the sync route, since this column is the only record of either fact.
+  //
+  // `[]` on rows that predate a synced definition: displayable, not deployable.
+  ports         Json   @default("[]")
   minInstances  Int?
   maxInstances  Int?
   rootDirectory String?
