@@ -309,7 +309,7 @@ export default function PageClient() {
             <div><h2 className="text-lg font-semibold">Delivery</h2><p className="text-sm text-muted-foreground">See whether API-attributed sends reached a terminal delivery state.</p></div>
             <StyledLink href={sentHref}>Open full sent view</StyledLink>
           </div>
-          <SentEmailsView filterFn={filterFn} renderActions={(emails) => <ApiStatsAndSources emails={emails} templateNames={templateNames} />} />
+          <SentEmailsView stickyTop={0} filterFn={filterFn} renderActions={(emails) => <ApiStatsAndSources emails={emails} templateNames={templateNames} />} />
         </section>
 
         <DesignCard title="Quickstart" subtitle="Choose a transport and send shape; every example uses this project’s credentials." icon={CodeIcon} glassmorphic>

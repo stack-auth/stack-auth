@@ -445,6 +445,7 @@ export default function PageClient() {
   const [dgSelectionMode, setDgSelectionMode] = useState<DataGridSelectionMode>("none");
   const [dgRowHeight, setDgRowHeight] = useState(44);
   const [dgShowToolbar, setDgShowToolbar] = useState(true);
+  const [dgStickyTop, setDgStickyTop] = useState<"inherited" | "local">("inherited");
   const [dgState, setDgState] = useState(() => createDefaultDataGridState(DEMO_GRID_COLUMNS));
   const dgData = useDataSource({ data: DEMO_GRID_USERS, columns: DEMO_GRID_COLUMNS, getRowId: (r: DemoGridUser) => r.id, sorting: dgState.sorting, quickSearch: dgState.quickSearch, pagination: dgState.pagination, paginationMode: "client" });
 
@@ -941,6 +942,7 @@ export default function PageClient() {
             selectionMode={dgSelectionMode}
             rowHeight={dgRowHeight}
             toolbar={dgShowToolbar ? undefined : false}
+            stickyTop={dgStickyTop === "local" ? 0 : undefined}
             maxHeight={400}
           />
         </div>
@@ -1753,6 +1755,23 @@ export default function PageClient() {
           <PropField label="Toolbar">
             <BoolToggle value={dgShowToolbar} onChange={setDgShowToolbar} on="Shown" off="Hidden" />
           </PropField>
+          <PropField label="Sticky top">
+            <DesignSelectorDropdown
+              value={dgStickyTop}
+              onValueChange={(v) => {
+                if (v === "inherited" || v === "local") {
+                  setDgStickyTop(v);
+                  return;
+                }
+                throw new Error(`Unknown sticky top mode "${v}"`);
+              }}
+              options={[
+                { value: "inherited", label: "Inherited" },
+                { value: "local", label: "Local (0px)" },
+              ]}
+              size="sm"
+            />
+          </PropField>
         </div>
       );
     }
@@ -2333,6 +2352,7 @@ export default function PageClient() {
   selectionMode="${dgSelectionMode}"
   rowHeight={${dgRowHeight}}
   toolbar={${dgShowToolbar ? "undefined" : "false"}}
+  stickyTop={${dgStickyTop === "local" ? "0" : "undefined"}}
   maxHeight={400}
 />`;
     }

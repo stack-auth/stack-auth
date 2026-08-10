@@ -951,11 +951,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const cssVars = useMemo<CSSProperties>(() => {
     const vars: Record<string, string | number> = { "--grid-total-w": `${totalContentWidth}px` };
+    if (stickyTop != null) {
+      vars["--data-grid-sticky-top"] = typeof stickyTop === "number" ? `${stickyTop}px` : stickyTop;
+    }
     for (const col of visibleColumns) {
       vars[`--col-${col.id}-size`] = columnSizes[col.id];
     }
     return vars as CSSProperties;
-  }, [visibleColumns, columnSizes, totalContentWidth]);
+  }, [stickyTop, visibleColumns, columnSizes, totalContentWidth]);
 
   // ── Selection handlers ───────────────────────────────────────
   const fireSelection = useCallback(
@@ -1174,15 +1177,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       >
         <div
           ref={stickyChromeRef}
-          className={cn(
-            "z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl",
-            isBounded ? "sticky" : "relative",
-          )}
-          style={{
-            top: isBounded
-              ? stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)")
-              : 0,
-          }}
+          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl"
+          style={{ top: stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
         >
           {toolbar !== false && (
             <div className="relative bg-transparent">
@@ -1269,9 +1265,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             className="relative z-0"
             style={{
               minWidth: totalContentWidth,
-              ...(isBounded
-                ? { clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)" }
-                : {}),
+              clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)",
             }}
           >
             {isLoading && (
