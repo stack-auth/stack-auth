@@ -317,6 +317,21 @@ describe("verification cursor", () => {
     const result = await verifyDataIntegrity(db, { step_count: 1_000 });
     expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
   });
+
+  it("reports an unparseable pinned root without throwing", async () => {
+    const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());
+    const piledriver = declarePiledriverDatabase(lowLevel);
+    const db = declareBulldozerDatabase(piledriver, { migrations: [] });
+    await db.applyRemainingMigrations();
+    const rootStore = lowLevel.declareKvStore("root");
+    await rootStore.setAll([{
+      key: new TextEncoder().encode("bulldozer-database-root").buffer,
+      value: new Uint8Array([0xff]).buffer,
+    }]);
+    const result = await verifyDataIntegrity(db, { step_count: 1_000 });
+    expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
+    expect(result.success).toBe(false);
+  });
 });
 
 function fakePosition(overrides: Partial<TablePosition> = {}): TablePosition {
@@ -458,7 +473,7 @@ describe("generic table corruption checks", () => {
     expect(result.issues.map(issue => issue.code)).toContain("heap_group_key");
   });
 
-  it("reports group, row, enclosing-group, duplicate-id, and heap-key violations", async () => {
+  it("reports row and duplicate-id violations", async () => {
     const cases = [
       fakeTable([{ groupKey: "g", rows: [
         { groupKey: "wrong", rowIdentifier: "a", rowSortKey: "b" },

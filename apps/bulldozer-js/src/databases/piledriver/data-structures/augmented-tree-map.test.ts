@@ -311,12 +311,13 @@ describe("AugmentedTreeMap", () => {
     let position: string | null = null;
     const resumed: string[] = [];
     let calls = 0;
-    for (;;) {
+    for (let iteration = 0; ; iteration++) {
       const result = await tree.verifyDataIntegrity({ stepBudget: 1, position });
       calls++;
       expect(result.stepsTaken).toBeLessThanOrEqual(1);
       resumed.push(...result.issues.map(issue => issue.code));
       if (result.nextPosition === null) break;
+      if (iteration >= 10_000) throw new Error("Tree verification did not terminate");
       position = result.nextPosition;
     }
     expect(calls).toBeGreaterThan(1);

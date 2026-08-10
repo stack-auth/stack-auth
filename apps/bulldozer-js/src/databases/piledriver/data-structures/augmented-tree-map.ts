@@ -324,20 +324,25 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         height: (heights[0] ?? 0) + 1,
         size,
         entryCount,
-        minKey: firstChild === undefined ? node.minKey : firstChild.minKey,
-        maxKey: lastChild === undefined ? node.maxKey : lastChild.maxKey,
+        minKey: firstChild === undefined ? node.entries[0]?.[0] ?? node.minKey : firstChild.minKey,
+        maxKey: lastChild === undefined ? node.entries[node.entries.length - 1]?.[0] ?? node.maxKey : lastChild.maxKey,
         augmentation,
       };
       stack.pop();
-      if (stack.length > 0) {
-        const parent = stack[stack.length - 1];
-        const childIndex = frame.path[frame.path.length - 1];
-        const persistedChild = parent.node.children[childIndex];
+      const compareChild = (persistedChild: Child<MultiKey<Key, EntryId>, Augmentation>) => {
         if (persistedChild.size !== summary.size) issues.push({ code: "child_size", message: "A persisted child size does not match its contents" });
         if (!piledriverObjectEquals(persistedChild.minKey, summary.minKey)) issues.push({ code: "child_min_key", message: "A persisted child minimum key does not match its contents" });
         if (!piledriverObjectEquals(persistedChild.maxKey, summary.maxKey)) issues.push({ code: "child_max_key", message: "A persisted child maximum key does not match its contents" });
         if (!piledriverObjectEquals(persistedChild.augmentation, summary.augmentation)) issues.push({ code: "child_augmentation", message: "A persisted child augmentation does not match its contents" });
+      };
+      if (stack.length > 0) {
+        const parent = stack[stack.length - 1];
+        const childIndex = frame.path[frame.path.length - 1];
+        const persistedChild = parent.node.children[childIndex];
+        compareChild(persistedChild);
         parent.children.push(summary);
+      } else {
+        compareChild(frame.child);
       }
     }
     return { issues, stepsTaken, nextPosition: null };

@@ -104,9 +104,21 @@ function isPiledriverValue(value: unknown): value is PiledriverObject {
   return false;
 }
 
+class InvalidPiledriverValueError extends Error {
+  constructor() {
+    super("Invalid Piledriver value");
+  }
+}
+
 function parsePiledriverValue(buffer: ArrayBuffer): PiledriverObject {
-  const value: unknown = JSON.parse(textDecoder.decode(buffer));
-  if (!isPiledriverValue(value)) throw new Error("Invalid Piledriver value");
+  let value: unknown;
+  try {
+    value = JSON.parse(textDecoder.decode(buffer));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new InvalidPiledriverValueError();
+    throw error;
+  }
+  if (!isPiledriverValue(value)) throw new InvalidPiledriverValueError();
   return value;
 }
 
@@ -480,6 +492,7 @@ export async function verifyDataIntegrity(
   const integrityState = bulldozerDb.getDataIntegrityState();
   let cursor: VerificationCursor;
   let rootObject: PiledriverObject;
+  let invalidRootReported = false;
   if (request.continue === undefined) {
     const root = await integrityState.getRoot();
     cursor = {
@@ -493,15 +506,28 @@ export async function verifyDataIntegrity(
       rootChecked: false,
       rootReferenceIndex: 0,
     };
-    rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(root.buffer, root.seq)).object;
+    try {
+      rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(root.buffer, root.seq)).object;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be deserialized" });
+      invalidRootReported = true;
+      rootObject = {};
+    }
   } else {
     cursor = decodeVerificationCursor(request.continue);
     const rootBuffer = keyBytes(cursor.root.bufferBase64);
     const rootSeq = deserializeDatabaseSeq(cursor.root.seq);
-    rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq)).object;
+    try {
+      rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq)).object;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be deserialized" });
+      invalidRootReported = true;
+      rootObject = {};
+    }
   }
   let resolvedRootObject: PiledriverObject;
-  let invalidRootReported = false;
   try {
     resolvedRootObject = { snapshot: await resolveRootSnapshot(rootObject) };
   } catch (error) {
@@ -542,7 +568,7 @@ export async function verifyDataIntegrity(
     try {
       rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof InvalidPiledriverValueError) {
         recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be parsed for heap references" });
         cursor.phase = "heap-scan";
       } else {
