@@ -143,7 +143,8 @@ const docsJson = {
               "guides/integrations/tanstack-start/overview",
               "guides/integrations/supabase/overview",
               "guides/integrations/convex/overview",
-              "guides/integrations/vercel/overview"
+              "guides/integrations/vercel/overview",
+              "guides/integrations/external-auth/overview"
             ]
           },
           {
