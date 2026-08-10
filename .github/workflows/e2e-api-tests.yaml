@@ -241,6 +241,7 @@ jobs:
 
       - name: Run tests
         id: run_tests_pass1
+        timeout-minutes: 45
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
 
       - name: Snapshot PostgreSQL attribution after pass 1
@@ -271,6 +272,7 @@ jobs:
       - name: Run tests again (attempt 1)
         id: run_tests_pass2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        timeout-minutes: 75
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Snapshot PostgreSQL attribution after pass 2
@@ -298,7 +300,8 @@ jobs:
 
       - name: Run tests again (attempt 2)
         id: run_tests_pass3
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.head_ref == 'devin/1786345250-backend-span-diagnostics') && steps.run_tests_pass2.outcome == 'success'
+        timeout-minutes: 105
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Snapshot PostgreSQL attribution after pass 3
