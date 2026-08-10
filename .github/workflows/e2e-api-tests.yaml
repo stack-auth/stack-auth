@@ -281,7 +281,7 @@ jobs:
 
       - name: Run tests
         id: run_tests_pass1
-        timeout-minutes: 45
+        timeout-minutes: 60
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Snapshot PostgreSQL attribution after pass 1
