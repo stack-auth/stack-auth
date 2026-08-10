@@ -14,9 +14,14 @@ import {
   type ErrorIngestItemOutcome,
 } from "@/lib/error-ingest";
 import { projectSentryEnvelopeEvent } from "@/lib/error-ingest/error-ingest-event-adapter";
+import {
+  ErrorIngestTransactionAdapterError,
+  sentryTransactionToCanonicalOtlpSpans,
+} from "@/lib/error-ingest/error-ingest-transaction-adapter";
 import { buildErrorIngestRateLimitHeaders } from "@/lib/error-ingest/error-ingest-rate-limits";
 import { insertBatchEvents, normalizeBatchEvents } from "@/lib/analytics-telemetry-writers";
 import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
+import { insertOtlpTraces, type OtlpTenantContext } from "@/lib/otlp-trace-writer";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { TelemetryResource } from "@hexclave/shared/dist/utils/analytics-wire";
@@ -24,6 +29,8 @@ import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
+
+const MAX_TRANSACTION_SPANS_PER_ENVELOPE = 10_000;
 
 function envelopeBytes(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value;
@@ -42,10 +49,35 @@ function envelopeResource(envelope: ErrorIngestEnvelope): TelemetryResource {
   };
 }
 
+function envelopeOtlpContext(envelope: ErrorIngestEnvelope): Parameters<typeof sentryTransactionToCanonicalOtlpSpans>[1] {
+  const sdk = envelope.header.sdk;
+  const resourceAttributes = new Map<string, { type: "string", value: string }>();
+  resourceAttributes.set("service.name", { type: "string", value: sdk?.name ?? "sentry-envelope" });
+  if (sdk?.version !== undefined) resourceAttributes.set("service.version", { type: "string", value: sdk.version });
+  if (envelope.header.trace?.environment !== undefined) {
+    resourceAttributes.set("deployment.environment.name", { type: "string", value: envelope.header.trace.environment });
+  }
+  return {
+    resource: {
+      attributes: resourceAttributes,
+      droppedAttributesCount: 0,
+      schemaUrl: "",
+    },
+    scope: {
+      name: "sentry-envelope",
+      version: sdk?.version ?? "",
+      attributes: new Map(),
+      droppedAttributesCount: 0,
+      schemaUrl: "",
+    },
+  };
+}
+
 function protocolOutcomes(
   envelope: ErrorIngestEnvelope,
   policyOutcomes: ReadonlyMap<string, ErrorIngestItemOutcome>,
   attachmentOutcomes: ReadonlyMap<string, ErrorIngestItemOutcome>,
+  transactionOutcomes: ReadonlyMap<string, ErrorIngestItemOutcome>,
 ): readonly ErrorIngestItemOutcome[] {
   return envelope.items.map((item) => {
     if (item.wireType === "attachment" && item.outcome.status === "accepted") {
@@ -61,15 +93,9 @@ function protocolOutcomes(
         : { ...policyOutcome, eventId: item.outcome.eventId };
     }
     if (item.wireType === "transaction" && item.outcome.status === "accepted") {
-      // Transactions parse and are reported honestly rather than silently
-      // dropped, but nothing projects them onto spans yet. The span projection
-      // arrives with the OpenTelemetry change; until then a client that sends
-      // one gets an explicit "unsupported" outcome for that item alone, and the
-      // rest of the envelope is still ingested.
-      return createErrorIngestItemOutcome(
-        { itemId: item.itemId, itemType: "transaction", ...(item.outcome.eventId === undefined ? {} : { eventId: item.outcome.eventId }) },
-        { status: "rejected", reason: "unsupported" },
-      );
+      const transactionOutcome = transactionOutcomes.get(item.itemId);
+      if (transactionOutcome === undefined) throw new Error("Sentry envelope transaction outcome is missing");
+      return transactionOutcome;
     }
     return item.outcome;
   });
@@ -78,7 +104,7 @@ function protocolOutcomes(
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Ingest a Sentry-compatible error envelope",
-    description: "Accepts an authenticated, bounded Sentry envelope and projects error events onto issues.",
+    description: "Accepts an authenticated, bounded Sentry envelope and projects error events onto issues and transactions onto canonical OTLP spans.",
     tags: ["Analytics Events"],
     hidden: true,
   },
@@ -149,6 +175,46 @@ export const POST = createSmartRouteHandler({
       const scrubbedData = policy.scrubbedData.get(item.itemId);
       return [{ ...projected, data: scrubbedData ?? projected.data }];
     });
+
+    const transactionOutcomes = new Map<string, ErrorIngestItemOutcome>();
+    const transactionTenant: OtlpTenantContext = {
+      projectId: auth.tenancy.project.id,
+      branchId: auth.tenancy.branchId,
+      userId,
+      refreshTokenId,
+    };
+    const transactionContext = envelopeOtlpContext(envelope);
+    let transactionSpanCount = 0;
+    let acceptedTransactions = 0;
+    for (const item of envelope.items) {
+      if (item.wireType !== "transaction" || item.outcome.status !== "accepted" || item.transaction === undefined) continue;
+      try {
+        const spans = sentryTransactionToCanonicalOtlpSpans(item.transaction, transactionContext);
+        if (transactionSpanCount + spans.length > MAX_TRANSACTION_SPANS_PER_ENVELOPE) {
+          throw new ErrorIngestTransactionAdapterError("payload_too_large", "Sentry envelope transaction span limit exceeded");
+        }
+        await insertOtlpTraces(getSharedClickhouseAdminClient(), spans, transactionTenant);
+        transactionSpanCount += spans.length;
+        acceptedTransactions += 1;
+        transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
+          { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },
+          { status: "accepted" },
+        ));
+      } catch (error) {
+        if (error instanceof ErrorIngestTransactionAdapterError) {
+          transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
+            { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },
+            { status: "rejected", reason: error.code },
+          ));
+          continue;
+        }
+        captureError("sentry-envelope-transaction-storage", error);
+        transactionOutcomes.set(item.itemId, createErrorIngestItemOutcome(
+          { itemId: item.itemId, itemType: "transaction", eventId: item.transaction.eventId },
+          { status: "dropped", reason: "delivery_failed" },
+        ));
+      }
+    }
 
     const attachmentOutcomes = new Map<string, ErrorIngestItemOutcome>();
     if (attachmentPayloads.size > 0) {
@@ -228,7 +294,7 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const outcomes = protocolOutcomes(envelope, policyByItemId, attachmentOutcomes);
+    const outcomes = protocolOutcomes(envelope, policyByItemId, attachmentOutcomes, transactionOutcomes);
     const projection = createErrorIngestProtocolProjection(envelope.batchId, outcomes);
     runAsynchronouslyAndWaitUntil(persistErrorIngestClientReportProjection(scope, "sentry_envelope", projection));
     const envelopeSentAt = envelope.header.sentAt === null ? null : new Date(envelope.header.sentAt);
@@ -250,7 +316,7 @@ export const POST = createSmartRouteHandler({
       body: {
         batch_id: envelope.batchId,
         status: projection.status,
-        inserted: acceptedEvents.length,
+        inserted: acceptedEvents.length + acceptedTransactions,
         ingest: {
           counts: { ...projection.counts },
           outcomes: [...projection.items],
