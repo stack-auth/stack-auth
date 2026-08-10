@@ -46,7 +46,11 @@ const MAX_NPM_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BRIDGE_BODY_BYTES = 4 * 1024 * 1024;
 const MAX_BRIDGE_RESPONSE_BYTES = 8 * 1024 * 1024;
-const HOST_FETCH_TIMEOUT_MS = 30_000;
+// secure-exec caps a registered host callback at five minutes. This is above
+// every normal workflow callback budget; the job watchdog remains authoritative
+// below it, while runtime retirement bounds callbacks that outlive their job.
+const HOST_FETCH_TIMEOUT_MS = 5 * 60_000;
+const MAX_BRIDGE_REDIRECTS = 5;
 const MODULE_CACHE_DIR =
   process.env.HEXCLAVE_FREESTYLE_MOCK_MODULE_CACHE_DIR || "/app/module-cache";
 const DEFAULT_NODE_MODULES_DIR = "/app/guest-node-modules/node_modules";
@@ -808,37 +812,95 @@ const canonicalOrigin = (url) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   return url.protocol + "//" + url.hostname.toLowerCase().replace(/\\.$/, "") + ":" + url.port;
 };
-const bridgedFetch = async (input, init) => {
-  const request = new Request(input, init);
-  const target = new URL(request.url);
-  if (!bridgedOrigins.includes(canonicalOrigin(target))) return originalFetch(request);
-  const method = request.method.toUpperCase();
-  let body = null;
-  if (method !== "GET" && method !== "HEAD") {
-    const bodyBytes = new Uint8Array(await request.arrayBuffer());
-    if (bodyBytes.byteLength > ${MAX_BRIDGE_BODY_BYTES}) {
-      throw new Error("Request body exceeds the bridge limit");
-    }
-    body = encodeBase64(bodyBytes);
+const resolveRedirectUrl = (location, current) => {
+  const value = String(location).trim();
+  if (/^[a-z][a-z\\d+.-]*:/i.test(value)) return value;
+  if (value.startsWith("//")) return current.protocol + value;
+  const hashIndex = value.indexOf("#");
+  const queryIndex = value.indexOf("?");
+  const suffixIndex = [hashIndex, queryIndex]
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  const path = suffixIndex === undefined ? value : value.slice(0, suffixIndex);
+  const suffix = suffixIndex === undefined ? "" : value.slice(suffixIndex);
+  if (path === "") {
+    if (value.startsWith("?")) return current.origin + current.pathname + suffix;
+    return current.origin + current.pathname + current.search + suffix;
   }
-  const bridged = await globalThis.callBinding("freestyle-host-fetch", {
-    url: request.url,
-    method,
-    headers: Object.fromEntries(
-      [...request.headers].filter(([name]) => !${JSON.stringify([...HOP_BY_HOP_HEADERS])}.includes(name)),
-    ),
-    bodyBase64: body,
-  });
-  const responseBody = bridged.status === 204 ||
-    bridged.status === 205 ||
-    bridged.status === 304
-    ? undefined
-    : decodeBase64(bridged.bodyBase64);
-  return new Response(responseBody, {
-    status: bridged.status,
-    statusText: bridged.statusText,
-    headers: bridged.headers,
-  });
+  const basePath = path.startsWith("/")
+    ? path
+    : current.pathname.slice(0, current.pathname.lastIndexOf("/") + 1) + path;
+  const segments = [];
+  for (const segment of basePath.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return current.origin + "/" + segments.join("/") + suffix;
+};
+const bridgedFetch = async (input, init) => {
+  let request = new Request(input, init);
+  for (let redirectCount = 0; ; redirectCount++) {
+    const target = new URL(request.url);
+    if (!bridgedOrigins.includes(canonicalOrigin(target))) {
+      return originalFetch(request);
+    }
+    const method = request.method.toUpperCase();
+    let bodyBytes = null;
+    if (method !== "GET" && method !== "HEAD") {
+      bodyBytes = new Uint8Array(await request.arrayBuffer());
+      if (bodyBytes.byteLength > ${MAX_BRIDGE_BODY_BYTES}) {
+        throw new Error("Request body exceeds the bridge limit");
+      }
+    }
+    const bridged = await globalThis.callBinding("freestyle-host-fetch", {
+      url: request.url,
+      method,
+      headers: Object.fromEntries(
+        [...request.headers].filter(([name]) => !${JSON.stringify([...HOP_BY_HOP_HEADERS])}.includes(name)),
+      ),
+      bodyBase64: bodyBytes && encodeBase64(bodyBytes),
+    });
+    const location = bridged.headers?.location;
+    if (
+      location &&
+      [301, 302, 303, 307, 308].includes(bridged.status)
+    ) {
+      if (redirectCount >= ${MAX_BRIDGE_REDIRECTS}) {
+        throw new Error("Maximum bridge redirect limit exceeded");
+      }
+      const redirectUrl = resolveRedirectUrl(location, target);
+      // Rebuild each hop so the next iteration revalidates its origin;
+      // redirects must not bypass hostFetch's allowlist.
+      const redirectMethod =
+        (bridged.status === 303 &&
+          method !== "GET" &&
+          method !== "HEAD") ||
+        ((bridged.status === 301 || bridged.status === 302) &&
+          method !== "GET" &&
+          method !== "HEAD")
+          ? "GET"
+          : method;
+      request = new Request(redirectUrl, {
+        method: redirectMethod,
+        headers: request.headers,
+        ...(redirectMethod === "GET" || redirectMethod === "HEAD"
+          ? {}
+          : { body: bodyBytes, duplex: "half" }),
+      });
+      continue;
+    }
+    const responseBody = bridged.status === 204 ||
+      bridged.status === 205 ||
+      bridged.status === 304
+      ? undefined
+      : decodeBase64(bridged.bodyBase64);
+    return new Response(responseBody, {
+      status: bridged.status,
+      statusText: bridged.statusText,
+      headers: bridged.headers,
+    });
+  }
 };
 Object.defineProperty(globalThis, "fetch", {
   configurable: true,
@@ -933,6 +995,8 @@ async function hostFetch(input) {
     requestInit.body = body;
   }
   const controller = new AbortController();
+  // The job watchdog is authoritative; this only prevents a callback from
+  // surviving past the maximum job lifetime if its runtime is not retired.
   const timer = setTimeout(() => controller.abort(), HOST_FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(url, {
@@ -1121,13 +1185,18 @@ class JobQueue {
         job.config.nodeModules,
         job.controller.signal,
       );
+      if (job.settled || job.controller.signal.aborted) return null;
       entry = await this.runtimeCache.acquire(
         dependency,
         job.controller.signal,
       );
+      if (job.settled || job.controller.signal.aborted) return null;
       job.entry = entry;
+      if (job.settled || job.controller.signal.aborted) return null;
       if (job.timer) clearTimeout(job.timer);
+      if (job.settled || job.controller.signal.aborted) return null;
       this.armExecutionTimeout(job);
+      if (job.settled || job.controller.signal.aborted) return null;
       return await executeScript(entry.runtime, job);
     } finally {
       if (entry) this.runtimeCache.release(entry);
