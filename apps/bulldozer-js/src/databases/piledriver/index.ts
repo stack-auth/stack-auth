@@ -1,4 +1,4 @@
-import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { decodeBase64, encodeBase64, isBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
@@ -579,7 +579,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
               return jsonableObject[1].map((o: unknown) => deserializePiledriverObjectFromJsonableObject(o, enclosingSeq, seqs));
             }
             case "heap-reference": {
-              if (typeof jsonableObject[1] !== "string") throw new InvalidPiledriverSerializedObjectError();
+              if (typeof jsonableObject[1] !== "string" || !isBase64(jsonableObject[1])) throw new InvalidPiledriverSerializedObjectError();
               const heapObjAndSeq = getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer, enclosingSeq);
               seqs.push(heapObjAndSeq.seq);
               return heapObjAndSeq.object;

@@ -288,7 +288,7 @@ describe("verification cursor", () => {
           serializedTables: {},
           mostRecentlyCompletedMigrationIndex: 0,
           uniqueSnapshotIdentifier: "corrupted",
-          dangling: ["heap-reference", "missing"],
+          dangling: ["heap-reference", "bWlzc2luZw=="],
         },
       })).buffer,
     }]);
@@ -328,7 +328,7 @@ describe("verification cursor", () => {
     const rootStore = lowLevel.declareKvStore("root");
     await rootStore.setAll([{
       key: new TextEncoder().encode("bulldozer-database-root").buffer,
-      value: new TextEncoder().encode(JSON.stringify(["array", 123])).buffer,
+      value: new TextEncoder().encode(JSON.stringify(["heap-reference", "not!base64"])).buffer,
     }]);
     const result = await verifyDataIntegrity(db, { step_count: 1_000 });
     expect(result.errors).toContainEqual(expect.objectContaining({ code: "invalid_root_shape" }));
@@ -338,7 +338,7 @@ describe("verification cursor", () => {
   it("reports a structurally invalid pinned root on continuation without throwing", async () => {
     const db = await createDatabase();
     const root = await db.getDataIntegrityState().getRoot();
-    const malformed = encodeBase64(new TextEncoder().encode(JSON.stringify(["array", 123])));
+    const malformed = encodeBase64(new TextEncoder().encode(JSON.stringify(["heap-reference", "not!base64"])));
     const continuation = Buffer.from(JSON.stringify({
       version: 3,
       root: { bufferBase64: malformed, seq: serializeDatabaseSeq(root.seq) },
