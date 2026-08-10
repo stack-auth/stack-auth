@@ -1,0 +1,111 @@
+apps/dashboard/DESIGN-GUIDE.md
+  s_737ddf173f162d::t_993281d26daa68 327,332-342,346-347
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/playground/page-client.tsx
+  s_737ddf173f162d::t_e18bc423cf62f0 209-213,834-850,1479,1492
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/shared.tsx
+  s_737ddf173f162d::t_37f59ce08232b4 147-153
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/event-sparkline.tsx
+  s_737ddf173f162d::t_36f0eb5299b89b 1-119
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/format.test.ts
+  s_737ddf173f162d::t_56203dfad8db3a 1-62
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/format.ts
+  s_737ddf173f162d::t_f97f36c724c5c2 10-17,54-108
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page-client.tsx
+  s_737ddf173f162d::t_afa97af8b824dd 1-496
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/[issueId]/page.tsx
+  s_737ddf173f162d::t_155a8f46c94b0c 1-9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/correlation.test.ts
+  s_737ddf173f162d::t_f8b8da6f7b9f8b 1-101
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/correlation.ts
+  s_737ddf173f162d::t_135017715ea544 1-133
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-columns.tsx
+  s_737ddf173f162d::t_461b57e8fccd56 1-325
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-filters.test.ts
+  s_737ddf173f162d::t_1903c3da2ee8ab 1-110
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-filters.ts
+  s_737ddf173f162d::t_3dfce4e42348a8 1-166
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-format.test.ts
+  s_737ddf173f162d::t_914fbb92aad34c 1-149
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-format.ts
+  s_737ddf173f162d::t_dea368491caa12 1-152
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-links.ts
+  s_737ddf173f162d::t_7dec53738d7206 1-35
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-status.test.ts
+  s_737ddf173f162d::t_1d5f761e56f4c9 1-122
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issue-status.ts
+  s_737ddf173f162d::t_1aff6a2de4c740 1-142
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.test.ts
+  s_737ddf173f162d::t_8726346146d306 1-141
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/issues-data.ts
+  s_737ddf173f162d::t_e2f8759cea3a4b 1-301
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page-client-render.test.tsx
+  s_737ddf173f162d::t_b3dd7ff9a20cd3 1-296
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page-client.tsx
+  s_737ddf173f162d::t_154b599f18af94 1-470
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/page.tsx
+  s_737ddf173f162d::t_a54a3d1b1fd0dc 1,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frame-list.tsx
+  s_737ddf173f162d::t_5b46e4c9820428 1-141
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frames.test.ts
+  s_737ddf173f162d::t_56ad6bd8aecbc3 1-113
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/stack-frames.ts
+  s_737ddf173f162d::t_d9e70c4971547e 1-121
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/issues/use-issue-data.ts
+  s_737ddf173f162d::t_f268d0abf81147 1-201
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/log-level.tsx
+  s_737ddf173f162d::t_6de4cefb5a4756 1-37
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/logs/page-client.tsx
+  s_737ddf173f162d::t_b79040931106d0 29-30,213,220,223-237
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/services/service-sparkline.tsx
+  s_737ddf173f162d::t_85ebbdd06531fb 4,10-16,27-32,44-48
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/services/services-format.ts
+  s_737ddf173f162d::t_79eacb576ddda5 1-5,38-41,44,48
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.test.ts
+  s_737ddf173f162d::t_bfa835635570b1 5,9,169-205
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/page-client.tsx
+  s_737ddf173f162d::t_e1931968d83090 8,246,254-258,260-282,376-380,382-385,387-389,391-393,395-397,399-401,473-499,549,552-569,580,633-643,645-646,648,714,719,721-722,731,738-740,781,789,792,795-796,833,839-841,845,882,884,886,908-913,952-965,1031-1034,1054-1070,1076,1081-1089,1093,1097,1100,1108,1110
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.test.ts
+  s_737ddf173f162d::t_164958d2c4a6c7 5,7,31-59,99,104-178,182-183
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/observability/traces/waterfall.tsx
+  s_737ddf173f162d::t_48384501417fa0 6,56,60,73-88,92-96,177-182,185-190,203-207,209-218,222-224,292,295,313-314,317,321-337,691,720-750
+docs-mintlify/docs.json
+  s_737ddf173f162d::t_05d944cc6feb19 121
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_737ddf173f162d::t_1cb4766eb1bbfa 25-34
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_737ddf173f162d::t_fa6fa590ea18b0 153,156-157,166,189-194,238,248
+docs-mintlify/guides/apps/analytics/errors-and-logs.mdx
+  s_737ddf173f162d::t_f9568625d91609 15-17,109,114-117,122-123,127-132,157
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_737ddf173f162d::t_c5eb1ea44ba2ce 18
+docs-mintlify/guides/apps/observability/grouping.mdx
+  s_737ddf173f162d::t_8ff7e1ed029d4d 1-156
+docs-mintlify/guides/apps/observability/overview.mdx
+  s_737ddf173f162d::t_652359a9d7213f 1-113
+docs-mintlify/guides/apps/observability/querying-errors.mdx
+  s_737ddf173f162d::t_64bae7cb799182 1-215
+docs-mintlify/guides/apps/observability/webhooks.mdx
+  s_737ddf173f162d::t_b3f17c515d2f0c 1-127
+docs-mintlify/guides/apps/webhooks/overview.mdx
+  s_737ddf173f162d::t_769712628f1367 248-254
+docs-mintlify/openapi/webhooks.json
+  s_737ddf173f162d::t_99e34d6a457efb 1228-2022
+packages/dashboard-ui-components/src/components/badge.tsx
+  s_737ddf173f162d::t_302b4b572f6769 5,9-16,80,85-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5864d51f6dbc21951e1e15f98016f15205802aa3",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
