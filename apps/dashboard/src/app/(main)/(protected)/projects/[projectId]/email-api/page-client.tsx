@@ -152,7 +152,7 @@ export default function PageClient() {
           variant="info"
           title="Server-side email delivery"
           description={<>
-            The Email API queues messages from trusted server code. Keep your server key private and configure a custom email server before sending; the shared development server cannot deliver email.
+            The Email API queues messages from trusted server code. Keep your server key private. The shared development server delivers mail with a [Hexclave dev email] subject prefix and an injected development notice; configure a custom email server to send from your own domain without this branding.
             <br /><br />
             Configure delivery <StyledLink href={emailSettingsHref}>in Email Settings</StyledLink> and manage credentials in <StyledLink href={apiKeysHref}>API Keys</StyledLink>. Read the <StyledLink href="https://docs.hexclave.com/guides/apps/emails/overview">Email API documentation</StyledLink> for the full guide.
           </>}

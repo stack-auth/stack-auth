@@ -276,7 +276,6 @@ export const ALL_APPS_FRONTEND = {
   "email-api": {
     icon: MailboxIcon,
     href: "email-api",
-    documentationHref: "https://docs.hexclave.com/guides/apps/emails/overview",
     navigationItems: [
       { displayName: "Email API", href: "." },
     ],
