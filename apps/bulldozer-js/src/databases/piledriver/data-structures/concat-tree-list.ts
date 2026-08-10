@@ -22,6 +22,11 @@ type Segment = {
   length: number,
   baseIndex: number,
 };
+export type ConcatTreeIntegrityResult = {
+  issues: { code: string, message: string }[],
+  stepsTaken: number,
+  nextPosition: string | null,
+};
 export type ConcatTreeListDiff<T extends PiledriverObject> = {
   missing: { id: string, value: T }[],
   added: { id: string, value: T }[],
@@ -85,6 +90,58 @@ export class ConcatTreeList<T extends PiledriverObject> implements AsyncIterable
 
   toPiledriverObject(): ConcatTreeListObject {
     return { type: "ConcatTreeList", root: this.root };
+  }
+
+  async verifyDataIntegrity(options: { stepBudget: number, position: string | null }): Promise<ConcatTreeIntegrityResult> {
+    if (!Number.isSafeInteger(options.stepBudget) || options.stepBudget <= 0) throw new Error("Invalid tree verification step budget");
+    let startPath: number[] | null = null;
+    if (options.position !== null) {
+      const parsed: unknown = JSON.parse(options.position);
+      if (!Array.isArray(parsed) || !parsed.every(item => Number.isSafeInteger(item) && item >= 0)) throw new Error("Invalid tree verification position");
+      startPath = parsed;
+    }
+    let started = startPath === null;
+    let stepsTaken = 0;
+    const nextPaths: number[][] = [];
+    const issues: { code: string, message: string }[] = [];
+    const arity = Math.max(2, this.options.arity ?? defaultArity);
+    const samePath = (path: number[]) => startPath !== null
+      && path.length === startPath.length
+      && path.every((value, index) => value === startPath[index]);
+    const walk = async (child: Child, path: number[], isRoot: boolean): Promise<{ height: number, size: number } | null> => {
+      const node = await child.ref.get() as Node<T>;
+      const childResults: Array<{ height: number, size: number }> = [];
+      if (node.type === "node") {
+        for (let index = 0; index < node.children.length; index++) {
+          const result = await walk(node.children[index], [...path, index], false);
+          if (result !== null) childResults.push(result);
+        }
+      }
+      if (!started) {
+        if (samePath(path)) started = true;
+        else return { height: childResults.length === 0 ? 1 : childResults[0].height + 1, size: child.size };
+      }
+      if (stepsTaken >= options.stepBudget) {
+        if (nextPaths.length === 0) nextPaths.push(path);
+        return { height: childResults.length === 0 ? 1 : childResults[0].height + 1, size: child.size };
+      }
+      stepsTaken++;
+      if (node.type === "leaf") {
+        if (node.entries.length > arity) issues.push({ code: "node_arity", message: "A list leaf exceeds the maximum entry count" });
+        if (!isRoot && node.entries.length === 0) issues.push({ code: "node_occupancy", message: "A non-root list leaf is empty" });
+        if (child.size !== node.entries.length) issues.push({ code: "size", message: "A list leaf size does not match its contents" });
+        return { height: 1, size: node.entries.length };
+      }
+      if (node.children.length > arity) issues.push({ code: "node_arity", message: "A list node exceeds the maximum child count" });
+      if (!isRoot && node.children.length < 2) issues.push({ code: "node_occupancy", message: "A non-root list node has too few children" });
+      const heights = childResults.map(result => result.height);
+      if (heights.some(height => height !== heights[0])) issues.push({ code: "child_height", message: "List children do not have equal heights" });
+      const size = childResults.reduce((sum, result) => sum + result.size, 0);
+      if (child.size !== size) issues.push({ code: "size", message: "A list node size does not match its children" });
+      return { height: (heights[0] ?? 0) + 1, size };
+    };
+    if (this.root !== null) await walk(this.root, [], true);
+    return { issues, stepsTaken, nextPosition: nextPaths.length === 0 ? null : JSON.stringify(nextPaths[0]) };
   }
 
   static fromPiledriverObject<T extends PiledriverObject>(object: PiledriverObject, options: { arity?: number } = {}) {

@@ -183,6 +183,7 @@ async function main() {
       steps_taken: number,
       errors: VerificationIssue[],
       errors_truncated: boolean,
+      skipped_checks: VerificationIssue[],
     };
     const findings: VerificationIssue[] = [];
     let continuation: string | undefined;

@@ -1294,6 +1294,15 @@ function createGroupwiseTableImplementation(options: {
         b,
       });
     },
+    async verifyDataIntegrity({ serializedTable, inputTables, stepCount, position }) {
+      const map = deserialize(serializedTable, inputTables);
+      const result = await map.verifyDataIntegrity({ stepBudget: stepCount, position });
+      return {
+        issues: result.issues,
+        stepsTaken: result.stepsTaken,
+        nextPosition: result.nextPosition,
+      };
+    },
   };
 }
 

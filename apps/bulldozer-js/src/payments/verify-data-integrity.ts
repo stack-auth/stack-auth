@@ -13,6 +13,7 @@ const CURSOR_VERSION = 2;
 const DEFAULT_STEP_COUNT = 100;
 const MAX_STEP_COUNT = 1_000;
 const MAX_ERRORS = 100;
+const MAX_TRACKED_ROW_IDENTIFIERS = 256;
 const HEAP_PAGE_SIZE = 100;
 const textDecoder = new TextDecoder();
 
@@ -29,6 +30,9 @@ type TablePosition = {
   groupKeyBase64: string | null,
   rowSortKeyBase64: string | null,
   rowIdentifiers: string[],
+  rowIdentifierCheckSkipped: boolean,
+  genericDone: boolean,
+  hookPosition: string | null,
 };
 type VerificationCursor = {
   version: number,
@@ -49,6 +53,7 @@ export type VerifyDataIntegrityResponse = {
   steps_taken: number,
   errors: VerificationIssue[],
   errors_truncated: boolean,
+  skipped_checks: VerificationIssue[],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,7 +91,10 @@ function isTablePosition(value: unknown): value is TablePosition {
     && (value.groupKeyBase64 === null || typeof value.groupKeyBase64 === "string")
     && (value.rowSortKeyBase64 === null || typeof value.rowSortKeyBase64 === "string")
     && Array.isArray(value.rowIdentifiers)
-    && value.rowIdentifiers.every(item => typeof item === "string");
+    && value.rowIdentifiers.every(item => typeof item === "string")
+    && typeof value.rowIdentifierCheckSkipped === "boolean"
+    && typeof value.genericDone === "boolean"
+    && (value.hookPosition === null || typeof value.hookPosition === "string");
 }
 
 export function decodeVerificationCursor(value: string): VerificationCursor {
@@ -233,7 +241,15 @@ function snapshotFromRoot(rootObject: PiledriverObject): BulldozerDatabaseSnapsh
 }
 
 function nextTablePosition(tableId: string | null): TablePosition {
-  return { tableId, groupKeyBase64: null, rowSortKeyBase64: null, rowIdentifiers: [] };
+  return {
+    tableId,
+    groupKeyBase64: null,
+    rowSortKeyBase64: null,
+    rowIdentifiers: [],
+    rowIdentifierCheckSkipped: false,
+    genericDone: false,
+    hookPosition: null,
+  };
 }
 
 function isHeapObject(value: PiledriverObject): boolean {
@@ -249,8 +265,9 @@ async function verifyGenericTable(
   },
   position: TablePosition,
   budget: number,
-): Promise<{ issues: VerificationIssue[], position: TablePosition, stepsTaken: number, finished: boolean }> {
+): Promise<{ issues: VerificationIssue[], skippedChecks: VerificationIssue[], position: TablePosition, stepsTaken: number, finished: boolean }> {
   const issues: VerificationIssue[] = [];
+  const skippedChecks: VerificationIssue[] = [];
   let stepsTaken = 0;
   const previousGroup = decodePosition(position.groupKeyBase64);
   let group: { groupKey: PiledriverObject } | undefined;
@@ -262,7 +279,7 @@ async function verifyGenericTable(
     group = candidate;
     break;
   }
-  if (group === undefined) return { issues, position: nextTablePosition(null), stepsTaken, finished: true };
+  if (group === undefined) return { issues, skippedChecks, position: nextTablePosition(null), stepsTaken, finished: true };
   stepsTaken++;
   if (previousGroup !== null && target.table.compareGroupKeys({
     serializedTable: target.serializedTable,
@@ -283,6 +300,7 @@ async function verifyGenericTable(
   const sameGroup = position.groupKeyBase64 === groupKeyBase64;
   let previousSortKey = sameGroup ? decodePosition(position.rowSortKeyBase64) : null;
   const seenRowIdentifiers = new Set(sameGroup ? position.rowIdentifiers : []);
+  let rowIdentifierCheckSkipped = sameGroup && position.rowIdentifierCheckSkipped;
   if (stepsTaken < budget) {
     for await (const row of target.table.listRowsInGroup({
       serializedTable: target.serializedTable,
@@ -305,8 +323,20 @@ async function verifyGenericTable(
         a: previousSortKey,
         b: row.rowSortKey,
       }) >= 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are not strictly ordered by sort key", context: { tableId: target.tableId } });
-      if (seenRowIdentifiers.has(row.rowIdentifier)) issues.push({ phase: "tables", code: "duplicate_row_identifier", message: "A row identifier appears more than once in a group", context: { tableId: target.tableId, rowIdentifier: row.rowIdentifier } });
-      seenRowIdentifiers.add(row.rowIdentifier);
+      if (!rowIdentifierCheckSkipped) {
+        if (seenRowIdentifiers.has(row.rowIdentifier)) issues.push({ phase: "tables", code: "duplicate_row_identifier", message: "A row identifier appears more than once in a group", context: { tableId: target.tableId, rowIdentifier: row.rowIdentifier } });
+        if (seenRowIdentifiers.size >= MAX_TRACKED_ROW_IDENTIFIERS) {
+          rowIdentifierCheckSkipped = true;
+          skippedChecks.push({
+            phase: "tables",
+            code: "duplicate_row_identifier_check_skipped",
+            message: "Duplicate row identifier checking was skipped after the bounded identifier set filled",
+            context: { tableId: target.tableId, maxTrackedIdentifiers: MAX_TRACKED_ROW_IDENTIFIERS },
+          });
+        } else {
+          seenRowIdentifiers.add(row.rowIdentifier);
+        }
+      }
       previousSortKey = row.rowSortKey;
     }
   }
@@ -315,8 +345,9 @@ async function verifyGenericTable(
     issues,
     stepsTaken,
     position: finishedGroup
-      ? { tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowIdentifiers: [] }
-      : { tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey), rowIdentifiers: [...seenRowIdentifiers] },
+      ? { ...nextTablePosition(target.tableId), genericDone: true }
+      : { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped },
+    skippedChecks,
     finished: false,
   };
 }
@@ -329,6 +360,7 @@ export async function verifyDataIntegrity(
   if (!Number.isInteger(requestedStepCount) || requestedStepCount <= 0) throw new Error("step_count must be a positive integer");
   const budget = Math.min(requestedStepCount, MAX_STEP_COUNT);
   const errors: VerificationIssue[] = [];
+  const skippedChecks: VerificationIssue[] = [];
   const tables = bulldozerDb.listTables();
   let cursor: VerificationCursor;
   let rootObject: PiledriverObject;
@@ -389,20 +421,40 @@ export async function verifyDataIntegrity(
           cursor.phase = "heap-scan";
           continue;
         }
-        const result = target.table.verifyDataIntegrity === undefined
-          ? await verifyGenericTable(target, cursor.tablePosition, remaining)
-          : await target.table.verifyDataIntegrity({
+        let result: {
+          issues: VerificationIssue[],
+          skippedChecks: VerificationIssue[],
+          stepsTaken: number,
+          finished: boolean,
+          position: TablePosition,
+        };
+        if (!cursor.tablePosition.genericDone) {
+          result = await verifyGenericTable(target, cursor.tablePosition, remaining);
+        } else if (target.table.verifyDataIntegrity !== undefined) {
+          const hookResult = await target.table.verifyDataIntegrity({
             serializedTable: target.serializedTable,
             inputTables: target.inputTables,
             stepCount: remaining,
-            position: cursor.tablePosition.rowSortKeyBase64,
-          }).then(value => ({
-            issues: value.issues,
-            stepsTaken: value.stepsTaken,
-            finished: value.nextPosition === null,
-            position: { ...cursor.tablePosition, rowSortKeyBase64: value.nextPosition },
-          }));
-        for (const error of result.issues) addIssue(errors, { phase: "tables", ...error });
+            position: cursor.tablePosition.hookPosition,
+          });
+          result = {
+            issues: hookResult.issues.map(issue => ({ phase: "tables", ...issue })),
+            skippedChecks: [],
+            stepsTaken: hookResult.stepsTaken,
+            finished: hookResult.nextPosition === null,
+            position: { ...cursor.tablePosition, hookPosition: hookResult.nextPosition },
+          };
+        } else {
+          result = {
+            issues: [],
+            skippedChecks: [],
+            stepsTaken: 0,
+            finished: true,
+            position: cursor.tablePosition,
+          };
+        }
+        for (const error of result.issues) addIssue(errors, error);
+        skippedChecks.push(...result.skippedChecks);
         remaining -= result.stepsTaken;
         if (result.finished) {
           const index = context.tables.findIndex(table => table.tableId === cursor.tablePosition.tableId);
@@ -446,6 +498,7 @@ export async function verifyDataIntegrity(
       steps_taken: budget - remaining,
       errors,
       errors_truncated: errors.length >= MAX_ERRORS,
+      skipped_checks: skippedChecks,
     };
   }
   cursor.phase = "done";
@@ -456,5 +509,6 @@ export async function verifyDataIntegrity(
     steps_taken: 0,
     errors,
     errors_truncated: errors.length >= MAX_ERRORS,
+    skipped_checks: skippedChecks,
   };
 }
