@@ -103,7 +103,10 @@ jobs:
         run: pnpm run test run --reporter=verbose
 
       - name: Print development service diagnostics
-        if: ${{ failure() }}
+        # Keep the stream log visible even when a retry turns a transient test
+        # failure into a green job; that is when the first failure is easiest
+        # to diagnose.
+        if: ${{ always() }}
         run: |
           if [[ -f "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt" ]]; then
             echo "Development service command exited with code $(<"$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt")"
@@ -113,7 +116,7 @@ jobs:
           tail -n 2000 "$RUNNER_TEMP/hexclave-dev.untracked.log"
 
       - name: Upload development service logs
-        if: ${{ failure() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: setup-tests-development-services
