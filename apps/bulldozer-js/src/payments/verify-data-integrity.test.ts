@@ -49,11 +49,33 @@ async function runWithBudgets(db: Awaited<ReturnType<typeof createDatabase>>, bu
   let steps = 0;
   let index = 0;
   let calls = 0;
+  const history: Array<{
+    phase: string,
+    tableId: string | null,
+    groupKeyBase64: string | null,
+    rowSortKeyBase64: string | null,
+    hookPosition: string | null,
+    afterHeapKeyBase64: string | null,
+    stepsTaken: number,
+    findingsCount: number,
+  }> = [];
   while (true) {
-    if (++calls > 100) throw new Error(`verification did not finish after ${calls} calls`);
+    if (++calls > 100) throw new Error(`verification did not finish after ${calls} calls; history=${JSON.stringify(history)}`);
+    const budget = budgets[index++ % budgets.length];
     const response = await verifyDataIntegrity(db, {
       ...(continuation === undefined ? {} : { continue: continuation }),
-      step_count: budgets[index++ % budgets.length],
+      step_count: budget,
+    });
+    const decoded = response.next_cursor === null ? null : decodeVerificationCursor(response.next_cursor);
+    history.push({
+      phase: decoded?.phase ?? "done",
+      tableId: decoded?.tablePosition.tableId ?? null,
+      groupKeyBase64: decoded?.tablePosition.groupKeyBase64 ?? null,
+      rowSortKeyBase64: decoded?.tablePosition.rowSortKeyBase64 ?? null,
+      hookPosition: decoded?.tablePosition.hookPosition ?? null,
+      afterHeapKeyBase64: decoded?.afterHeapKeyBase64 ?? null,
+      stepsTaken: response.steps_taken,
+      findingsCount: response.errors.length + response.skipped_checks.length,
     });
     errors.push(...response.errors.map(error => error.code));
     skippedChecks.push(...response.skipped_checks.map(error => error.code));

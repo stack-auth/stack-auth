@@ -272,6 +272,12 @@ export async function verifyGenericTable(
   let cursorGroupKeyBase64 = position.groupKeyBase64;
   let cursorGroupComplete = position.groupComplete;
   while (true) {
+    const beforeSteps = stepsTaken;
+    const beforePosition = JSON.stringify({
+      groupKeyBase64: groupKey === null ? null : encodePosition(groupKey),
+      groupComplete,
+      genericDone: false,
+    });
     if (groupComplete) {
       lastCompletedGroup = groupKey;
       groupKey = null;
@@ -296,6 +302,13 @@ export async function verifyGenericTable(
         b: lastCompletedGroup,
       }) <= 0) {
         issues.push({ phase: "tables", code: "group_order", message: "Groups are not strictly ordered", context: { tableId: target.tableId } });
+        return {
+          issues,
+          skippedChecks,
+          position: { ...nextTablePosition(null), tableId: target.tableId, genericDone: true },
+          stepsTaken,
+          finished: true,
+        };
       }
       if (groupKey === null || target.table.compareGroupKeys({
         serializedTable: target.serializedTable,
@@ -315,6 +328,7 @@ export async function verifyGenericTable(
       finished: true,
     };
     const groupKeyBase64 = encodePosition(group.groupKey);
+    groupKey = group.groupKey;
     const newGroup = cursorGroupKeyBase64 !== groupKeyBase64 || cursorGroupComplete;
     cursorGroupKeyBase64 = groupKeyBase64;
     cursorGroupComplete = false;
@@ -391,6 +405,14 @@ export async function verifyGenericTable(
       stepsTaken,
       finished: false,
     };
+    const afterPosition = JSON.stringify({
+      groupKeyBase64: encodePosition(groupKey),
+      groupComplete,
+      genericDone: false,
+    });
+    if (stepsTaken === beforeSteps && afterPosition === beforePosition) {
+      throw new Error(`Generic table verifier made no progress for table ${target.tableId} at ${afterPosition}`);
+    }
   }
 }
 
