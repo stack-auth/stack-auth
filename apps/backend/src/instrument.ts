@@ -3,6 +3,7 @@ import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor, NoopSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/node";
 import backendPackageJson from "../package.json";
@@ -10,6 +11,10 @@ import { createBackendInstrumentationPlan } from "./instrumentation-plan";
 import { initPerfStats } from "./lib/dev-perf-stats";
 import { getSentryRelease } from "./sentry-release";
 import { sanitizeBackendSentryEvent, sanitizeBackendSentrySpan } from "./sentry-scrubbing";
+import {
+  isSpanAggregationEnabled,
+  spanAggregationProcessor,
+} from "./utils/span-aggregation";
 
 globalThis.global = globalThis;
 // The Elysia process is the Node runtime; set the marker before shared helpers that still ask for Next runtime metadata.
@@ -36,15 +41,23 @@ export function registerBackendInstrumentation() {
     sentryDsn,
     sentryTracesSampleRate: sentryBaseConfig.tracesSampleRate,
   });
-  const openTelemetrySpanProcessors = plan.otlpTracesEndpoint == null
+  const spanAggregationEnabled = isSpanAggregationEnabled();
+  const openTelemetrySpanProcessors: SpanProcessor[] = plan.otlpTracesEndpoint == null
     ? plan.sentryEnabled ? [] : [new NoopSpanProcessor()]
     : [new BatchSpanProcessor(new OTLPTraceExporter({ url: plan.otlpTracesEndpoint }))];
+  if (spanAggregationEnabled) {
+    openTelemetrySpanProcessors.push(spanAggregationProcessor);
+  }
+
   const openTelemetryInstrumentations = plan.sentryEnabled || plan.otlpTracesEndpoint == null
     ? []
     : [
       new PrismaInstrumentation(),
       ...getNodeAutoInstrumentations(),
     ];
+  if (spanAggregationEnabled && openTelemetryInstrumentations.length === 0) {
+    openTelemetryInstrumentations.push(new PrismaInstrumentation());
+  }
 
   process.title = `stack-backend:${portPrefix} (node/elysia)`;
   initPerfStats();
