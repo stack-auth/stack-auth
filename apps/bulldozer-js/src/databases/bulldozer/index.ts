@@ -437,6 +437,10 @@ export type BulldozerDatabaseSnapshotSerialized = {
   mostRecentlyCompletedMigrationIndex: number,
   uniqueSnapshotIdentifier: string,
 };
+export type BulldozerDataIntegrityContextIssue = {
+  tableId: string,
+  inputTableId?: string,
+};
 
 function createInputTables(
   tables: Record<string, BulldozerTableState>,
@@ -869,6 +873,7 @@ export type BulldozerDatabase = {
     getRoot(): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
     getContext(snapshot: BulldozerDatabaseSnapshotSerialized): {
       migrationIndex: number,
+      issues: BulldozerDataIntegrityContextIssue[],
       tables: Array<{
         tableId: string,
         table: BulldozerTableImplementation,
@@ -1017,20 +1022,37 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
           return await piledriverDatabase.getSerializedRootObject(rootKey);
         },
         getContext(snapshot: BulldozerDatabaseSnapshotSerialized) {
-          const tables = Object.entries(tablesState.tables).map(([tableId, tableState]) => {
-            if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, tableId)) throw new Error(`Pinned snapshot is missing serialized table ${tableId}`);
+          const issues: BulldozerDataIntegrityContextIssue[] = [];
+          const missingInputTableId = (tableId: string, visited = new Set<string>()): string | undefined => {
+            if (visited.has(tableId)) return undefined;
+            visited.add(tableId);
+            const tableState = tablesState.tables[tableId];
+            for (const inputTableId of Object.values(tableState.inputTableIds)) {
+              if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, inputTableId)) return inputTableId;
+              const missing = missingInputTableId(inputTableId, visited);
+              if (missing !== undefined) return missing;
+            }
+            return undefined;
+          };
+          const tables = Object.entries(tablesState.tables).flatMap(([tableId, tableState]) => {
+            if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, tableId)) {
+              issues.push({ tableId });
+              return [];
+            }
+            const missingInput = missingInputTableId(tableId);
+            if (missingInput !== undefined) {
+              issues.push({ tableId, inputTableId: missingInput });
+              return [];
+            }
             const serializedTable = snapshot.serializedTables[tableId];
-            return {
+            return [{
               tableId,
               table: tableState.table,
               serializedTable,
-              inputTables: createInputTables(tablesState.tables, id => {
-                if (!Object.prototype.hasOwnProperty.call(snapshot.serializedTables, id)) throw new Error(`Pinned snapshot is missing serialized table ${id}`);
-                return snapshot.serializedTables[id];
-              }, tableId),
-            };
+              inputTables: createInputTables(tablesState.tables, id => snapshot.serializedTables[id], tableId),
+            }];
           });
-          return { migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex, tables };
+          return { migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex, issues, tables };
         },
       };
     },

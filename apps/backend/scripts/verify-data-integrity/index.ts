@@ -187,7 +187,9 @@ async function main() {
     };
     const findings: VerificationIssue[] = [];
     let continuation: string | undefined;
+    let pageCount = 0;
     while (true) {
+      if (++pageCount > 10_000) throw new Error("Bulldozer integrity verifier exceeded the maximum page count");
       const response = await fetchBulldozerServerJson<VerificationResponse>({
         method: "POST",
         path: "/internal/payments/verify-data-integrity",
@@ -197,6 +199,12 @@ async function main() {
         },
       });
       findings.push(...response.errors);
+      for (const finding of response.skipped_checks) {
+        console.error(`[bulldozer] skipped ${finding.phase}/${finding.code}: ${finding.message}`, finding.context ?? {});
+      }
+      if (response.errors_truncated) {
+        console.error("[bulldozer] integrity verifier truncated findings");
+      }
       for (const finding of response.errors) {
         console.error(`[bulldozer] ${finding.phase}/${finding.code}: ${finding.message}`, finding.context ?? {});
       }

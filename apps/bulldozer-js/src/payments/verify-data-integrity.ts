@@ -11,7 +11,7 @@ import type {
 import { canonicalGroupKeyString } from "../databases/bulldozer/index.js";
 import { collectSerializedHeapReferences, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
 
-const CURSOR_VERSION = 2;
+const CURSOR_VERSION = 3;
 const DEFAULT_STEP_COUNT = 100;
 const MAX_STEP_COUNT = 1_000;
 const MAX_ERRORS = 100;
@@ -46,6 +46,7 @@ type VerificationCursor = {
   stepsTaken: number,
   errorCount: number,
   rootChecked: boolean,
+  rootReferenceIndex: number,
 };
 
 export type VerifyDataIntegrityRequest = { continue?: string, step_count?: number };
@@ -154,6 +155,9 @@ export function decodeVerificationCursor(value: string): VerificationCursor {
     || !Number.isSafeInteger(parsed.errorCount)
     || parsed.errorCount < 0
     || typeof parsed.rootChecked !== "boolean"
+    || typeof parsed.rootReferenceIndex !== "number"
+    || !Number.isSafeInteger(parsed.rootReferenceIndex)
+    || parsed.rootReferenceIndex < 0
   ) throw new Error("Invalid verification cursor state");
   deserializeDatabaseSeq(parsed.root.seq);
   return {
@@ -165,6 +169,7 @@ export function decodeVerificationCursor(value: string): VerificationCursor {
     stepsTaken: parsed.stepsTaken,
     errorCount: parsed.errorCount,
     rootChecked: parsed.rootChecked,
+    rootReferenceIndex: parsed.rootReferenceIndex,
   };
 }
 
@@ -186,8 +191,10 @@ function decodePosition(value: string | null): DecodedPosition | null {
   return value === null ? null : { value: parsePiledriverValue(keyBytes(value)) };
 }
 
-function addIssue(issues: VerificationIssue[], value: VerificationIssue): void {
-  if (issues.length < MAX_ERRORS) issues.push(value);
+function addIssue(issues: VerificationIssue[], value: VerificationIssue): boolean {
+  if (issues.length >= MAX_ERRORS) return false;
+  issues.push(value);
+  return true;
 }
 
 function snapshotValue(rootObject: PiledriverObject): unknown {
@@ -355,7 +362,7 @@ export async function verifyGenericTable(
     if (group === undefined) return {
       issues,
       skippedChecks,
-      position: { ...nextTablePosition(null), genericDone: true },
+      position: { ...nextTablePosition(null), tableId: target.tableId, genericDone: true },
       stepsTaken,
       finished: true,
     };
@@ -457,6 +464,10 @@ export async function verifyDataIntegrity(
   const budget = Math.min(requestedStepCount, MAX_STEP_COUNT);
   const errors: VerificationIssue[] = [];
   const skippedChecks: VerificationIssue[] = [];
+  let errorsTruncated = false;
+  const recordIssue = (issue: VerificationIssue) => {
+    if (!addIssue(errors, issue)) errorsTruncated = true;
+  };
   const tables = bulldozerDb.listTables();
   const integrityState = bulldozerDb.getDataIntegrityState();
   let cursor: VerificationCursor;
@@ -472,6 +483,7 @@ export async function verifyDataIntegrity(
       stepsTaken: 0,
       errorCount: 0,
       rootChecked: false,
+      rootReferenceIndex: 0,
     };
     rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(root.buffer, root.seq)).object;
   } else {
@@ -485,7 +497,7 @@ export async function verifyDataIntegrity(
     resolvedRootObject = { snapshot: await resolveRootSnapshot(rootObject) };
   } catch (error) {
     if (error instanceof Error) {
-      addIssue(errors, { phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
+      recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
     } else {
       throw error;
     }
@@ -493,11 +505,24 @@ export async function verifyDataIntegrity(
   }
   const snapshot = snapshotFromRoot(resolvedRootObject);
   if (snapshot === null) {
-    addIssue(errors, { phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
+    recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
   } else {
     const context = integrityState.getContext(snapshot);
     if (!cursor.rootChecked) {
-      for (const error of validateRoot(resolvedRootObject, tables, context.migrationIndex)) addIssue(errors, error);
+      for (const error of validateRoot(resolvedRootObject, tables, context.migrationIndex)) recordIssue(error);
+      for (const issue of context.issues) {
+        recordIssue({
+          phase: "root",
+          code: "missing_serialized_table",
+          message: issue.inputTableId === undefined
+            ? "A table is missing from the pinned snapshot"
+            : "An input table is missing from the pinned snapshot",
+          context: {
+            tableId: issue.tableId,
+            ...(issue.inputTableId === undefined ? {} : { inputTableId: issue.inputTableId }),
+          },
+        });
+      }
       cursor.rootChecked = true;
     }
     let remaining = budget;
@@ -520,12 +545,16 @@ export async function verifyDataIntegrity(
       };
       if (cursor.phase === "root") {
         const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
-        for (const ref of rootRefs) {
+        if (cursor.rootReferenceIndex < rootRefs.length) {
+          const ref = rootRefs[cursor.rootReferenceIndex];
           const result = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
-          if (result.buffer === null) addIssue(errors, { phase: "root", code: "dangling_heap_reference", message: "A pinned root heap reference is missing", context: { referencedKey: ref } });
+          if (result.buffer === null) recordIssue({ phase: "root", code: "dangling_heap_reference", message: "A pinned root heap reference is missing", context: { referencedKey: ref } });
+          cursor.rootReferenceIndex++;
+          remaining--;
+        } else {
+          cursor.phase = "tables";
+          cursor.tablePosition = nextTablePosition(context.tables[0]?.tableId ?? null);
         }
-        cursor.phase = "tables";
-        cursor.tablePosition = nextTablePosition(context.tables[0]?.tableId ?? null);
         assertProgress();
         continue;
       }
@@ -577,13 +606,22 @@ export async function verifyDataIntegrity(
             position: cursor.tablePosition,
           };
         }
-        for (const error of result.issues) addIssue(errors, error);
+        for (const error of result.issues) recordIssue(error);
         skippedChecks.push(...result.skippedChecks);
-        remaining -= result.stepsTaken;
+        remaining -= Math.min(result.stepsTaken, remaining);
         if (result.finished) {
-          const index = context.tables.findIndex(table => table.tableId === cursor.tablePosition.tableId);
-          cursor.tablePosition = nextTablePosition(context.tables[index + 1]?.tableId ?? null);
-          if (cursor.tablePosition.tableId === null) cursor.phase = "heap-scan";
+          if (!cursor.tablePosition.genericDone && target.table.verifyDataIntegrity !== undefined) {
+            cursor.tablePosition = {
+              ...result.position,
+              tableId: target.tableId,
+              genericDone: true,
+              hookPosition: null,
+            };
+          } else {
+            const index = context.tables.findIndex(table => table.tableId === cursor.tablePosition.tableId);
+            cursor.tablePosition = nextTablePosition(context.tables[index + 1]?.tableId ?? null);
+            if (cursor.tablePosition.tableId === null) cursor.phase = "heap-scan";
+          }
         } else cursor.tablePosition = result.position;
         assertProgress();
         continue;
@@ -604,11 +642,11 @@ export async function verifyDataIntegrity(
           await integrityState.piledriverDatabase.deserializeSerializedObject(entry.value);
           for (const ref of collectSerializedHeapReferences(parsePiledriverValue(entry.value))) {
             const referenced = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
-            if (referenced.buffer === null) addIssue(errors, { phase: "heap-scan", code: "dangling_heap_reference", message: "A heap reference points to a missing heap entry", context: { key: entryKey, referencedKey: ref } });
+            if (referenced.buffer === null) recordIssue({ phase: "heap-scan", code: "dangling_heap_reference", message: "A heap reference points to a missing heap entry", context: { key: entryKey, referencedKey: ref } });
           }
         } catch (error) {
           // Piledriver's deserializer rejects malformed persisted tags; that is a finding, not a service crash.
-          if (error instanceof Error) addIssue(errors, { phase: "heap-scan", code: "invalid_heap_entry", message: "A heap entry could not be deserialized", context: { key: entryKey } });
+          if (error instanceof Error) recordIssue({ phase: "heap-scan", code: "invalid_heap_entry", message: "A heap entry could not be deserialized", context: { key: entryKey } });
           else throw error;
         }
         if (remaining === 0) break;
@@ -623,7 +661,7 @@ export async function verifyDataIntegrity(
       next_cursor: cursor.phase === "done" ? null : encodeCursor(cursor),
       steps_taken: budget - remaining,
       errors,
-      errors_truncated: errors.length >= MAX_ERRORS,
+      errors_truncated: errorsTruncated,
       skipped_checks: skippedChecks,
     };
   }
@@ -634,7 +672,7 @@ export async function verifyDataIntegrity(
     next_cursor: null,
     steps_taken: 0,
     errors,
-    errors_truncated: errors.length >= MAX_ERRORS,
+    errors_truncated: errorsTruncated,
     skipped_checks: skippedChecks,
   };
 }

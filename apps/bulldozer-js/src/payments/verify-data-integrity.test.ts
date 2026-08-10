@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { declareBulldozerDatabase } from "../databases/bulldozer/index.js";
+import { declareBulldozerDatabase, type BulldozerTableImplementation } from "../databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./schema/index.js";
@@ -30,6 +30,7 @@ async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, s
   let continuation: string | undefined;
   let totalSteps = 0;
   const errors: string[] = [];
+  const skippedChecks: string[] = [];
   do {
     const response = await verifyDataIntegrity(db, {
       ...(continuation === undefined ? {} : { continue: continuation }),
@@ -37,8 +38,9 @@ async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, s
     });
     totalSteps += response.steps_taken;
     errors.push(...response.errors.map(error => error.code));
+    skippedChecks.push(...response.skipped_checks.map(error => error.code));
     continuation = response.next_cursor ?? undefined;
-    if (response.done) return { totalSteps, errors, skippedChecks: [] };
+    if (response.done) return { totalSteps, errors, skippedChecks };
   } while (continuation !== undefined);
   throw new Error("verification stopped without a cursor or done response");
 }
@@ -88,6 +90,15 @@ async function runWithBudgets(db: Awaited<ReturnType<typeof createDatabase>>, bu
 }
 
 describe("verification cursor", () => {
+  function hasIntegrityHook(value: unknown): value is { table: BulldozerTableImplementation & { verifyDataIntegrity: NonNullable<BulldozerTableImplementation["verifyDataIntegrity"]> } } {
+    if (typeof value !== "object" || value === null || !("table" in value)) return false;
+    const table = value.table;
+    return typeof table === "object"
+      && table !== null
+      && "verifyDataIntegrity" in table
+      && typeof table.verifyDataIntegrity === "function";
+  }
+
   async function expectBadRequest(body: unknown) {
     try {
       await handleVerifyDataIntegrityRequest(body, async () => {
@@ -124,18 +135,91 @@ describe("verification cursor", () => {
     await expect(handleVerifyDataIntegrityRequest({}, async () => finding)).resolves.toEqual(finding);
   });
 
+  it("runs a table integrity hook after the generic table pass", async () => {
+    const db = await createDatabase();
+    const debug = db.getDebugInfo();
+    const tableState = Object.values(debug.tablesState.tables).find(hasIntegrityHook);
+    if (tableState === undefined) {
+      throw new Error("Expected a persisted table with an integrity hook");
+    }
+    let hookCalls = 0;
+    tableState.table.verifyDataIntegrity = async () => {
+      hookCalls++;
+      return {
+        issues: [{ code: "hook_ran", message: "table hook ran" }],
+        stepsTaken: 1,
+        nextPosition: null,
+      };
+    };
+    let continuation: string | undefined;
+    const errors: string[] = [];
+    for (let call = 0; call < 100; call++) {
+      const response = await handleVerifyDataIntegrityRequest({
+        ...(continuation === undefined ? {} : { continue: continuation }),
+        step_count: 100,
+      }, request => verifyDataIntegrity(db, request));
+      errors.push(...response.errors.map(error => error.code));
+      if (response.done) break;
+      continuation = response.next_cursor ?? undefined;
+      if (continuation === undefined) throw new Error("Expected a verification continuation");
+    }
+    expect(hookCalls).toBeGreaterThan(0);
+    expect(errors).toContain("hook_ran");
+  });
+
+  it("reports a missing serialized table without aborting the other checks", async () => {
+    const db = await createDatabase();
+    const debug = db.getDebugInfo();
+    const tableStateEntry = Object.entries(debug.tablesState.tables)
+      .map(([tableId, tableState]) => ({ tableId, tableState }))
+      .find(entry => hasIntegrityHook(entry.tableState));
+    if (tableStateEntry === undefined) throw new Error("Expected a persisted table with an integrity hook");
+    if (!hasIntegrityHook(tableStateEntry.tableState)) throw new Error("Expected a persisted table with an integrity hook");
+    const tableState = tableStateEntry.tableState;
+    tableState.table.verifyDataIntegrity = async () => ({
+      issues: [{ code: "remaining_table_checked", message: "remaining table checked" }],
+      stepsTaken: 1,
+      nextPosition: null,
+    });
+    const rootResult = await debug.piledriverDatabase.getRootObject(debug.rootKey);
+    const root = rootResult.object;
+    if (typeof root !== "object" || root === null || Array.isArray(root) || !("snapshot" in root)) {
+      throw new Error("Expected a serialized Bulldozer root snapshot");
+    }
+    const snapshot = root.snapshot;
+    if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot) || !("serializedTables" in snapshot)) {
+      throw new Error("Expected serialized tables in the Bulldozer snapshot");
+    }
+    const serializedTables = snapshot.serializedTables;
+    if (typeof serializedTables !== "object" || serializedTables === null || Array.isArray(serializedTables)) {
+      throw new Error("Expected serialized table map");
+    }
+    const hookDescriptor = db.listTables().find(table => table.tableId === tableStateEntry.tableId);
+    if (hookDescriptor === undefined) throw new Error("Expected the hook table descriptor");
+    const missingTableId = Object.keys(serializedTables).find(tableId => tableId !== tableStateEntry.tableId && !(tableId in hookDescriptor.inputTableIds));
+    if (missingTableId === undefined) throw new Error("Expected another serialized table");
+    const incompleteTables = Object.fromEntries(Object.entries(serializedTables).filter(([tableId]) => tableId !== missingTableId));
+    await debug.piledriverDatabase.setRootObject(debug.rootKey, {
+      ...root,
+      snapshot: { ...snapshot, serializedTables: incompleteTables },
+    });
+    const response = await verifyDataIntegrity(db, { step_count: 1_000 });
+    expect(response.success).toBe(false);
+    expect(response.errors.map(error => error.code)).toEqual(expect.arrayContaining(["table_set_mismatch", "missing_serialized_table"]));
+  });
+
   it("round-trips and rejects malformed or wrong-version cursors", async () => {
     const db = await createDatabase();
     await addSubscription(db);
     const response = await verifyDataIntegrity(db, { step_count: 1 });
     expect(response.next_cursor).not.toBeNull();
-    expect(decodeVerificationCursor(response.next_cursor!)).toMatchObject({ version: 2, stepsTaken: 1 });
+    expect(decodeVerificationCursor(response.next_cursor!)).toMatchObject({ version: 3, stepsTaken: 1 });
     expect(() => decodeVerificationCursor("not-a-cursor")).toThrow("Invalid verification cursor");
     const wrongVersion = Buffer.from(
       JSON.stringify({ ...decodeVerificationCursor(response.next_cursor!), version: 999 }),
       "utf8",
     ).toString("base64url");
-    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 2");
+    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 3");
   });
 
   it("honors step budgets and resumes to the same final work", async () => {

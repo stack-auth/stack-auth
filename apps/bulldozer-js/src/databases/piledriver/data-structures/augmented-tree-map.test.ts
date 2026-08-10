@@ -310,12 +310,16 @@ describe("AugmentedTreeMap", () => {
     const oneCall = await tree.verifyDataIntegrity({ stepBudget: 10_000, position: null });
     let position: string | null = null;
     const resumed: string[] = [];
+    let calls = 0;
     for (;;) {
       const result = await tree.verifyDataIntegrity({ stepBudget: 1, position });
+      calls++;
+      expect(result.stepsTaken).toBeLessThanOrEqual(1);
       resumed.push(...result.issues.map(issue => issue.code));
       if (result.nextPosition === null) break;
       position = result.nextPosition;
     }
+    expect(calls).toBeGreaterThan(1);
     expect(new Set(resumed)).toEqual(new Set(oneCall.issues.map(issue => issue.code)));
   });
 
