@@ -37,9 +37,31 @@ async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, s
     totalSteps += response.steps_taken;
     errors.push(...response.errors.map(error => error.code));
     continuation = response.next_cursor ?? undefined;
-    if (response.done) return { totalSteps, errors };
+    if (response.done) return { totalSteps, errors, skippedChecks: [] };
   } while (continuation !== undefined);
   throw new Error("verification stopped without a cursor or done response");
+}
+
+async function runWithBudgets(db: Awaited<ReturnType<typeof createDatabase>>, budgets: number[]) {
+  let continuation: string | undefined;
+  const errors: string[] = [];
+  const skippedChecks: string[] = [];
+  let steps = 0;
+  let index = 0;
+  let calls = 0;
+  while (true) {
+    if (++calls > 100) throw new Error(`verification did not finish after ${calls} calls`);
+    const response = await verifyDataIntegrity(db, {
+      ...(continuation === undefined ? {} : { continue: continuation }),
+      step_count: budgets[index++ % budgets.length],
+    });
+    errors.push(...response.errors.map(error => error.code));
+    skippedChecks.push(...response.skipped_checks.map(error => error.code));
+    steps += response.steps_taken;
+    if (response.done) return { errors, steps, skippedChecks };
+    continuation = response.next_cursor ?? undefined;
+    if (continuation === undefined) throw new Error("missing verification continuation");
+  }
 }
 
 describe("verification cursor", () => {
@@ -63,6 +85,26 @@ describe("verification cursor", () => {
     const budgeted = await runToCompletion(db, 1);
     expect(budgeted.totalSteps).toBe(unbudgeted.totalSteps);
     expect(budgeted.errors).toEqual(unbudgeted.errors);
+  });
+
+  it("matches an unbudgeted run across deterministic random budgets", async () => {
+    const baselineDb = await createDatabase();
+    await addSubscription(baselineDb);
+    const baseline = await runToCompletion(baselineDb, 1_000);
+    let seed = 0x12345678;
+    const nextBudget = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return 1 + (seed % 7);
+    };
+    for (let run = 0; run < 3; run++) {
+      const db = await createDatabase();
+      await addSubscription(db);
+      const budgets = Array.from({ length: 12 }, nextBudget);
+      const result = await runWithBudgets(db, budgets);
+      expect(result.errors).toEqual(baseline.errors);
+      expect(result.steps).toBe(baseline.totalSteps);
+      expect(result.skippedChecks).toEqual(baseline.skippedChecks);
+    }
   });
 
   it("reports dangling references from the pinned root", async () => {
