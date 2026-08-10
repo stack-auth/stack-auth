@@ -889,17 +889,29 @@ const bridgedFetch = async (input, init) => {
       }
       const redirectUrl = resolveRedirectUrl(location, target);
       const redirectMethod =
-        (bridged.status === 303 &&
-          method !== "GET" &&
-          method !== "HEAD") ||
-        ((bridged.status === 301 || bridged.status === 302) &&
-          method !== "GET" &&
-          method !== "HEAD")
+        [301, 302, 303].includes(bridged.status) &&
+        method !== "GET" &&
+        method !== "HEAD"
           ? "GET"
           : method;
+      const redirectHeaders =
+        redirectMethod === "GET" && method !== "GET"
+          ? Object.fromEntries(
+              [...request.headers].filter(
+                ([name]) =>
+                  ![
+                    "content-length",
+                    "content-type",
+                    "content-encoding",
+                    "content-language",
+                    "content-location",
+                  ].includes(name),
+              ),
+            )
+          : request.headers;
       request = new Request(redirectUrl, {
         method: redirectMethod,
-        headers: request.headers,
+        headers: redirectHeaders,
         ...(redirectMethod === "GET" || redirectMethod === "HEAD"
           ? {}
           : { body: bodyBytes, duplex: "half" }),
