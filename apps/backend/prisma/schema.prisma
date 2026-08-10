@@ -56,6 +56,7 @@ model Project {
   issueAlertRules            IssueAlertRule[]
   issueAlertDeliveries       IssueAlertDelivery[]
   issueAlertCooldownClaims   IssueAlertCooldownClaim[]
+  errorIngestClientReports   ErrorIngestClientReport[]
   errorAttachments            ErrorAttachment[]
   issueOwners                 IssueOwner[]
   issueActivities             IssueActivity[]
@@ -207,6 +208,7 @@ model Tenancy {
   issueAlertRules     IssueAlertRule[]
   issueAlertDeliveries IssueAlertDelivery[]
   issueAlertCooldownClaims IssueAlertCooldownClaim[]
+  errorIngestClientReports ErrorIngestClientReport[]
   errorAttachments        ErrorAttachment[]
   issueOwners             IssueOwner[]
   issueActivities         IssueActivity[]
@@ -2119,6 +2121,33 @@ model IssueAlertDelivery {
   @@index([tenancyId, projectId, branchId, state, nextRetryAt], map: "IssueAlertDelivery_retry_idx")
   @@index([tenancyId, projectId, branchId, createdAt], map: "IssueAlertDelivery_scope_createdAt_idx")
   @@index([tenancyId, workflowEventId], map: "IssueAlertDelivery_workflowEvent_idx")
+}
+
+// Client reports are the durable loss ledger for item-level ingest outcomes.
+// They contain only category/reason/quantity metadata; event payloads never
+// cross this boundary. The idempotency key is supplied by the protocol
+// projection, so retrying an ambiguous response cannot double-count a report.
+model ErrorIngestClientReport {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  protocol       String @db.VarChar(32)
+  bucket         String @db.VarChar(64)
+  reason         String @db.VarChar(64)
+  category       String @db.VarChar(64)
+  quantity       Int
+  idempotencyKey String @db.VarChar(256)
+  reportedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, projectId, branchId, idempotencyKey, bucket, reason, category], map: "ErrorIngestClientReport_scope_idempotency_key")
+  @@index([tenancyId, projectId, branchId, reportedAt(sort: Desc), id(sort: Desc)], map: "ErrorIngestClientReport_scope_reportedAt_idx")
 }
 
 // Attachment bytes are deliberately not part of ClickHouse logs or the JSON

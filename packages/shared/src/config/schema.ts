@@ -25,6 +25,28 @@ const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
 const providerIdRegex = /^[a-z0-9_-]+$/;
 
+// Error-ingest policy is intentionally a small, positive-only DSL. These
+// selectors can add final scrubbing but cannot disable the built-in scrubber
+// or execute arbitrary predicates against event data.
+const errorIngestOverrideKeySchema = yupString().matches(
+  /^(?:user\.(?:email|username|ip_address)|request\.url|url|tags\.[a-zA-Z0-9_.-]{1,64}|contexts\.[a-zA-Z0-9_.-]{1,64}|extra\.[a-zA-Z0-9_.-]{1,64})$/,
+  "Unsupported error-ingest scrub override key",
+);
+const errorIngestPolicySchema = yupObject({
+  finalScrub: yupObject({
+    dropKeys: yupRecord(errorIngestOverrideKeySchema, yupBoolean().isTrue()).optional(),
+    urlKeys: yupRecord(errorIngestOverrideKeySchema, yupBoolean().isTrue()).optional(),
+  }).optional(),
+  rateLimit: yupObject({
+    maxItemsPerWindow: yupNumber().integer().min(1).max(100_000).optional(),
+    windowSeconds: yupNumber().integer().min(1).max(86_400).optional(),
+  }).optional(),
+  quota: yupObject({
+    maxBytesPerWindow: yupNumber().integer().min(1).max(50 * 1024 * 1024).optional(),
+    windowSeconds: yupNumber().integer().min(1).max(86_400).optional(),
+  }).optional(),
+});
+
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
@@ -495,6 +517,7 @@ const environmentAnalyticsSchema = yupObject({
 const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
 
 const environmentObservabilitySchema = yupObject({
+  errorIngest: errorIngestPolicySchema.optional(),
   errorGrouping: yupObject({
     activeConfigId: yupString().oneOf(GROUPING_CONFIG_IDS).optional(),
     // The set of older algorithms whose hashes are still consulted on an owner-hash miss, so a dormant issue
