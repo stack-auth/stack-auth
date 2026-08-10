@@ -501,11 +501,13 @@ export async function verifyDataIntegrity(
     rootObject = (await integrityState.piledriverDatabase.deserializeSerializedObject(rootBuffer, rootSeq)).object;
   }
   let resolvedRootObject: PiledriverObject;
+  let invalidRootReported = false;
   try {
     resolvedRootObject = { snapshot: await resolveRootSnapshot(rootObject) };
   } catch (error) {
     if (error instanceof Error) {
       recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
+      invalidRootReported = true;
     } else {
       throw error;
     }
@@ -514,7 +516,7 @@ export async function verifyDataIntegrity(
   const snapshot = snapshotFromRoot(resolvedRootObject);
   const context = snapshot === null ? { migrationIndex: 0, issues: [], tables: [] as ReturnType<typeof integrityState.getContext>["tables"] } : integrityState.getContext(snapshot);
   if (snapshot === null) {
-    recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
+    if (!invalidRootReported) recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root is not a valid Bulldozer snapshot" });
     cursor.phase = "heap-scan";
   } else {
     if (!cursor.rootChecked) {
@@ -533,6 +535,19 @@ export async function verifyDataIntegrity(
         });
       }
       cursor.rootChecked = true;
+    }
+  }
+  let rootRefs: string[] = [];
+  if (cursor.phase === "root") {
+    try {
+      rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
+    } catch (error) {
+      if (error instanceof Error) {
+        recordIssue({ phase: "root", code: "invalid_root_shape", message: "The pinned root could not be parsed for heap references" });
+        cursor.phase = "heap-scan";
+      } else {
+        throw error;
+      }
     }
   }
   let remaining = budget;
@@ -554,7 +569,6 @@ export async function verifyDataIntegrity(
       }
     };
     if (cursor.phase === "root") {
-      const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
       if (cursor.rootReferenceIndex < rootRefs.length) {
         const ref = rootRefs[cursor.rootReferenceIndex];
         const result = await integrityState.piledriverDatabase.getSerializedHeapObject(keyBytes(ref));
