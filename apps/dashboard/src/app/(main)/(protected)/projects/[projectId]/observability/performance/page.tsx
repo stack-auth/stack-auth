@@ -1,7 +1,7 @@
-import { AppTodoPage } from "../../app-todo-page";
+import PageClient from "./page-client";
 
 export const metadata = { title: "Performance" };
 
 export default function Page() {
-  return <AppTodoPage title="Performance" description="Find slow operations and regressions across traces." />;
+  return <PageClient />;
 }

@@ -23,8 +23,9 @@ describe("observability logs page", () => {
     expect(query).not.toContain("event_type");
     expect(query).toContain("event_at >= now64(3) - INTERVAL 720 HOUR");
     // The grid columns plus everything the detail view links to.
-    expect(query).toContain("e.message");
+    expect(query).toContain("e.body AS message");
     expect(query).toContain("e.level");
+    expect(query).toContain("lowerUTF8(e.severity_text)");
     expect(query).toContain("e.service_namespace");
     expect(query).toContain("e.service_name");
     expect(query).toContain("e.deployment_environment_name");
@@ -33,10 +34,11 @@ describe("observability logs page", () => {
     expect(query).toContain("e.trace_id");
     expect(query).toContain("e.span_id");
     expect(query).toContain("e.session_replay_id");
-    // Dead ingestion-era columns must never come back.
+    // The query aliases the OTel body/product payload for the existing detail
+    // model, but does not pull the other raw ingestion-only fields into the grid.
     expect(query).not.toContain("source");
-    expect(query).not.toContain("body");
-    expect(query).not.toContain("severity");
+    expect(query).toContain("body AS message");
+    expect(query).toContain("severity_text");
     expect(query).not.toContain("scope_");
     expect(query).not.toContain("resource_");
   });
@@ -50,9 +52,9 @@ describe("observability logs page", () => {
 
   it("filters by level only through the fixed level set", () => {
     for (const level of LOG_LEVELS) {
-      expect(getLogsQuery(DEFAULT_LOG_TIME_RANGE_HOURS, level).query).toContain(`AND e.level = '${level}'`);
+      expect(getLogsQuery(DEFAULT_LOG_TIME_RANGE_HOURS, level).query).toContain(`= '${level}'`);
     }
-    expect(getLogsQuery(DEFAULT_LOG_TIME_RANGE_HOURS, null).query).not.toContain("e.level = ");
+    expect(getLogsQuery(DEFAULT_LOG_TIME_RANGE_HOURS, null).query).not.toContain("= 'error'");
   });
 
   it("filters by service through a bound ClickHouse parameter", () => {
@@ -110,8 +112,7 @@ describe("observability logs page", () => {
     expect(() => getLogsQuery(12)).toThrow("Unknown logs time range: 12");
   });
 
-
-  it("is reachable from the Observability child app only", () => {
+  it("is reachable from the Observability app only", () => {
     expect(ALL_APPS_FRONTEND.analytics.navigationItems).not.toContainEqual({
       displayName: "Logs",
       href: "./logs",

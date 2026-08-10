@@ -87,7 +87,10 @@ export function getLogsQuery(
   if (level != null && !LOG_LEVELS.includes(level)) {
     throw new Error(`Unknown log level: ${level}`);
   }
-  const levelCondition = level == null ? "" : `\n  AND e.level = '${level}'`;
+  // `level` is the normalized product projection. A vanilla OTLP exporter may
+  // provide only severity_text, so use it when the projection is empty.
+  const levelExpression = "coalesce(nullIf(e.level, ''), nullIf(lowerUTF8(e.severity_text), ''), '')";
+  const levelCondition = level == null ? "" : `\n  AND ${levelExpression} = '${level}'`;
   const serviceCondition = service == null ? "" : `
   AND coalesce(e.service_namespace, '') = {serviceNamespace:String}
   AND e.service_name = {serviceName:String}`;
@@ -95,8 +98,8 @@ export function getLogsQuery(
     query: `
 SELECT
   e.event_at,
-  e.level,
-  e.message,
+  ${levelExpression} AS level,
+  e.body AS message,
   e.service_namespace,
   e.service_name,
   e.deployment_environment_name,

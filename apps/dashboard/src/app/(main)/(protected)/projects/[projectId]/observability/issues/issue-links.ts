@@ -12,6 +12,11 @@ export function issuesListHref(projectId: string): string {
   return urlString`/projects/${projectId}/observability/issues`;
 }
 
+/** Deep-link to the authenticated project issue-alert rule surface. */
+export function issueAlertRulesHref(projectId: string): string {
+  return urlString`/projects/${projectId}/observability/issues/alerts`;
+}
+
 /**
  * The list, pre-seeded with a free-text query across every status.
  *

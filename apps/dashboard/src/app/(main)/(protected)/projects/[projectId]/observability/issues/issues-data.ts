@@ -1,14 +1,20 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
+  IssueBulkStatusRequestSchema,
+  IssueBulkStatusResponseSchema,
   IssueDetailResponseSchema,
   IssueListResponseSchema,
   ISSUE_LIST_PAGE_SIZE,
   type IssueDetailResponse,
+  type IssueBulkStatus,
+  type IssueBulkStatusResponse,
   type IssueFrame,
   type IssueListResponse,
   type IssueListSortField,
+  type IssueOwner,
   type IssueOccurrence,
+  type IssueSubject,
   type IssueStatus,
 } from "@hexclave/shared/dist/interface/admin-issues";
 import * as yup from "yup";
@@ -39,7 +45,9 @@ export type {
   IssueListItem,
   IssueListResponse,
   IssueListSortField,
+  IssueOwner,
   IssueOccurrence,
+  IssueSubject,
   IssueStatus,
   IssueSubstatus,
 } from "@hexclave/shared/dist/interface/admin-issues";
@@ -283,6 +291,89 @@ const IssueStatusUpdateResponseSchema = yup.object({
   status: yup.string().oneOf<IssueStatus>(["unresolved", "resolved", "ignored"]).defined(),
 }).defined();
 
+const IssuePriorityUpdateResponseSchema = yup.object({
+  issue_id: yup.string().defined(),
+  previous_priority: yup.string().oneOf(["low", "medium", "high"]).nullable().defined(),
+  priority: yup.string().oneOf(["low", "medium", "high"]).nullable().defined(),
+  changed: yup.boolean().defined(),
+  changed_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+const IssueCommentResponseSchema = yup.object({
+  issue_id: yup.string().defined(),
+  id: yup.string().uuid().defined(),
+  author_user_id: yup.string().uuid().defined(),
+  body: yup.string().defined(),
+  idempotency_key: yup.string().defined(),
+  created_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+const IssueActionResponseSchema = yup.object({
+  action: yup.string().oneOf(["assign", "unassign"]).defined(),
+  issue_id: yup.string().uuid().defined(),
+  redirected: yup.boolean().defined(),
+  redirected_from_issue_id: yup.string().uuid().nullable().defined(),
+  changed: yup.boolean().defined(),
+  changed_at_millis: yup.number().integer().min(0).defined(),
+  status: yup.string().oneOf(["resolved", "unresolved", "ignored"]).nullable().defined(),
+  previous_assignee_user_id: yup.string().uuid().nullable().defined(),
+  assignee_user_id: yup.string().uuid().nullable().defined(),
+  transition_kind: yup.string().oneOf(["status_changed", "status_unchanged", "regressed", "reopened", "occurrence_unchanged"]).nullable().defined(),
+  ignored_until_millis: yup.number().integer().min(0).nullable().defined(),
+  regressed_at_millis: yup.number().integer().min(0).nullable().defined(),
+}).defined();
+
+const IssueTeamUpdateResponseSchema = yup.object({
+  issue_id: yup.string().uuid().defined(),
+  previous_team_id: yup.string().uuid().nullable().defined(),
+  team_id: yup.string().uuid().nullable().defined(),
+  changed: yup.boolean().defined(),
+  changed_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+const IssueOwnerUpdateResponseSchema = yup.object({
+  issue_id: yup.string().uuid().defined(),
+  id: yup.string().uuid().defined(),
+  type: yup.string().oneOf(["user", "team"]).defined(),
+  user_id: yup.string().uuid().nullable().defined(),
+  team_id: yup.string().uuid().nullable().defined(),
+  source: yup.string().oneOf(["manual", "ownership_rule", "codeowners", "suspect_commit", "seer_suggested"]).defined(),
+  context: yup.mixed().nullable().defined(),
+  updated_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+const IssueBookmarkUpdateResponseSchema = yup.object({
+  issue_id: yup.string().uuid().defined(),
+  user_id: yup.string().uuid().defined(),
+  bookmarked: yup.boolean().defined(),
+  changed: yup.boolean().defined(),
+  changed_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+const IssueSubscriptionUpdateResponseSchema = yup.object({
+  issue_id: yup.string().uuid().defined(),
+  subject_type: yup.string().oneOf(["user", "team"]).defined(),
+  subject_id: yup.string().uuid().defined(),
+  subscribed: yup.boolean().defined(),
+  reason: yup.string().max(64).nullable().defined(),
+  updated_at_millis: yup.number().integer().min(0).defined(),
+}).defined();
+
+export type IssueOwnerSource = "manual" | "ownership_rule" | "codeowners" | "suspect_commit" | "seer_suggested";
+export type IssueSubjectType = "user" | "team";
+
+function assertUuidInput(value: string, fieldName: string): void {
+  if (!yup.string().uuid().isValidSync(value)) {
+    throw new HexclaveAssertionError(`${fieldName} must be a UUID`);
+  }
+}
+
+function assertBoundedInput(value: string, fieldName: string, maxLength: number): void {
+  if (value.length === 0 || value.length > maxLength) {
+    throw new HexclaveAssertionError(`${fieldName} must contain 1-${maxLength} characters`);
+  }
+}
+
 export async function updateIssueStatus(
   adminApp: object,
   issueId: string,
@@ -298,4 +389,205 @@ export async function updateIssueStatus(
     },
   );
   return await IssueStatusUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating the issue"));
+}
+
+/**
+ * Applies one explicit status transition to a bounded set of selected issues.
+ * The server intentionally returns one result per input, including safe
+ * `not_found` entries for issues that disappeared or belong to another
+ * tenancy, so a partial merge or delete cannot make the dashboard report a
+ * misleading all-or-nothing success.
+ */
+export async function updateIssuesStatusBulk(
+  adminApp: object,
+  issueIds: readonly string[],
+  status: IssueBulkStatus,
+): Promise<IssueBulkStatusResponse> {
+  const request = await IssueBulkStatusRequestSchema.validate({
+    issue_ids: [...issueIds],
+    status,
+  });
+  const response = await sendInternalAdminRequest(adminApp, "/issues/actions/bulk", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return await IssueBulkStatusResponseSchema.validate(await readJsonOrThrow(response, "Updating issues"));
+}
+
+export type IssuePriority = "low" | "medium" | "high";
+
+export async function updateIssuePriority(
+  adminApp: object,
+  issueId: string,
+  priority: IssuePriority | null,
+): Promise<yup.InferType<typeof IssuePriorityUpdateResponseSchema>> {
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/priority`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ priority }),
+    },
+  );
+  return await IssuePriorityUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue priority"));
+}
+
+export async function addIssueComment(
+  adminApp: object,
+  issueId: string,
+  body: string,
+  idempotencyKey: string,
+): Promise<yup.InferType<typeof IssueCommentResponseSchema>> {
+  assertBoundedInput(body, "Comment", 10_000);
+  assertBoundedInput(idempotencyKey, "Idempotency key", 128);
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/comment`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body, idempotency_key: idempotencyKey }),
+    },
+  );
+  return await IssueCommentResponseSchema.validate(await readJsonOrThrow(response, "Adding issue comment"));
+}
+
+export async function updateIssueAssignment(
+  adminApp: object,
+  issueId: string,
+  assigneeUserId: string | null,
+): Promise<yup.InferType<typeof IssueActionResponseSchema>> {
+  const path = assigneeUserId == null
+    ? `/issues/${encodeURIComponent(issueId)}/actions/unassign`
+    : `/issues/${encodeURIComponent(issueId)}/actions/assign`;
+  if (assigneeUserId != null) assertUuidInput(assigneeUserId, "Assignee user ID");
+  const response = await sendInternalAdminRequest(adminApp, path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(assigneeUserId == null ? {} : { assignee_user_id: assigneeUserId }),
+  });
+  return await IssueActionResponseSchema.validate(await readJsonOrThrow(response, "Updating issue assignment"));
+}
+
+export async function updateIssueTeam(
+  adminApp: object,
+  issueId: string,
+  teamId: string | null,
+): Promise<yup.InferType<typeof IssueTeamUpdateResponseSchema>> {
+  if (teamId != null) assertUuidInput(teamId, "Team ID");
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/team`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ team_id: teamId }),
+    },
+  );
+  return await IssueTeamUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue team"));
+}
+
+export async function updateIssueOwner(
+  adminApp: object,
+  issueId: string,
+  owner: { type: IssueSubjectType, userId: string | null, teamId: string | null, source?: IssueOwnerSource },
+): Promise<yup.InferType<typeof IssueOwnerUpdateResponseSchema>> {
+  if (owner.type === "user") {
+    if (owner.userId == null || owner.teamId !== null) throw new HexclaveAssertionError("A user owner requires only a user ID");
+    assertUuidInput(owner.userId, "Owner user ID");
+  } else {
+    if (owner.teamId == null || owner.userId !== null) throw new HexclaveAssertionError("A team owner requires only a team ID");
+    assertUuidInput(owner.teamId, "Owner team ID");
+  }
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/owner`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Context is intentionally null: this consumer has no safe user-entered
+      // JSON editor, so it cannot accidentally persist unbounded customer data.
+      body: JSON.stringify({ type: owner.type, user_id: owner.userId, team_id: owner.teamId, source: owner.source ?? "manual", context: null }),
+    },
+  );
+  return await IssueOwnerUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue ownership"));
+}
+
+export async function updateIssueBookmark(
+  adminApp: object,
+  issueId: string,
+  userId: string,
+  bookmarked: boolean,
+  idempotencyKey: string,
+): Promise<yup.InferType<typeof IssueBookmarkUpdateResponseSchema>> {
+  assertUuidInput(userId, "Bookmark user ID");
+  assertBoundedInput(idempotencyKey, "Idempotency key", 128);
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/bookmark`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ user_id: userId, bookmarked, idempotency_key: idempotencyKey }),
+    },
+  );
+  return await IssueBookmarkUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue bookmark"));
+}
+
+export async function updateIssueSubscription(
+  adminApp: object,
+  issueId: string,
+  subjectType: IssueSubjectType,
+  subjectId: string,
+  subscribed: boolean,
+  reason: string | null,
+  idempotencyKey: string,
+): Promise<yup.InferType<typeof IssueSubscriptionUpdateResponseSchema>> {
+  assertUuidInput(subjectId, "Subscription subject ID");
+  if (reason != null) assertBoundedInput(reason, "Subscription reason", 64);
+  assertBoundedInput(idempotencyKey, "Idempotency key", 128);
+  const response = await sendInternalAdminRequest(
+    adminApp,
+    `/issues/${encodeURIComponent(issueId)}/actions/subscribe`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subject_type: subjectType, subject_id: subjectId, subscribed, reason, idempotency_key: idempotencyKey }),
+    },
+  );
+  return await IssueSubscriptionUpdateResponseSchema.validate(await readJsonOrThrow(response, "Updating issue subscription"));
+}
+
+export function setIssueAssignee(detail: IssueDetailResponse, assigneeUserId: string | null): IssueDetailResponse {
+  return { ...detail, product: { ...detail.product, assignee_user_id: assigneeUserId } };
+}
+
+export function setIssueTeam(detail: IssueDetailResponse, teamId: string | null): IssueDetailResponse {
+  return { ...detail, product: { ...detail.product, team_id: teamId } };
+}
+
+export function setIssueBookmarkState(detail: IssueDetailResponse, userId: string, bookmarked: boolean): IssueDetailResponse {
+  const userIds = new Set(detail.product.bookmarked_user_ids);
+  if (bookmarked) userIds.add(userId);
+  else userIds.delete(userId);
+  return { ...detail, product: { ...detail.product, bookmarked_user_ids: [...userIds] } };
+}
+
+export function setIssueSubscriptionState(
+  detail: IssueDetailResponse,
+  subject: IssueSubject,
+  subscribed: boolean,
+  updatedAt: string,
+): IssueDetailResponse {
+  const existing = detail.product.subscriptions.find((value) => value.type === subject.type && value.id === subject.id);
+  const nextSubject = { ...subject, is_active: subscribed, updated_at: updatedAt, created_at: existing?.created_at ?? updatedAt };
+  const subscriptions = detail.product.subscriptions.filter((value) => value !== existing);
+  return { ...detail, product: { ...detail.product, subscriptions: [nextSubject, ...subscriptions].slice(0, 100) } };
+}
+
+export function setIssueOwnerState(detail: IssueDetailResponse, owner: IssueOwner): IssueDetailResponse {
+  const owners = detail.product.owners.filter((value) => value.id !== owner.id);
+  return { ...detail, product: { ...detail.product, owners: [owner, ...owners].slice(0, 100) } };
 }

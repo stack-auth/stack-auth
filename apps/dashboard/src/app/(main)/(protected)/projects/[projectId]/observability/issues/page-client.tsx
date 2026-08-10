@@ -3,7 +3,7 @@
 import { DesignAlert, DesignButton, DesignCategoryTabs, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
 import { TooltipProvider, Typography } from "@/components/ui";
 import { useRouter } from "@/components/router";
-import { ArrowClockwiseIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CheckCircleIcon, MagnifyingGlassIcon, ProhibitIcon } from "@phosphor-icons/react";
 import {
   DataGrid,
   DataGridToolbar,
@@ -14,6 +14,7 @@ import {
 } from "@hexclave/dashboard-ui-components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
+import { Link } from "@/components/link";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -35,7 +36,7 @@ import {
   ISSUE_COLUMNS_HIDDEN_BY_DEFAULT,
   type IssueCellContext,
 } from "./issue-columns";
-import { issueDetailHref } from "./issue-links";
+import { issueAlertRulesHref, issueDetailHref } from "./issue-links";
 import {
   ALL_STATUSES_FILTER_VALUE,
   DEFAULT_ISSUE_FILTERS,
@@ -57,11 +58,13 @@ import {
 } from "./issue-status";
 import {
   fetchIssueList,
+  updateIssuesStatusBulk,
   updateIssueStatus,
   type IssueListItem,
   type IssueStatus,
   type IssueStatusCounts,
 } from "./issues-data";
+import { IssueSavedViews } from "./issue-saved-views";
 import { useIssueFacets, useIssueSparklines } from "./use-issue-data";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -124,6 +127,8 @@ export default function PageClient() {
   const [approximate, setApproximate] = useState(false);
   const [overrides, setOverrides] = useState<IssueStatusOverrides>(NO_ISSUE_STATUS_OVERRIDES);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [bulkStatusError, setBulkStatusError] = useState<string | null>(null);
+  const [bulkStatusBusy, setBulkStatusBusy] = useState<IssueStatus | null>(null);
   // Single "now" for every relative timestamp in the table, refreshed on reload
   // so the column doesn't quietly drift while the page sits open.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -256,6 +261,37 @@ export default function PageClient() {
     gridData.reload();
   }, [gridData]);
 
+  const selectedIssueIds = useMemo(
+    () => [...gridState.selection.selectedIds].filter((id): id is string => typeof id === "string"),
+    [gridState.selection.selectedIds],
+  );
+
+  const clearIssueSelection = useCallback(() => {
+    setGridState((current) => ({
+      ...current,
+      selection: { selectedIds: new Set(), anchorId: null },
+    }));
+  }, [setGridState]);
+
+  const changeBulkStatus = useCallback(async (status: IssueStatus) => {
+    if (selectedIssueIds.length === 0 || bulkStatusBusy != null) return;
+    setBulkStatusError(null);
+    setBulkStatusBusy(status);
+    try {
+      const response = await updateIssuesStatusBulk(adminApp, selectedIssueIds, status);
+      const notFoundCount = response.results.filter((result) => result.error === "not_found").length;
+      if (notFoundCount > 0) {
+        setBulkStatusError(`${notFoundCount} selected issue${notFoundCount === 1 ? "" : "s"} no longer exists in this project. The remaining changes were applied.`);
+      }
+      clearIssueSelection();
+      reload();
+    } catch (error) {
+      setBulkStatusError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBulkStatusBusy(null);
+    }
+  }, [adminApp, bulkStatusBusy, clearIssueSelection, reload, selectedIssueIds]);
+
   const statusTabs = useMemo(() => [
     { id: "unresolved", label: "Unresolved", count: counts?.unresolved },
     { id: "resolved", label: "Resolved", count: counts?.resolved },
@@ -329,19 +365,61 @@ export default function PageClient() {
         </>
       }
       extraActions={
-        <DesignButton
-          variant="ghost"
-          size="sm"
-          loading={gridData.isRefetching}
-          onClick={reload}
-          className="gap-1.5"
-        >
-          <ArrowClockwiseIcon className="h-3.5 w-3.5" />
-          Refresh
-        </DesignButton>
+        <>
+          {selectedIssueIds.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Typography variant="secondary" className="px-1 text-xs">
+                {selectedIssueIds.length} selected
+              </Typography>
+              <DesignButton
+                variant="secondary"
+                size="sm"
+                loading={bulkStatusBusy === "resolved"}
+                disabled={bulkStatusBusy != null}
+                onClick={() => changeBulkStatus("resolved")}
+                className="gap-1.5"
+              >
+                <CheckCircleIcon className="h-3.5 w-3.5" />
+                Resolve
+              </DesignButton>
+              <DesignButton
+                variant="secondary"
+                size="sm"
+                loading={bulkStatusBusy === "ignored"}
+                disabled={bulkStatusBusy != null}
+                onClick={() => changeBulkStatus("ignored")}
+                className="gap-1.5"
+              >
+                <ProhibitIcon className="h-3.5 w-3.5" />
+                Ignore
+              </DesignButton>
+              <DesignButton
+                variant="ghost"
+                size="sm"
+                loading={bulkStatusBusy === "unresolved"}
+                disabled={bulkStatusBusy != null}
+                onClick={() => changeBulkStatus("unresolved")}
+                className="gap-1.5"
+              >
+                <ArrowCounterClockwiseIcon className="h-3.5 w-3.5" />
+                Reopen
+              </DesignButton>
+            </div>
+          )}
+          <DesignButton
+            variant="ghost"
+            size="sm"
+            loading={gridData.isRefetching}
+            onClick={reload}
+            className="gap-1.5"
+          >
+            <ArrowClockwiseIcon className="h-3.5 w-3.5" />
+            Refresh
+          </DesignButton>
+        </>
       }
     />
-  ), [filters.search, filters.service, filters.environment, filters.handled, facetsState.facets, facetsState.loading, gridData.isRefetching, reload]);
+  ), [changeBulkStatus, facetsState.facets, facetsState.loading, filters.environment, filters.handled, filters.search, filters.service, gridData.isRefetching, reload, selectedIssueIds.length, bulkStatusBusy]);
 
   const filtersActive = !issueFiltersAreDefault(filters);
 
@@ -365,16 +443,26 @@ export default function PageClient() {
                   Errors from your app, grouped into issues you can resolve, ignore, and watch for regressions.
                 </Typography>
               </div>
-              <DesignPillToggle
-                selected={String(filters.hours)}
-                onSelect={(id) => setFilters((current) => ({
-                  ...current,
-                  hours: parseObservabilityTimeRangeId(id),
-                }))}
-                options={OBSERVABILITY_TIME_RANGE_OPTIONS}
-                size="sm"
-                glassmorphic={false}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <IssueSavedViews
+                  adminApp={adminApp}
+                  filters={filters}
+                  onApply={setFilters}
+                />
+                <DesignButton variant="secondary" size="sm" asChild>
+                  <Link href={issueAlertRulesHref(projectId)}>Alert rules</Link>
+                </DesignButton>
+                <DesignPillToggle
+                  selected={String(filters.hours)}
+                  onSelect={(id) => setFilters((current) => ({
+                    ...current,
+                    hours: parseObservabilityTimeRangeId(id),
+                  }))}
+                  options={OBSERVABILITY_TIME_RANGE_OPTIONS}
+                  size="sm"
+                  glassmorphic={false}
+                />
+              </div>
             </div>
 
             <div className="shrink-0 px-3">
@@ -393,6 +481,16 @@ export default function PageClient() {
                   variant="error"
                   title="Couldn't update that issue"
                   description={statusError}
+                />
+              </div>
+            )}
+
+            {bulkStatusError != null && (
+              <div className="shrink-0 px-3 pt-3">
+                <DesignAlert
+                  variant="error"
+                  title="Couldn't update all selected issues"
+                  description={bulkStatusError}
                 />
               </div>
             )}
@@ -450,7 +548,7 @@ export default function PageClient() {
                 state={gridState}
                 onChange={setGridState}
                 paginationMode="infinite"
-                selectionMode="none"
+                selectionMode="multiple"
                 rowHeight={56}
                 fillHeight
                 stickyTop={0}

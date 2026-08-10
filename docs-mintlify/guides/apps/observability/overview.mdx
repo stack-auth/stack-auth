@@ -8,7 +8,7 @@ Every `$error` occurrence Hexclave captures is parsed, grouped, and rolled up in
 
 There is nothing to instrument. If the SDK is capturing errors — which it does by default — you already have Issues.
 
-Open **Analytics -> Observability -> Issues** in the dashboard.
+Open **Observability -> Issues** in the dashboard.
 
 ## How It Works
 
@@ -57,7 +57,7 @@ Enable both from the **Apps** section of your dashboard. Then throw something:
 setTimeout(() => { throw new Error("hello from error tracking"); });
 ```
 
-Within a moment it shows up under **Analytics -> Observability -> Issues**.
+Within a moment it shows up under **Observability -> Issues**.
 
 <Info>
 Error capture itself is configured on the SDK side — `release`, `environment`, `ignoreErrors`, and the flood caps are all documented under [Errors & Logs](/guides/apps/analytics/errors-and-logs#automatic-error-capture). This page picks up where capture ends.

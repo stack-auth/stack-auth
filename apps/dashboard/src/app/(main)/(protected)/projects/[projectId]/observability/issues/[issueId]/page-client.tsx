@@ -14,7 +14,6 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  BracketsCurlyIcon,
   ClockCounterClockwiseIcon,
   LinkIcon,
   ListDashesIcon,
@@ -26,7 +25,7 @@ import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { StickyPageHeader } from "../../../sticky-page-header";
 import { useAdminApp } from "../../../use-admin-app";
-import { RowDetailField } from "../../../analytics/shared";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { queryObservability } from "../../filters";
 import {
   formatAbsoluteTimeFromMillis,
@@ -46,13 +45,28 @@ import { issuesListHref, traceDetailHref } from "../issue-links";
 import { issueStatusBadge, primaryIssueStatusAction } from "../issue-status";
 import {
   fetchIssueDetail,
+  addIssueComment,
+  setIssueAssignee,
+  setIssueBookmarkState,
+  setIssueOwnerState,
+  setIssueSubscriptionState,
+  setIssueTeam,
+  updateIssuePriority,
+  updateIssueAssignment,
+  updateIssueBookmark,
+  updateIssueOwner,
+  updateIssueSubscription,
+  updateIssueTeam,
   updateIssueStatus,
   type IssueDetailResponse,
   type IssueOccurrenceDirection,
+  type IssuePriority,
   type IssueStatus,
 } from "../issues-data";
 import { StackFrameList } from "../stack-frame-list";
 import { DEFAULT_STACK_FRAME_ORDER, type StackFrameOrder } from "../stack-frames";
+import { IssueEventSections } from "../issue-event-sections";
+import { IssueEventGraph } from "../issue-event-graph";
 
 const FRAME_ORDER_OPTIONS = [
   { id: "innermost-first", label: "Newest first" },
@@ -105,6 +119,8 @@ function EmptyRailValue() {
 
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const dashboardUser = useDashboardInternalUser();
+  const dashboardTeams = dashboardUser.useTeams();
   const params = useParams<{ issueId: string }>();
   const projectId = adminApp.projectId;
   const rawIssueId = params.issueId;
@@ -118,6 +134,8 @@ export default function PageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
+  const [productSaving, setProductSaving] = useState(false);
   const [frameOrder, setFrameOrder] = useState<StackFrameOrder>(DEFAULT_STACK_FRAME_ORDER);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -158,7 +176,6 @@ export default function PageClient() {
 
   const issue = detail?.issue ?? null;
   const occurrence = detail?.occurrence ?? null;
-  const occurrenceData = useMemo(() => asRecord(occurrence?.data), [occurrence]);
   const anchor = useMemo(
     () => (occurrence == null ? null : resolveCorrelationAnchor(occurrence)),
     [occurrence],
@@ -207,6 +224,153 @@ export default function PageClient() {
       setStatusError(caught instanceof Error ? caught.message : String(caught));
     }
   }, [adminApp, detail]);
+
+  const changePriority = useCallback(async (priority: IssuePriority | null) => {
+    if (detail == null) return;
+    const previous = detail.product.priority;
+    setProductError(null);
+    setDetail({ ...detail, product: { ...detail.product, priority } });
+    try {
+      await updateIssuePriority(adminApp, detail.issue.id, priority);
+    } catch (caught) {
+      setDetail({ ...detail, product: { ...detail.product, priority: previous } });
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [adminApp, detail]);
+
+  const createComment = useCallback(async (body: string) => {
+    if (detail == null) return;
+    const result = await addIssueComment(adminApp, detail.issue.id, body, `dashboard-comment-${crypto.randomUUID()}`);
+    const createdAt = new Date(result.created_at_millis).toISOString();
+    setDetail((current) => current == null ? current : {
+      ...current,
+      product: {
+        ...current.product,
+        comments: [{
+          id: result.id,
+          author_user_id: result.author_user_id,
+          body: result.body,
+          idempotency_key: result.idempotency_key,
+          created_at: createdAt,
+          updated_at: createdAt,
+        }, ...current.product.comments].slice(0, 100),
+      },
+    });
+  }, [adminApp, detail]);
+
+  const changeAssignment = useCallback(async (assigneeUserId: string | null) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    setDetail(setIssueAssignee(detail, assigneeUserId));
+    try {
+      const result = await updateIssueAssignment(adminApp, detail.issue.id, assigneeUserId);
+      setDetail((current) => current == null ? current : setIssueAssignee(current, result.assignee_user_id));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, productSaving]);
+
+  const changeTeam = useCallback(async (teamId: string | null) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    setDetail(setIssueTeam(detail, teamId));
+    try {
+      const result = await updateIssueTeam(adminApp, detail.issue.id, teamId);
+      setDetail((current) => current == null ? current : setIssueTeam(current, result.team_id));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, productSaving]);
+
+  const changeOwner = useCallback(async (type: "user" | "team", id: string) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    try {
+      const result = await updateIssueOwner(adminApp, detail.issue.id, {
+        type,
+        userId: type === "user" ? id : null,
+        teamId: type === "team" ? id : null,
+      });
+      const existing = detail.product.owners.find((owner) => owner.id === result.id);
+      const updatedAt = new Date(result.updated_at_millis).toISOString();
+      setDetail((current) => current == null ? current : setIssueOwnerState(current, {
+        id: result.id,
+        type: result.type,
+        user_id: result.user_id,
+        team_id: result.team_id,
+        source: result.source,
+        context: result.context,
+        created_at: existing?.created_at ?? updatedAt,
+        updated_at: updatedAt,
+      }));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, detail, productSaving]);
+
+  const changeBookmark = useCallback(async (bookmarked: boolean) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    setDetail(setIssueBookmarkState(detail, dashboardUser.id, bookmarked));
+    try {
+      const result = await updateIssueBookmark(adminApp, detail.issue.id, dashboardUser.id, bookmarked, `dashboard-bookmark-${crypto.randomUUID()}`);
+      setDetail((current) => current == null ? current : setIssueBookmarkState(current, result.user_id, result.bookmarked));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, dashboardUser.id, detail, productSaving]);
+
+  const changeSubscription = useCallback(async (subscribed: boolean) => {
+    if (detail == null || productSaving) return;
+    const previous = detail;
+    setProductError(null);
+    setProductSaving(true);
+    const updatedAt = new Date().toISOString();
+    setDetail(setIssueSubscriptionState(detail, { type: "user", id: dashboardUser.id, is_active: subscribed, reason: "manual", created_at: updatedAt, updated_at: updatedAt }, subscribed, updatedAt));
+    try {
+      const result = await updateIssueSubscription(adminApp, detail.issue.id, "user", dashboardUser.id, subscribed, "manual", `dashboard-subscription-${crypto.randomUUID()}`);
+      const existing = detail.product.subscriptions.find((subscription) => subscription.type === result.subject_type && subscription.id === result.subject_id);
+      const resultTime = new Date(result.updated_at_millis).toISOString();
+      setDetail((current) => current == null ? current : setIssueSubscriptionState(current, {
+        type: result.subject_type,
+        id: result.subject_id,
+        is_active: result.subscribed,
+        reason: result.reason,
+        created_at: existing?.created_at ?? resultTime,
+        updated_at: resultTime,
+      }, result.subscribed, resultTime));
+    } catch (caught) {
+      setDetail(previous);
+      setProductError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProductSaving(false);
+    }
+  }, [adminApp, dashboardUser.id, detail, productSaving]);
+
+  const teamOptions = useMemo(
+    () => dashboardTeams.map((team) => ({ id: team.id, displayName: team.displayName })),
+    [dashboardTeams],
+  );
 
   if (routeId == null) {
     return (
@@ -276,6 +440,10 @@ export default function PageClient() {
 
         {statusError != null && (
           <DesignAlert variant="error" title="Couldn't update this issue" description={statusError} />
+        )}
+
+        {productError != null && (
+          <DesignAlert variant="error" title="Couldn't update issue triage metadata" description={productError} />
         )}
 
         {error != null && (
@@ -397,18 +565,32 @@ export default function PageClient() {
                 )}
               </DesignCard>
 
-              {occurrenceData != null && Object.keys(occurrenceData).length > 0 && (
-                <DesignCard title="Event data" icon={BracketsCurlyIcon}>
-                  <div className="space-y-4">
-                    {Object.keys(occurrenceData)
-                      // `stack` is already rendered above, in a form you can read.
-                      .filter((key) => key !== "stack")
-                      .map((key) => (
-                        <RowDetailField key={key} column={key} value={occurrenceData[key]} />
-                      ))}
-                  </div>
-                </DesignCard>
-              )}
+              <IssueEventGraph
+                projectId={projectId}
+                issue={issue}
+                occurrence={occurrence}
+                leadingUpToCount={leadingUpTo?.length ?? 0}
+              />
+
+              <IssueEventSections
+                issue={issue}
+                occurrence={occurrence}
+                detail={detail}
+                loading={loading}
+                nowMs={nowMs}
+                frameOrder={frameOrder}
+                onNavigate={(cursor, direction) => setOccurrenceStep({ cursor, direction })}
+                onPriorityChange={changePriority}
+                onAddComment={createComment}
+                currentUserId={dashboardUser.id}
+                teams={teamOptions}
+                actionLoading={productSaving}
+                onAssignmentChange={changeAssignment}
+                onTeamChange={changeTeam}
+                onOwnerChange={changeOwner}
+                onBookmarkChange={changeBookmark}
+                onSubscriptionChange={changeSubscription}
+              />
             </div>
 
             <aside className="min-w-0 lg:sticky lg:top-3 lg:self-start">

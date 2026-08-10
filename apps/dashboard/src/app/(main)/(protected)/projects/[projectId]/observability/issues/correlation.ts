@@ -83,7 +83,7 @@ export function getLeadingUpToLogsQuery(
 SELECT
   event_at,
   level,
-  message,
+  body AS message,
   service_name
 FROM default.logs
 WHERE ${column} = {anchorValue:String}

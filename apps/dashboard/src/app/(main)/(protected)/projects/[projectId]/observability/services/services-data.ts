@@ -103,12 +103,10 @@ function errorPredicateSql(statusColumn: string, dataColumn: string): string {
 const SPAN_ERROR_SQL = errorPredicateSql("status_code", "data");
 
 /**
- * A service's request workload includes inbound server work and outbound client
- * calls. Older SDK rows predate explicit span-kind persistence, so the known
- * `$http-client` system type remains a compatibility signal. Other internal
- * spans (page views, replay lifetimes, middleware lifecycle work) are excluded.
+ * A service's request workload includes standard OTel inbound server work and
+ * outbound client calls. Internal spans are excluded.
  */
-const REQUEST_SPAN_SQL = "(kind IN ('server', 'client') OR span_type = '$http-client')";
+const REQUEST_SPAN_SQL = "kind IN ('server', 'client')";
 const REQUEST_ERROR_SQL = `${REQUEST_SPAN_SQL} AND ${SPAN_ERROR_SQL}`;
 
 export function getServicesSummaryQuery(hours: number): {

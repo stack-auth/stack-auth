@@ -23,6 +23,7 @@ import {
 import { SpanTreeList } from "./span-tree";
 import {
   buildTraces,
+  selectPrimaryTrace,
   traceContainsSpanId,
   type EventInput,
   type SpanInput,
@@ -377,26 +378,36 @@ export function getSelectedTraceEventQuery(traceId: string, hours: number): {
     // ClickHouse matches UNION ALL branches positionally and by count, and
     // `default.errors` exposes the server-side grouping columns that the other
     // three views do not — so `SELECT *` makes the branches different widths
-    // and the query fails with "UNION different number of columns".
+    // and the query fails with "UNION different number of columns". The
+    // compatibility branches synthesize `body` and zero severity for the
+    // event-shaped views; OTel log/error branches provide their canonical body
+    // and severity fields.
     query: `
 WITH correlated AS (
-  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+  SELECT event_type, event_at, data, message AS body, level,
+         CAST(0 AS UInt8) AS severity_number, CAST('' AS String) AS severity_text,
+         user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id
   FROM default.events
   UNION ALL
-  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+  SELECT event_type, event_at, data, body, level, severity_number, severity_text,
+         user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id
   FROM default.logs
   UNION ALL
-  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+  SELECT event_type, event_at, data, body, level, severity_number, severity_text,
+         user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id
   FROM default.errors
   UNION ALL
-  SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+  SELECT event_type, event_at, data, message AS body, level,
+         CAST(0 AS UInt8) AS severity_number, CAST('' AS String) AS severity_text,
+         user_id, trace_id, span_id, page_view_span_id,
          refresh_token_id, session_replay_id, session_replay_segment_id
   FROM default.span_events
 )
-SELECT event_type, event_at, data, user_id, trace_id, span_id, page_view_span_id,
+SELECT event_type, event_at, data, body, level, severity_number, severity_text,
+       user_id, trace_id, span_id, page_view_span_id,
        refresh_token_id, session_replay_id, session_replay_segment_id
 FROM correlated
 WHERE trace_id = {traceId:String}
@@ -450,7 +461,7 @@ export function parseEventRow(row: Record<string, unknown>): EventInput | null {
     // Depending on the analytics response surface, events.data can arrive as
     // either decoded JSON or its serialized representation. Normalize it just
     // like spans so the shared detail dialog always renders structured data.
-    raw: { ...row, data: tryParseJson(row.data) },
+    raw: { ...row, body: tryParseJson(row.body), data: tryParseJson(row.data) },
   };
 }
 
@@ -832,12 +843,12 @@ export default function PageClient() {
   const { selectedTrace, unattachedEventCount } = useMemo<{ selectedTrace: Trace | null, unattachedEventCount: number }>(() => {
     if (selectedTraceId == null) return { selectedTrace: null, unattachedEventCount: 0 };
     // Every tier of the request already shares one trace id, so the client
-    // page-view → $http-client → backend request → db chain builds into a single
+    // page-view → HTTP client → backend request → db chain builds into a single
     // connected waterfall with no read-time reparenting.
     const { traces, unattachedEvents } = buildTraces(selectedSpans, selectedEvents);
     return {
       selectedTrace: linkedSelection?.spanId == null
-        ? traces.find((trace) => trace.root.span.traceId === selectedTraceId) ?? null
+        ? selectPrimaryTrace(traces, selectedTraceId)
         : traces.find((trace) => traceContainsSpanId(trace, linkedSelection.spanId ?? "")) ?? null,
       // Counted, not discarded — see TraceWaterfall's unattachedEventCount.
       unattachedEventCount: unattachedEvents.length,

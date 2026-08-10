@@ -27,12 +27,13 @@ describe("analytics trace row parsing", () => {
       event_at: "2026-07-21 12:00:00.000",
       trace_id: "0123456789abcdef0123456789abcdef",
       span_id: "0123456789abcdef",
+      body: '{"type":"string","value":"checkout failed"}',
       data: "{\"step\":2}",
     })).toMatchObject({
       traceId: "0123456789abcdef0123456789abcdef",
       eventType: "checkout",
       spanId: "0123456789abcdef",
-      raw: { data: { step: 2 } },
+      raw: { body: { type: "string", value: "checkout failed" }, data: { step: 2 } },
     });
   });
 
@@ -49,13 +50,10 @@ describe("analytics trace row parsing", () => {
   it("lists only physical roots and leaves the rest of the trace to the selected waterfall", () => {
     const { query } = getRecentTraceRootsQuery(null);
     expect(query).toContain("FROM default.trace_roots AS r");
-    // `$http-client` is NOT filtered out. A browser fetch with no ambient parent is
-    // a legitimate trace root — the fetch plus the backend work it triggered IS the
-    // trace — so excluding it would leave those traces invisible in the inbox while
-    // their rows sat in `spans`. A fetch inside a withSpan has a parent and never
-    // reaches trace_roots at all.
     expect(query).not.toContain("$http-client");
     expect(query).toContain("r.status_code");
+    expect(query).not.toContain("_next/static");
+    expect(query).not.toContain("coalesce(r.scope_name, '')");
     // trace_roots stores only spans with a NULL parent, so the column is
     // synthesized rather than read.
     expect(query).toContain("CAST(NULL, 'Nullable(String)') AS parent_span_id");
@@ -206,6 +204,9 @@ describe("analytics trace row parsing", () => {
   it("selects the enclosing span and page-view correlation on events, not an ancestry array", () => {
     const { query } = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
     expect(query).toContain("trace_id, span_id, page_view_span_id");
+    expect(query).toContain("message AS body");
+    expect(query).toContain("severity_number");
+    expect(query).toContain("severity_text");
     expect(query).toContain("WHERE trace_id = {traceId:String}");
     expect(query).not.toContain("parent_span_ids");
     expect(query).not.toContain("w3c_trace_id");
