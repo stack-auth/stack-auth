@@ -1037,6 +1037,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       clipEl.style.setProperty("--data-grid-sticky-overlap", `${overlap}px`);
     };
     updateClip();
+    const frame = requestAnimationFrame(updateClip);
     bodyEl.addEventListener("scroll", updateClip);
     window.addEventListener("scroll", updateClip, true);
     window.addEventListener("resize", updateClip);
@@ -1048,9 +1049,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       bodyEl.removeEventListener("scroll", updateClip);
       window.removeEventListener("scroll", updateClip, true);
       window.removeEventListener("resize", updateClip);
+      cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [isLoading, rows.length, totalRowCount, visibleColumns.length]);
 
   // Keep header + body horizontal offsets locked. When the scrollbar lives under
   // the column headers (`horizontalScrollbarPosition="top"`), the header is the
@@ -1172,8 +1174,15 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       >
         <div
           ref={stickyChromeRef}
-          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl"
-          style={{ top: stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
+          className={cn(
+            "z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl",
+            isBounded ? "sticky" : "relative",
+          )}
+          style={{
+            top: isBounded
+              ? stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)")
+              : 0,
+          }}
         >
           {toolbar !== false && (
             <div className="relative bg-transparent">
@@ -1260,7 +1269,9 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             className="relative z-0"
             style={{
               minWidth: totalContentWidth,
-              clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)",
+              ...(isBounded
+                ? { clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)" }
+                : {}),
             }}
           >
             {isLoading && (
