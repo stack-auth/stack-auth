@@ -19,9 +19,10 @@ import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
+import { parseManualTransactionsListQuery } from "./manual-transactions-http.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
-import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
+import type { CustomerType, Json, ManualTransactionRow, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
 import { initSentry, resolveBulldozerSentryEnvironment } from "./sentry.js";
 
 const sentryEnabled = initSentry();
@@ -67,6 +68,9 @@ function createLowLevelDatabase(): LowLevelDatabase {
   mkdirSync(lmdbPath, { recursive: true });
   return declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({
     path: lmdbPath,
+    // Sticky: once a store is written with compression, every subsequent open of that path
+    // must keep this set. Pair with a filtered rebuild into a new path when enabling on prod.
+    compression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
     simulateReadMissDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_SIMULATE_READ_MISS_DELAY_MS"),
   }));
 }
@@ -903,6 +907,29 @@ async function readOutstandingItemGrants(options: { tenancyId: string, customerT
   return computeOutstandingItemGrants(rows);
 }
 
+async function listManualTransactions(options: { limit: number, cursor: string | undefined }): Promise<{ rows: ManualTransactionRow[], nextCursor: string | null }> {
+  const { snapshot } = await bulldozerDb.getSnapshot();
+  // Fetch one extra row so we can tell whether another page exists without a second round-trip.
+  const range = options.cursor !== undefined
+    ? { gt: options.cursor, limit: options.limit + 1 }
+    : { limit: options.limit + 1 };
+  const rows: ManualTransactionRow[] = [];
+  let lastReturnedRowIdentifier: string | undefined = undefined;
+  for await (const row of snapshot.listRowsInGroup({ tableId: schema.manualTransactions, groupKey: null, range })) {
+    rows.push(row.rowData as unknown as ManualTransactionRow);
+    // Stop after the peek row, but do not treat it as the page cursor — `gt` must
+    // resume after the last *returned* rowIdentifier or we skip that row.
+    if (rows.length > options.limit) break;
+    lastReturnedRowIdentifier = row.rowIdentifier;
+  }
+  const hasMore = rows.length > options.limit;
+  if (hasMore) rows.pop();
+  return {
+    rows,
+    nextCursor: hasMore && lastReturnedRowIdentifier !== undefined ? lastReturnedRowIdentifier : null,
+  };
+}
+
 function ok() {
   return { success: true };
 }
@@ -928,6 +955,12 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .get("/v1/manual-transactions", ({ query }) => handler("list-manual-transactions", async () => {
+    // Cross-instance export surface: backend pages this to back up refunds into Prisma.
+    const { limit, cursor } = parseManualTransactionsListQuery(query);
+    const result = await listManualTransactions({ limit, cursor });
+    return { rows: result.rows, next_cursor: result.nextCursor };
+  }))
   .post("/internal/wait-until-durable", () => handler("wait-until-durable", async () => {
     await bulldozerDb.waitUntilCurrentStateDurable();
     return ok();
@@ -1086,6 +1119,7 @@ const startupFields = {
   sentryEnvironment: resolveBulldozerSentryEnvironment(),
   lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
+  lmdbCompression: process.env.HEXCLAVE_BULLDOZER_JS_LMDB_COMPRESSION === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
   gcExposed: globalThis.gc !== undefined,
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,

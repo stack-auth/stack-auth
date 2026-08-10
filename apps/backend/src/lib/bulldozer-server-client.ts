@@ -1,5 +1,6 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 
 function getBulldozerServerBaseUrl(): string {
   const configuredUrl = getEnvVariable("HEXCLAVE_BULLDOZER_SERVER_URL", "");
@@ -47,4 +48,28 @@ export async function fetchBulldozerServerJson<T>(options: {
   }
 
   return await response.json() as T;
+}
+
+export type BulldozerManualTransactionsPage = {
+  rows: ManualTransactionRow[],
+  next_cursor: string | null,
+};
+
+/**
+ * Pages the global `payments-manual-transactions` stored table. Cursor is the
+ * last `rowIdentifier` from the previous page (same as `txnId` today via
+ * `rowIdField: "txnId"`, but the seek key is the identifier).
+ */
+export async function fetchBulldozerManualTransactionsPage(options: {
+  limit?: number,
+  cursor?: string | null,
+} = {}): Promise<BulldozerManualTransactionsPage> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.cursor != null && options.cursor.length > 0) params.set("cursor", options.cursor);
+  const query = params.toString();
+  return await fetchBulldozerServerJson<BulldozerManualTransactionsPage>({
+    method: "GET",
+    path: query.length > 0 ? `/v1/manual-transactions?${query}` : "/v1/manual-transactions",
+  });
 }

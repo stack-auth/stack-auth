@@ -1357,6 +1357,16 @@ export function defineStoredTable(options: {
   };
   const emptyMap = new AugmentedTreeMap(mapOptions);
 
+  // Stored tables are keyed by string rowIdentifier (unlike derived tables, whose
+  // ranges apply to rowSortKey). Reject non-string bounds
+  const stringRowIdentifierBound = (value: PiledriverObject | undefined, boundName: string): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new Error(`Stored table listRowsInGroup ${boundName} must be a string rowIdentifier`);
+    }
+    return value;
+  };
+
   const serialize = (map: typeof emptyMap) => ({
     version: 1,
     map: map.toPiledriverObject(),
@@ -1380,8 +1390,15 @@ export function defineStoredTable(options: {
     },
     async * listRowsInGroup({ serializedTable, groupKey, range }) {
       const map = deserialize(serializedTable);
-      if (groupKey !== null || range.gt !== undefined || range.lt !== undefined || range.limit === 0) return;
-      for await (const [rowIdentifier, rowData] of map.entries({ reverse: range.reverse, limit: range.limit })) {
+      if (groupKey !== null || range.limit === 0) return;
+      for await (const [rowIdentifier, rowData] of map.entries({
+        reverse: range.reverse,
+        limit: range.limit,
+        gt: stringRowIdentifierBound(range.gt, "gt"),
+        gte: stringRowIdentifierBound(range.gte, "gte"),
+        lt: stringRowIdentifierBound(range.lt, "lt"),
+        lte: stringRowIdentifierBound(range.lte, "lte"),
+      })) {
         yield { groupKey: null, rowIdentifier, rowSortKey: null, rowData };
       }
     },

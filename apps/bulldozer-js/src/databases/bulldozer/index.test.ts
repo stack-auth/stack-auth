@@ -758,6 +758,35 @@ describe("Bulldozer", () => {
     ]);
   });
 
+  it("pages stored tables with string rowIdentifier gt cursors (manual-transactions export)", async () => {
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+    ]]);
+    snapshot = await set(snapshot, "store", "txn-a", { txnId: "txn-a" });
+    snapshot = await set(snapshot, "store", "txn-b", { txnId: "txn-b" });
+    snapshot = await set(snapshot, "store", "txn-c", { txnId: "txn-c" });
+
+    const page1 = await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { limit: 2 },
+    }));
+    expect(page1.map((row) => row.rowIdentifier)).toEqual(["txn-a", "txn-b"]);
+
+    const page2 = await collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gt: "txn-b", limit: 2 },
+    }));
+    expect(page2.map((row) => row.rowIdentifier)).toEqual(["txn-c"]);
+
+    await expect(collect(snapshot.listRowsInGroup({
+      tableId: "store",
+      groupKey: null,
+      range: { gt: 1 },
+    }))).rejects.toThrow(/gt must be a string rowIdentifier/);
+  });
+
   it("does not eagerly evaluate rows beyond requested limits", async () => {
     let mapCalls = 0;
     let flatMapCalls = 0;
