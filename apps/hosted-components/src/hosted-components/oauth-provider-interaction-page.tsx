@@ -72,6 +72,8 @@ export function HostedOAuthProviderInteraction() {
         loadStateRef.current.interactionUid === interactionUid
         && loadStateRef.current.status === "loading"
       ) {
+        // StrictMode replays this effect after cleanup; forget the cancelled
+        // request so the replay can replace it instead of leaving the page loading forever.
         loadStateRef.current = { interactionUid, status: "idle" };
       }
     };
