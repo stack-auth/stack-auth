@@ -696,7 +696,13 @@ export async function resolveEnvVars(options: {
         break;
       }
       case "connection": {
-        const raw = `${normalized.serviceId}.${normalized.outputKey}`;
+        const raw = formatConnectionValue(normalized.serviceId, normalized.outputKey, normalized.port);
+        // Checked before anything else, including hexclave.* outputs: only a URL
+        // names a port, and anywhere else the runtime would silently discard the
+        // suffix rather than resolve what the author asked for.
+        if (normalized.port !== null && normalized.outputKey !== "internalUrl") {
+          throw new StatusError(400, `The env var connection "${raw}" names a port, but only "internalUrl" takes one. Drop the ":${normalized.port}".`);
+        }
         if (normalized.serviceId === HEXCLAVE_SERVICE_ID) {
           if (!(HEXCLAVE_OUTPUT_KEYS as readonly string[]).includes(normalized.outputKey)) {
             throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
@@ -708,7 +714,7 @@ export async function resolveEnvVars(options: {
         }
         // Static validation first — these can never become resolvable later.
         if (normalized.serviceId === serviceId && normalized.outputKey === "url") {
-          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.internalUrl`)} for the service's own address.`);
+          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own public URL "${raw}", which cannot exist before the service does. Use ${JSON.stringify(`${serviceId}.internalUrl`)} (called, e.g. internalUrl()) for the service's own address.`);
         }
         if (!existingServiceIds.has(normalized.serviceId) && normalized.serviceId !== serviceId) {
           throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project. Add it to the \`services\` export of your hexclave.config.ts and deploy it first.`);
@@ -1478,7 +1484,11 @@ export async function serviceToApiShape(options: {
     env.push({
       key: envVarKey,
       type: normalized.type,
-      value: normalized.type === "plain" ? normalized.value : normalized.type === "connection" ? `${normalized.serviceId}.${normalized.outputKey}` : null,
+      // formatConnectionValue, not hand-concatenation: dropping the `:port`
+      // reports a DIFFERENT reference than the one stored — `api.internalUrl`
+      // instead of `api.internalUrl:9090` — which on a multi-port target is not
+      // merely lossy but invalid, and is what the dashboard renders.
+      value: normalized.type === "plain" ? normalized.value : normalized.type === "connection" ? formatConnectionValue(normalized.serviceId, normalized.outputKey, normalized.port) : null,
       secret_key: normalized.type === "secret" ? normalized.secretKey : null,
     });
   }

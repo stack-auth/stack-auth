@@ -62,8 +62,13 @@ CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb
       -- Ports are whole numbers: the ->> text of 3000.5 fails this, where a
       -- cast to int would silently round it.
       OR (entry ->> 'port') !~ '^[0-9]+$'
-      OR (entry ->> 'port')::bigint < 1
-      OR (entry ->> 'port')::bigint > 65535
+      -- ::numeric, not ::bigint. The regex above is unbounded, so a 20-digit
+      -- port passes it and then OVERFLOWS a bigint — raising a raw Postgres
+      -- error instead of the named constraint violation this whole design
+      -- exists to produce. jsonb numbers are arbitrary-precision numerics, so
+      -- this cast cannot overflow.
+      OR (entry ->> 'port')::numeric < 1
+      OR (entry ->> 'port')::numeric > 65535
       OR jsonb_typeof(entry -> 'public') IS DISTINCT FROM 'boolean'
       -- Spelled out rather than NOT IN, which yields NULL (not true) for a
       -- missing transport and would let the entry through.
@@ -72,19 +77,24 @@ CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_entries_valid"(ports jsonb
   ) END;
 $fn$ LANGUAGE sql IMMUTABLE;
 
+-- Compares against the jsonb `true` rather than casting ->> to boolean: a
+-- non-boolean `public` (say the string "maybe") makes that cast raise a raw
+-- error, and the string "true" would be silently accepted as public — reporting
+-- the wrong constraint for what is really a bad ENTRY. Deferring to
+-- entries_valid keeps the diagnostic on the right rule.
 CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_count"(ports jsonb) RETURNS bigint AS $fn$
-  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' THEN 0 ELSE (
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN 0 ELSE (
     SELECT count(*)
     FROM jsonb_array_elements(ports) AS entry
-    WHERE (entry ->> 'public')::boolean
+    WHERE entry -> 'public' = 'true'::jsonb
   ) END;
 $fn$ LANGUAGE sql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION "hexclave_deployment_ports_public_is_http"(ports jsonb) RETURNS boolean AS $fn$
-  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' THEN true ELSE NOT EXISTS (
+  SELECT CASE WHEN jsonb_typeof(ports) <> 'array' OR NOT "hexclave_deployment_ports_entries_valid"(ports) THEN true ELSE NOT EXISTS (
     SELECT 1
     FROM jsonb_array_elements(ports) AS entry
-    WHERE (entry ->> 'public')::boolean AND (entry ->> 'transport') <> 'http'
+    WHERE entry -> 'public' = 'true'::jsonb AND (entry ->> 'transport') <> 'http'
   ) END;
 $fn$ LANGUAGE sql IMMUTABLE;
 
@@ -125,6 +135,15 @@ CHECK ("hexclave_deployment_ports_public_is_http"("ports"));
 ALTER TABLE "DeploymentService"
 ADD CONSTRAINT "DeploymentService_ports_distinct_check"
 CHECK ("hexclave_deployment_ports_are_distinct"("ports"));
+
+-- A public port may not have siblings. The runtime's proxy listeners are
+-- per-app rather than per-address, so once a public IP exists every declared
+-- port answers on it — a "private" sibling of a public port would be on the
+-- internet. Stated here as well as in the sync route because this column is the
+-- only record of which ports a service exposes.
+ALTER TABLE "DeploymentService"
+ADD CONSTRAINT "DeploymentService_public_port_is_alone_check"
+CHECK (jsonb_typeof("ports") <> 'array' OR jsonb_array_length("ports") <= 1 OR "hexclave_deployment_ports_public_count"("ports") = 0);
 
 -- AlterTable
 ALTER TABLE "DeploymentRun" DROP COLUMN "vercelDeploymentId",

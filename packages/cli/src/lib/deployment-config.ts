@@ -51,10 +51,10 @@ import {
   MAX_VOLUME_SIZE_GB,
   MIN_VOLUME_SIZE_GB,
   SERVICE_OUTPUT_KEYS,
+  connectionRequiresTargetDeployed,
   formatConnectionValue,
   parseConnectionValue,
   portTransport,
-  soleHttpDeploymentPort,
   type DeploymentEnvVarDefinition,
   type DeploymentPortDefinition,
   type DeploymentServiceDefinition,
@@ -342,7 +342,7 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefi
     }
     const isPublic = record.public === true;
 
-    const transport = record.transport ?? "http";
+    const transport = record.transport === undefined ? "http" : record.transport;
     if (transport !== "http" && transport !== "tcp") {
       throw new CliError(`${at}.transport must be "http" or "tcp" (got ${JSON.stringify(record.transport)}).`);
     }
@@ -358,6 +358,14 @@ function evaluatePorts(serviceId: string, portsRaw: unknown): DeploymentPortDefi
   const publicPorts = ports.filter((entry) => entry.public);
   if (publicPorts.length > 1) {
     throw new CliError(`deployment.services.${serviceId} marks ${publicPorts.length} ports public (${publicPorts.map((entry) => entry.port).join(", ")}), but a service may only expose one. Its platform URL and any custom domain serve a single port on 80/443 — keep one public and reach the rest privately with service(${JSON.stringify(serviceId)}).internalHost.`);
+  }
+  // A public service may not ALSO hold private ports. The runtime serves a port
+  // on every address the service has, so a private sibling of a public port
+  // would be on the internet too — publishing, say, a database. Refused rather
+  // than silently exposed.
+  if (publicPorts.length === 1 && ports.length > 1) {
+    const others = ports.filter((entry) => !entry.public).map((entry) => entry.port);
+    throw new CliError(`deployment.services.${serviceId} has a public port (${publicPorts[0].port}) and may not declare any other port, but also declares ${others.join(", ")}. A service is exposed on every address it has, so those ports would be public too. Move them to their own service and connect with service(${JSON.stringify(serviceId)}).internalHost.`);
   }
   return ports;
 }
@@ -478,7 +486,7 @@ const EXAMPLE_DEPLOYMENT_EXPORT = `  export const deployment: HexclaveDeployment
     services: ({ isDev, secret, service, hexclave }) => ({
       web: {
         type: "serverless",
-        port: 3000,
+        ports: [{ port: 3000, public: true }],
         devCommand: "npm run dev",
         env: { HEXCLAVE_PROJECT_ID: hexclave.projectId },
       },
@@ -708,10 +716,6 @@ export function evaluateDeploymentConfig(options: {
       // still gets one once a custom domain verifies. What it does require is
       // something HTTP to serve — a URL to a service that only speaks raw TCP
       // could never resolve.
-      // `url` deliberately does NOT require a public port: a private service
-      // still gets one once a custom domain verifies. What it does require is
-      // something HTTP to serve — a URL to a service that only speaks raw TCP
-      // could never resolve.
       if (outputKey === "url" && targetPorts.every((entry) => portTransport(entry) === "tcp")) {
         throw new CliError(`${at} requests ${JSON.stringify(value.reference)}, but ${JSON.stringify(targetServiceId)} declares only TCP ports, so it can never have a URL. Use service(${JSON.stringify(targetServiceId)}).internalHost with an explicit port instead. Its ports: ${describePorts()}.`);
       }
@@ -747,7 +751,7 @@ export function evaluateDeploymentConfig(options: {
   for (const [serviceId, service] of services) {
     for (const [envVarKey, value] of Object.entries(service.env)) {
       if (value.kind === "connection" && value.reference === `${serviceId}.url`) {
-        throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL "${value.reference}", which cannot exist before the service does. Use service("${serviceId}").internalUrl for its own address.`);
+        throw new CliError(`deployment.services.${serviceId}.env.${envVarKey} connects to the service's own public URL "${value.reference}", which cannot exist before the service does. Use service("${serviceId}").internalUrl() for its own address.`);
       }
     }
   }
@@ -767,7 +771,9 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
     const serviceDependencies = new Set<string>();
     for (const value of Object.values(service.env)) {
       if (value.kind !== "connection") continue;
-      const targetServiceId = value.reference.split(".")[0];
+      const parsed = parseConnectionValue(value.reference);
+      if (parsed === null) continue;
+      const targetServiceId = parsed.serviceId;
       // hexclave.* outputs come from the managed service, which always exists;
       // connections to services OUTSIDE this config (possible when deploying a
       // subset in the future) are resolved against already-deployed state.
@@ -775,6 +781,12 @@ export function computeDeploymentLevels(services: Map<string, EvaluatedService>)
       // and self internal outputs are deterministic from the synced definition (they don't depend on the
       // service having deployed). Adding a self-edge here would make computeDeploymentLevels
       // report a false circular-dependency error for a config that deploys fine.
+      //
+      // The same reasoning excludes DETERMINISTIC cross-service references: only
+      // `url` and a bare `internalUrl()` need the target deployed. Counting the
+      // rest would serialize independent deploys and reject mutually-wired
+      // services as circular.
+      if (!connectionRequiresTargetDeployed(parsed.outputKey, parsed.port)) continue;
       if (targetServiceId !== HEXCLAVE_SERVICE_ID && targetServiceId !== serviceId && services.has(targetServiceId)) {
         serviceDependencies.add(targetServiceId);
       }

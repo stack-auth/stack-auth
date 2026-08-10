@@ -37,12 +37,29 @@ export const postMigration = async (sql: Sql, context: Awaited<ReturnType<typeof
     VALUES (${context.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${`svc-${randomUUID().slice(0, 8)}`}, ${ports}::text::jsonb)
   `;
 
-  // The shapes that must work: a single public HTTP port, several ports of
-  // mixed protocols with one public, and the empty list.
+  // The shapes that must work: a single public HTTP port, several PRIVATE ports
+  // of mixed protocols, and the empty list.
   await expect(insertPorts('[{"port": 3000, "public": true, "transport": "http"}]')).resolves.toBeDefined();
-  await expect(insertPorts('[{"port": 3000, "public": true, "transport": "http"}, {"port": 5432, "public": false, "transport": "tcp"}, {"port": 9090, "public": false, "transport": "http"}]'))
+  await expect(insertPorts('[{"port": 8080, "public": false, "transport": "http"}, {"port": 5432, "public": false, "transport": "tcp"}, {"port": 9090, "public": false, "transport": "http"}]'))
     .resolves.toBeDefined();
   await expect(insertPorts('[]')).resolves.toBeDefined();
+
+  // A public port may not have siblings: the runtime would serve them on the
+  // public address too.
+  await expect(insertPorts('[{"port": 3000, "public": true, "transport": "http"}, {"port": 9090, "public": false, "transport": "http"}]'))
+    .rejects.toThrow(/DeploymentService_public_port_is_alone_check/);
+
+  // Inputs that must produce a NAMED constraint violation rather than a raw
+  // Postgres error. A 20-digit port overflows a bigint, and a non-boolean
+  // `public` cannot be cast — both used to escape as unhandled 500s.
+  await expect(insertPorts('[{"port": 99999999999999999999, "public": false, "transport": "http"}]'))
+    .rejects.toThrow(/DeploymentService_ports_entries_check/);
+  await expect(insertPorts('[{"port": 3000, "public": "maybe", "transport": "http"}]'))
+    .rejects.toThrow(/DeploymentService_ports_entries_check/);
+  // The string "true" is not a boolean, so it must be reported as a bad ENTRY
+  // rather than silently counted as a public port.
+  await expect(insertPorts('[{"port": 3000, "public": "true", "transport": "http"}]'))
+    .rejects.toThrow(/DeploymentService_ports_entries_check/);
 
   // 80/443 reach one port, so a second public one has nowhere to be served.
   await expect(insertPorts('[{"port": 3000, "public": true, "transport": "http"}, {"port": 4000, "public": true, "transport": "http"}]'))

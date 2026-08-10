@@ -19,8 +19,13 @@ export function computeRevision(spec: ServiceSpec, rootKey: Buffer = getConfig()
       // Normalized rather than taken verbatim: the ports decide the machine's
       // Fly services array AND its public ingress, so any change to one must
       // roll the machines. Field order is fixed here so two equivalent specs
-      // that merely serialized their keys differently still hash the same.
-      ports: spec.config.ports.map((entry) => ({ port: entry.port, public: entry.public, transport: entry.transport })),
+      // that merely serialized their keys differently still hash the same, and
+      // the list is SORTED so that merely reordering two lines in a config file
+      // does not restart the fleet (which for a volume-backed "server" means
+      // real downtime).
+      ports: [...spec.config.ports]
+        .sort((a, b) => a.port - b.port)
+        .map((entry) => ({ port: entry.port, public: entry.public, transport: entry.transport })),
       // It MUST be included: without it a volume-only change —
       // adding, resizing, removing, or RE-IDENTIFYING a disk — produces the same revision, so
       // applyServiceSpec takes the unchanged path, keeps the PREVIOUS spec, and silently drops

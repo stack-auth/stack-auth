@@ -76,10 +76,13 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
   it("defaults every port to private HTTP", () => {
     const { services } = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }] } }));
     expect(services.get("web")?.definition.ports).toEqual([{ port: 3000, public: false, transport: "http" }]);
-    const withPublic = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000, public: true }, { port: 9090 }] } }));
-    expect(withPublic.services.get("web")?.definition.ports).toEqual([
-      { port: 3000, public: true, transport: "http" },
-      { port: 9090, public: false, transport: "http" },
+    const withPublic = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000, public: true }] } }));
+    expect(withPublic.services.get("web")?.definition.ports).toEqual([{ port: 3000, public: true, transport: "http" }]);
+    // Several ports are fine as long as none is public.
+    const multi = evaluate(() => ({ web: { type: "serverless", ports: [{ port: 3000 }, { port: 9090, transport: "tcp" }] } }));
+    expect(multi.services.get("web")?.definition.ports).toEqual([
+      { port: 3000, public: false, transport: "http" },
+      { port: 9090, public: false, transport: "tcp" },
     ]);
   });
 
@@ -132,6 +135,52 @@ describe("evaluateDeploymentConfig (deploy mode)", () => {
     expect(evaluateEnv(twoHttp, (service) => service("api").internalPort)).toThrow('has no output named "internalPort"');
     // Forgetting the call is the likely mistake, so it gets its own message.
     expect(evaluateEnv(twoHttp, (service) => service("api").internalUrl)).toThrow("without calling it");
+  });
+
+  it("rejects a public port that has private siblings", () => {
+    // The runtime's proxy listeners are per-app, not per-address, so a private
+    // sibling of a public port would be served on the public address too.
+    expect(() => evaluate(() => ({
+      web: { type: "serverless", ports: [{ port: 3000, public: true }, { port: 9090 }] },
+    }))).toThrow("may not declare any other port");
+    // Both halves stay legal on their own.
+    expect(() => evaluate(() => ({
+      web: { type: "serverless", ports: [{ port: 3000, public: true }] },
+      metrics: { type: "serverless", ports: [{ port: 9090 }, { port: 5432, transport: "tcp" }] },
+    }))).not.toThrow();
+  });
+
+  it("only makes a deploy dependency of references that need the target deployed", () => {
+    // internalHost and internalUrl(<port>) are deterministic — they resolve
+    // before the target exists — so they must not order or serialize deploys.
+    const deterministicallyWired = () => evaluate(({ service }: ServicesFunctionContext) => ({
+      web: {
+        type: "serverless", ports: [{ port: 3000, public: true }],
+        env: { API: (service("api") as any).internalUrl(8080), DB_HOST: (service("db") as any).internalHost },
+      },
+      api: { type: "serverless", ports: [{ port: 8080 }, { port: 9090 }] },
+      db: { type: "server", ports: [{ port: 5432, transport: "tcp" }] },
+    }));
+    expect(deterministicallyWired).not.toThrow();
+    // One level: nothing waits on anything.
+    expect(computeDeploymentLevels(deterministicallyWired().services)).toEqual([["web", "api", "db"]]);
+
+    // Mutual wiring through deterministic references is legal, and used to be
+    // rejected as a false circular dependency.
+    const mutual = () => evaluate(({ service }: ServicesFunctionContext) => ({
+      web: { type: "serverless", ports: [{ port: 3000 }], env: { API: (service("api") as any).internalUrl() } },
+      api: { type: "serverless", ports: [{ port: 8080 }], env: { WEB_HOST: (service("web") as any).internalHost } },
+    }));
+    expect(mutual).not.toThrow();
+    // `web` still waits on `api`: a bare internalUrl() reads the target's ports.
+    expect(computeDeploymentLevels(mutual().services)).toEqual([["api"], ["web"]]);
+
+    // A `url` reference is still a real dependency.
+    const publicUrl = evaluate(({ service }: ServicesFunctionContext) => ({
+      web: { type: "serverless", ports: [{ port: 3000 }], env: { API: (service("api") as any).url } },
+      api: { type: "serverless", ports: [{ port: 8080, public: true }] },
+    }));
+    expect(computeDeploymentLevels(publicUrl.services)).toEqual([["api"], ["web"]]);
   });
 
   it("rejects service() references to undefined services", () => {

@@ -3,6 +3,7 @@
 import { DesignBadge, DesignButton, DesignInput } from "@/components/design-components";
 import { CopyButton, Label, Spinner, cn } from "@/components/ui";
 import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
+import { parseConnectionValue } from "@hexclave/shared/dist/deployments";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   ArrowClockwiseIcon,
@@ -271,9 +272,12 @@ export function VariablesContent({ service, services, isHexclave }: {
 }
 
 function ConnectionTarget({ value, services }: { value: string, services: BoardService[] }) {
-  const dotIndex = value.indexOf(".");
-  const serviceId = dotIndex > 0 ? value.slice(0, dotIndex) : value;
-  const outputKey = dotIndex > 0 ? value.slice(dotIndex + 1) : "";
+  // The SHARED parser: a reference may carry a `:<port>` suffix
+  // (`api.internalUrl:9090`), and splitting on the dot alone would leave
+  // "internalUrl:9090" as the output key and render every such value as unknown.
+  const parsed = parseConnectionValue(value);
+  const serviceId = parsed?.serviceId ?? value;
+  const outputKey = parsed?.outputKey ?? "";
   const source = services.find((s) => s.id === serviceId);
   const output = source ? getServiceOutputs(source.type).find((o) => o.key === outputKey) : undefined;
   const resolved = source != null && output != null;
@@ -286,7 +290,7 @@ function ConnectionTarget({ value, services }: { value: string, services: BoardS
       <LinkSimpleIcon className="h-3 w-3 shrink-0" />
       {resolved ? (
         <span className="min-w-0 truncate">
-          Linked to <span className="font-mono font-medium text-foreground">{serviceId}.{outputKey}</span>
+          Linked to <span className="font-mono font-medium text-foreground">{serviceId}.{outputKey}{parsed?.port == null ? "" : `:${parsed.port}`}</span>
           {output.secret ? " · secret, resolved at deploy time" : " · resolved at deploy time"}
         </span>
       ) : (

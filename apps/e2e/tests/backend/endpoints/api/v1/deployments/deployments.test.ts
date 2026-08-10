@@ -240,10 +240,10 @@ describe("definition sync", () => {
 
     await syncServices({
       database: { type: "serverless", ports: [{ port: 5432, transport: "tcp" }], env: {} },
-      // Several ports of mixed protocols, with exactly one public.
+      // Several PRIVATE ports of mixed protocols.
       gateway: {
         type: "server",
-        ports: [{ port: 3000, public: true }, { port: 9090 }, { port: 5433, transport: "tcp" }],
+        ports: [{ port: 3000 }, { port: 9090 }, { port: 5433, transport: "tcp" }],
         env: {},
       },
     });
@@ -252,7 +252,7 @@ describe("definition sync", () => {
     expect(database.body).toMatchObject({ ports: [{ port: 5432, public: false, transport: "tcp" }] });
     const gateway = await niceBackendFetch("/api/v1/deployments/services/gateway", { accessType: "admin" });
     expect((gateway.body as any).ports).toEqual([
-      { port: 3000, public: true, transport: "http" },
+      { port: 3000, public: false, transport: "http" },
       { port: 9090, public: false, transport: "http" },
       { port: 5433, public: false, transport: "tcp" },
     ]);
@@ -270,6 +270,9 @@ describe("definition sync", () => {
     await rejects([{ port: 5432, transport: "tcp", public: true }], "private-only");
     // 80/443 reach one port, so a second public one has nowhere to be served.
     await rejects([{ port: 3000, public: true }, { port: 4000, public: true }], "at most one public port");
+    // A public port may not have private siblings: the runtime serves a port on
+    // every address the service has, so they would be public too.
+    await rejects([{ port: 3000, public: true }, { port: 9090 }], "may not declare any other port");
     await rejects([], "at least one port");
     await rejects([{ port: 3000 }, { port: 3000 }], "once");
   });
@@ -827,6 +830,29 @@ describe("deploys against the Marshal runtime", () => {
     await pollRunToStatus(await startDeploy(consumerId, namedUpload.uploadId, namedSync), "ready");
     const consumerApp = await findMockApp(consumerId);
     expect(consumerApp.machines[0].env.API).toMatch(/^http:\/\/hxc-.+\.flycast:9090$/);
+    // The API must report the reference it actually stored, port and all —
+    // reporting a bare `internalUrl` would name a DIFFERENT (and, on this
+    // multi-port target, invalid) config.
+    const consumerService = await niceBackendFetch(`/api/v1/deployments/services/${consumerId}`, { accessType: "admin" });
+    expect((consumerService.body as any).env).toContainEqual(
+      { key: "API", type: "connection", value: `${multiServiceId}.internalUrl:9090`, secret_key: null },
+    );
+    // A port suffix is meaningful only on internalUrl.
+    const strayPort = await niceBackendFetch("/api/v1/deployments/services", {
+      method: "PUT",
+      accessType: "admin",
+      body: { services: { [consumerId]: { type: "serverless", ports: [{ port: 3000 }], env: { H: { type: "connection", value: `${multiServiceId}.internalHost:9090` } } } } },
+    });
+    expect(strayPort.status).toBe(200);
+    const strayUpload = await createUpload();
+    const strayDeploy = await niceBackendFetch(`/api/v1/deployments/services/${consumerId}/deploy`, {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: strayUpload.uploadId, definition_sync_id: (strayPort.body as any).sync_id },
+    });
+    expect(strayDeploy.status).toBe(400);
+    // Quote-free substring: the body is JSON-stringified, so the message's own quotes are escaped.
+    expect(JSON.stringify(strayDeploy.body)).toContain("names a port, but only");
   });
 
   it("fails the run when the container build fails", { timeout: 120_000 }, async ({ expect }) => {

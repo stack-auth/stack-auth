@@ -1,4 +1,4 @@
-import { deploymentServiceIsPublic } from "@hexclave/shared/dist/deployments";
+import { connectionRequiresTargetDeployed, deploymentServiceIsPublic, parseConnectionValue } from "@hexclave/shared/dist/deployments";
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
@@ -314,7 +314,12 @@ function collectTransitiveDependents(failedServiceId: string, services: Map<stri
   for (const [serviceId, service] of services) {
     for (const value of Object.values(service.env)) {
       if (value.kind !== "connection") continue;
-      const target = value.reference.split(".")[0];
+      const parsed = parseConnectionValue(value.reference);
+      // Same rule as computeDeploymentLevels: a deterministic reference is not a
+      // dependency, so a failed target must not skip services that never needed
+      // it to be deployed.
+      if (parsed === null || !connectionRequiresTargetDeployed(parsed.outputKey, parsed.port)) continue;
+      const target = parsed.serviceId;
       if (services.has(target)) {
         const dependents = directDependents.get(target) ?? new Set<string>();
         dependents.add(serviceId);

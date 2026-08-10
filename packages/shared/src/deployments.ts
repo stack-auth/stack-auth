@@ -75,6 +75,22 @@ export function parseConnectionValue(value: string): { serviceId: string, output
   };
 }
 
+/**
+ * Whether a reference actually requires its target to have DEPLOYED.
+ *
+ * Only `url` does (a public URL needs a running service or a verified domain),
+ * and a bare `internalUrl()`, which must read the target's synced definition to
+ * learn its sole HTTP port. `internalHost` and `internalUrl(<port>)` are pure
+ * functions of the service identity and the port written in the reference, so
+ * they resolve before the target exists — making them a deploy dependency would
+ * serialize independent deploys, cascade false "skipped" results when the target
+ * fails, and reject mutually-wired services as circular.
+ */
+export function connectionRequiresTargetDeployed(outputKey: string, port: number | null): boolean {
+  if (outputKey === "url") return true;
+  return outputKey === "internalUrl" && port === null;
+}
+
 /** Formats a connection reference. The inverse of parseConnectionValue. */
 export function formatConnectionValue(serviceId: string, outputKey: string, port: number | null = null): string {
   return port === null ? `${serviceId}.${outputKey}` : `${serviceId}.${outputKey}:${port}`;
@@ -119,9 +135,14 @@ export type DeploymentServiceDefinition = {
   // `visibility`: a service is public exactly when one of its ports says so, so
   // the two can never disagree.
   //
-  // Each port is reachable on the private network at its own number. The public
-  // one is additionally served on 80/443, which is what makes `url` and custom
-  // domain certificates work on the standard ports.
+  // Each port is reachable on the private network at its own number, and the
+  // service's single HTTP port is additionally served on 80/443 so `url` and
+  // custom domain certificates work on the standard ports.
+  //
+  // A PUBLIC service declares exactly one port. The runtime's proxy listeners
+  // are per-app rather than per-address, so a private sibling of a public port
+  // would be reachable from the internet as well — see the
+  // `public-service-has-one-port` rule.
   ports: DeploymentPortDefinition[],
   // Scaling bounds, and "serverless" only: the instance count moves between
   // them, and min 0 scales to zero. Defaults: min 0, max 1. A "server" service
@@ -255,8 +276,9 @@ export const deploymentEnvVarSchema = yupObject({
   // deploymentSecretDefaultsSchema). Rejected rather than ignored — this is
   // the schema every write path validates against, so refusing the field here
   // is what makes "a stored definition cannot contain a default" a checkable
-  // property instead of a convention. (yupRecord validates values without
-  // casting them, so a `.strip()` here would be a silent no-op.)
+  // property instead of a convention. (A `.strip()` here would be the
+  // alternative, but rejecting is the point: the caller should learn that the
+  // field is not storable rather than have it silently disappear.)
   default_value: yupString().oneOf([undefined], "deployment env var definitions must not carry a default_value — secret defaults belong to the deploy request, not to the stored definition"),
 });
 
@@ -299,7 +321,18 @@ export const deploymentServiceDefinitionSchema = yupObject({
     // quietly demoted.
     .test("at-most-one-public-port", "a deployment service may expose at most one public port — the platform URL and any custom domain serve a single port on 80/443", (value) =>
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      value === undefined || value.filter((entry) => entry.public).length <= 1),
+      value === undefined || value.filter((entry) => entry.public).length <= 1)
+    // A public service cannot ALSO hold private ports. The runtime's proxy
+    // listener set is per-app, not per-IP: any port it serves is served on every
+    // address the app has, so once a public IP exists a "private" sibling port
+    // is on the internet too. Rather than silently publishing a database, a
+    // public service is restricted to the one port it publishes. Split the
+    // private ports into their own service to keep them private.
+    // Scoped to EXACTLY one public port so a two-public-port list trips only the
+    // rule above, and each message names the single thing that is wrong.
+    .test("public-service-has-one-port", "a service with a public port may not declare any other port — the runtime exposes a port on every address the service has, so a second port on a public service would be public too. Move it to its own service.", (value) =>
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      value === undefined || value.length <= 1 || value.filter((entry) => entry.public === true).length !== 1),
   // min is capped at the same MAX_INSTANCES_CAP (5) as max — an unbounded min would only
   // ever fail downstream.
   min_instances: yupNumber().integer().min(0).max(5).optional()
@@ -407,21 +440,28 @@ import.meta.vitest?.test("deploymentServiceDefinitionSchema defaults each port t
     .resolves.toMatchObject({ ports: [{ port: 3000, public: false, transport: "http" }] });
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: [{ port: 3000, public: true }], env: {} }))
     .resolves.toMatchObject({ ports: [{ port: 3000, public: true, transport: "http" }] });
-  // A service may hold several ports, of mixed protocols, as long as only one is public.
+  // A PRIVATE service may hold several ports of mixed protocols.
   await expect(deploymentServiceDefinitionSchema.validate({
-    type: "server", ports: [{ port: 3000, public: true }, { port: 5432, transport: "tcp" }, { port: 9090 }], env: {},
+    type: "server", ports: [{ port: 8080 }, { port: 5432, transport: "tcp" }, { port: 9090 }], env: {},
   }, { abortEarly: false })).resolves.toBeDefined();
 });
 
 import.meta.vitest?.test("deploymentServiceDefinitionSchema rejects port sets it could not serve", async ({ expect }) => {
-  // 80/443 reach one port, so a second public one has nowhere to live.
+  // 80/443 reach one port, so a second public one has nowhere to live. Asserted
+  // with abortEarly so the message is this rule's, not an aggregate — two public
+  // ports also trip the public-service-has-one-port rule below.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "serverless", ports: [{ port: 3000, public: true }, { port: 4000, public: true }], env: {},
-  }, { abortEarly: false })).rejects.toThrow(/at most one public port/);
+  })).rejects.toThrow(/at most one public port/);
   // Raw TCP has no TLS termination or HTTP routing to make public with.
   await expect(deploymentServiceDefinitionSchema.validate({
     type: "server", ports: [{ port: 5432, transport: "tcp", public: true }], env: {},
   }, { abortEarly: false })).rejects.toThrow(/private-only/);
+  // A public port cannot have private siblings: the runtime would serve them on
+  // the public address too, so a "private" database port would be on the internet.
+  await expect(deploymentServiceDefinitionSchema.validate({
+    type: "server", ports: [{ port: 3000, public: true }, { port: 5432, transport: "tcp" }], env: {},
+  }, { abortEarly: false })).rejects.toThrow(/may not declare any other port/);
   await expect(deploymentServiceDefinitionSchema.validate({ type: "serverless", ports: [], env: {} }))
     .rejects.toThrow(/at least one port/);
   await expect(deploymentServiceDefinitionSchema.validate({

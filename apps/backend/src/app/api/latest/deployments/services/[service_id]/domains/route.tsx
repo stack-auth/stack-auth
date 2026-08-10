@@ -1,4 +1,5 @@
-import { HOSTNAME_REGEX, getOrCreateOperationalService, getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
+import { HOSTNAME_REGEX, definitionFromServiceRow, getOrCreateOperationalService, getServiceRowOrThrow, marshalNamespaceForTenancy } from "@/lib/deployments";
+import { portTransport } from "@hexclave/shared/dist/deployments";
 import { MarshalApiError, getMarshalClientOrThrow, getMarshalDeploymentsConfigOrNull, sanitizeMarshalError } from "@/lib/deployments/marshal-client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -38,7 +39,16 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, params, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
+    const row = await getServiceRowOrThrow(prisma, auth.tenancy, params.service_id);
+    // A domain terminates TLS and routes HTTP, so there must be an HTTP port to
+    // route to. Without this the row is created, never verifies, and the runtime
+    // rejection is deliberately swallowed at deploy time — a domain that silently
+    // never works. Checked here rather than only at deploy so the 400 lands on
+    // the request that can act on it.
+    const ports = definitionFromServiceRow(row).ports;
+    if (ports.length > 0 && !ports.some((entry) => portTransport(entry) === "http")) {
+      throw new StatusError(400, `The deployment service ${JSON.stringify(params.service_id)} declares no HTTP port, so a custom domain has nothing to route to. Give it a port with transport: "http" first.`);
+    }
     const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
     // Scoped to the whole tenancy, not just this service: the runtime holds ONE claim per
     // hostname, so attaching a hostname that another service in this project already has

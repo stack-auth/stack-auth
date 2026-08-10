@@ -202,11 +202,11 @@ export type HexclaveService = HexclaveServerService | HexclaveServerlessService;
  *   services: ({ secret, service, hexclave }) => ({
  *     api: {
  *       type: "server",
- *       port: 3000,
+ *       ports: [{ port: 3000 }],
  *       persistentVolumes: { uploads: { path: "/data", sizeGb: 10 } },
- *       env: { DB_URL: service("db").internalUrl, PROJECT_ID: hexclave.projectId },
+ *       env: { DB_URL: service("db").internalUrl(), PROJECT_ID: hexclave.projectId },
  *     },
- *     web: { type: "serverless", port: 3000, maxInstances: 3, env: { KEY: secret("API_KEY") } },
+ *     web: { type: "serverless", ports: [{ port: 3000, public: true }], maxInstances: 3, env: { KEY: secret("API_KEY") } },
  *   }),
  * };
  * ```

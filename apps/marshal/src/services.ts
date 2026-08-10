@@ -81,6 +81,13 @@ export function validateServiceSpec(body: unknown): ServiceSpec {
   });
   if (new Set(ports.map((entry) => entry.port)).size !== ports.length) throw badRequest("config.ports must not declare the same port twice");
   if (ports.filter((entry) => entry.public).length > 1) throw badRequest("config.ports may mark at most one port public");
+  // Fly `services` are the proxy's listener set for the WHOLE app, not per-IP.
+  // Once a public IP exists, every listed port answers on it — so a "private"
+  // sibling of a public port would be on the internet. Refuse rather than
+  // publish it.
+  if (ports.length > 1 && ports.some((entry) => entry.public)) {
+    throw badRequest("a service with a public port may not declare any other port: the proxy serves every declared port on every address the app has, so the others would be public too");
+  }
   // A "server" is one suspending instance by definition. Reject rather than coerce: the
   // caller's stated bounds and its stated type would otherwise disagree in the stored spec.
   if (serviceKind === "server" && (minInstances !== 0 || maxInstances !== 1)) {
@@ -317,6 +324,7 @@ export function machineConfigForSlot(options: {
 }): Record<string, unknown> {
   const pinned = options.slot < pinnedMachineCount(options.spec);
   const volume = specVolume(options.spec)?.volume;
+  const standardPortsHolder = standardPortsHolderFor(options.spec.config.ports);
   const config = {
     image: options.imageRef,
     guest: MACHINE_GUEST,
@@ -336,9 +344,9 @@ export function machineConfigForSlot(options: {
     },
     restart: { policy: "on-failure", max_retries: 2 },
     // One Fly services entry per declared port. Every port is reachable at its
-    // OWN number (that is what makes several ports addressable at all); the
-    // public one is additionally served on 80/443, which is what lets its
-    // fly.dev URL and any custom domain certificate work on the standard ports.
+    // OWN number (that is what makes several ports addressable at all), and the
+    // service's single HTTP port additionally answers on 80/443 so its fly.dev
+    // URL and any custom domain certificate work on the standard ports.
     services: options.spec.config.ports.map((entry) => ({
       protocol: "tcp",
       internal_port: entry.port,
@@ -353,14 +361,7 @@ export function machineConfigForSlot(options: {
       // clean rootfs.
       autostop: pinned ? "off" : options.spec.config.type === "server" ? "suspend" : "stop",
       autostart: true,
-      ports: entry.transport === "http"
-        ? [
-          // Its own number, so a second HTTP port stays addressable privately.
-          { port: entry.port, handlers: ["http"] },
-          // Port 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
-          ...(entry.public ? [{ port: 80, handlers: ["http"] }, { port: 443, handlers: ["tls", "http"] }] : []),
-        ]
-        : [{ port: entry.port }],
+      ports: externalPortsFor(entry, standardPortsHolder),
       concurrency: {
         type: entry.transport === "http" ? "requests" : "connections",
         soft_limit: SOFT_CONCURRENCY_LIMIT,
@@ -388,6 +389,43 @@ export function specIsPublic(spec: ServiceSpec): boolean {
 export function soleHttpPort(ports: PortConfig[]): number | null {
   const httpPorts = ports.filter((entry) => entry.transport === "http");
   return httpPorts.length === 1 ? httpPorts[0].port : null;
+}
+
+/**
+ * The port that additionally answers on 80/443, or null when there is no single
+ * obvious one.
+ *
+ * NOT only the public port: a PRIVATE service gets public IPs the moment a
+ * custom domain is attached (see attachDomain), and that domain terminates TLS
+ * on 443 — so a private service with one HTTP port must bind the standard ports
+ * too, or its verified domain would resolve and then refuse the connection.
+ */
+export function standardPortsHolderFor(ports: PortConfig[]): number | null {
+  const publicPort = ports.find((entry) => entry.public);
+  if (publicPort !== undefined) return publicPort.port;
+  return soleHttpPort(ports);
+}
+
+/**
+ * A port's external bindings, deduplicated.
+ *
+ * The dedupe is load-bearing: a container that listens on 80 or 443 (the default
+ * for most web images) would otherwise get that number twice in one entry, and
+ * for 443 with CONFLICTING handlers — plain `http` from its own binding and
+ * `tls,http` from the standard one — leaving which wins up to Fly.
+ */
+export function externalPortsFor(entry: PortConfig, standardPortsHolder: number | null): { port: number, handlers?: string[] }[] {
+  if (entry.transport !== "http") return [{ port: entry.port }];
+  const bindings = new Map<number, { port: number, handlers?: string[] }>();
+  // Its own number first, so a second HTTP port stays addressable privately...
+  bindings.set(entry.port, { port: entry.port, handlers: ["http"] });
+  if (entry.port === standardPortsHolder) {
+    // ...but the standard ports win the collision: 443 must terminate TLS, and
+    // 80 stays plain HTTP (no force_https) because flycast's internal_url is http.
+    bindings.set(80, { port: 80, handlers: ["http"] });
+    bindings.set(443, { port: 443, handlers: ["tls", "http"] });
+  }
+  return [...bindings.values()];
 }
 
 export function specVolume(spec: ServiceSpec): { volumeId: string, volume: VolumeConfig } | null {
