@@ -1,0 +1,43 @@
+apps/backend/prisma/migrations/20260726000000_add_releases/migration.sql
+  s_737ddf173f162d::t_c82b79d0af1bfa 1-166
+apps/backend/prisma/migrations/20260726000000_add_releases/tests/release-graph-schema-and-constraints.ts
+  s_737ddf173f162d::t_9d06c2346cf247 1-205
+apps/backend/prisma/schema.prisma
+  s_737ddf173f162d::t_ed95543e19c2b8 55,188-192,199-203,1795-1959
+apps/backend/src/app/api/latest/releases/artifacts/debug-ids/route.ts
+  s_737ddf173f162d::t_726e5a5a730ab8 1-7
+apps/backend/src/app/api/latest/releases/artifacts/route.ts
+  s_737ddf173f162d::t_b834eca7ddfe0d 1-3
+apps/backend/src/app/api/latest/releases/commits/route.ts
+  s_737ddf173f162d::t_9845e0d61bf8e9 1-3
+apps/backend/src/app/api/latest/releases/deployments/route.ts
+  s_737ddf173f162d::t_ed3c25b620da2d 1-3
+apps/backend/src/app/api/latest/releases/route.ts
+  s_737ddf173f162d::t_20e23618832dbf 1-4
+apps/backend/src/lib/releases/index.ts
+  s_737ddf173f162d::t_5970839ec16844 1
+apps/backend/src/lib/releases/release-route-handlers.test.ts
+  s_737ddf173f162d::t_a75cb1c7d3af78 1-367
+apps/backend/src/lib/releases/release-route-handlers.ts
+  s_737ddf173f162d::t_2d350e5d7e6408 1-592
+apps/backend/src/lib/releases/release-service.test.ts
+  s_737ddf173f162d::t_eb23c722a9953c 1-381
+apps/backend/src/lib/releases/release-service.ts
+  s_737ddf173f162d::t_fb96976d4a2d9d 1-751
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "4049262ecac05587292b84b99d1dc19c3c5309c0",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
