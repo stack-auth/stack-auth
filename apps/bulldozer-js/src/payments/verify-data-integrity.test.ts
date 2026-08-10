@@ -526,6 +526,18 @@ describe("generic table corruption checks", () => {
     `);
   });
 
+  it("allows tied sort keys when row identifiers distinguish rows", async () => {
+    const result = await verifyGenericTable(fakeTable([{
+      groupKey: null,
+      rows: [
+        { groupKey: null, rowIdentifier: "first", rowSortKey: null },
+        { groupKey: null, rowIdentifier: "second", rowSortKey: null },
+        { groupKey: null, rowIdentifier: "third", rowSortKey: null },
+      ],
+    }]), fakePosition(), 100);
+    expect(result.issues).toEqual([]);
+  });
+
   it("keeps duplicate tracking bounded and reports the skipped check", async () => {
     const rows = Array.from({ length: 300 }, (_, index) => ({
       groupKey: "g",

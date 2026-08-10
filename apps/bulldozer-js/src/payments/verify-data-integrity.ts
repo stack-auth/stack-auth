@@ -433,7 +433,7 @@ export async function verifyGenericTable(
         groupKey: group.groupKey,
         a: previousSortKey.value,
         b: row.rowSortKey,
-      }) >= 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are not strictly ordered by sort key", context: { tableId: target.tableId } });
+      }) > 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are out of order by sort key", context: { tableId: target.tableId } });
       if (!rowIdentifierCheckSkipped) {
         if (seenRowIdentifiers.has(row.rowIdentifier)) issues.push({ phase: "tables", code: "duplicate_row_identifier", message: "A row identifier appears more than once in a group", context: { tableId: target.tableId, rowIdentifier: row.rowIdentifier } });
         if (seenRowIdentifiers.size >= MAX_TRACKED_ROW_IDENTIFIERS) {
