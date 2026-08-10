@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { defineConfig, type NormalizedFormat, type Rolldown } from 'tsdown';
+import { findPackageRootFromSource } from './package-root.ts';
 import { createBasePlugin } from './plugins.ts';
 
 
@@ -58,23 +59,6 @@ const createEsmExports = (value: unknown): PackageJsonValue | undefined => {
   return rewrittenEntries.length > 0
     ? Object.fromEntries(rewrittenEntries)
     : undefined;
-};
-
-const findPackageRootFromSource = (sourcePath: string): string => {
-  let currentPath = path.dirname(path.resolve(sourcePath));
-  while (true) {
-    if (fs.existsSync(path.join(currentPath, 'package.json'))) {
-      return currentPath;
-    }
-
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) {
-      break;
-    }
-    currentPath = parentPath;
-  }
-
-  throw new Error(`Could not find a package.json for ESM source path ${sourcePath}`);
 };
 
 const findPackageRoot = (bundle: Rolldown.OutputBundle): string => {
