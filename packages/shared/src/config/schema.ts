@@ -483,8 +483,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 }));
 
 
-// --- Analytics Schema (environment config only - not pushable) ---
-const environmentAnalyticsSchema = yupObject({
+// --- Warehouse Schema (environment config only - not pushable) ---
+const environmentWarehouseSchema = yupObject({
   queryFolders: yupRecord(
     userSpecifiedIdSchema("folderId"),
     yupObject({
@@ -501,7 +501,7 @@ const environmentAnalyticsSchema = yupObject({
     }),
   ),
 });
-// --- END Analytics Schema ---
+// --- END Warehouse Schema ---
 
 
 // --- Observability Schema (environment config only - not pushable) ---
@@ -644,7 +644,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     ),
   }),
 
-  analytics: environmentAnalyticsSchema,
+  warehouse: environmentWarehouseSchema,
   observability: environmentObservabilitySchema,
   customDashboards: schemaFields.customDashboardsSchema,
 }));
@@ -804,6 +804,21 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-08-06: saved ClickHouse queries belong to Warehouse, not product Analytics.
+  // The schema changed at the same time as the dashboard route, so migrate nested and
+  // dot-notation overrides before the current environment schema validates them.
+  if (isEnvironmentOrHigher) {
+    // Analytics has no environment-scoped configuration left once queryFolders
+    // moves, so renaming its root is both complete and supports dotted keys.
+    const hasWarehouseOverride = typedEntries(res).some(([key]) =>
+      typeof key === "string" && (key === "warehouse" || key.startsWith("warehouse."))
+    );
+    res = hasWarehouseOverride
+      ? removeProperty(res, (path) => path[0] === "analytics")
+      : renameProperty(res, "analytics", "warehouse");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -881,6 +896,46 @@ import.meta.vitest?.test("migrateConfigOverride renames the deployments app to d
 
   // Project level is not branch-or-higher, so nothing is renamed there.
   expect(migrateConfigOverride("project", { deployments: { services } })).toEqual({ deployments: { services } });
+});
+
+import.meta.vitest?.test("migrateConfigOverride moves saved queries from Analytics to Warehouse", ({ expect }) => {
+  const queryFolders = {
+    favorites: {
+      displayName: "Favorites",
+      sortOrder: 0,
+      queries: {},
+    },
+  };
+
+  expect(migrateConfigOverride("environment", {
+    analytics: { queryFolders },
+  })).toEqual({
+    warehouse: { queryFolders },
+  });
+
+  // Dot-notation overrides keep their flat key form; only the renamed segment
+  // changes, so the override still targets exactly one leaf.
+  expect(migrateConfigOverride("environment", {
+    "analytics.queryFolders.favorites.displayName": "Favorites",
+  })).toEqual({
+    "warehouse.queryFolders.favorites.displayName": "Favorites",
+  });
+
+  // A config that already carries a warehouse override wins: the stale
+  // analytics section is dropped rather than clobbering the migrated one.
+  expect(migrateConfigOverride("environment", {
+    analytics: { queryFolders },
+    warehouse: { queryFolders: {} },
+  })).toEqual({
+    warehouse: { queryFolders: {} },
+  });
+
+  // Branch level is not environment-or-higher, so nothing is renamed there.
+  expect(migrateConfigOverride("branch", {
+    analytics: { queryFolders },
+  })).toEqual({
+    analytics: { queryFolders },
+  });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
@@ -1175,7 +1230,7 @@ const organizationConfigDefaults = {
     }),
   },
 
-  analytics: {
+  warehouse: {
     queryFolders: (key: string) => ({
       displayName: "Unnamed Folder",
       sortOrder: 0,

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, DatabaseIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -417,19 +417,31 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
-      { displayName: "Funnels", href: "./funnels" },
       { displayName: "Retention", href: "./retention" },
       { displayName: "Paths", href: "./paths" },
       { displayName: "Replays", href: "../session-replays" },
       { displayName: "Clickmaps", href: "./clickmaps" },
-      { displayName: "Tables", href: "./tables", section: "Explore" },
-      { displayName: "Queries", href: "./queries", section: "Explore" },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
-        <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+        <p>Analytics helps you understand how people use your product.</p>
+        <p>Explore retention, paths, replays, and clickmaps without leaving the dashboard.</p>
+      </>
+    ),
+  },
+  warehouse: {
+    icon: DatabaseIcon,
+    href: "warehouse",
+    navigationItems: [
+      { displayName: "Tables", href: "./tables" },
+      { displayName: "Queries", href: "./queries" },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Warehouse gives you direct access to the data available in your project.</p>
+        <p>Browse tables and save ClickHouse queries in a dedicated data-exploration workspace.</p>
       </>
     ),
   },
@@ -447,7 +459,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: (
       <>
         <p>Observability connects errors, logs, traces, and service performance to the user activity that caused them.</p>
-        <p>It inherits Analytics enablement and shares the same telemetry ingestion, tenancy, and correlation foundation.</p>
+        <p>Enable it independently from Analytics to investigate application health and performance.</p>
       </>
     ),
   },
