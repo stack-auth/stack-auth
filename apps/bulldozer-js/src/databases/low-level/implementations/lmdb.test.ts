@@ -138,6 +138,11 @@ describe("LMDB low-level database", () => {
         expect(inserted.keys).toHaveLength(450);
         expect(inserted.keys[0].byteLength).toBe(17);
         expect(new Uint8Array(inserted.keys[0])[0]).toBe(0x01);
+        expect(new Set(inserted.keys.map(key => Buffer.from(key).toString("hex"))).size).toBe(450);
+        expect(inserted.keys.every((key, index) => index === 0 || Buffer.compare(
+          Buffer.from(inserted.keys[index - 1]),
+          Buffer.from(key),
+        ) < 0)).toBe(true);
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0x7f)))).buffer)).toBe("legacy-arbitrary");
         expect(text((await dump.get(byteBuffer(Buffer.alloc(48, 0xff)))).buffer)).toBe("legacy-max");
         expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
@@ -167,6 +172,7 @@ describe("LMDB low-level database", () => {
 
         expect(second.keys[0].byteLength).toBe(17);
         expect(new Uint8Array(second.keys[0])[0]).toBe(0x01);
+        expect(Buffer.compare(Buffer.from(first.keys[0]), Buffer.from(second.keys[0]))).toBeLessThan(0);
         expect(text((await dump2.get(first.keys[0])).buffer)).toBe("first");
         expect(text((await dump2.get(second.keys[0])).buffer)).toBe("second");
       } finally {
