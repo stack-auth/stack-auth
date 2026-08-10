@@ -448,6 +448,22 @@ export async function verifyDataIntegrity(
     }
     let remaining = budget;
     while (remaining > 0 && cursor.phase !== "done") {
+      const beforeRemaining = remaining;
+      const beforePosition = JSON.stringify({
+        phase: cursor.phase,
+        tablePosition: cursor.tablePosition,
+        afterHeapKeyBase64: cursor.afterHeapKeyBase64,
+      });
+      const assertProgress = () => {
+        const afterPosition = JSON.stringify({
+          phase: cursor.phase,
+          tablePosition: cursor.tablePosition,
+          afterHeapKeyBase64: cursor.afterHeapKeyBase64,
+        });
+        if (remaining === beforeRemaining && afterPosition === beforePosition) {
+          throw new Error(`Integrity verifier made no progress in phase ${cursor.phase} at ${afterPosition}`);
+        }
+      };
       if (cursor.phase === "root") {
         const rootRefs = collectSerializedHeapReferences(parsePiledriverValue(keyBytes(cursor.root.bufferBase64)));
         for (const ref of rootRefs) {
@@ -456,6 +472,7 @@ export async function verifyDataIntegrity(
         }
         cursor.phase = "tables";
         cursor.tablePosition = nextTablePosition(context.tables[0]?.tableId ?? null);
+        assertProgress();
         continue;
       }
       if (cursor.phase === "tables") {
@@ -514,6 +531,7 @@ export async function verifyDataIntegrity(
           cursor.tablePosition = nextTablePosition(context.tables[index + 1]?.tableId ?? null);
           if (cursor.tablePosition.tableId === null) cursor.phase = "heap-scan";
         } else cursor.tablePosition = result.position;
+        assertProgress();
         continue;
       }
       const page = await integrityState.piledriverDatabase.iterateHeapEntries({
@@ -541,6 +559,7 @@ export async function verifyDataIntegrity(
         }
         if (remaining === 0) break;
       }
+      assertProgress();
     }
     cursor.stepsTaken += budget - remaining;
     cursor.errorCount += errors.length;

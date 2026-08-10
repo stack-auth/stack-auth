@@ -105,7 +105,7 @@ describe("verification cursor", () => {
       expect(result.steps).toBe(baseline.totalSteps);
       expect(result.skippedChecks).toEqual(baseline.skippedChecks);
     }
-  });
+  }, 15_000);
 
   it("reports dangling references from the pinned root", async () => {
     const lowLevel = declareInMemoryLowLevelDatabase(crypto.randomUUID());

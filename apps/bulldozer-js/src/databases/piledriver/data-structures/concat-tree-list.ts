@@ -33,22 +33,6 @@ function isConcatChild(value: unknown): value is Child {
     && "size" in value
     && typeof value.size === "number";
 }
-function isConcatNode<T extends PiledriverObject>(value: unknown): value is Node<T> {
-  if (typeof value !== "object" || value === null || Array.isArray(value) || !("type" in value)) return false;
-  if (value.type === "leaf") {
-    return "entries" in value && Array.isArray(value.entries)
-      && value.entries.every(entry => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string");
-  }
-  return value.type === "node" && "children" in value && Array.isArray(value.children) && value.children.every(isConcatChild);
-}
-function isConcatRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-export type ConcatTreeIntegrityResult = {
-  issues: { code: string, message: string }[],
-  stepsTaken: number,
-  nextPosition: string | null,
-};
 export type ConcatTreeListDiff<T extends PiledriverObject> = {
   missing: { id: string, value: T }[],
   added: { id: string, value: T }[],
@@ -112,92 +96,6 @@ export class ConcatTreeList<T extends PiledriverObject> implements AsyncIterable
 
   toPiledriverObject(): ConcatTreeListObject {
     return { type: "ConcatTreeList", root: this.root };
-  }
-
-  async verifyDataIntegrity(options: { stepBudget: number, position: string | null }): Promise<ConcatTreeIntegrityResult> {
-    if (!Number.isSafeInteger(options.stepBudget) || options.stepBudget <= 0) throw new Error("Invalid tree verification step budget");
-    const issues: { code: string, message: string }[] = [];
-    const arity = Math.max(2, this.options.arity ?? defaultArity);
-    type Summary = { height: number, size: number };
-    type Frame = { child: Child, node: Node<T>, path: number[], nextChild: number, children: Summary[] };
-    const root = this.root;
-    if (root === null) return { issues, stepsTaken: 0, nextPosition: null };
-    const rootNode = await root.ref.get();
-    if (!isConcatNode<T>(rootNode)) return { issues: [{ code: "invalid_node", message: "A concat tree child does not contain a valid node" }], stepsTaken: 1, nextPosition: null };
-    const parsedPosition: unknown = options.position === null ? null : JSON.parse(options.position);
-    const savedFrames: unknown[] = parsedPosition === null
-      ? []
-      : isConcatRecord(parsedPosition) && Array.isArray(parsedPosition.frames)
-        ? parsedPosition.frames
-        : (() => { throw new Error("Invalid concat tree verification position"); })();
-    const frameFrom = async (child: Child, node: Node<T>, path: number[], saved: unknown): Promise<Frame> => {
-      const savedRecord = isConcatRecord(saved) ? saved : {};
-      const nextChild = typeof savedRecord.nextChild === "number" && Number.isSafeInteger(savedRecord.nextChild)
-        ? savedRecord.nextChild
-        : 0;
-      const children = Array.isArray(savedRecord.children) && savedRecord.children.every(value => isConcatRecord(value)
-        && typeof value.height === "number"
-        && typeof value.size === "number")
-        ? savedRecord.children.map(value => ({ height: value.height, size: value.size }))
-        : [];
-      return { child, node, path, nextChild, children };
-    };
-    const stack: Frame[] = [await frameFrom(root, rootNode, [], savedFrames[0])];
-    for (let index = 1; index < savedFrames.length; index++) {
-      const saved = savedFrames[index];
-      if (!isConcatRecord(saved) || !Array.isArray(saved.path) || !saved.path.every(value => Number.isSafeInteger(value) && value >= 0)) {
-        throw new Error("Invalid concat tree verification position");
-      }
-      const parent = stack[stack.length - 1];
-      const childIndex = saved.path[saved.path.length - 1];
-      if (childIndex === undefined || parent.node.type !== "node" || childIndex >= parent.node.children.length) {
-        throw new Error("Invalid concat tree verification position");
-      }
-      parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
-      const child = parent.node.children[childIndex];
-      const value = await child.ref.get();
-      if (!isConcatNode<T>(value)) throw new Error("Invalid concat tree verification position");
-      stack.push(await frameFrom(child, value, saved.path, saved));
-    }
-    let stepsTaken = 0;
-    while (stack.length > 0) {
-      const frame = stack[stack.length - 1];
-      if (frame.node.type === "node" && frame.nextChild < frame.node.children.length) {
-        const childIndex = frame.nextChild++;
-        const child = frame.node.children[childIndex];
-        const value = await child.ref.get();
-        if (!isConcatNode<T>(value)) {
-          issues.push({ code: "invalid_node", message: "A concat tree child does not contain a valid node" });
-          continue;
-        }
-        stack.push({ child, node: value, path: [...frame.path, childIndex], nextChild: 0, children: [] });
-        continue;
-      }
-      if (stepsTaken >= options.stepBudget) {
-        return { issues, stepsTaken, nextPosition: JSON.stringify({ frames: stack.map(item => ({ path: item.path, nextChild: item.nextChild, children: item.children })) }) };
-      }
-      stepsTaken++;
-      const node = frame.node;
-      if (node.type === "leaf") {
-        if (node.entries.length > arity) issues.push({ code: "node_arity", message: "A list leaf exceeds the maximum entry count" });
-        if (frame.path.length > 0 && node.entries.length === 0) issues.push({ code: "node_occupancy", message: "A non-root list leaf is empty" });
-        if (frame.child.size !== node.entries.length) issues.push({ code: "size", message: "A list leaf size does not match its contents" });
-        const summary: Summary = { height: 1, size: node.entries.length };
-        stack.pop();
-        if (stack.length > 0) stack[stack.length - 1].children.push(summary);
-        continue;
-      }
-      if (node.children.length > arity) issues.push({ code: "node_arity", message: "A list node exceeds the maximum child count" });
-      if (frame.path.length > 0 && node.children.length < 2) issues.push({ code: "node_occupancy", message: "A non-root list node has too few children" });
-      const heights = frame.children.map(result => result.height);
-      if (heights.some(height => height !== heights[0])) issues.push({ code: "child_height", message: "List children do not have equal heights" });
-      const size = frame.children.reduce((sum, result) => sum + result.size, 0);
-      if (frame.child.size !== size) issues.push({ code: "size", message: "A list node size does not match its children" });
-      const summary: Summary = { height: (heights[0] ?? 0) + 1, size };
-      stack.pop();
-      if (stack.length > 0) stack[stack.length - 1].children.push(summary);
-    }
-    return { issues, stepsTaken, nextPosition: null };
   }
 
   static fromPiledriverObject<T extends PiledriverObject>(object: PiledriverObject, options: { arity?: number } = {}) {
