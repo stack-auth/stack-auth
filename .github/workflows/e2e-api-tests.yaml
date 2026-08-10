@@ -218,16 +218,38 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
+      - name: Reset PostgreSQL statement attribution
+        continue-on-error: true
+        run: .github/scripts/postgres-attribution.sh reset
+
       - name: Run tests
+        id: run_tests_pass1
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
 
+      - name: Snapshot PostgreSQL attribution after pass 1
+        if: always()
+        continue-on-error: true
+        run: .github/scripts/postgres-attribution.sh snapshot
+
       - name: Run tests again (attempt 1)
+        id: run_tests_pass2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
+      - name: Snapshot PostgreSQL attribution after pass 2
+        if: always() && steps.run_tests_pass2.outcome != 'skipped'
+        continue-on-error: true
+        run: .github/scripts/postgres-attribution.sh snapshot
+
       - name: Run tests again (attempt 2)
+        id: run_tests_pass3
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+
+      - name: Snapshot PostgreSQL attribution after pass 3
+        if: always() && steps.run_tests_pass3.outcome != 'skipped'
+        continue-on-error: true
+        run: .github/scripts/postgres-attribution.sh snapshot
 
       - name: Run perf tests
         if: matrix.freestyle-mode == 'mock'
