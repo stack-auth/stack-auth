@@ -1,5 +1,5 @@
 import { getApiUrlForRequest } from "@/lib/request-api-url";
-import { recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
+import { recordAuditEvent } from "@/lib/audit-log";
 import { createBrowserAction, DEFAULT_BROWSER_ACTION_TTL_MS, DEFAULT_IMPERSONATION_SESSION_TTL_MS, MAX_BROWSER_ACTION_TTL_MS } from "@/lib/browser-actions";
 import { MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
 import { globalPrismaClient } from "@/prisma-client";
@@ -23,7 +23,7 @@ export const POST = createSmartRouteHandler({
       expires_in_millis: yupNumber().integer().min(1).max(MAX_BROWSER_ACTION_TTL_MS).default(DEFAULT_BROWSER_ACTION_TTL_MS),
       session_expires_in_millis: yupNumber().integer().min(1).max(MAX_AUTH_SESSION_EXPIRATION_MS).default(DEFAULT_IMPERSONATION_SESSION_TTL_MS),
       user_id: yupString().optional(),
-      // Optional support-session note stored on Audit Log events when that app is enabled.
+      // Optional support-session note stored on the admin audit trail.
       reason: yupString().max(500).nullable().optional(),
     }).defined(),
   }),
@@ -57,8 +57,8 @@ export const POST = createSmartRouteHandler({
       try {
         await recordAuditEvent({
           tenancy,
+          auth,
           action: "impersonation.started",
-          actor: resolveAuditActor(auth),
           targetUserId: user_id ?? throwErr(new StatusError(StatusError.BadRequest, "Invalid browser action")),
           reason,
           metadata: {

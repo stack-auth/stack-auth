@@ -1,5 +1,5 @@
 import { getApiUrlForRequest } from "@/lib/request-api-url";
-import { recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
+import { recordAuditEvent } from "@/lib/audit-log";
 import { createImpersonationAuthTokens, createAuthTokens, MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -73,8 +73,8 @@ export const POST = createSmartRouteHandler({
       try {
         await recordAuditEvent({
           tenancy,
+          auth,
           action: "impersonation.started",
-          actor: resolveAuditActor(auth),
           targetUserId: user.id,
           reason,
           metadata: {

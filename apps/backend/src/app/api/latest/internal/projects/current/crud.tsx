@@ -1,4 +1,4 @@
-import { buildNonSensitiveFieldChanges, collectConfigPaths, limitChangedPaths, recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
+import { buildProjectSettingsAuditMetadata, collectConfigPaths, recordAuditEvent } from "@/lib/audit-log";
 import { getBranchConfigPushedError, getDevelopmentEnvironmentConfigWarnings, renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
@@ -44,27 +44,19 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     });
     const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
 
-    const changedPaths = collectProjectUpdateFields(data as Record<string, unknown>);
-    if (changedPaths.length > 0) {
-      const { changed_paths, changed_paths_truncated } = limitChangedPaths(changedPaths);
-      const changes = buildNonSensitiveFieldChanges({
-        paths: changed_paths,
-        beforeRoot: beforeProject,
-        afterRoot: data,
-      });
+    const settingsMetadata = buildProjectSettingsAuditMetadata({
+      source: "projects.current.update",
+      writeMode: "merge",
+      changedPaths: collectProjectUpdateFields(data as Record<string, unknown>),
+      beforeRoot: beforeProject,
+      afterRoot: data,
+    });
+    if (settingsMetadata != null) {
       await recordAuditEvent({
-        // Use pre-update tenancy so enabling Audit Log in the same request is not
-        // audited against itself (progressive: off until already enabled).
         tenancy: auth.tenancy,
+        auth,
         action: "project_settings.updated",
-        actor: resolveAuditActor(auth),
-        metadata: {
-          source: "projects.current.update",
-          write_mode: "merge",
-          changed_paths,
-          ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
-          ...(Object.keys(changes).length > 0 ? { changes } : {}),
-        },
+        metadata: settingsMetadata,
       });
     }
 

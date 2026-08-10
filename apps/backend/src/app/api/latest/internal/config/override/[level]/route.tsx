@@ -12,7 +12,7 @@ import {
   validateBranchConfigOverride,
   validateEnvironmentConfigOverride,
 } from "@/lib/config";
-import { buildNonSensitiveFieldChanges, collectConfigPaths, limitChangedPaths, recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
+import { buildProjectSettingsAuditMetadata, collectConfigPaths, recordAuditEvent, type AuditActorSource } from "@/lib/audit-log";
 import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment";
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
@@ -26,33 +26,27 @@ type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 async function recordProjectSettingsConfigAudit(options: {
   tenancy: Tenancy,
-  auth: { type: "client" | "server" | "admin", adminUser?: Parameters<typeof resolveAuditActor>[0]["adminUser"] },
+  auth: AuditActorSource,
   level: "project" | "branch" | "environment",
   writeMode: "merge" | "replace",
   config: unknown,
   beforeConfig: unknown,
   source: "config.override.patch" | "config.override.put",
 }) {
-  const paths = collectConfigPaths(options.config);
-  if (paths.length === 0) return;
-  const { changed_paths, changed_paths_truncated } = limitChangedPaths(paths);
-  const changes = buildNonSensitiveFieldChanges({
-    paths: changed_paths,
+  const metadata = buildProjectSettingsAuditMetadata({
+    source: options.source,
+    writeMode: options.writeMode,
+    level: options.level,
+    changedPaths: collectConfigPaths(options.config),
     beforeRoot: options.beforeConfig,
     afterRoot: options.config,
   });
+  if (metadata == null) return;
   await recordAuditEvent({
     tenancy: options.tenancy,
+    auth: options.auth,
     action: "project_settings.updated",
-    actor: resolveAuditActor(options.auth),
-    metadata: {
-      source: options.source,
-      level: options.level,
-      write_mode: options.writeMode,
-      changed_paths,
-      ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
-      ...(Object.keys(changes).length > 0 ? { changes } : {}),
-    },
+    metadata,
   });
 }
 

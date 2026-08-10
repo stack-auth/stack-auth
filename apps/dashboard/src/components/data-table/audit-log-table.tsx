@@ -227,8 +227,8 @@ function getColumns(projectId: string): DataGridColumnDef<AuditLogEvent>[] {
       accessor: (row) => row.target_user_id ?? "",
       type: "string",
       width: 200,
-      // Absolute path required: relative `../users/...` from `/projects/:id/audit-log`
-      // resolves to `/projects/users/...` (drops the project id) and 404s.
+      // Absolute path required: relative `../users/...` from nested project pages
+      // can drop the project id and 404.
       renderCell: ({ row }) => {
         if (row.target_user_id == null) {
           return <span className="text-muted-foreground">—</span>;

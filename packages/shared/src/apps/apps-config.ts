@@ -198,15 +198,9 @@ export const ALL_APPS = {
     tags: ["auth", "developers"],
     stage: "alpha",
   },
-  "audit-log": {
-    displayName: "Audit Log",
-    subtitle: "Timeline of sensitive admin actions like impersonation",
-    tags: ["security", "operations"],
-    stage: "alpha",
-  },
   "compliance": {
     displayName: "Compliance Center",
-    subtitle: "Review access, denials, and compliance posture",
+    subtitle: "Review access, denials, admin actions, and compliance posture",
     tags: ["auth", "security", "operations"],
     stage: "alpha",
   },

@@ -1,4 +1,4 @@
-import { AUDIT_LOG_ACTIONS, AUDIT_LOG_NO_TARGET_USER_ID, isAuditLogEnabled } from "@/lib/audit-log";
+import { AUDIT_LOG_ACTIONS, AUDIT_LOG_NO_TARGET_USER_ID } from "@/lib/audit-log";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -45,10 +45,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth: { tenancy }, query }) => {
-    if (!isAuditLogEnabled(tenancy)) {
-      throw new StatusError(StatusError.Forbidden, "Audit Log is not enabled for this project.");
-    }
-
+    // Admin-only list API (same pattern as other compliance internal routes).
+    // Dashboard viewing is gated by the Compliance app; writes are always-on.
     const limitRaw = query.limit == null ? DEFAULT_LIMIT : Number(query.limit);
     if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > MAX_LIMIT) {
       throw new StatusError(StatusError.BadRequest, `limit must be an integer between 1 and ${MAX_LIMIT}`);

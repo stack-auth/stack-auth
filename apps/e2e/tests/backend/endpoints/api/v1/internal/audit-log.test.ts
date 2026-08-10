@@ -14,15 +14,15 @@ async function listAuditLog(options?: { action?: string, targetUserId?: string, 
   });
 }
 
-it("forbids listing when Audit Log is not enabled", async ({ expect }) => {
+it("lists admin audit events without requiring Compliance app", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
   const res = await listAuditLog();
-  expect(res.status).toBe(403);
-  expect(res.body).toEqual("Audit Log is not enabled for this project.");
+  expect(res.status).toBe(200);
+  expect(res.body.items).toEqual([]);
 });
 
-it("does not write events when Audit Log is disabled", async ({ expect }) => {
+it("always writes impersonation events without enabling any app", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const signUp = await Auth.Password.signUpWithEmail();
 
@@ -32,20 +32,23 @@ it("does not write events when Audit Log is disabled", async ({ expect }) => {
     body: {
       user_id: signUp.userId,
       is_impersonation: true,
-      reason: "should not be stored",
+      reason: "always on",
     },
   });
   expect(impersonation.status).toBe(200);
 
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
   const listRes = await listAuditLog();
   expect(listRes.status).toBe(200);
-  expect(listRes.body.items).toEqual([]);
+  expect(listRes.body.items).toHaveLength(1);
+  expect(listRes.body.items[0]).toMatchObject({
+    action: "impersonation.started",
+    target_user_id: signUp.userId,
+    reason: "always on",
+  });
 });
 
-it("records impersonation started with reason and actor when enabled", async ({ expect }) => {
+it("records impersonation started with reason and actor", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
   const signUp = await Auth.Password.signUpWithEmail();
 
   const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -78,7 +81,6 @@ it("records impersonation started with reason and actor when enabled", async ({ 
 
 it("records impersonation revoked when an impersonation session is deleted", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
   const signUp = await Auth.Password.signUpWithEmail();
 
   const impersonation = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -125,7 +127,6 @@ it("records impersonation revoked when an impersonation session is deleted", asy
 
 it("ignores reason on non-impersonation session creation", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
   const signUp = await Auth.Password.signUpWithEmail();
 
   const session = await niceBackendFetch("/api/v1/auth/sessions", {
@@ -146,9 +147,6 @@ it("ignores reason on non-impersonation session creation", async ({ expect }) =>
 
 it("records project settings config updates with non-sensitive before/after values", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  // Enabling Audit Log while it is off must not self-audit (progressive gate
-  // uses the pre-update tenancy).
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
 
   // Establish a known before value — defaults/create may already set this true.
   await Project.updateConfig({ "auth.password.allowSignIn": false });
@@ -184,7 +182,6 @@ it("records project metadata updates from projects/current with before/after", a
     config: { magic_link_enabled: true },
   });
   expect(created.createProjectResponse.body.display_name).toBe("Original Project Name");
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
 
   const update = await niceBackendFetch("/api/v1/internal/projects/current", {
     accessType: "admin",
@@ -217,7 +214,6 @@ it("records project metadata updates from projects/current with before/after", a
 
 it("does not persist values for sensitive config leaves", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ "apps.installed.audit-log.enabled": true });
 
   await Project.updateConfig({
     "emails.server": {

@@ -77,10 +77,6 @@ export type AuditFieldChange = {
   after: Prisma.JsonValue,
 };
 
-export function isAuditLogEnabled(tenancy: Tenancy): boolean {
-  return tenancy.config.apps.installed["audit-log"]?.enabled === true;
-}
-
 /**
  * True when the path's leaf (or known secret-bearing prefixes) should never
  * have values persisted — path keys are still recorded in changed_paths.
@@ -285,23 +281,24 @@ export function buildNonSensitiveFieldChanges(options: {
 }
 
 /**
- * Append an audit event when the Audit Log app is enabled.
+ * Always-on admin audit write — the single integration point for new call sites.
  *
- * Progressive: no-ops when the app is off so uninstalling stops writes.
- * Strict when enabled: insert failures fail the caller (security over convenience).
+ * Pass `auth` (not a pre-built actor); actor resolution is handled here.
+ * Insert failures fail the caller so audited actions cannot succeed without a
+ * durable trail. Viewing is gated by the Compliance app; writes are not.
+ *
+ * For settings diffs, use `buildProjectSettingsAuditMetadata` then pass the
+ * result as `metadata` — don't invent per-action wrappers for simple events.
  */
 export async function recordAuditEvent(options: {
   tenancy: Tenancy,
+  auth: AuditActorSource,
   action: AuditLogAction,
-  actor: AuditLogActor,
   targetUserId?: string | null,
   reason?: string | null,
   metadata?: Record<string, unknown> | null,
 }): Promise<void> {
-  if (!isAuditLogEnabled(options.tenancy)) {
-    return;
-  }
-
+  const actor = resolveAuditActor(options.auth);
   const reason = normalizeReason(options.reason);
 
   try {
@@ -309,9 +306,9 @@ export async function recordAuditEvent(options: {
       data: {
         tenancyId: options.tenancy.id,
         action: options.action,
-        actorType: options.actor.type,
-        actorUserId: options.actor.userId,
-        actorLabel: options.actor.label,
+        actorType: actor.type,
+        actorUserId: actor.userId,
+        actorLabel: actor.label,
         targetUserId: options.targetUserId ?? AUDIT_LOG_NO_TARGET_USER_ID,
         reason,
         metadata: options.metadata == null
@@ -321,8 +318,39 @@ export async function recordAuditEvent(options: {
     });
   } catch (error) {
     throw new HexclaveAssertionError(
-      "Failed to write audit log event while Audit Log is enabled; refusing to continue the audited action.",
+      "Failed to write admin audit log event; refusing to continue the audited action.",
       { cause: error },
     );
   }
+}
+
+/**
+ * Build metadata for project_settings.updated (path list + non-sensitive
+ * before/after). Returns null when there is nothing to report.
+ */
+export function buildProjectSettingsAuditMetadata(options: {
+  source: string,
+  writeMode: "merge" | "replace",
+  changedPaths: string[],
+  beforeRoot: unknown,
+  afterRoot: unknown,
+  level?: "project" | "branch" | "environment",
+}): Record<string, unknown> | null {
+  if (options.changedPaths.length === 0) {
+    return null;
+  }
+  const { changed_paths, changed_paths_truncated } = limitChangedPaths(options.changedPaths);
+  const changes = buildNonSensitiveFieldChanges({
+    paths: changed_paths,
+    beforeRoot: options.beforeRoot,
+    afterRoot: options.afterRoot,
+  });
+  return {
+    source: options.source,
+    write_mode: options.writeMode,
+    ...(options.level != null ? { level: options.level } : {}),
+    changed_paths,
+    ...(changed_paths_truncated ? { changed_paths_truncated: true } : {}),
+    ...(Object.keys(changes).length > 0 ? { changes } : {}),
+  };
 }
