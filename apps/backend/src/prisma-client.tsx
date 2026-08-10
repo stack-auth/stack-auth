@@ -408,22 +408,32 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
   }
 }
 
+function hasTransactionWriteConflictCause(e: unknown): boolean {
+  if (typeof e !== "object" || e === null || !("cause" in e)) {
+    return false;
+  }
+  const { cause } = e;
+  return typeof cause === "object" && cause !== null && "kind" in cause && cause.kind === "TransactionWriteConflict";
+}
+
 export function isRetryableTransactionError(e: unknown): boolean {
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     const retryablePrismaErrorCodes = [
       "P2028", // Serializable/repeatable read conflict
       "P2034", // Transaction already closed (eg. timeout)
     ];
-    return retryablePrismaErrorCodes.includes(e.code);
+    if (retryablePrismaErrorCodes.includes(e.code)) {
+      return true;
+    }
+    if (e.code !== "P2010" || e.meta == null || !("driverAdapterError" in e.meta)) {
+      return false;
+    }
+    return hasTransactionWriteConflictCause(e.meta.driverAdapterError);
   }
 
-  // The adapter package is not a direct backend dependency, so classify its stable error shape instead of using instanceof.
+  // @prisma/driver-adapter-utils is transitive, so classify its stable error shape instead of using instanceof.
   // PrismaPg exposes serialization conflicts as an Error named DriverAdapterError with a structured cause.kind.
-  if (!(e instanceof Error) || e.name !== "DriverAdapterError") {
-    return false;
-  }
-  const { cause } = e;
-  return typeof cause === "object" && cause !== null && "kind" in cause && cause.kind === "TransactionWriteConflict";
+  return e instanceof Error && e.name === "DriverAdapterError" && hasTransactionWriteConflictCause(e);
 }
 
 /**

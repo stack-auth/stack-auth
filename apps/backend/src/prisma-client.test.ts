@@ -34,6 +34,34 @@ describe("isRetryableTransactionError", () => {
     expect(isRetryableTransactionError(error)).toBe(false);
   });
 
+  it("recognizes a raw-query P2010 wrapping the adapter serialization conflict", () => {
+    const error = new Prisma.PrismaClientKnownRequestError("raw query error", {
+      code: "P2010",
+      clientVersion: "test",
+      meta: {
+        driverAdapterError: {
+          cause: { kind: "TransactionWriteConflict" },
+        },
+      },
+    });
+
+    expect(isRetryableTransactionError(error)).toBe(true);
+  });
+
+  it("does not retry a P2010 wrapping an unrelated adapter error", () => {
+    const error = new Prisma.PrismaClientKnownRequestError("raw query error", {
+      code: "P2010",
+      clientVersion: "test",
+      meta: {
+        driverAdapterError: {
+          cause: { kind: "UniqueConstraintViolation" },
+        },
+      },
+    });
+
+    expect(isRetryableTransactionError(error)).toBe(false);
+  });
+
   it("does not retry unrelated adapter errors", () => {
     const error = new Error("UniqueConstraintViolation", {
       cause: { kind: "UniqueConstraintViolation" },
