@@ -1,0 +1,149 @@
+apps/backend/prisma/migrations/20260731000000_add_issues/migration.sql
+  s_737ddf173f162d::t_2161612d59dd89 1-179
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/cascades-on-delete.ts
+  s_737ddf173f162d::t_16360810368074 1-86
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/creates-issue-tables.ts
+  s_737ddf173f162d::t_8a441b667731a3 1-140
+apps/backend/prisma/migrations/20260731000000_add_issues/tests/hash-uniqueness-and-ledger.ts
+  s_737ddf173f162d::t_04f1c0d122b5a4 1-211
+apps/backend/scripts/clickhouse-migrations.test.ts
+  s_737ddf173f162d::t_24d7f324bcfb75 5-7,13-15,34,37-39,154-321,343-345,624,641-844
+apps/backend/scripts/clickhouse-migrations.ts
+  s_737ddf173f162d::t_192913c37fcf94 30-35,59,113-127,143-147,198-208,230-233,307,309,312-317,319,321-328,332,340,347,352,358,360,363,371-372,374,379-458,531-533,538-546,550,564,759-817,819-833,838-843,908-911,916,921-924,934-1030,1269-1274,1294
+apps/backend/scripts/run-cron-jobs.ts
+  s_737ddf173f162d::t_534cd98ddd2b02 10-13
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_737ddf173f162d::t_d831ff1f6a5b79 1,3,10,43-62,200-210,252-261,425-429,537,552-570,576,593-618
+apps/backend/src/app/api/latest/internal/issues/[issue_id]/route.tsx
+  s_737ddf173f162d::t_f76552c9780f08 1-321
+apps/backend/src/app/api/latest/internal/issues/[issue_id]/unmerge/route.tsx
+  s_737ddf173f162d::t_4d25a652cfa53a 1-61
+apps/backend/src/app/api/latest/internal/issues/merge/route.tsx
+  s_737ddf173f162d::t_e31158d7b64867 1-67
+apps/backend/src/app/api/latest/internal/issues/reconciler/route.tsx
+  s_737ddf173f162d::t_ea7ddc9b3b8925 1-99
+apps/backend/src/app/api/latest/internal/issues/route.tsx
+  s_737ddf173f162d::t_72fb62bc932446 1-112
+apps/backend/src/instrumentation-node.ts
+  s_737ddf173f162d::t_aa111596529cc1 10,38-84,99
+apps/backend/src/lib/analytics-telemetry-writers.test.ts
+  s_737ddf173f162d::t_42aac759754188 42-43,49,60,119
+apps/backend/src/lib/analytics-telemetry-writers.ts
+  s_737ddf173f162d::t_97b2eb555f69f6 2-3,5-6,57-100,107-110,113-205,227-307,313,315-333,343,360,363-372
+apps/backend/src/lib/customer-request-observability.test.ts
+  s_737ddf173f162d::t_9b30b60df54162 5,46-51
+apps/backend/src/lib/customer-request-observability.ts
+  s_737ddf173f162d::t_4fdbf11c8fddfc 40-46,119-140
+apps/backend/src/lib/internal-observability.test.ts
+  s_737ddf173f162d::t_9ab4bce7b77528 7-8,12-21,23,27,67,70,80-81,87,89-171
+apps/backend/src/lib/internal-observability.ts
+  s_737ddf173f162d::t_3e740745a720eb 6-7,13-35,61-69,75-102
+apps/backend/src/lib/issues/__fixtures__/browser-stacks.ts
+  s_737ddf173f162d::t_1f75e0714bf465 1-203
+apps/backend/src/lib/issues/__fixtures__/bundler-chunks.ts
+  s_737ddf173f162d::t_d5da775ac1d2f7 1-83
+apps/backend/src/lib/issues/grouping-config.test.ts
+  s_737ddf173f162d::t_6b4944b11cc344 1-52
+apps/backend/src/lib/issues/grouping-config.ts
+  s_737ddf173f162d::t_c12fcabd353ecb 1-60
+apps/backend/src/lib/issues/grouping-golden.test.ts
+  s_737ddf173f162d::t_039d6ecabf1d86 1-165
+apps/backend/src/lib/issues/grouping.test.ts
+  s_737ddf173f162d::t_1e59efb9065a9d 1-290
+apps/backend/src/lib/issues/grouping.ts
+  s_737ddf173f162d::t_40c9dbe85d5460 1-317
+apps/backend/src/lib/issues/in-app.test.ts
+  s_737ddf173f162d::t_30760fd9039761 1-56
+apps/backend/src/lib/issues/in-app.ts
+  s_737ddf173f162d::t_350fd5443db0ca 1-71
+apps/backend/src/lib/issues/issue-merge.test.ts
+  s_737ddf173f162d::t_96525f1ec7def5 1-552
+apps/backend/src/lib/issues/issue-merge.ts
+  s_737ddf173f162d::t_0115ccb77221d2 1-770
+apps/backend/src/lib/issues/issue-queries.ts
+  s_737ddf173f162d::t_ee833252ea863e 1-568
+apps/backend/src/lib/issues/issue-reconciler.ts
+  s_737ddf173f162d::t_cb7e570fd0723f 1-374
+apps/backend/src/lib/issues/issue-store.ts
+  s_737ddf173f162d::t_36201d1d9028cc 1-387
+apps/backend/src/lib/issues/issue-webhooks.ts
+  s_737ddf173f162d::t_88e55d2a92134f 1-221
+apps/backend/src/lib/issues/parameterize.test.ts
+  s_737ddf173f162d::t_d1e97c3a41c73c 1-89
+apps/backend/src/lib/issues/parameterize.ts
+  s_737ddf173f162d::t_df024198e334c9 1-92
+apps/backend/src/lib/issues/rebuild-stability.test.ts
+  s_737ddf173f162d::t_4b757eaa572be5 1-98
+apps/backend/src/lib/issues/stack-parser.test.ts
+  s_737ddf173f162d::t_6e052b087fa8a5 1-392
+apps/backend/src/lib/issues/stack-parser.ts
+  s_737ddf173f162d::t_56a1ef88754715 1-538
+apps/backend/src/lib/issues/types.ts
+  s_737ddf173f162d::t_590c1bacf605f4 1-89
+apps/backend/src/lib/seed-dummy-data.ts
+  s_737ddf173f162d::t_395e142566104c 5-6,2313-2323,2563-2855
+apps/backend/src/lib/spans.test.ts
+  s_737ddf173f162d::t_bd2982a571ddc3 306-307,310-331
+apps/backend/src/lib/spans.tsx
+  s_737ddf173f162d::t_2e792ef076e50c 122-127,143-144,271-275
+apps/backend/src/lib/webhooks.tsx
+  s_737ddf173f162d::t_4cbcc10bd74bb3 1,14,23-35,40-45,66-68,77,84,109-137
+apps/backend/vercel.json
+  s_737ddf173f162d::t_60c2fafb1f2f2a 19-22
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_737ddf173f162d::t_b086b84038aaa2 1654,1658,1672-1673,1678-1694
+apps/e2e/tests/backend/endpoints/api/v1/issues.test.ts
+  s_737ddf173f162d::t_a56c0d055102f2 1-1220
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/docs-json.generated.ts
+  s_737ddf173f162d::t_a6cd3b208ffb42 133-137
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_737ddf173f162d::t_4b13bfe29cd0ab 308-315
+packages/shared/src/config/schema.ts
+  s_737ddf173f162d::t_75094a9a221b92 484-519,625,1167-1177
+packages/shared/src/interface/admin-issues.ts
+  s_737ddf173f162d::t_ad6457b4ea471e 1-251
+packages/shared/src/interface/crud/issues.ts
+  s_737ddf173f162d::t_1161b134918e76 1-103
+packages/shared/src/interface/webhooks.ts
+  s_737ddf173f162d::t_71467206435f49 2,18-21,33-37
+packages/template/src/integrations/next.test.ts
+  s_737ddf173f162d::t_597a47dad5b717 305,320-342
+packages/template/src/integrations/next.ts
+  s_737ddf173f162d::t_dc1a2b43daf26c 98-111,266-275,313
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.sign-in-cache-warmup.test.ts
+  s_737ddf173f162d::t_452f4a6e5c0f4d 32
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_737ddf173f162d::t_5fda628aa57d40 4591,4593
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_737ddf173f162d::t_68e778bf376fda 891
+packages/template/src/lib/hexclave-app/apps/implementations/library-span-bridge.test.ts
+  s_737ddf173f162d::t_ae0a55782b8493 20,49,429,440-442,526-540,710,719,764,768-769
+packages/template/src/lib/hexclave-app/apps/implementations/library-span-bridge.ts
+  s_737ddf173f162d::t_92eb2d84585a77 3-4,52-53,91,444,497-504,508-509,547,588-591,651-653
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.http-client.test.ts
+  s_737ddf173f162d::t_29a16adde60b98 135,426
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_737ddf173f162d::t_5c9022a59b3cdb 2752,2782-2784,2823,2831-2834,2877,2920
+packages/template/src/lib/hexclave-app/apps/implementations/span-handle.ts
+  s_737ddf173f162d::t_d5e7bdb7248675 3,28,63-64,71,93-100,124-137,181-182,219-228
+packages/template/src/lib/hexclave-app/apps/implementations/telemetry-core.ts
+  s_737ddf173f162d::t_2f6309d91d4ee2 42-44,47-49,132,136-142,145-152,299,361,366-368,377-379
+sdks/spec/src/apps/analytics.spec.md
+  s_737ddf173f162d::t_0e5668976662aa 411-412,510,591-593,1036-1039
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b28fc30598a32caa8c80f63672fbbb45127c9c54",
+  "prompts": {},
+  "sessions": {
+    "s_737ddf173f162d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "662f9ec2-8b34-40a9-a320-743f336905f5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
