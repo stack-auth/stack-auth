@@ -33,7 +33,7 @@ import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
-type ApiUrlFailure = {
+export type ApiUrlFailure = {
   url: string,
   error: Error,
 };
@@ -42,7 +42,7 @@ export class ApiUrlsFailedError extends AggregateError {
   readonly urlFailures: readonly ApiUrlFailure[];
 
   constructor(urlFailures: readonly ApiUrlFailure[]) {
-    const primaryFailure = urlFailures[0];
+    const primaryFailure = urlFailures[0] ?? throwErr("ApiUrlsFailedError requires at least one URL failure");
     super(
       urlFailures.map(({ error }) => error),
       `All API URLs failed; primary URL ${primaryFailure.url} failed: ${primaryFailure.error.message}`,

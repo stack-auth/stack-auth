@@ -530,7 +530,15 @@ describe("_withFallback", () => {
 
   it("reports the primary URL and attributes every fallback failure", async () => {
     const urls = urlList(3);
-    const log = mockFetch(() => "fail");
+    const attemptsByUrl = new Map<string, number>();
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      log.push(url);
+      const attempt = (attemptsByUrl.get(url) ?? 0) + 1;
+      attemptsByUrl.set(url, attempt);
+      throw new TypeError(`Failed to fetch ${url} on attempt ${attempt}`);
+    }));
 
     const iface = createClientInterface({ apiUrls: urls });
     const request = sendRequest(iface);
@@ -545,12 +553,13 @@ describe("_withFallback", () => {
     } catch (error) {
       if (!(error instanceof ApiUrlsFailedError)) throw new Error("Expected an aggregate API URL error");
       if (!(error.cause instanceof Error)) throw new Error("Expected the primary error as the aggregate cause");
-      expect(error.cause.message).toContain("Failed to fetch");
+      expect(error.cause.message).toContain(`${urls[0]}/api/v1/users/me on attempt 2`);
       expect(error.errors).toHaveLength(urls.length);
       expect(error.urlFailures).toHaveLength(urls.length);
       for (const [index, urlFailure] of error.urlFailures.entries()) {
         expect(urlFailure.url).toBe(`${urls[index]}/api/v1`);
         expect(urlFailure.error).toBe(error.errors[index]);
+        expect(urlFailure.error.message).toContain(`${urls[index]}/api/v1/users/me on attempt 2`);
       }
     }
     expect(log).toHaveLength(urls.length * 2);
