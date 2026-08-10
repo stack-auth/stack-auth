@@ -87,13 +87,13 @@ export function collectSerializedHeapReferences(jsonableObject: unknown, referen
   if (Array.isArray(jsonableObject)) {
     const tag = jsonableObject[0];
     if (tag === "heap-reference") {
-      if (jsonableObject.length !== 2 || typeof jsonableObject[1] !== "string") throw new Error("Invalid serialized heap reference");
+      if (jsonableObject.length !== 2 || typeof jsonableObject[1] !== "string" || !isBase64(jsonableObject[1])) throw new InvalidPiledriverSerializedObjectError();
       references.push(jsonableObject[1]);
     } else if (tag === "array") {
-      if (jsonableObject.length !== 2 || !Array.isArray(jsonableObject[1])) throw new Error("Invalid serialized array");
+      if (jsonableObject.length !== 2 || !Array.isArray(jsonableObject[1])) throw new InvalidPiledriverSerializedObjectError();
       for (const item of jsonableObject[1]) collectSerializedHeapReferences(item, references);
     } else if (tag !== "NaN" && tag !== "Infinity" && tag !== "-Infinity" && tag !== "-0") {
-      throw new Error("Unknown serialized Piledriver array tag");
+      throw new InvalidPiledriverSerializedObjectError();
     }
   } else if (jsonableObject !== null && typeof jsonableObject === "object") {
     for (const item of Object.values(jsonableObject)) collectSerializedHeapReferences(item, references);
@@ -585,15 +585,19 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
               return heapObjAndSeq.object;
             }
             case "NaN": {
+              if (jsonableObject.length !== 1) throw new InvalidPiledriverSerializedObjectError();
               return NaN;
             }
             case "Infinity": {
+              if (jsonableObject.length !== 1) throw new InvalidPiledriverSerializedObjectError();
               return Infinity;
             }
             case "-Infinity": {
+              if (jsonableObject.length !== 1) throw new InvalidPiledriverSerializedObjectError();
               return -Infinity;
             }
             case "-0": {
+              if (jsonableObject.length !== 1) throw new InvalidPiledriverSerializedObjectError();
               return -0;
             }
             default: {
