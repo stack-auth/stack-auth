@@ -269,6 +269,18 @@ describe.sequential("claimEmailsForSending burst allowance", () => {
     expect(firstClaim.length + secondClaim.length).toBeLessThanOrEqual(BURST_SEND_LIMIT);
   });
 
+  it("claims nothing when contending for the tenancy lock", async () => {
+    await Promise.all(
+      Array.from({ length: BURST_SEND_LIMIT * 2 }, () => makeRow(globalPrismaClient, null)),
+    );
+
+    await withTenancyClaimLock(testTenancyId, async () => {
+      // Committed rows are visible to the claimer, but the held lock makes it deliberately bail.
+      const claim = await claimEmailsForSending(testTenancyId, 0);
+      expect(claim).toHaveLength(0);
+    });
+  });
+
   it("uses the rate quota when it exceeds the burst allowance", async () => {
     const claimed = await withTenancyClaimLock(testTenancyId, async (tx) => {
       await Promise.all(Array.from({ length: 12 }, () => makeRow(tx, null)));
