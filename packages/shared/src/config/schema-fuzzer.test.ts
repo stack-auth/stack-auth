@@ -306,6 +306,7 @@ const environmentSchemaFuzzerConfig = [{
     }],
   }],
   observability: [{
+    errorIngest: [undefined],
     errorGrouping: [{
       activeConfigId: [undefined, "hexclave-js:2026-08-01"] as const,
       readableConfigIds: [{
