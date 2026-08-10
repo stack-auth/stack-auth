@@ -59,7 +59,7 @@ export type PiledriverDatabase = Database & {
   getSerializedRootObject(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
   setRootObject(key: ArrayBuffer, value: PiledriverObject): Promise<{ seq: DatabaseSeq }>,
   deleteRootObject(key: ArrayBuffer): Promise<{ seq: DatabaseSeq }>,
-  deserializeSerializedObject(buffer: ArrayBuffer, seq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }>,
+  deserializeSerializedObject(buffer: ArrayBuffer, seq?: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }>,
   getSerializedHeapObject(key: ArrayBuffer): Promise<{ buffer: ArrayBuffer | null, seq: DatabaseSeq }>,
   iterateHeapEntries(options: { afterKey?: ArrayBuffer, limit: number }): Promise<{
     entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>,
@@ -711,7 +711,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         return { seq };
       });
     },
-    async deserializeSerializedObject(buffer, seq) {
+    async deserializeSerializedObject(buffer, seq = lowLevelDb.initialSeq) {
       return await deserializePiledriverObject(buffer, seq);
     },
     async getSerializedHeapObject(key) {

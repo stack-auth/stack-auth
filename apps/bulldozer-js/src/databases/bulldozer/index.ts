@@ -31,7 +31,7 @@ async function fromAsync<T>(iterable: AsyncIterable<T>): Promise<T[]> {
  * safe; the WeakMap lets group key objects be collected normally.
  */
 const canonicalGroupKeyStringCache = new WeakMap<object, string>();
-function canonicalGroupKeyString(groupKey: PiledriverObject): string {
+export function canonicalGroupKeyString(groupKey: PiledriverObject): string {
   if (groupKey !== null && typeof groupKey === "object") {
     const cached = canonicalGroupKeyStringCache.get(groupKey);
     if (cached !== undefined) return cached;
@@ -327,7 +327,7 @@ function changedRowsToTableChanges(
   };
 }
 
-type BulldozerTableImplementationInputTable = {
+export type BulldozerTableImplementationInputTable = {
   listGroups(options: {
     range: Range,
   }): AsyncIterable<{ groupKey: PiledriverObject }>,
@@ -347,7 +347,13 @@ type BulldozerTableImplementationInputTable = {
   }): number,
 };
 
-type BulldozerTableImplementation = {
+export type BulldozerTableVerificationResult = {
+  issues: Array<{ code: string, message: string, context?: Record<string, string | number | boolean | null> }>,
+  stepsTaken: number,
+  nextPosition: string | null,
+};
+
+export type BulldozerTableImplementation = {
   /**
    * If true, the table keeps no materialized state derived from its inputs (all reads are
    * computed lazily from the inputs), so migrations skip the input backfill when the table
@@ -407,6 +413,12 @@ type BulldozerTableImplementation = {
     a: PiledriverObject,
     b: PiledriverObject,
   }): number,
+  verifyDataIntegrity?(options: {
+    serializedTable: PiledriverObject,
+    inputTables: Record<string, BulldozerTableImplementationInputTable>,
+    stepCount: number,
+    position: string | null,
+  }): Promise<BulldozerTableVerificationResult>,
 };
 
 type BulldozerTableState = {
@@ -420,7 +432,7 @@ type BulldozerDatabaseTablesState = {
   mostRecentlyCompletedMigrationIndex: number,
 };
 
-type BulldozerDatabaseSnapshotSerialized = {
+export type BulldozerDatabaseSnapshotSerialized = {
   serializedTables: Record<string, PiledriverObject>,
   mostRecentlyCompletedMigrationIndex: number,
   uniqueSnapshotIdentifier: string,
@@ -852,6 +864,18 @@ function createTablesStateFromMigrations(migrations: readonly BulldozerDatabaseM
 export type BulldozerDatabase = {
   getDebugInfo(): any,
   listTables(): BulldozerDatabaseTableDescriptor[],
+  getDataIntegrityContext(snapshot: BulldozerDatabaseSnapshotSerialized): {
+    piledriverDatabase: PiledriverDatabase,
+    migrationIndex: number,
+    tables: Array<{
+      tableId: string,
+      table: BulldozerTableImplementation,
+      serializedTable: PiledriverObject,
+      inputTables: Record<string, BulldozerTableImplementationInputTable>,
+    }>,
+  },
+  getDataIntegrityRoot(): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }>,
+  getDataIntegrityPiledriver(): PiledriverDatabase,
   debugPiledriverSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
   getSnapshot(): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
@@ -984,6 +1008,24 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         currentOperation,
         closePromise,
       };
+    },
+    getDataIntegrityContext(snapshot: BulldozerDatabaseSnapshotSerialized) {
+      return {
+        piledriverDatabase,
+        migrationIndex: tablesState.mostRecentlyCompletedMigrationIndex,
+        tables: Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
+          tableId,
+          table: tableState.table,
+          serializedTable: snapshot.serializedTables[tableId],
+          inputTables: createInputTables(tablesState.tables, id => snapshot.serializedTables[id], tableId),
+        })),
+      };
+    },
+    async getDataIntegrityRoot() {
+      return await piledriverDatabase.getSerializedRootObject(rootKey);
+    },
+    getDataIntegrityPiledriver() {
+      return piledriverDatabase;
     },
     listTables: () => Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
       tableId,

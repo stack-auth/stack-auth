@@ -1,4 +1,21 @@
-export type DatabaseSeq = (readonly (string | number)[] & { __brand: "hexclave-low-level-kv-store-seq" });
+export type DatabaseSeq = readonly (string | number)[];
+
+export function serializeDatabaseSeq(seq: DatabaseSeq): string {
+  return JSON.stringify(seq);
+}
+
+export function deserializeDatabaseSeq(value: string): DatabaseSeq {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Invalid database sequence");
+  }
+  if (!Array.isArray(parsed) || !parsed.every(item => typeof item === "string" || typeof item === "number")) {
+    throw new Error("Invalid database sequence");
+  }
+  return parsed;
+}
 
 export type Database = {
   getDebugInfo(): any,

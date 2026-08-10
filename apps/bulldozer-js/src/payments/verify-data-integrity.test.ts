@@ -3,6 +3,7 @@ import { declareBulldozerDatabase } from "../databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase } from "../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./schema/index.js";
+import { subscription } from "./schema/schema-test-helpers.js";
 import { decodeVerificationCursor, verifyDataIntegrity } from "./verify-data-integrity.js";
 
 async function createDatabase() {
@@ -13,6 +14,14 @@ async function createDatabase() {
   );
   await db.applyRemainingMigrations();
   return db;
+}
+
+async function addSubscription(db: Awaited<ReturnType<typeof createDatabase>>) {
+  await db.withSnapshot(async snapshot => (await snapshot.setOrDeleteRow({
+    tableId: "payments-subscriptions",
+    rowIdentifier: "subscription-1",
+    newRowData: subscription("subscription-1"),
+  })).newSnapshot);
 }
 
 async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, stepCount: number) {
@@ -35,15 +44,16 @@ async function runToCompletion(db: Awaited<ReturnType<typeof createDatabase>>, s
 describe("verification cursor", () => {
   it("round-trips and rejects malformed or wrong-version cursors", async () => {
     const db = await createDatabase();
+    await addSubscription(db);
     const response = await verifyDataIntegrity(db, { step_count: 1 });
     expect(response.next_cursor).not.toBeNull();
-    expect(decodeVerificationCursor(response.next_cursor!)).toMatchObject({ version: 1, stepsTaken: 1 });
+    expect(decodeVerificationCursor(response.next_cursor!)).toMatchObject({ version: 2, stepsTaken: 1 });
     expect(() => decodeVerificationCursor("not-a-cursor")).toThrow("Invalid verification cursor");
     const wrongVersion = Buffer.from(
       JSON.stringify({ ...decodeVerificationCursor(response.next_cursor!), version: 999 }),
       "utf8",
     ).toString("base64url");
-    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 1");
+    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 2");
   });
 
   it("honors step budgets and resumes to the same final work", async () => {
