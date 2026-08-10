@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { KnownErrors } from "@hexclave/shared";
+import { KnownError, KnownErrors } from "@hexclave/shared";
 import { validateAuthorizedParty } from "./external-auth";
 
 describe("Clerk authorized parties", () => {
@@ -26,6 +26,7 @@ describe("external authentication diagnostics", () => {
     "authorized_party_mismatch",
     "client_id_mismatch",
     "missing_claim",
+    "unknown",
   ] as const)("preserves invalid-token reason %s", (reason) => {
     const error = new KnownErrors.InvalidExternalAuthToken(reason);
     expect(error.details).toMatchObject({ reason });
@@ -36,9 +37,36 @@ describe("external authentication diagnostics", () => {
     "provider_disabled",
     "required_setting_missing",
     "invalid_authorized_party",
+    "unknown",
   ] as const)("preserves provider-configuration reason %s", (reason) => {
     const error = new KnownErrors.ExternalAuthProviderNotConfigured(reason);
     expect(error.details).toMatchObject({ reason });
     expect(error.message).toContain(`(${reason})`);
+  });
+
+  it.each([
+    new KnownErrors.InvalidExternalAuthToken("issuer_mismatch"),
+    new KnownErrors.ExternalAuthProviderNotConfigured("required_setting_missing"),
+  ] as const)("round-trips %s through the wire format", (error) => {
+    const parsed = KnownError.fromJson({
+      code: error.errorCode,
+      message: error.humanReadableMessage,
+      details: error.details,
+    });
+    expect(parsed).toMatchObject({
+      errorCode: error.errorCode,
+      details: error.details,
+    });
+  });
+
+  it("falls back to unknown for an unrecognised wire reason", () => {
+    const parsed = KnownError.fromJson({
+      code: "INVALID_EXTERNAL_AUTH_TOKEN",
+      message: "The external authentication token could not be verified.",
+      details: { reason: "future_reason" },
+    });
+    expect(parsed).toMatchObject({
+      details: { reason: "unknown" },
+    });
   });
 });

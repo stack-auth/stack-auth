@@ -385,6 +385,14 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
                       )
                       FROM ${sqlQuoteIdent(schema)}."OAuthAuthMethod"
                       WHERE "OAuthAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "OAuthAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "OAuthAuthMethod"."authMethodId" = "AuthMethod"."id"
+                    ),
+                    'ExternalAuthMethod', (
+                      SELECT (
+                        to_jsonb("ExternalAuthMethod") ||
+                        jsonb_build_object()
+                      )
+                      FROM ${sqlQuoteIdent(schema)}."ExternalAuthMethod"
+                      WHERE "ExternalAuthMethod"."tenancyId" = "ProjectUser"."tenancyId" AND "ExternalAuthMethod"."projectUserId" = "ProjectUser"."projectUserId" AND "ExternalAuthMethod"."authMethodId" = "AuthMethod"."id"
                     )
                   )
                 ), '{}')

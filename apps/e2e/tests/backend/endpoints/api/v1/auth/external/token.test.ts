@@ -122,6 +122,15 @@ describe("external authentication token exchange", () => {
       external_auth_providers: [{ id: "better-auth-integration" }],
     });
 
+    backendContext.set({ userAuth: { accessToken: first.body.access_token } });
+    const currentUser = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "client",
+    });
+    expect(currentUser.status).toBe(200);
+    expect(currentUser.body).toMatchObject({
+      external_auth_providers: [{ id: "better-auth-integration" }],
+    });
+
     const repeated = await exchange(firstToken);
     expect(repeated.status).toBe(200);
     expect(repeated.body).toMatchObject({

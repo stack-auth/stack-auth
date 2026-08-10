@@ -1432,6 +1432,7 @@ const externalAuthProviderConfigurationReasons = [
   "provider_disabled",
   "required_setting_missing",
   "invalid_authorized_party",
+  "unknown",
 ] as const;
 type ExternalAuthProviderConfigurationReason = typeof externalAuthProviderConfigurationReasons[number];
 const externalAuthTokenReasons = [
@@ -1443,14 +1444,14 @@ const externalAuthTokenReasons = [
   "authorized_party_mismatch",
   "client_id_mismatch",
   "missing_claim",
+  "unknown",
 ] as const;
 type ExternalAuthTokenReason = typeof externalAuthTokenReasons[number];
 
 function parseExternalAuthReason<T extends readonly string[]>(value: unknown, reasons: T): T[number] {
-  if (typeof value === "string") {
-    return reasons.find(reason => reason === value) ?? throwErr("Invalid external authentication error reason");
-  }
-  throwErr("Invalid external authentication error reason");
+  return typeof value === "string"
+    ? reasons.find(reason => reason === value) ?? reasons[reasons.length - 1]
+    : reasons[reasons.length - 1];
 }
 
 const ExternalAuthProviderNotConfigured = createKnownErrorConstructor(
@@ -1461,7 +1462,7 @@ const ExternalAuthProviderNotConfigured = createKnownErrorConstructor(
     `The external authentication provider is not configured or enabled for this project (${reason}).`,
     { reason },
   ] as const,
-  (json) => [parseExternalAuthReason(json.details?.reason, externalAuthProviderConfigurationReasons)] as const,
+  (json) => [parseExternalAuthReason(json.reason, externalAuthProviderConfigurationReasons)] as const,
 );
 
 const InvalidExternalAuthToken = createKnownErrorConstructor(
@@ -1472,7 +1473,7 @@ const InvalidExternalAuthToken = createKnownErrorConstructor(
     `The external authentication token could not be verified (${reason}). Please sign in again.`,
     { reason },
   ] as const,
-  (json) => [parseExternalAuthReason(json.details?.reason, externalAuthTokenReasons)] as const,
+  (json) => [parseExternalAuthReason(json.reason, externalAuthTokenReasons)] as const,
 );
 
 const OAuthProviderAccessDenied = createKnownErrorConstructor(
