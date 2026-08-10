@@ -223,6 +223,24 @@ describe("generic table corruption checks", () => {
     expect(collectSerializedHeapReferences(["array", [["array", ["heap-reference", "literal-value"]]]])).toEqual([]);
   });
 
+  it("preserves null group and sort keys across continuation", async () => {
+    const result = await verifyGenericTable(
+      fakeTable([{
+        groupKey: null,
+        rows: [{ groupKey: null, rowIdentifier: "null-row", rowSortKey: null }],
+      }]),
+      fakePosition(),
+      1,
+    );
+    expect(result.issues).toEqual([]);
+    expect(result.finished).toBe(false);
+    const completed = await verifyGenericTable(fakeTable([{
+      groupKey: null,
+      rows: [{ groupKey: null, rowIdentifier: "null-row", rowSortKey: null }],
+    }]), result.position, 10);
+    expect(completed.issues).toEqual([]);
+  });
+
   it("reports a violation in a later group", async () => {
     let listed = false;
     const table = {
@@ -249,6 +267,51 @@ describe("generic table corruption checks", () => {
       groupComplete: true,
     }), 10);
     expect(result.issues.map(issue => issue.code)).toContain("group_order");
+  });
+
+  it("reports group order corruption independently", async () => {
+    const result = await verifyGenericTable({
+      tableId: "group-order",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups() {
+          yield { groupKey: "b" };
+          yield { groupKey: "a" };
+        },
+        async *listRowsInGroup() {},
+        compareGroupKeys({ a, b }: { a: PiledriverObject, b: PiledriverObject }) {
+          return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+        },
+        compareSortKeys() { return 0; },
+      },
+    }, fakePosition(), 10);
+    expect(result.issues.map(issue => issue.code)).toContain("group_order");
+  });
+
+  it("reports duplicate group corruption independently", async () => {
+    const result = await verifyGenericTable({
+      tableId: "duplicate-group",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups() {
+          yield { groupKey: "a" };
+          yield { groupKey: "a" };
+        },
+        async *listRowsInGroup() {},
+        compareGroupKeys() { return 0; },
+        compareSortKeys() { return 0; },
+      },
+    }, fakePosition(), 10);
+    expect(result.issues.map(issue => issue.code)).toContain("group_order");
+  });
+
+  it("reports a non-canonical group key independently", async () => {
+    const result = await verifyGenericTable(fakeTable([
+      { groupKey: asHeapObject({}), rows: [] },
+    ]), fakePosition(), 10);
+    expect(result.issues.map(issue => issue.code)).toContain("heap_group_key");
   });
 
   it("reports group, row, enclosing-group, duplicate-id, and heap-key violations", async () => {

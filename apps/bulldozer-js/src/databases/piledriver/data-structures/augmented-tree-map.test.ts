@@ -287,14 +287,21 @@ describe("AugmentedTreeMap", () => {
     await checkStructuralInvariants(tree, 3);
   });
 
-  it("reports corrupted persisted metadata through the production checker", async () => {
+  it("reports a wrong aggregate through the production checker", async () => {
     const tree = await build(20, 3);
     const wrongAggregate = await corruptedTree(tree, node => ({ ...node, augmentation: 999 }));
-    const wrongEntryCount = await corruptedTree(tree, node => ({ ...node, entries: [...(node.entries as unknown[]), [999, 999]] }));
-    const unbalanced = await corruptedTree(tree, node => ({ ...node, children: [] }));
-
     expect((await wrongAggregate.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "augmentation" }));
+  });
+
+  it("reports a wrong entry count through the production checker", async () => {
+    const tree = await build(20, 3);
+    const wrongEntryCount = await corruptedTree(tree, node => ({ ...node, entries: [...(node.entries as unknown[]), [999, 999]] }));
     expect((await wrongEntryCount.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "entry_count" }));
+  });
+
+  it("reports unbalanced child heights through the production checker", async () => {
+    const tree = await build(20, 3);
+    const unbalanced = await corruptedTree(tree, node => ({ ...node, children: [] }));
     expect((await unbalanced.verifyDataIntegrity({ stepBudget: 10_000, position: null })).issues).toContainEqual(expect.objectContaining({ code: "size" }));
   });
 

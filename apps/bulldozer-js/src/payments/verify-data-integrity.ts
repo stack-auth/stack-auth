@@ -150,8 +150,10 @@ function encodePosition(value: PiledriverObject): string {
   return encodeBase64(new TextEncoder().encode(JSON.stringify(value)));
 }
 
-function decodePosition(value: string | null): PiledriverObject | null {
-  return value === null ? null : parsePiledriverValue(keyBytes(value));
+type DecodedPosition = { value: PiledriverObject };
+
+function decodePosition(value: string | null): DecodedPosition | null {
+  return value === null ? null : { value: parsePiledriverValue(keyBytes(value)) };
 }
 
 function addIssue(issues: VerificationIssue[], value: VerificationIssue): void {
@@ -274,7 +276,7 @@ export async function verifyGenericTable(
   while (true) {
     const beforeSteps = stepsTaken;
     const beforePosition = JSON.stringify({
-      groupKeyBase64: groupKey === null ? null : encodePosition(groupKey),
+      groupKeyBase64: groupKey === null ? null : encodePosition(groupKey.value),
       groupComplete,
       genericDone: false,
     });
@@ -288,8 +290,8 @@ export async function verifyGenericTable(
     }
     let group: { groupKey: PiledriverObject } | undefined;
     const range = groupKey === null
-      ? (lastCompletedGroup === null ? {} : { gt: lastCompletedGroup })
-      : { gte: groupKey };
+      ? (lastCompletedGroup === null ? {} : { gt: lastCompletedGroup.value })
+      : { gte: groupKey.value };
     for await (const candidate of target.table.listGroups({
       serializedTable: target.serializedTable,
       inputTables: target.inputTables,
@@ -299,7 +301,7 @@ export async function verifyGenericTable(
         serializedTable: target.serializedTable,
         inputTables: target.inputTables,
         a: candidate.groupKey,
-        b: lastCompletedGroup,
+        b: lastCompletedGroup.value,
       }) <= 0) {
         issues.push({ phase: "tables", code: "group_order", message: "Groups are not strictly ordered", context: { tableId: target.tableId } });
         return {
@@ -314,7 +316,7 @@ export async function verifyGenericTable(
         serializedTable: target.serializedTable,
         inputTables: target.inputTables,
         a: candidate.groupKey,
-        b: groupKey,
+        b: groupKey.value,
       }) === 0) {
         group = candidate;
         break;
@@ -328,7 +330,7 @@ export async function verifyGenericTable(
       finished: true,
     };
     const groupKeyBase64 = encodePosition(group.groupKey);
-    groupKey = group.groupKey;
+    groupKey = { value: group.groupKey };
     const newGroup = cursorGroupKeyBase64 !== groupKeyBase64 || cursorGroupComplete;
     cursorGroupKeyBase64 = groupKeyBase64;
     cursorGroupComplete = false;
@@ -358,12 +360,12 @@ export async function verifyGenericTable(
       serializedTable: target.serializedTable,
       inputTables: target.inputTables,
       groupKey: group.groupKey,
-      range: previousSortKey === null ? {} : { gt: previousSortKey },
+      range: previousSortKey === null ? {} : { gt: previousSortKey.value },
     })) {
       if (stepsTaken >= budget) return {
         issues,
         skippedChecks,
-        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
+        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey.value), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
         stepsTaken,
         finished: false,
       };
@@ -378,7 +380,7 @@ export async function verifyGenericTable(
         serializedTable: target.serializedTable,
         inputTables: target.inputTables,
         groupKey: group.groupKey,
-        a: previousSortKey,
+        a: previousSortKey.value,
         b: row.rowSortKey,
       }) >= 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are not strictly ordered by sort key", context: { tableId: target.tableId } });
       if (!rowIdentifierCheckSkipped) {
@@ -395,7 +397,7 @@ export async function verifyGenericTable(
           seenRowIdentifiers.add(row.rowIdentifier);
         }
       }
-      previousSortKey = row.rowSortKey;
+      previousSortKey = { value: row.rowSortKey };
     }
     groupComplete = true;
     if (stepsTaken >= budget) return {
@@ -406,7 +408,7 @@ export async function verifyGenericTable(
       finished: false,
     };
     const afterPosition = JSON.stringify({
-      groupKeyBase64: encodePosition(groupKey),
+      groupKeyBase64: encodePosition(groupKey.value),
       groupComplete,
       genericDone: false,
     });

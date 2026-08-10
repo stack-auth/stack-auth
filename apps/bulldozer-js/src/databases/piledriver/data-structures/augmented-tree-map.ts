@@ -265,12 +265,9 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       const childIndex = saved.path[saved.path.length - 1];
       if (childIndex === undefined || childIndex >= parent.node.children.length) throw new Error("Invalid tree verification position");
       parent.nextChild = Math.max(parent.nextChild, childIndex + 1);
-      if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: framePosition() };
-      stepsTaken++;
       stack.push(await loadFrame(parent.node.children[childIndex], saved.path, saved));
     }
     while (stack.length > 0) {
-      if (stepsTaken >= options.stepBudget) return { issues, stepsTaken, nextPosition: framePosition() };
       frame = stack[stack.length - 1];
       if (frame.nextChild < frame.node.children.length) {
         const childIndex = frame.nextChild;
