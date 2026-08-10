@@ -1,3 +1,4 @@
+import { recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
 import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -84,5 +85,18 @@ export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(ses
         id: params.id,
       },
     });
+
+    if (session.isImpersonation) {
+      await recordAuditEvent({
+        tenancy: auth.tenancy,
+        action: "impersonation.revoked",
+        actor: resolveAuditActor(auth),
+        targetUserId: session.projectUserId,
+        metadata: {
+          refresh_token_id: session.id,
+          source: "auth.sessions.delete",
+        },
+      });
+    }
   },
 }));

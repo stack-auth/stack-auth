@@ -26,6 +26,12 @@ export type SmartRequestAuth = {
   branchId: string,
   tenancy: Tenancy,
   user?: UsersCrud["Admin"]["Read"] | undefined,
+  /**
+   * The internal-project admin who presented `x-stack-admin-access-token`.
+   * Distinct from `user`, which is the end-user access-token identity on the
+   * target project (usually absent on dashboard admin calls).
+   */
+  adminUser?: UsersCrud["Admin"]["Read"] | undefined,
   type: "client" | "server" | "admin",
   refreshTokenId?: string,
 };
@@ -289,6 +295,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const isAdminKeyValid = await queriesResults.isAdminKeyValid;
   const requiresPublishableClientKey = tenancy?.config.project.requirePublishableClientKey ?? true;
 
+  let adminUser: UsersCrud["Admin"]["Read"] | undefined;
   if (developmentKeyOverride) {
     if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
       throw new StatusError(401, "Development key override is only allowed in development or test environments");
@@ -309,11 +316,13 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     });
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
-    await extractUserFromAdminAccessToken({
+    // Capture the return value: audit logging needs the internal-project actor,
+    // and we previously discarded it after only validating the token.
+    adminUser = await extractUserFromAdminAccessToken({
       token: adminAccessToken,
       projectId,
       allowAnonymous: project.is_development_environment,
-    });  // assert that the admin token is valid
+    });
   } else {
     switch (requestType) {
       case "client": {
@@ -360,6 +369,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     refreshTokenId: refreshTokenId ?? undefined,
     tenancy,
     user: user ?? undefined,
+    adminUser,
     type: requestType,
   };
 });

@@ -1,5 +1,7 @@
 import { getApiUrlForRequest } from "@/lib/request-api-url";
+import { recordAuditEvent, resolveAuditActor } from "@/lib/audit-log";
 import { createImpersonationAuthTokens, createAuthTokens, MAX_AUTH_SESSION_EXPIRATION_MS } from "@/lib/tokens";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -16,11 +18,14 @@ export const POST = createSmartRouteHandler({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema.defined(),
+      adminUser: adaptSchema,
     }).defined(),
     body: yupObject({
       user_id: userIdOrMeSchema.defined(),
       expires_in_millis: yupNumber().max(MAX_AUTH_SESSION_EXPIRATION_MS).default(1000 * 60 * 60 * 24 * 365),
       is_impersonation: yupBoolean().optional(),
+      // Optional support-session note stored on Audit Log events when that app is enabled.
+      reason: yupString().max(500).nullable().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -31,7 +36,8 @@ export const POST = createSmartRouteHandler({
       access_token: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body: { user_id: userId, expires_in_millis: expiresInMillis, is_impersonation: isImpersonation } }, fullReq) {
+  async handler({ auth, body: { user_id: userId, expires_in_millis: expiresInMillis, is_impersonation: isImpersonation, reason } }, fullReq) {
+    const { tenancy } = auth;
     let user;
     try {
       user = await usersCrudHandlers.adminRead({
@@ -48,7 +54,7 @@ export const POST = createSmartRouteHandler({
       throw e;
     }
 
-    const { refreshToken, accessToken } = isImpersonation
+    const { refreshToken, accessToken, refreshTokenId } = isImpersonation
       ? await createImpersonationAuthTokens({
         tenancy,
         projectUserId: user.id,
@@ -62,6 +68,32 @@ export const POST = createSmartRouteHandler({
         isImpersonation: false,
         apiUrl: getApiUrlForRequest(fullReq),
       });
+
+    if (isImpersonation) {
+      try {
+        await recordAuditEvent({
+          tenancy,
+          action: "impersonation.started",
+          actor: resolveAuditActor(auth),
+          targetUserId: user.id,
+          reason,
+          metadata: {
+            refresh_token_id: refreshTokenId,
+            expires_at_millis: Date.now() + expiresInMillis,
+            source: "auth.sessions",
+          },
+        });
+      } catch (error) {
+        // Strict audit: do not leave an unlogged impersonation session around.
+        await globalPrismaClient.projectUserRefreshToken.deleteMany({
+          where: {
+            tenancyId: tenancy.id,
+            id: refreshTokenId,
+          },
+        });
+        throw error;
+      }
+    }
 
     return {
       statusCode: 200,

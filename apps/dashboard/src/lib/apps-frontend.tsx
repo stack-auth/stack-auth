@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, ListMagnifyingGlassIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TreeStructureIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -479,6 +479,21 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>CLI Auth shows real-time insight into how CLI authentication is used in your project.</p>
         <p>Monitor recent login attempts, see which users have active CLI refresh tokens, and track session health at a glance.</p>
+      </>
+    ),
+  },
+  "audit-log": {
+    icon: ListMagnifyingGlassIcon,
+    href: "audit-log",
+    navigationItems: [
+      { displayName: "Audit Log", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Audit Log keeps a timeline of sensitive admin actions in your project.</p>
+        <p>See who started or revoked impersonation sessions, with optional reasons attached for support context.</p>
+        <p>Enable it when you want an append-only trail; disable it any time without changing existing auth behavior.</p>
       </>
     ),
   },

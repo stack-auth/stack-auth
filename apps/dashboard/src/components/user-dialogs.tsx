@@ -1,6 +1,6 @@
 import type { StackAdminApp } from "@hexclave/next";
 import { ServerUser } from '@hexclave/next';
-import { ActionDialog, Alert, Button, CopyField, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
+import { ActionDialog, Alert, Button, CopyField, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, Typography } from "@/components/ui";
 import { generateImpersonateSnippet } from "@hexclave/shared/dist/utils/browser-action-snippets";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -68,6 +68,7 @@ export function ImpersonateUserDialog(props: {
   );
   const [selectedOrigin, setSelectedOrigin] = useState("");
   const [customOrigin, setCustomOrigin] = useState("");
+  const [reason, setReason] = useState("");
   const [fallbackSnippet, setFallbackSnippet] = useState<string | null>(null);
   const canUseCustomOrigin = config.domains.allowLocalhost;
 
@@ -78,6 +79,7 @@ export function ImpersonateUserDialog(props: {
   useEffect(() => {
     if (!props.open) {
       setFallbackSnippet(null);
+      setReason("");
     }
   }, [props.open]);
 
@@ -92,6 +94,7 @@ export function ImpersonateUserDialog(props: {
       origin,
       userId: props.user.id,
       sessionExpiresInMillis: 2 * 60 * 60 * 1000,
+      reason: reason.trim() === "" ? undefined : reason.trim(),
     });
     if (opened) {
       props.onClose();
@@ -100,7 +103,11 @@ export function ImpersonateUserDialog(props: {
 
   async function createFallbackSnippet() {
     const expiresInMillis = 2 * 60 * 60 * 1000;
-    const session = await props.user.createSession({ expiresInMillis, isImpersonation: true });
+    const session = await props.user.createSession({
+      expiresInMillis,
+      isImpersonation: true,
+      reason: reason.trim() === "" ? undefined : reason.trim(),
+    });
     const tokens = await session.getTokens();
     setFallbackSnippet(generateImpersonateSnippet(
       props.adminApp.projectId,
@@ -151,6 +158,16 @@ export function ImpersonateUserDialog(props: {
             )}
           </>
         )}
+        <div className="space-y-2">
+          <Typography>Reason (optional)</Typography>
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Why are you impersonating this user?"
+            maxLength={500}
+            rows={2}
+          />
+        </div>
         {fallbackSnippet == null ? (
           <Button variant="secondary" onClick={async () => await createFallbackSnippet()}>
             Copy console snippet instead
