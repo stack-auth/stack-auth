@@ -75,6 +75,23 @@ jobs:
             echo "$?" > "$RUNNER_TEMP/hexclave-dev-exit-code.untracked.txt"
           ) &
           pnpm exec wait-on --timeout 120000 http://localhost:8102 tcp:localhost:8146
+
+      # The readiness gate only proves that 8102 and 8146 accept connections;
+      # both services normally listen within seconds. build-packages:watch then
+      # performs a full non-watch tsdown pass even though build:packages already
+      # ran, rewriting packages/*/dist (about 8.3k of 8.4k files in our
+      # reproduction, including about 270 content changes). Watch-based dev
+      # tasks such as bulldozer-js, which imports @hexclave/shared from dist,
+      # restart when those files land and briefly take their ports down. That
+      # caused the failures in run 31347402547; the observed bulldozer outage
+      # was about 1.7 seconds and happened tens of seconds after this gate.
+      # This is a mitigation, not a guarantee: a slow runner may still be
+      # rebuilding at 60 seconds, and codegen watchers can write files later.
+      # We keep the watchers enabled so this job still exercises pnpm run dev,
+      # and instead allow the initial rebuild and restarts to settle first.
+      - name: Allow development watchers to settle
+        run: sleep 60
+
       - name: Run tests (first attempt)
         id: run-tests-first-attempt
         continue-on-error: ${{ (github.head_ref || github.ref_name) != 'main' && (github.head_ref || github.ref_name) != 'dev' }}
