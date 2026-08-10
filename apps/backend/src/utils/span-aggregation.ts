@@ -1,6 +1,13 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
+import {
+  constants as perfConstants,
+  monitorEventLoopDelay,
+  PerformanceObserver,
+  type IntervalHistogram,
+} from "node:perf_hooks";
+import inspector from "node:inspector";
+import v8 from "node:v8";
 
 export type SpanAggregate = {
   name: string;
@@ -23,6 +30,27 @@ export type BackendRuntimeDiagnostics = {
     userSeconds: number,
     systemSeconds: number,
   },
+  heap: {
+    usedBytes: number,
+    totalBytes: number,
+    rssBytes: number,
+    externalBytes: number,
+    arrayBufferBytes: number,
+    spaces: Array<{
+      name: string,
+      sizeBytes: number,
+      usedBytes: number,
+      availableBytes: number,
+      physicalSizeBytes: number,
+    }>,
+  },
+  gc: {
+    totalDurationMs: number,
+    totalCount: number,
+    scavenge: { durationMs: number, count: number },
+    markSweep: { durationMs: number, count: number },
+    incremental: { durationMs: number, count: number },
+  },
 };
 
 const spanAggregationEnabled = getEnvVariable("HEXCLAVE_SPAN_AGGREGATION", "false") === "true";
@@ -30,9 +58,42 @@ const eventLoopHistogram: IntervalHistogram | undefined = spanAggregationEnabled
   ? monitorEventLoopDelay({ resolution: 20 })
   : undefined;
 let previousCpuUsage = spanAggregationEnabled ? process.cpuUsage() : undefined;
+const gcStats = {
+  totalDurationMs: 0,
+  totalCount: 0,
+  scavenge: { durationMs: 0, count: 0 },
+  markSweep: { durationMs: 0, count: 0 },
+  incremental: { durationMs: 0, count: 0 },
+};
+const gcObserver: PerformanceObserver | undefined = spanAggregationEnabled
+  ? new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      const detail = entry.detail;
+      if (detail == null || typeof detail !== "object" || !("kind" in detail)) continue;
+      const kind = detail.kind;
+      if (typeof kind !== "number") continue;
+
+      gcStats.totalDurationMs += entry.duration;
+      gcStats.totalCount++;
+      if (kind === perfConstants.NODE_PERFORMANCE_GC_MINOR) {
+        gcStats.scavenge.durationMs += entry.duration;
+        gcStats.scavenge.count++;
+      } else if (kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR) {
+        gcStats.markSweep.durationMs += entry.duration;
+        gcStats.markSweep.count++;
+      } else if (kind === perfConstants.NODE_PERFORMANCE_GC_INCREMENTAL) {
+        gcStats.incremental.durationMs += entry.duration;
+        gcStats.incremental.count++;
+      }
+    }
+  })
+  : undefined;
 
 if (eventLoopHistogram != null) {
   eventLoopHistogram.enable();
+}
+if (gcObserver != null) {
+  gcObserver.observe({ entryTypes: ["gc"] });
 }
 
 function durationMs(startTime: [number, number], endTime: [number, number]): number {
@@ -131,10 +192,26 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
         userSeconds: 0,
         systemSeconds: 0,
       },
+      heap: {
+        usedBytes: 0,
+        totalBytes: 0,
+        rssBytes: 0,
+        externalBytes: 0,
+        arrayBufferBytes: 0,
+        spaces: [],
+      },
+      gc: {
+        totalDurationMs: 0,
+        totalCount: 0,
+        scavenge: { durationMs: 0, count: 0 },
+        markSweep: { durationMs: 0, count: 0 },
+        incremental: { durationMs: 0, count: 0 },
+      },
     };
   }
 
   const cpuUsage = process.cpuUsage(previousCpuUsage);
+  const memoryUsage = process.memoryUsage();
   const diagnostics = {
     eventLoopDelay: {
       minMs: histogramValue(eventLoopHistogram.min),
@@ -149,12 +226,83 @@ export function getBackendRuntimeDiagnostics(reset = false): BackendRuntimeDiagn
       userSeconds: cpuUsage.user / 1e6,
       systemSeconds: cpuUsage.system / 1e6,
     },
+    heap: {
+      usedBytes: memoryUsage.heapUsed,
+      totalBytes: memoryUsage.heapTotal,
+      rssBytes: memoryUsage.rss,
+      externalBytes: memoryUsage.external,
+      arrayBufferBytes: memoryUsage.arrayBuffers,
+      spaces: v8.getHeapSpaceStatistics().map((space) => ({
+        name: space.space_name,
+        sizeBytes: space.space_size,
+        usedBytes: space.space_used_size,
+        availableBytes: space.space_available_size,
+        physicalSizeBytes: space.physical_space_size,
+      })),
+    },
+    gc: {
+      totalDurationMs: gcStats.totalDurationMs,
+      totalCount: gcStats.totalCount,
+      scavenge: { ...gcStats.scavenge },
+      markSweep: { ...gcStats.markSweep },
+      incremental: { ...gcStats.incremental },
+    },
   };
 
   if (reset) {
     previousCpuUsage = process.cpuUsage();
     eventLoopHistogram.reset();
+    gcStats.totalDurationMs = 0;
+    gcStats.totalCount = 0;
+    gcStats.scavenge.durationMs = 0;
+    gcStats.scavenge.count = 0;
+    gcStats.markSweep.durationMs = 0;
+    gcStats.markSweep.count = 0;
+    gcStats.incremental.durationMs = 0;
+    gcStats.incremental.count = 0;
   }
 
   return diagnostics;
+}
+
+let cpuProfileSession: inspector.Session | undefined;
+
+function inspectorPost<T>(session: inspector.Session, method: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    session.post(method, (error, params) => {
+      if (error != null) {
+        reject(error);
+      } else {
+        resolve(params as T);
+      }
+    });
+  });
+}
+
+export async function startBackendCpuProfile(): Promise<boolean> {
+  if (!spanAggregationEnabled || cpuProfileSession != null) return false;
+  const session = new inspector.Session();
+  session.connect();
+  try {
+    await inspectorPost(session, "Profiler.enable");
+    await inspectorPost(session, "Profiler.start");
+    cpuProfileSession = session;
+    return true;
+  } catch (error) {
+    session.disconnect();
+    throw error;
+  }
+}
+
+export async function stopBackendCpuProfile(): Promise<string | null> {
+  const session = cpuProfileSession;
+  if (session == null) return null;
+  cpuProfileSession = undefined;
+  try {
+    const result = await inspectorPost<{ profile: unknown }>(session, "Profiler.stop");
+    await inspectorPost(session, "Profiler.disable");
+    return JSON.stringify(result.profile);
+  } finally {
+    session.disconnect();
+  }
 }

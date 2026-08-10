@@ -279,6 +279,22 @@ jobs:
               fi
             '
 
+      - name: Start backend CPU profile for pass 1
+        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        continue-on-error: true
+        run: |
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if ! curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?profile=start" \
+                >/dev/null
+              then
+                echo "Backend CPU profile start failed (backend port ${backend_port})." >&2
+              fi
+            '
+
       - name: Run tests
         id: run_tests_pass1
         timeout-minutes: 60
@@ -299,11 +315,28 @@ jobs:
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
               if response="$(curl --fail-with-body --silent --show-error \
                 -H "Authorization: Bearer $CRON_SECRET" \
-                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?profile=stop&reset=true")"
               then
-                printf "%s\n" "$response" | jq .
+                printf "%s\n" "$response" | jq -r '\''.cpuProfile // empty'\'' > "$RUNNER_TEMP/backend-cpu-profile-pass1.untracked.json"
+                printf "%s\n" "$response" | jq '\''del(.cpuProfile)'\''
               else
                 echo "Span aggregation snapshot failed (backend port ${backend_port})." >&2
+              fi
+            '
+
+      - name: Start backend CPU profile for pass 2
+        if: github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        continue-on-error: true
+        run: |
+          pnpm -C apps/backend run with-env:test bash -c \
+            '
+              backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
+              if ! curl --fail-with-body --silent --show-error \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?profile=start" \
+                >/dev/null
+              then
+                echo "Backend CPU profile start failed (backend port ${backend_port})." >&2
               fi
             '
 
@@ -330,9 +363,10 @@ jobs:
               backend_port="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02"
               if response="$(curl --fail-with-body --silent --show-error \
                 -H "Authorization: Bearer $CRON_SECRET" \
-                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?reset=true")"
+                "http://localhost:${backend_port}/api/latest/internal/span-aggregation?profile=stop&reset=true")"
               then
-                printf "%s\n" "$response" | jq .
+                printf "%s\n" "$response" | jq -r '\''.cpuProfile // empty'\'' > "$RUNNER_TEMP/backend-cpu-profile-pass2.untracked.json"
+                printf "%s\n" "$response" | jq '\''del(.cpuProfile)'\''
               else
                 echo "Span aggregation snapshot failed (backend port ${backend_port})." >&2
               fi
@@ -397,3 +431,11 @@ jobs:
       - name: Print Docker Compose logs
         if: always()
         run: docker compose -f docker/dependencies/docker.compose.yaml logs
+
+      - name: Upload backend CPU profiles
+        if: always() && github.head_ref == 'devin/1786345250-backend-span-diagnostics'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-api-backend-cpu-profiles-${{ matrix.freestyle-mode }}
+          path: ${{ runner.temp }}/backend-cpu-profile-*.untracked.json
+          if-no-files-found: ignore
