@@ -20,6 +20,7 @@ const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
+const databases: Array<ReturnType<typeof declareBulldozerDatabase>> = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
 
 const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapshot => ({
@@ -109,6 +110,7 @@ const newLowLevelDb = () => {
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
   const db = declareBulldozerDatabase(declarePiledriverDatabase(newLowLevelDb()), { migrations: schema.migrations });
+  databases.push(db);
   await db.applyRemainingMigrations();
   return { db, schema };
 };
@@ -239,6 +241,8 @@ describe("transactions listing performance", () => {
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
+  // An unclosed LMDB environment keeps native handles alive, preventing Vitest's worker and main process from exiting; remove its mapped directory only after closing it.
+  for (const db of databases.reverse()) await db.close();
   for (const path of tempPaths) rmSync(path, { recursive: true, force: true });
 });
