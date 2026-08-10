@@ -233,13 +233,13 @@ describe("verification cursor", () => {
     const cursor = response.next_cursor;
     if (cursor === null) throw new Error("Expected a verification continuation");
     const decodedCursor = decodeVerificationCursor(cursor);
-    expect(decodedCursor).toMatchObject({ version: 3, stepsTaken: 1 });
+    expect(decodedCursor).toMatchObject({ version: 4, stepsTaken: 1 });
     expect(() => decodeVerificationCursor("not-a-cursor")).toThrow("Invalid verification cursor");
     const wrongVersion = Buffer.from(
       JSON.stringify({ ...decodedCursor, version: 999 }),
       "utf8",
     ).toString("base64url");
-    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 3");
+    expect(() => decodeVerificationCursor(wrongVersion)).toThrow("expected 4");
     const malformedPayload = Buffer.from(
       JSON.stringify({ ...decodedCursor, tablePosition: { ...decodedCursor.tablePosition, groupKeyBase64: "not-base64" } }),
       "utf8",
@@ -340,10 +340,10 @@ describe("verification cursor", () => {
     const root = await db.getDataIntegrityState().getRoot();
     const malformed = encodeBase64(new TextEncoder().encode(JSON.stringify(["heap-reference", "bWlzc2luZw==", "extra"])));
     const continuation = Buffer.from(JSON.stringify({
-      version: 3,
+      version: 4,
       root: { bufferBase64: malformed, seq: serializeDatabaseSeq(root.seq) },
       phase: "root",
-      tablePosition: { tableId: null, groupKeyBase64: null, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false, genericDone: false, hookPosition: null },
+      tablePosition: { tableId: null, groupKeyBase64: null, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false, genericDone: false, hookPosition: null },
       afterHeapKeyBase64: null,
       stepsTaken: 0,
       errorCount: 0,
@@ -361,6 +361,7 @@ function fakePosition(overrides: Partial<TablePosition> = {}): TablePosition {
     tableId: "fake",
     groupKeyBase64: null,
     rowSortKeyBase64: null,
+    rowSortKeyTieCount: 0,
     rowIdentifiers: [],
     rowIdentifierCheckSkipped: false,
     groupComplete: false,
@@ -536,6 +537,57 @@ describe("generic table corruption checks", () => {
       ],
     }]), fakePosition(), 100);
     expect(result.issues).toEqual([]);
+  });
+
+  it("resumes through every row when all sort keys tie", async () => {
+    const rows = [
+      { groupKey: null, rowIdentifier: "first", rowSortKey: null, rowData: {} },
+      { groupKey: null, rowIdentifier: "second", rowSortKey: null, rowData: {} },
+      { groupKey: null, rowIdentifier: "third", rowSortKey: null, rowData: {} },
+    ];
+    const target = {
+      tableId: "stored-style",
+      serializedTable: {},
+      inputTables: {},
+      table: {
+        async *listGroups({ range }: { range: { gt?: PiledriverObject } }) {
+          if (range.gt !== undefined) return;
+          yield { groupKey: null };
+        },
+        async *listRowsInGroup() {
+          yield* rows;
+        },
+        compareGroupKeys() { return 0; },
+        compareSortKeys() { return 0; },
+      },
+    };
+    let position = fakePosition();
+    const issues = [];
+    let finished = false;
+    for (let call = 0; call < 20; call++) {
+      const result = await verifyGenericTable(target, position, 1);
+      issues.push(...result.issues);
+      position = result.position;
+      if (result.finished) {
+        finished = true;
+        break;
+      }
+    }
+    expect(finished).toBe(true);
+    expect(issues).toEqual([]);
+  });
+
+  it("reports out-of-order rows even when adjacent rows tie", async () => {
+    const result = await verifyGenericTable(fakeTable([{
+      groupKey: "g",
+      rows: [
+        { groupKey: "g", rowIdentifier: "first", rowSortKey: "a" },
+        { groupKey: "g", rowIdentifier: "second", rowSortKey: "b" },
+        { groupKey: "g", rowIdentifier: "third", rowSortKey: "b" },
+        { groupKey: "g", rowIdentifier: "fourth", rowSortKey: "a" },
+      ],
+    }]), fakePosition(), 100);
+    expect(result.issues.map(issue => issue.code)).toContain("row_order");
   });
 
   it("keeps duplicate tracking bounded and reports the skipped check", async () => {

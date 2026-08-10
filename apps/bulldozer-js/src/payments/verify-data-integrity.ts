@@ -11,7 +11,7 @@ import type {
 import { canonicalGroupKeyString } from "../databases/bulldozer/index.js";
 import { collectSerializedHeapReferences, InvalidPiledriverSerializedObjectError, isPiledriverHeapObjectSymbol, type PiledriverObject } from "../databases/piledriver/index.js";
 
-const CURSOR_VERSION = 3;
+const CURSOR_VERSION = 4;
 const DEFAULT_STEP_COUNT = 100;
 const MAX_STEP_COUNT = 1_000;
 const MAX_ERRORS = 100;
@@ -31,6 +31,7 @@ export type TablePosition = {
   tableId: string | null,
   groupKeyBase64: string | null,
   rowSortKeyBase64: string | null,
+  rowSortKeyTieCount: number,
   rowIdentifiers: string[],
   rowIdentifierCheckSkipped: boolean,
   groupComplete: boolean,
@@ -129,6 +130,9 @@ function isTablePosition(value: unknown): value is TablePosition {
     && (value.tableId === null || typeof value.tableId === "string")
     && (value.groupKeyBase64 === null || typeof value.groupKeyBase64 === "string")
     && (value.rowSortKeyBase64 === null || typeof value.rowSortKeyBase64 === "string")
+    && typeof value.rowSortKeyTieCount === "number"
+    && Number.isInteger(value.rowSortKeyTieCount)
+    && value.rowSortKeyTieCount >= 0
     && Array.isArray(value.rowIdentifiers)
     && value.rowIdentifiers.every(item => typeof item === "string")
     && typeof value.rowIdentifierCheckSkipped === "boolean"
@@ -291,6 +295,7 @@ function nextTablePosition(tableId: string | null): TablePosition {
     tableId,
     groupKeyBase64: null,
     rowSortKeyBase64: null,
+    rowSortKeyTieCount: 0,
     rowIdentifiers: [],
     rowIdentifierCheckSkipped: false,
     groupComplete: false,
@@ -318,6 +323,8 @@ export async function verifyGenericTable(
   let stepsTaken = 0;
   let groupKey = decodePosition(position.groupKeyBase64);
   let previousSortKey = decodePosition(position.rowSortKeyBase64);
+  let rowSortKeyTieCount = position.rowSortKeyTieCount;
+  let tiedRowsToSkip = rowSortKeyTieCount;
   let seenRowIdentifiers = new Set(position.rowIdentifiers);
   let rowIdentifierCheckSkipped = position.rowIdentifierCheckSkipped;
   let groupComplete = position.groupComplete;
@@ -335,6 +342,8 @@ export async function verifyGenericTable(
       lastCompletedGroup = groupKey;
       groupKey = null;
       previousSortKey = null;
+      rowSortKeyTieCount = 0;
+      tiedRowsToSkip = 0;
       seenRowIdentifiers = new Set();
       rowIdentifierCheckSkipped = false;
       groupComplete = false;
@@ -389,7 +398,7 @@ export async function verifyGenericTable(
       if (stepsTaken >= budget) return {
         issues,
         skippedChecks,
-        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false },
+        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: false },
         stepsTaken,
         finished: false,
       };
@@ -404,6 +413,8 @@ export async function verifyGenericTable(
         }
       }
       previousSortKey = null;
+      rowSortKeyTieCount = 0;
+      tiedRowsToSkip = 0;
       seenRowIdentifiers = new Set();
       rowIdentifierCheckSkipped = false;
     }
@@ -411,12 +422,23 @@ export async function verifyGenericTable(
       serializedTable: target.serializedTable,
       inputTables: target.inputTables,
       groupKey: group.groupKey,
-      range: previousSortKey === null ? {} : { gt: previousSortKey.value },
+      range: previousSortKey === null ? {} : { gte: previousSortKey.value },
     })) {
+      const sortKeyComparison = previousSortKey === null ? null : target.table.compareSortKeys({
+        serializedTable: target.serializedTable,
+        inputTables: target.inputTables,
+        groupKey: group.groupKey,
+        a: previousSortKey.value,
+        b: row.rowSortKey,
+      });
+      if (sortKeyComparison === 0 && tiedRowsToSkip > 0) {
+        tiedRowsToSkip--;
+        continue;
+      }
       if (stepsTaken >= budget) return {
         issues,
         skippedChecks,
-        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey.value), rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
+        position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: previousSortKey === null ? null : encodePosition(previousSortKey.value), rowSortKeyTieCount, rowIdentifiers: [...seenRowIdentifiers], rowIdentifierCheckSkipped, groupComplete: false },
         stepsTaken,
         finished: false,
       };
@@ -427,13 +449,7 @@ export async function verifyGenericTable(
         a: row.groupKey,
         b: group.groupKey,
       }) !== 0) issues.push({ phase: "tables", code: "row_group_mismatch", message: "A row group key differs from its enclosing group", context: { tableId: target.tableId } });
-      if (previousSortKey !== null && target.table.compareSortKeys({
-        serializedTable: target.serializedTable,
-        inputTables: target.inputTables,
-        groupKey: group.groupKey,
-        a: previousSortKey.value,
-        b: row.rowSortKey,
-      }) > 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are out of order by sort key", context: { tableId: target.tableId } });
+      if (sortKeyComparison !== null && sortKeyComparison > 0) issues.push({ phase: "tables", code: "row_order", message: "Rows are out of order by sort key", context: { tableId: target.tableId } });
       if (!rowIdentifierCheckSkipped) {
         if (seenRowIdentifiers.has(row.rowIdentifier)) issues.push({ phase: "tables", code: "duplicate_row_identifier", message: "A row identifier appears more than once in a group", context: { tableId: target.tableId, rowIdentifier: row.rowIdentifier } });
         if (seenRowIdentifiers.size >= MAX_TRACKED_ROW_IDENTIFIERS) {
@@ -448,13 +464,16 @@ export async function verifyGenericTable(
           seenRowIdentifiers.add(row.rowIdentifier);
         }
       }
+      if (sortKeyComparison === 0) rowSortKeyTieCount++;
+      else rowSortKeyTieCount = 1;
+      tiedRowsToSkip = 0;
       previousSortKey = { value: row.rowSortKey };
     }
     groupComplete = true;
     if (stepsTaken >= budget) return {
       issues,
       skippedChecks,
-      position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: true },
+      position: { ...position, tableId: target.tableId, groupKeyBase64, rowSortKeyBase64: null, rowSortKeyTieCount: 0, rowIdentifiers: [], rowIdentifierCheckSkipped: false, groupComplete: true },
       stepsTaken,
       finished: false,
     };
