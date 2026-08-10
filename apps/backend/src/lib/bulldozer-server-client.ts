@@ -74,7 +74,7 @@ export async function fetchBulldozerServerJson<T>(options: {
     while (true) {
       attempt++;
       try {
-        const response = await fetch(new URL(options.path, getBulldozerServerBaseUrl()).toString(), {
+        const response = await fetch(`${getBulldozerServerBaseUrl()}${options.path}`, {
           method: options.method,
           headers: {
             "content-type": "application/json",

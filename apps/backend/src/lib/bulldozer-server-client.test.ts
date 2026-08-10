@@ -164,6 +164,17 @@ describe("fetchBulldozerServerJson", () => {
     })).toBe("/v1/tenancy%2Fid/customers/user/customer%3Fid/owned-products");
   });
 
+  it("preserves a path prefix in the configured Bulldozer URL", async () => {
+    vi.stubEnv("HEXCLAVE_BULLDOZER_SERVER_URL", "http://localhost:8146/bulldozer");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchBulldozerServerJson<{ success: true }>({ method: "POST", path: "/update-quantity" }))
+      .resolves.toEqual({ success: true });
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8146/bulldozer/update-quantity", expect.anything());
+  });
+
   it("does not retry an ambiguous socket failure", async () => {
     const fetchMock = vi.fn().mockRejectedValue(errorWithCode("ECONNRESET"));
     vi.stubGlobal("fetch", fetchMock);
