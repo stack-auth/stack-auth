@@ -813,7 +813,6 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
         type: mapLedgerTransactionTypeToApiType(listedRow.type as LedgerTransactionType),
         customer_type: listedRow.customerType,
         customer_id: listedRow.customerId,
-        renewal_target_subscription_id: listedRow.renewalTargetSubscriptionId ?? null,
         entries: listedRow.entries.flatMap(entry => {
           const mapped = mapLedgerEntry(entry);
           return mapped === null ? [] : [mapped];
