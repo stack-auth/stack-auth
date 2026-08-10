@@ -52,6 +52,7 @@ model Project {
   gtmActions                 GtmAction[]
   gtmNotes                   GtmNote[]
   gtmOnboardings             GtmOnboarding[]
+  releases                   Release[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -184,12 +185,22 @@ model Tenancy {
   workflowRuns WorkflowRun[]
   workflowEvents WorkflowEvent[]
   workflowScheduleCursors WorkflowScheduleCursor[]
+  releases            Release[]
+  releaseDeployments  ReleaseDeployment[]
+  releaseCommits      ReleaseCommit[]
+  releaseArtifacts    ReleaseArtifact[]
+  releaseArtifactDebugIds ReleaseArtifactDebugId[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+  // Release graph rows carry the full project/branch scope. This redundant
+  // unique key is the referenced target for their composite foreign keys; its
+  // index is installed concurrently because Tenancy is a hot, high-cardinality
+  // table.
+  @@unique([id, projectId, branchId], map: "Tenancy_id_projectId_branchId_key")
 }
 
 enum ManagedEmailDomainStatus {
@@ -1779,6 +1790,171 @@ model DeploymentSourceUpload {
 
   @@id([tenancyId, id])
   @@index([expiresAt])
+}
+
+// ================== Error tracking releases ==================
+//
+// Release records intentionally carry the complete tenancy scope. Tenancy is
+// the authoritative project/branch/organization scope, and the composite
+// foreign key below makes it impossible for a release row to combine a
+// tenancy with a different project or branch. The child graph repeats the
+// same scope so every release query can stay tenant- and branch-indexed
+// without first loading the parent row.
+
+enum ReleaseStatus {
+  OPEN
+  ARCHIVED
+}
+
+enum ReleaseArtifactStatus {
+  REGISTERED
+  FINALIZED
+}
+
+model Release {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  // Sentry treats this as an opaque version identifier: it may be a semantic
+  // version, a commit SHA, or a provider-specific build identifier.
+  version String @db.VarChar(250)
+  status  ReleaseStatus @default(OPEN)
+  ref     String? @db.VarChar(250)
+  url     String?
+  data    Json?
+
+  dateAdded    DateTime @default(now())
+  dateStarted  DateTime?
+  dateReleased DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenancy    Tenancy             @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deployments ReleaseDeployment[]
+  commits     ReleaseCommit[]
+  artifacts   ReleaseArtifact[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, version], map: "Release_tenancyId_version_key")
+  @@index([tenancyId, projectId, branchId, dateAdded(sort: Desc), id(sort: Desc)], map: "Release_scope_dateAdded_idx")
+  @@index([tenancyId, status, dateReleased], map: "Release_tenancyId_status_dateReleased_idx")
+}
+
+model ReleaseDeployment {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  releaseId String @db.Uuid
+
+  // Provider deployment IDs or caller-supplied idempotency keys. Keeping this
+  // required makes retries safe without inventing a timestamp-based identity.
+  deploymentKey String @db.VarChar(256)
+  environment   String @db.VarChar(255)
+  name          String? @db.VarChar(64)
+  url           String?
+  startedAt     DateTime?
+  finishedAt    DateTime @default(now())
+  metadata      Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deploymentKey], map: "ReleaseDeployment_tenancyId_deploymentKey_key")
+  @@index([tenancyId, releaseId, environment, finishedAt], map: "ReleaseDeployment_release_environment_finishedAt_idx")
+  @@index([tenancyId, environment, finishedAt], map: "ReleaseDeployment_environment_finishedAt_idx")
+}
+
+model ReleaseCommit {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  releaseId String @db.Uuid
+  repository String @db.VarChar(256)
+  commitSha  String @db.VarChar(128)
+  position   Int
+  message    String? @db.Text
+  authorName String? @db.VarChar(256)
+  authorEmail String? @db.VarChar(320)
+  committedAt DateTime?
+  url         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  release Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, releaseId, repository, commitSha], map: "ReleaseCommit_release_repository_sha_key")
+  @@unique([tenancyId, releaseId, position], map: "ReleaseCommit_release_position_key")
+  @@index([tenancyId, repository, commitSha], map: "ReleaseCommit_repository_sha_idx")
+}
+
+model ReleaseArtifact {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  releaseId String @db.Uuid
+  manifestSha256 String @db.VarChar(64)
+  dist        String? @db.VarChar(64)
+  environment String? @db.VarChar(255)
+  status      ReleaseArtifactStatus @default(REGISTERED)
+  manifestObjectKey String?
+  finalizedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy  Tenancy @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  release  Release @relation(fields: [tenancyId, releaseId], references: [tenancyId, id], onDelete: Cascade)
+  debugIds ReleaseArtifactDebugId[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, releaseId, manifestSha256], map: "ReleaseArtifact_release_manifest_key")
+  @@index([tenancyId, releaseId, environment, dist, createdAt], map: "ReleaseArtifact_release_environment_dist_idx")
+}
+
+model ReleaseArtifactDebugId {
+  tenancyId String @db.Uuid
+  projectId String
+  branchId  String
+  id        String @default(uuid()) @db.Uuid
+
+  releaseArtifactId String @db.Uuid
+  debugId           String @db.VarChar(36)
+  codeFile          String @db.Text
+  sourceMapFile     String? @db.Text
+  sourceMapInline   Boolean
+  bundleSha256      String @db.VarChar(64)
+  bundleBytes       Int
+  sourceMapSha256   String @db.VarChar(64)
+  sourceMapBytes    Int
+  sourceMapGzippedBytes Int
+  bundleObjectKey   String?
+  sourceMapObjectKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy        Tenancy        @relation(fields: [tenancyId, projectId, branchId], references: [id, projectId, branchId], onDelete: Cascade)
+  releaseArtifact ReleaseArtifact @relation(fields: [tenancyId, releaseArtifactId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, releaseArtifactId, debugId], map: "ReleaseArtifactDebugId_artifact_debugId_key")
+  @@index([tenancyId, debugId], map: "ReleaseArtifactDebugId_tenancyId_debugId_idx")
 }
 
 // ─── Workflows ──────────────────────────────────────────────────────────────
