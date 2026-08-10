@@ -7,6 +7,10 @@ const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
   "/api/latest/internal/workflow-engine-step",
+  // Unlike the endpoints above, this one returns immediately rather than looping
+  // for minutes, so the 1-second retry loop below would hammer it. It paces
+  // itself with an in-process cooldown; see RECONCILER_COOLDOWN_MS in its route.
+  "/api/latest/internal/issues/reconciler",
 ];
 
 async function main() {

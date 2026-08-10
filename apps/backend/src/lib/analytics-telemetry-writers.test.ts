@@ -39,11 +39,14 @@ const DRIFT_GUARD_CONTEXT = {
   producer: "sdk" as const,
 };
 
+const DRIFT_GUARD_BATCH_ID = "00000000-0000-4000-8000-000000000000";
+
 describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
   it("product-event rows cover the events table", () => {
     const { productEvents } = normalizeBatchEvents(
       [{ event_type: "checkout_completed", event_at_ms: 1_700_000_000_000, data: {} }],
       DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
     );
     expectRowMatchesColumns(productEvents[0], EVENTS_COLUMNS, "analytics_internal.events");
     // Same guarantee at compile time.
@@ -54,6 +57,7 @@ describe("SDK ingest insert rows vs. ClickHouse column declarations", () => {
     const { logOccurrences } = normalizeBatchEvents(
       [{ event_type: "$log", event_at_ms: 1_700_000_000_000, data: {}, message: "m", level: "warn" }],
       DRIFT_GUARD_CONTEXT,
+      DRIFT_GUARD_BATCH_ID,
     );
     expectRowMatchesColumns(logOccurrences[0], LOGS_COLUMNS, "analytics_internal.logs");
     expectTypeOf<Exclude<keyof typeof logOccurrences[number], LogColumnName>>().toEqualTypeOf<never>();
@@ -112,7 +116,7 @@ describe("analytics telemetry storage dispatch", () => {
         deploymentEnvironmentName: "preview",
         attributes: { region: "iad1" },
       },
-    });
+    }, DRIFT_GUARD_BATCH_ID);
 
     expect(normalized.productEvents).toHaveLength(0);
     // The SDK owns span identity, so the writer composes NOTHING: no prefixes, no

@@ -2,7 +2,7 @@ import { formatTraceparent, isW3cTraceId } from "@hexclave/shared/dist/utils/ana
 import { encodeSpanContextHeader, SPAN_CONTEXT_HEADER } from "@hexclave/shared/dist/utils/span-context-codec";
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
-import { resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
+import { getVerifiedCustomerRequestLinkTarget, resolveCustomerRequestObservability, runWithCustomerRequestObservability } from "./customer-request-observability";
 import type { SpanInsertRow } from "./spans";
 
 function request(options: {
@@ -42,6 +42,12 @@ describe("customer request observability", () => {
           userId: null,
           refreshTokenId: null,
           headers: { get: (name) => name.toLowerCase() === SPAN_CONTEXT_HEADER ? encodeSpanContextHeader({ projectId: "project" }) : null },
+        });
+        expect(getVerifiedCustomerRequestLinkTarget()).toEqual({
+          traceId,
+          spanId: parentSpanId,
+          projectId: "project",
+          branchId: "main",
         });
         // OAuth refresh grant identity is verified only after the route has
         // validated the refresh token, later than ordinary request auth.

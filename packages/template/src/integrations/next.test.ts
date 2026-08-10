@@ -302,6 +302,7 @@ describe("hexclaveInstrumentation", () => {
       const [capturedError, info] = captureSpy.mock.calls[0];
       expect(capturedError).toBe(error);
       expect(info.mechanism).toBe("next.onRequestError");
+      expect(info.handled).toBe(false);
       expect(info.data).toEqual({
         path: "/orders/7",
         method: "GET",
@@ -311,6 +312,29 @@ describe("hexclaveInstrumentation", () => {
         digest: "digest-123",
       });
       expect(info.request?.headers).toEqual({ cookie: "a=b", "x-multi": "1, 2" });
+    } finally {
+      captureSpy.mockRestore();
+    }
+  });
+
+  it("captureHandledError marks explicitly captured errors as handled", async () => {
+    const captureSpy = vi.spyOn(_HexclaveServerAppImplIncomplete.prototype, "_captureServerRequestError").mockImplementation(async () => {});
+    try {
+      const instrumentation = hexclaveInstrumentation(makeRealApp());
+      const error = new Error("background job failed");
+      await instrumentation.captureHandledError(error, {
+        location: "jobs/send-receipt",
+        data: { queue: "receipts" },
+      });
+
+      expect(captureSpy).toHaveBeenCalledWith(error, {
+        mechanism: "captured",
+        handled: true,
+        data: {
+          location: "jobs/send-receipt",
+          queue: "receipts",
+        },
+      });
     } finally {
       captureSpy.mockRestore();
     }

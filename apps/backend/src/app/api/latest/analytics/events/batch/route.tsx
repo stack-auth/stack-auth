@@ -1,11 +1,13 @@
-import { getBatchDestinationDeduplicationToken, insertBatchEvents } from "@/lib/analytics-telemetry-writers";
+import { getBatchDestinationDeduplicationToken, insertBatchEvents, normalizeBatchEvents, type NormalizedEventBatch } from "@/lib/analytics-telemetry-writers";
 import { getSharedClickhouseAdminClient } from "@/lib/clickhouse";
+import { materializeIssuesFromBatchSafely } from "@/lib/issues/issue-store";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { increasePlanItemQuantity, tryDecreasePlanItemQuantities, type MeteredPlanItemId } from "@/lib/plan-metering";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { buildBatchSpanLinkRows, buildBatchSpanRows, getBatchDuplicateSpanIdError, insertSpanLinks, insertSpans } from "@/lib/spans";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -38,6 +40,26 @@ const W3C_TRACE_ID_ERROR = "must be 32 lowercase hex characters and not all-zero
 const W3C_SPAN_ID_ERROR = "must be 16 lowercase hex characters and not all-zero";
 
 const LOG_EVENT_TYPE = "$log";
+const ERROR_EVENT_TYPE = "$error";
+
+/**
+ * Field-level contract for `$error` payloads.
+ *
+ * Deliberately permissive about EXTRA keys — the SDK adds mechanism metadata,
+ * urls, route info, and (once source maps land) `debug_images`, and rejecting
+ * unknown fields would make every SDK upgrade a breaking change. What it does
+ * enforce is the type of the four fields the server actually reads, so a
+ * malformed payload is rejected at the boundary rather than silently producing
+ * a degraded grouping hash.
+ */
+function isValidErrorEventData(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  if (typeof data.name !== "string" || typeof data.message !== "string") return false;
+  if (data.stack !== undefined && typeof data.stack !== "string") return false;
+  if (data.handled !== undefined && typeof data.handled !== "boolean") return false;
+  return true;
+}
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
@@ -175,6 +197,17 @@ export const POST = createSmartRouteHandler({
           (event) => event.event_type === LOG_EVENT_TYPE
             ? event.message !== undefined && event.level !== undefined
             : event.message === undefined && event.level === undefined,
+        ).test(
+          // `$error` is the one event type whose `data` the SERVER reads and
+          // promotes into typed ClickHouse columns (`error_type`, `message`,
+          // `error_culprit`) and feeds to the grouping algorithm. Everywhere
+          // else `data` is opaque customer JSON, validated only for shape and
+          // size. So it gets a field-level contract here rather than being
+          // discovered at grouping time, where a wrong type would degrade the
+          // hash instead of rejecting the item.
+          "error-fields",
+          `${ERROR_EVENT_TYPE} data must carry string name/message, optional string stack, and boolean handled`,
+          (event) => event.event_type !== ERROR_EVENT_TYPE || isValidErrorEventData(event.data),
         ),
       ).optional().max(MAX_EVENTS),
       spans: yupArray(
@@ -216,7 +249,16 @@ export const POST = createSmartRouteHandler({
             yupObject({
               trace_id: yupString().defined().test("link-trace-id", `link trace_id ${W3C_TRACE_ID_ERROR}`, (value) => isUsableW3cTraceId(value)),
               span_id: yupString().defined().test("link-span-id", `link span_id ${W3C_SPAN_ID_ERROR}`, (value) => isUsableW3cSpanId(value)),
-            }).defined(),
+              // Trusted platform-only target scope. Ordinary SDK callers cannot
+              // claim another project's rows; the request-level rule below is
+              // the authorization boundary for these optional fields.
+              linked_project_id: yupString().optional().min(1),
+              linked_branch_id: yupString().optional().min(1),
+            }).defined().test(
+              "link-target-scope-pair",
+              "linked_project_id and linked_branch_id must be provided together",
+              (link) => (link.linked_project_id === undefined) === (link.linked_branch_id === undefined),
+            ),
           ).optional().max(MAX_SPAN_LINKS),
         }).defined().test(
           "span-interval",
@@ -380,6 +422,11 @@ export const POST = createSmartRouteHandler({
 
     const projectId = auth.tenancy.project.id;
     const branchId = auth.tenancy.branchId;
+    const hasExplicitLinkTarget = spans.some((span) =>
+      (span.links ?? []).some((link) => link.linked_project_id !== undefined));
+    if (hasExplicitLinkTarget && (auth.type === "client" || projectId !== "internal")) {
+      throw new StatusError(StatusError.BadRequest, "Cross-project span link targets are reserved for the internal platform backend");
+    }
 
     // Validate explicitly forwarded replay context before touching quota. If no
     // replay was forwarded, derive the caller's current rolling replay from the
@@ -487,6 +534,7 @@ export const POST = createSmartRouteHandler({
     // The producer/runtime stamps come from the ROUTE (never the client), so a
     // client cannot spoof platform-produced rows or clear the defaults.
     const runtime = auth.type === "client" ? "browser" : "server";
+    let normalizedEvents: NormalizedEventBatch | null = null;
     try {
       const spanRows = buildBatchSpanRows({
         spans,
@@ -501,24 +549,31 @@ export const POST = createSmartRouteHandler({
       });
       const spanLinkRows = buildBatchSpanLinkRows({ spans, projectId, branchId });
 
+      // Normalized once, up front. Grouping every `$error` in the batch is the
+      // only CPU-bound step in this handler, and the result is needed twice:
+      // by the ClickHouse insert below and by the Issue materialization that
+      // runs after it. Normalizing inside the insert (as this used to) would
+      // have meant recomputing it.
+      normalizedEvents = normalizeBatchEvents(events, {
+        projectId,
+        branchId,
+        userId,
+        refreshTokenId,
+        sessionReplayId,
+        sessionReplaySegmentId,
+        runtime,
+        resource,
+        // The authenticated SDK path is always an SDK producer. Metering is
+        // decided above; internal platform telemetry is explicitly unmetered.
+        producer: "sdk",
+      }, body.batch_id);
+
       // Each destination has its own stable deduplication token, so all
       // independent ClickHouse writes can run concurrently. A partial commit
       // is safe: the request refunds quota, then a retry no-ops at destinations
       // that already accepted this batch.
       await Promise.all([
-        insertBatchEvents(clickhouseClient, events, {
-          projectId,
-          branchId,
-          userId,
-          refreshTokenId,
-          sessionReplayId,
-          sessionReplaySegmentId,
-          runtime,
-          resource,
-          // The authenticated SDK path is always an SDK producer. Metering is
-          // decided above; internal platform telemetry is explicitly unmetered.
-          producer: "sdk",
-        }, body.batch_id),
+        insertBatchEvents(clickhouseClient, normalizedEvents, body.batch_id),
         insertSpans(clickhouseClient, spanRows, {
           deduplicationToken: getBatchDestinationDeduplicationToken(body.batch_id, "analytics_internal.spans"),
         }),
@@ -533,6 +588,32 @@ export const POST = createSmartRouteHandler({
         spansBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-spans-clickhouse-refund"),
       ]);
       throw error;
+    }
+
+    // Issue materialization runs AFTER the ClickHouse inserts have committed
+    // and deliberately off the request's critical path.
+    //
+    // The split is the whole durability story. The occurrence row is already
+    // self-describing at rest (it carries `issue_hash`, so the rollup fires and
+    // `default.errors` is queryable the instant the insert lands), which means a
+    // Postgres outage can only DELAY the Issue record — it can never lose the
+    // occurrence or fail telemetry ingestion. The ledger inside
+    // `materializeIssuesFromBatch` makes the write exactly-once, so this is safe
+    // to re-run; the reconciler replays any batch whose ledger row is missing.
+    // No null check: the `catch` above always rethrows, so control only reaches
+    // here once the assignment inside `try` has happened.
+    if (normalizedEvents.issueInputs.length > 0) {
+      const issueInputs = normalizedEvents.issueInputs;
+      runAsynchronouslyAndWaitUntil(materializeIssuesFromBatchSafely({
+        tenancy: auth.tenancy,
+        batchId: body.batch_id,
+        inputs: issueInputs,
+        // Server receipt time, NOT the client-supplied `event_at_ms`. Lifecycle
+        // transitions (regression, snooze expiry) compare against this, so a
+        // client with a fast clock cannot reopen a resolved issue and one with a
+        // slow clock cannot hide a real regression.
+        receivedAt: new Date(),
+      }));
     }
 
     return {

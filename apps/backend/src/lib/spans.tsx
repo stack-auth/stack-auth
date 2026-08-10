@@ -119,7 +119,12 @@ export type BatchSpanWireItem = {
   /** Server-authenticated OTel instrumentation scope; absent for native custom/system spans. */
   scope_name?: string | null,
   page_view_span_id?: string | null,
-  links?: { trace_id: string, span_id: string }[] | null,
+  links?: {
+    trace_id: string,
+    span_id: string,
+    linked_project_id?: string,
+    linked_branch_id?: string,
+  }[] | null,
 };
 
 /**
@@ -135,6 +140,8 @@ export type SpanLinkInsertRow = {
   owner_span_id: string,
   linked_trace_id: string,
   linked_span_id: string,
+  linked_project_id: string,
+  linked_branch_id: string,
 };
 
 /**
@@ -261,6 +268,11 @@ export function buildBatchSpanLinkRows(opts: {
     owner_span_id: span.span_id,
     linked_trace_id: link.trace_id,
     linked_span_id: link.span_id,
+    // Public SDK links have no target-tenancy claim surface and therefore stay
+    // inside their authenticated owner scope. Only the internal platform SDK
+    // can send the explicitly validated override fields.
+    linked_project_id: link.linked_project_id ?? opts.projectId,
+    linked_branch_id: link.linked_branch_id ?? opts.branchId,
   })));
 }
 

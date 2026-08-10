@@ -481,6 +481,42 @@ const environmentAnalyticsSchema = yupObject({
 });
 // --- END Analytics Schema ---
 
+
+// --- Observability Schema (environment config only - not pushable) ---
+//
+// This lives at the environment level, next to `analytics`, rather than at the branch level with the rest of
+// the pushable config. Which error-grouping algorithm a project runs is an operational rollout knob owned by
+// us: we need to be able to move a project off a retired algorithm without a customer deploy, and a committed
+// `hexclave.config.ts` must never be able to pin a project to an algorithm we no longer run.
+//
+// Error grouping config ids. The source of truth for what these ids *mean* is the registry in
+// `apps/backend/src/lib/issues/grouping-config.ts`; this list is a deliberate duplicate, because
+// `packages/shared` must not depend on the backend. Adding an algorithm there requires adding its id here too.
+const GROUPING_CONFIG_IDS = ["hexclave-js:2026-08-01"] as const;
+
+const environmentObservabilitySchema = yupObject({
+  errorGrouping: yupObject({
+    activeConfigId: yupString().oneOf(GROUPING_CONFIG_IDS).optional(),
+    // The set of older algorithms whose hashes are still consulted on an owner-hash miss, so a dormant issue
+    // that recurs after a rollout is matched to its existing issue instead of being created again.
+    //
+    // This is a record, not the array you might expect from the name, because config values may not be arrays
+    // (`getRestrictedSchemaBase` throws "Arrays are not supported in config JSON files (besides tuples). Use a
+    // record instead." for any array-typed leaf, so an array here would make the field unsettable through the
+    // config-override API). Shaped exactly like `apps.installed` for that reason. Lookup *order* — the plan
+    // calls for oldest-last — therefore comes from the backend registry's own ordering, filtered by this set,
+    // rather than from the config; that is the more robust source anyway, since it can't be scrambled by a
+    // caller writing the keys in the wrong order.
+    readableConfigIds: yupRecord(
+      yupString().oneOf(GROUPING_CONFIG_IDS),
+      yupObject({
+        enabled: yupBoolean(),
+      }),
+    ),
+  }),
+});
+// --- END Observability Schema ---
+
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
@@ -586,6 +622,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   }),
 
   analytics: environmentAnalyticsSchema,
+  observability: environmentObservabilitySchema,
   customDashboards: schemaFields.customDashboardsSchema,
 }));
 
@@ -1125,6 +1162,17 @@ const organizationConfigDefaults = {
         description: undefined,
       }),
     }),
+  },
+
+  observability: {
+    errorGrouping: {
+      // Every project runs the current algorithm unless explicitly moved off it.
+      activeConfigId: GROUPING_CONFIG_IDS[0],
+      // Total map over the known ids, mirroring `apps.installed`, so a reader never has to distinguish
+      // "not listed" from "listed but off". All false means "nothing but the active config is consulted",
+      // which is correct at v1: there is no older algorithm to fall back to yet.
+      readableConfigIds: typedFromEntries(GROUPING_CONFIG_IDS.map(configId => [configId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+    },
   },
 
   customDashboards: (key: string) => ({

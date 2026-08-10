@@ -130,6 +130,11 @@ const docsJson = {
                     "group": "Observability",
                     "pages": [
                       "guides/apps/analytics/errors-and-logs",
+                      "guides/apps/observability/overview",
+                      "guides/apps/observability/grouping",
+                      "guides/apps/observability/issues",
+                      "guides/apps/observability/querying-errors",
+                      "guides/apps/observability/webhooks",
                       "guides/apps/analytics/cross-tier-tracing",
                       "guides/apps/analytics/framework-adapters"
                     ]

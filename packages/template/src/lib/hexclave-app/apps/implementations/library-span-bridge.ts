@@ -1,6 +1,7 @@
 import { CUSTOM_TELEMETRY_NAME_RE, formatTraceparent, generateW3cSpanId, generateW3cTraceId, isW3cSpanId, isW3cTraceId, parseTraceparent, truncateUtf8Bytes } from "@hexclave/shared/dist/utils/analytics-wire";
 import { loadAsyncLocalStorage, type AsyncLocalStorageLike } from "@hexclave/shared/dist/utils/async-local-storage";
-import { context as contextApi, createContextKey, propagation as propagationApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as traceApi, type Context, type ContextManager, type Exception, type Span as OtelSpan, type SpanAttributes, type SpanAttributeValue, type SpanContext, type SpanOptions, type SpanStatus, type TextMapGetter, type TextMapPropagator, type TextMapSetter, type TimeInput, type Tracer, type TracerOptions, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
+import { context as contextApi, createContextKey, propagation as propagationApi, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace as traceApi, type Context, type ContextManager, type Exception, type Link, type Span as OtelSpan, type SpanAttributes, type SpanAttributeValue, type SpanContext, type SpanOptions, type SpanStatus, type TextMapGetter, type TextMapPropagator, type TextMapSetter, type TimeInput, type Tracer, type TracerOptions, type TracerProvider } from "@hexclave/shared/dist/utils/otel-api";
+import { MAX_SPAN_LINKS } from "./telemetry-core";
 
 /**
  * The hidden OpenTelemetry bridge: a minimal, hand-rolled implementation of
@@ -48,7 +49,8 @@ import { context as contextApi, createContextKey, propagation as propagationApi,
  *   degrade to the fetch-level `$http-client` spans.
  * - Spans created before registration runs are lost — mitigated by claiming
  *   the global from `instrumentation.ts` (Next runs it before app code).
- * - OTel span events and links are dropped (events are counted).
+ * - OTel span events are dropped (and counted). Links are retained without
+ *   attributes; link attributes are not part of the current native link model.
  */
 
 // ---------------------------------------------------------------------------
@@ -86,7 +88,7 @@ export type LibrarySpanHandle = {
   sampled: boolean,
   /** Lets descendants detect when a newer SDK withSpan frame must win once. */
   ambientSpanId: string | null,
-  end: (endedAtMs: number, data: Record<string, unknown>) => void,
+  end: (endedAtMs: number, data: Record<string, unknown>, links: readonly { traceId: string, spanId: string }[]) => void,
 };
 
 export type LibrarySpanBridgeDeps = {
@@ -439,6 +441,7 @@ export class HexclaveBridgeSpan implements OtelSpan {
   private readonly _attributes = new Map<string, StoredAttribute>();
   private _attributeBytes = 0;
   private _droppedEventCount = 0;
+  private readonly _links = new Map<string, { traceId: string, spanId: string }>();
   private _status: SpanStatus | null = null;
   private _ended = false;
 
@@ -491,11 +494,19 @@ export class HexclaveBridgeSpan implements OtelSpan {
     return this;
   }
 
-  addLink(): this {
+  addLink(link: Link): this {
+    if (this._ended) return this;
+    const context = link.context;
+    if (!isW3cTraceId(context.traceId) || !isW3cSpanId(context.spanId)) return this;
+    const key = `${context.traceId}:${context.spanId}`;
+    if (!this._links.has(key) && this._links.size < MAX_SPAN_LINKS) {
+      this._links.set(key, { traceId: context.traceId, spanId: context.spanId });
+    }
     return this;
   }
 
-  addLinks(): this {
+  addLinks(links: Link[]): this {
+    for (const link of links) this.addLink(link);
     return this;
   }
 
@@ -533,7 +544,7 @@ export class HexclaveBridgeSpan implements OtelSpan {
     // Clamp instead of throwing: a library handing us a nonsensical end time
     // must never turn span.end() into a crash inside ITS code path.
     const endedAtMs = Math.max(this._startedAtMs, timeInputToMs(endTime) ?? Date.now());
-    this._handle.end(endedAtMs, this._buildData());
+    this._handle.end(endedAtMs, this._buildData(), [...this._links.values()]);
   }
 
   private _buildData(): Record<string, unknown> {
@@ -574,8 +585,10 @@ export class HexclaveTracer implements Tracer {
 
   startSpan(name: string, options?: SpanOptions, ctx?: Context): OtelSpan {
     const activeContext = ctx ?? contextApi.active();
-    // Parenting case (a): the context carries a span we minted, or a remote
-    // W3C parent the global propagator extracted from traceparent.
+    // Parenting case (a): only a context carrying a span we minted may establish
+    // hierarchy. A bare remote W3C context has no authenticated project scope;
+    // adopting it here could hide an internal row under a foreign-project parent.
+    // The authenticated request boundary records that relationship as a link.
     let otelParent: LibrarySpanOtelParent | null = null;
     if (options?.root !== true) {
       const parentSpan = traceApi.getSpan(activeContext);
@@ -584,21 +597,6 @@ export class HexclaveTracer implements Tracer {
         const mapped = this._state.registry.get(parentSpanContext.spanId);
         if (mapped !== undefined) {
           otelParent = mapped;
-        } else if (
-          parentSpanContext.isRemote === true
-          && isW3cTraceId(parentSpanContext.traceId)
-          && isW3cSpanId(parentSpanContext.spanId)
-        ) {
-          // A remote span is allowed to name a row written by another tier — in
-          // this product that is normally the browser's `$http-client`. Unlike
-          // an arbitrary local foreign span, treating it as a parent is exactly
-          // the W3C propagation contract and cannot fabricate a local row.
-          otelParent = {
-            traceId: parentSpanContext.traceId,
-            recordedSpanId: parentSpanContext.spanId,
-            sampled: (parentSpanContext.traceFlags & 1) === 1,
-            ambientSpanId: null,
-          };
         }
       }
     }
@@ -649,6 +647,9 @@ export class HexclaveTracer implements Tracer {
     });
     if (options?.attributes !== undefined) {
       span.setAttributes(options.attributes);
+    }
+    if (options?.links !== undefined) {
+      span.addLinks(options.links);
     }
     return span;
   }

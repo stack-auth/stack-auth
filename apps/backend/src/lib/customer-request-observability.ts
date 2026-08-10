@@ -37,6 +37,13 @@ type CustomerRequestObservabilityHolder = {
   tenancy: CustomerRequestTenancy | null,
 };
 
+export type VerifiedCustomerRequestLinkTarget = {
+  traceId: string,
+  spanId: string,
+  projectId: string,
+  branchId: string,
+};
+
 type CustomerRequestSpanWriter = (row: SpanInsertRow) => Promise<void>;
 
 const customerRequestStorage = new AsyncLocalStorage<CustomerRequestObservabilityHolder>();
@@ -106,6 +113,28 @@ export function resolveCustomerRequestObservability(options: {
     sessionReplayId: current?.sessionReplayId ?? labels?.sessionReplayId ?? null,
     sessionReplaySegmentId: current?.sessionReplaySegmentId ?? labels?.sessionReplaySegmentId ?? null,
     pageViewSpanId: current?.pageViewSpanId ?? labels?.pageViewSpanId ?? null,
+  };
+}
+
+/**
+ * Returns the exact incoming client span only after route authentication proved
+ * which project and branch own it. The internal request span uses this as a
+ * cross-project link; callers outside the request ALS scope get null.
+ */
+export function getVerifiedCustomerRequestLinkTarget(): VerifiedCustomerRequestLinkTarget | null {
+  const holder = customerRequestStorage.getStore();
+  if (
+    holder === undefined
+    || holder.tenancy === null
+    || !holder.incomingParentIsSameProject
+    || holder.incomingTraceId === null
+    || holder.incomingParentSpanId === null
+  ) return null;
+  return {
+    traceId: holder.incomingTraceId,
+    spanId: holder.incomingParentSpanId,
+    projectId: holder.tenancy.projectId,
+    branchId: holder.tenancy.branchId,
   };
 }
 

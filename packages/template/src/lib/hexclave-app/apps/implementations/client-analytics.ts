@@ -266,7 +266,6 @@ export class ClientAnalytics {
     const resolved = resolveSpanParent({
       explicit: options?.parent,
       ambient: this._preloadAmbientContexts(),
-      links: options?.links,
       root: options?.root,
     });
     if ("error" in resolved) return resolved;

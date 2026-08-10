@@ -39,15 +39,16 @@ export type TrackOptions = {
    * `parent`, the parent still wins — `root` only drops the AMBIENT parent.
    */
   root?: boolean,
-  /**
-   * Non-hierarchical references to other spans: causally related work that is
-   * not this item's parent (e.g. a second ambient span from an unrelated flow,
-   * or the producer of a queued message). Stored in `analytics_internal.span_links`.
-   */
-  links?: ParentRef[],
 };
 
 export type StartSpanOptions = TrackOptions & {
+  /**
+   * Non-hierarchical references to other spans: causally related work that is
+   * not this span's parent (e.g. a second ambient span from an unrelated flow,
+   * or the producer of a queued message). OpenTelemetry links belong to spans,
+   * not events, so this is deliberately absent from `TrackOptions`.
+   */
+  links?: ParentRef[],
   data?: Record<string, unknown>,
   startedAtMs?: number,
 };
@@ -128,12 +129,26 @@ export type SpanUpdateRow = {
   // straddle a navigation). Frozen at span creation; never set on $page-view rows.
   page_view_span_id?: string,
   /**
-   * Non-hierarchical references to other spans; see TrackOptions.links. Wire
+   * Non-hierarchical references to other spans; see StartSpanOptions.links. Wire
    * shape is snake_case like every other field on this row, so it is NOT
    * `SpanContext` — the camelCase form is the SDK-facing type only.
    */
-  links?: { trace_id: string, span_id: string }[],
+  links?: {
+    trace_id: string,
+    span_id: string,
+    /** Trusted backend-only target scope; ordinary SDK links omit both fields. */
+    linked_project_id?: string,
+    linked_branch_id?: string,
+  }[],
 };
+
+/** Internal stored form. Target scope is only supplied by trusted platform code. */
+export type StoredSpanLink = SpanContext & {
+  linkedProjectId?: string,
+  linkedBranchId?: string,
+};
+
+export const MAX_SPAN_LINKS = 32;
 
 // Keep fire-and-forget telemetry from becoming an unhandled rejection while
 // returning the original promise so callers that await it still observe failure.
@@ -281,7 +296,7 @@ export type ResolvedSpanParent = {
   /** null means the item starts a NEW trace (it is the root activity). */
   parentSpanId: string | null,
   /** Non-hierarchical references; empty when there are none. */
-  links: SpanContext[],
+  links: StoredSpanLink[],
 };
 
 /**
@@ -343,12 +358,14 @@ export function resolveSpanParent(opts: {
     parent = opts.fallbackParent;
   }
 
-  const links: SpanContext[] = [];
+  const links: StoredSpanLink[] = [];
   for (const ref of opts.links ?? []) {
     const context = parentRefToSpanContext(ref);
     const error = getSpanContextError(context, "link");
     if (error !== null) return { error };
-    links.push({ traceId: context.traceId, spanId: context.spanId });
+    if (!links.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) {
+      links.push({ traceId: context.traceId, spanId: context.spanId });
+    }
   }
   if (parent !== null) {
     for (const context of ambient) {
@@ -356,6 +373,9 @@ export function resolveSpanParent(opts: {
       if (links.some((link) => link.spanId === context.spanId && link.traceId === context.traceId)) continue;
       links.push({ traceId: context.traceId, spanId: context.spanId });
     }
+  }
+  if (links.length > MAX_SPAN_LINKS) {
+    return { error: `A span may link to at most ${MAX_SPAN_LINKS} other spans` };
   }
 
   return {

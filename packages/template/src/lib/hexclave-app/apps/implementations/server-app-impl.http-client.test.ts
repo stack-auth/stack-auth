@@ -132,6 +132,7 @@ describe("getServerAppInstrumentation + $error capture", () => {
     // assertion that the buffer flushed.
     await instrumentation?.captureServerRequestError(error, {
       mechanism: "next.onRequestError",
+      handled: false,
       data: { path: "/orders", method: "GET" },
     });
 
@@ -422,7 +423,7 @@ describe("zero-wiring server telemetry", () => {
     await runWithServerRequestContext(requestContext, async () => {
       const errorDelivery = instrumentation?.captureServerRequestError(
         new Error("promoted-error-event"),
-        { mechanism: "test" },
+        { mechanism: "test", handled: false },
       );
       await app.flush();
       await errorDelivery;

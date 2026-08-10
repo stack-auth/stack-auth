@@ -7,6 +7,7 @@ import { isTracingSuppressed } from "@opentelemetry/core";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { initPerfStats } from "./lib/dev-perf-stats";
 import { isNodeTelemetrySuppressed, registerNodeTelemetrySuppressionRunner } from "./lib/node-telemetry-suppression";
+import { registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 
 let instrumentation: ReturnType<typeof hexclaveInstrumentation> | null = null;
 
@@ -34,6 +35,53 @@ function getBackendInstrumentation() {
   return instrumentation;
 }
 
+/**
+ * Re-entrancy latch for the error sink below.
+ *
+ * `captureError` is called from inside the telemetry send path itself (a failed
+ * batch POST reports through it), so a sink that captures unconditionally would
+ * recurse: capture -> send -> fail -> capture. The OTel/task-local suppression
+ * flag covers the instrumented call stack, but not a failure that surfaces on a
+ * later microtask, which is exactly how an async send fails.
+ */
+let emittingCapturedError = false;
+
+/**
+ * Forwards Hexclave's OWN handled errors into its OWN error tracking.
+ *
+ * Without this, `captureError()` reaches only the console sink and Sentry. The
+ * console sink produces a level=`error` `$log` row — with no stack and no
+ * fingerprint, because `captureError` nicifies the error to a STRING before it
+ * reaches `console.error`, and `installConsoleCapture` only stamps
+ * `error_fingerprint` when it is handed a real `Error`. The net effect was that
+ * the `internal` project accumulated error logs and never produced a single
+ * Issue, i.e. we were not dogfooding the feature at all.
+ *
+ * Registered here rather than in `polyfills.tsx` (where the Sentry sink lives)
+ * because the SDK's server app is Node-only, while polyfills also load on Edge.
+ */
+function registerCapturedErrorTelemetrySink(): void {
+  registerErrorSink((location, error, level) => {
+    // Warnings are not errors; routing them here would fill the Issues list
+    // with things nobody intends to resolve.
+    if (level !== "error") return;
+    if (emittingCapturedError) return;
+    if (isNodeTelemetrySuppressed()) return;
+
+    emittingCapturedError = true;
+    try {
+      const instrumented = getBackendInstrumentation();
+      // Deliberately not awaited and deliberately not reported on failure: the
+      // original error has already been logged by the console sink, and
+      // reporting a telemetry failure through `captureError` is the recursion
+      // this latch exists to prevent.
+      instrumented.captureHandledError(error, { location }).catch(() => {});
+    } finally {
+      emittingCapturedError = false;
+    }
+  });
+}
+
 export async function registerNodeInstrumentation(): Promise<void> {
   // Prisma instrumentation accesses the Node global alias during setup.
   globalThis.global = globalThis;
@@ -48,6 +96,7 @@ export async function registerNodeInstrumentation(): Promise<void> {
 
   // `process` is guaranteed here because this module is Node-only.
   process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
+  registerCapturedErrorTelemetrySink();
   initPerfStats();
 }
 

@@ -1651,11 +1651,11 @@ it("round-trips span links into the span_links surface", async ({ expect }) => {
   expect(res.body.accepted_spans).toBe(1);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT trace_id, owner_span_id, linked_trace_id, linked_span_id FROM span_links WHERE owner_span_id = {ownerSpanId:String}",
+    query: "SELECT trace_id, owner_span_id, linked_trace_id, linked_span_id, linked_project_id = project_id AS same_project, linked_branch_id = branch_id AS same_branch FROM span_links WHERE owner_span_id = {ownerSpanId:String}",
     params: { ownerSpanId },
   }, (r) => r.body?.result?.length === 2);
   expect(queryRes?.status).toBe(200);
-  const linkRows = (queryRes?.body as any).result as { trace_id: string, owner_span_id: string, linked_trace_id: string, linked_span_id: string }[];
+  const linkRows = (queryRes?.body as any).result as { trace_id: string, owner_span_id: string, linked_trace_id: string, linked_span_id: string, same_project: number, same_branch: number }[];
 
   // Compared by lookup rather than by sorted order: the row order the table
   // returns is not part of the contract, and the ids are random per run.
@@ -1669,8 +1669,27 @@ it("round-trips span links into the span_links surface", async ({ expect }) => {
       owner_span_id: ownerSpanId,
       linked_trace_id: link.trace_id,
       linked_span_id: link.span_id,
+      same_project: 1,
+      same_branch: 1,
     });
   }
+});
+
+it("rejects client claims about a span link's target tenancy", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({
+      links: [{
+        trace_id: generateW3cTraceId(),
+        span_id: generateW3cSpanId(),
+        linked_project_id: "another-project",
+        linked_branch_id: "main",
+      }],
+    })],
+  });
+  expect(res.status).toBe(400);
 });
 
 it("rejects unknown $-prefixed event types", async ({ expect }) => {

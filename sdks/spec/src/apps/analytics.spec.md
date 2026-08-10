@@ -408,7 +408,8 @@ TrackOptions:
   parent: ParentRef?           - the ONE span this item belongs under; overrides
                                  ambient context entirely (see "Parent resolution")
   root: bool?                  - drop the AMBIENT parent: start a new trace
-  links: ParentRef[]?          - non-hierarchical references to related spans
+
+Events do not accept `links`: OpenTelemetry links are owned by spans.
 
 Server-side additionally:
   userId: uuid?    - explicit attribution (validated as uuid)
@@ -506,7 +507,7 @@ fast path of custom events.
 
 ## startSpan(spanType, options?) / the Span handle
 
-StartSpanOptions: TrackOptions & { data?, startedAtMs? }
+StartSpanOptions: TrackOptions & { data?, startedAtMs?, links? }
   = { data?, startedAtMs?, parent?, root?, links? }
 (server-side additionally userId?).
 
@@ -587,6 +588,9 @@ forced into a false parent relationship. This is the honest home for the case a
 single-path model had to reject outright — a span joining two flows (a queued
 message consumed inside an unrelated request, a batch job triggered by several
 users' actions) records the extra flows as links and keeps exactly one parent.
+Deduplicate by (traceId, spanId) and reject more than 32 links. The owner trace's
+sampling decision governs whether link rows persist; linked traces are sampled
+independently and a link never promotes either trace.
 
 Any malformed context (bad hex shape, all-zero id, `parentSpanId === spanId`)
 returns `{ error }` with a message naming the role ("parent", "ambient parent",
@@ -1029,8 +1033,10 @@ delivery fire-and-forget through the server telemetry buffer.
 Library-span data shape: { ...allowlisted attributes, name, tracer_name,
 kind? ("server"/"client"/"producer"/"consumer" — internal omitted),
 status_code? ("ok"/"error" — unset omitted), status_message? (bounded 1KB),
-dropped_event_count? (span events are dropped but counted; links dropped
-silently), category }. Reserved keys always win attribute collisions.
+dropped_event_count? (span events are dropped but counted), category }.
+Reserved keys always win attribute collisions. Valid OTel creation-time links
+and late addLink/addLinks calls are deduplicated, capped at 32, and emitted on
+the final span row; link attributes are currently dropped.
 
 Attribute policy (allowlist-by-shape): strings byte-bounded to 1KB
 (truncateUtf8Bytes), finite numbers, booleans; primitive arrays JSON-
